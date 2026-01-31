@@ -100,13 +100,21 @@ process.stdin.on("end", async () => {
 
   // Check for passthrough config
   const passthroughCmd = config?.gutt?.statusline?.passthroughCommand;
+  const multiLine = config?.gutt?.statusline?.multiLine === true;
 
   if (passthroughCmd) {
     const passthroughOutput = await execPassthrough(passthroughCmd, data, 500);
-    const output = passthroughOutput
-      ? `${passthroughOutput} ${guttSegment}`
-      : guttSegment + claudeSegment;
-    console.log(output);
+    if (passthroughOutput) {
+      if (multiLine) {
+        // Line 1: passthrough, Line 2: GUTT
+        console.log(`${passthroughOutput}\n${guttSegment}`);
+      } else {
+        // Single line: passthrough + GUTT
+        console.log(`${passthroughOutput} ${guttSegment}`);
+      }
+    } else {
+      console.log(guttSegment + claudeSegment);
+    }
   } else {
     console.log(guttSegment + claudeSegment);
   }
