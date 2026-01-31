@@ -35,8 +35,21 @@ process.stdin.on("end", () => {
   // Log the hook invocation
   fs.appendFileSync(logFile, `[${timestamp}] Prompt: ${prompt}\n`);
 
-  // Output the reminder message
-  console.log(
-    "REMINDER: Use gutt-pro-memory agent to search organizational memory before starting work."
-  );
+  // Output actionable memory search instruction
+  // Extract key terms for suggested search
+  const searchTerms = prompt
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3)
+    .slice(0, 5)
+    .join(" ");
+
+  console.log(`🟠 GUTT MEMORY: Search organizational memory BEFORE starting this task.
+
+ACTION REQUIRED: Call one of these tools first:
+  - mcp__gutt-mcp-remote__search_memory_facts(query: "${searchTerms || "relevant context"}")
+  - mcp__gutt-mcp-remote__fetch_lessons_learned(query: "${searchTerms || "lessons"}")
+
+This retrieves past decisions, patterns, and lessons that may apply to this task.`);
 });
