@@ -28,11 +28,11 @@ process.stdin.on("end", () => {
     data = {};
   }
 
-  // Format gutt status (lowercase branding)
+  // Format gutt status (lowercase branding with colored circles)
   const statusIcon =
-    state.connectionStatus === "ok" ? "ok" : state.connectionStatus === "error" ? "err" : "?";
+    state.connectionStatus === "ok" ? "🟢" : state.connectionStatus === "error" ? "🔴" : "⚪";
 
-  const guttSegment = `[gutt:${statusIcon} mem:${state.memoryQueries || 0} lessons:${state.lessonsCaptured || 0}]`;
+  const guttSegment = `[gutt${statusIcon} mem:${state.memoryQueries || 0} lessons:${state.lessonsCaptured || 0}]`;
 
   // Extract Claude Code data if available
   let claudeSegment = "";
