@@ -65,7 +65,7 @@ Or configure manually:
    cp .mcp.json.template .mcp.json
    ```
 
-2. Edit `.mcp.json` and replace `YOUR-ORG` with your organization's MCP server URL:
+2. Edit `.mcp.json` and replace the entire URL with your organization's MCP endpoint:
 
    ```json
    {

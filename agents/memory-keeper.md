@@ -9,8 +9,8 @@
 
 Before capturing any lessons, search organizational memory to avoid duplicates and understand existing patterns:
 
-1. Call `mcp__gutt-mcp-remote__search_memory_facts` with query related to the work done
-2. Call `mcp__gutt-mcp-remote__fetch_lessons_learned` for similar lessons already captured
+1. Call `mcp__gutt_pro_memory__search_memory_facts` with query related to the work done
+2. Call `mcp__gutt_pro_memory__fetch_lessons_learned` for similar lessons already captured
 3. Use findings to:
    - Avoid capturing duplicate lessons
    - Link new lessons to related existing knowledge
@@ -166,7 +166,7 @@ Please confirm how you'd like to proceed.
 
 ## MCP Tool Usage
 
-### Primary Tool: `mcp__gutt-mcp-remote__add_memory`
+### Primary Tool: `mcp__gutt_pro_memory__add_memory`
 
 ```typescript
 await add_memory({

@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "./hooks/statusline.cjs"
+    "command": "node ./hooks/statusline.cjs"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -70,7 +70,7 @@
       "Bash(bash *)",
       "mcp__atlassian__*",
       "mcp__github__*",
-      "mcp__gutt-mcp-remote__*"
+      "mcp__gutt_pro_memory__*"
     ],
     "deny": []
   },

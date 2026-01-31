@@ -8,7 +8,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const STATE_DIR = path.join(__dirname, ".state");
+const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+const STATE_DIR = path.join(projectDir, ".claude", "hooks", ".state");
 const STATE_PATH = path.join(STATE_DIR, "gutt-session.json");
 
 const DEFAULT_STATE = {
@@ -40,10 +41,30 @@ function updateState(updater) {
   const newState = updater(state);
   newState.lastUpdated = new Date().toISOString();
 
-  // Atomic write
+  // Cross-platform safe write using temp file with replace-safe rename
   const tempPath = STATE_PATH + ".tmp";
-  fs.writeFileSync(tempPath, JSON.stringify(newState, null, 2));
-  fs.renameSync(tempPath, STATE_PATH);
+  const serialized = JSON.stringify(newState, null, 2);
+  fs.writeFileSync(tempPath, serialized);
+
+  try {
+    // On Windows, rename cannot overwrite an existing file, so delete first if present
+    if (fs.existsSync(STATE_PATH)) {
+      fs.unlinkSync(STATE_PATH);
+    }
+    fs.renameSync(tempPath, STATE_PATH);
+  } catch {
+    // Fallback: write directly to the target file if rename fails
+    fs.writeFileSync(STATE_PATH, serialized);
+  } finally {
+    // Best-effort cleanup of any leftover temp file
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+  }
 
   return newState;
 }

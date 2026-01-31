@@ -55,7 +55,7 @@ npm run format       # Format with Prettier
 
 This project is configured to use:
 
-- **gutt-mcp-remote**: GUTT memory graph for organizational knowledge
+- **gutt-pro-memory**: GUTT memory graph for organizational knowledge
 - **atlassian**: Jira/Confluence integration
 - **github**: GitHub API integration
 

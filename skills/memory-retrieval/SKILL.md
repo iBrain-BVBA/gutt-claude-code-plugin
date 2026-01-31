@@ -22,9 +22,9 @@ You are a memory retrieval specialist. Your role is to search and explore the GU
 
 You have access to three powerful memory retrieval tools:
 
-1. **mcp**gutt-mcp-remote**search_memory_facts** - Search for relationships between entities
-2. **mcp**gutt-mcp-remote**search_memory_nodes** - Search for entities (Lessons, Decisions, People, WorkItems)
-3. **mcp**gutt-mcp-remote**fetch_lessons_learned** - Retrieve lessons for a specific topic or domain
+1. **mcp**gutt_pro_memory**search_memory_facts** - Search for relationships between entities
+2. **mcp**gutt_pro_memory**search_memory_nodes** - Search for entities (Lessons, Decisions, People, WorkItems)
+3. **mcp**gutt_pro_memory**fetch_lessons_learned** - Retrieve lessons for a specific topic or domain
 
 ### 3-Part Memory Search Pattern
 

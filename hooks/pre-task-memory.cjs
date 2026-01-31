@@ -49,8 +49,8 @@ Before executing this task, the following organizational memory was retrieved:
 Search query: "${searchQuery}"
 
 IMPORTANT: Use the GUTT MCP tools to fetch relevant context:
-- mcp__gutt-mcp-remote__fetch_lessons_learned("${searchQuery}")
-- mcp__gutt-mcp-remote__search_memory_facts("${searchQuery}")
+- mcp__gutt_pro_memory__fetch_lessons_learned("${searchQuery}")
+- mcp__gutt_pro_memory__search_memory_facts("${searchQuery}")
 
 Apply any relevant lessons and patterns to inform your approach.
 [End GUTT Memory Context]`);
