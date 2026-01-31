@@ -47,3 +47,4 @@ coverage/
 
 # GUTT session state (generated at runtime)
 hooks/lib/.state/
+.claude/hooks/.state/
