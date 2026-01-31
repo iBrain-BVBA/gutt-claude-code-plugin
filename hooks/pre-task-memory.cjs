@@ -6,8 +6,6 @@
  * This hook queries GUTT memory and injects relevant context into the task prompt.
  */
 
-const https = require('https');
-
 // Read JSON input from stdin
 let input = '';
 process.stdin.setEncoding('utf8');
