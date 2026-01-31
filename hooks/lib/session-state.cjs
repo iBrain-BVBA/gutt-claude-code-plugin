@@ -4,20 +4,20 @@
  * Shared state management for statusline and hooks
  */
 
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 
-const STATE_DIR = path.join(__dirname, '.state');
-const STATE_PATH = path.join(STATE_DIR, 'gutt-session.json');
+const STATE_DIR = path.join(__dirname, ".state");
+const STATE_PATH = path.join(STATE_DIR, "gutt-session.json");
 
 const DEFAULT_STATE = {
   sessionId: crypto.randomUUID(),
   startedAt: new Date().toISOString(),
-  connectionStatus: 'unknown',
+  connectionStatus: "unknown",
   memoryQueries: 0,
   lessonsCaptured: 0,
-  lastUpdated: new Date().toISOString()
+  lastUpdated: new Date().toISOString(),
 };
 
 function ensureDir() {
@@ -28,7 +28,7 @@ function ensureDir() {
 
 function getState() {
   try {
-    return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+    return JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
   } catch {
     return { ...DEFAULT_STATE };
   }
@@ -41,7 +41,7 @@ function updateState(updater) {
   newState.lastUpdated = new Date().toISOString();
 
   // Atomic write
-  const tempPath = STATE_PATH + '.tmp';
+  const tempPath = STATE_PATH + ".tmp";
   fs.writeFileSync(tempPath, JSON.stringify(newState, null, 2));
   fs.renameSync(tempPath, STATE_PATH);
 
@@ -49,21 +49,21 @@ function updateState(updater) {
 }
 
 function incrementMemoryQueries() {
-  return updateState(state => {
+  return updateState((state) => {
     state.memoryQueries = (state.memoryQueries || 0) + 1;
     return state;
   });
 }
 
 function incrementLessonsCaptured() {
-  return updateState(state => {
+  return updateState((state) => {
     state.lessonsCaptured = (state.lessonsCaptured || 0) + 1;
     return state;
   });
 }
 
 function setConnectionStatus(status) {
-  return updateState(state => {
+  return updateState((state) => {
     state.connectionStatus = status;
     return state;
   });
@@ -76,5 +76,5 @@ module.exports = {
   incrementLessonsCaptured,
   setConnectionStatus,
   STATE_PATH,
-  DEFAULT_STATE
+  DEFAULT_STATE,
 };
