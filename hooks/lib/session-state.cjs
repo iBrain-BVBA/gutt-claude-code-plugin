@@ -8,8 +8,10 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// Use __dirname for reliable cross-platform path resolution (lesson 9407a251)
-const STATE_DIR = path.join(__dirname, ".state");
+// Store session state in the project's .claude directory (not plugin install path)
+// This ensures state is per-project and survives plugin updates
+const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+const STATE_DIR = path.join(PROJECT_ROOT, ".claude", "hooks", ".state");
 const STATE_PATH = path.join(STATE_DIR, "gutt-session.json");
 
 const DEFAULT_STATE = {

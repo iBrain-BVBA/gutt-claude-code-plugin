@@ -119,14 +119,16 @@ LESSON → Lesson or Insight
 ### add_memory Call Structure
 
 ```javascript
-mcp__gutt_pro_memory__add_memory({
-  name: "<Pattern Type>: <Brief Summary>",
-  episode_body: "<Structured content with what/why/context>",
-  source: "text",
-  source_description: "memory-capture skill - <pattern> pattern",
-  group_id: "gutt-claude-code-plugin",
-  last_n_episodes: 0, // Self-sufficient episodes
-});
+mcp__gutt -
+  mcp -
+  remote__add_memory({
+    name: "<Pattern Type>: <Brief Summary>",
+    episode_body: "<Structured content with what/why/context>",
+    source: "text",
+    source_description: "memory-capture skill - <pattern> pattern",
+    group_id: "gutt-claude-code-plugin",
+    last_n_episodes: 0, // Self-sufficient episodes
+  });
 ```
 
 ## Output Format
@@ -366,6 +368,6 @@ Compatible with: gutt MCP v1.0+
 
 ## Related
 
-- MCP Tool: `mcp__gutt_pro_memory__add_memory`
+- MCP Tool: `mcp__gutt-mcp-remote__add_memory`
 - Related Skill: `memory-retrieval`
 - Parent Ticket: GP-428

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./user-prompt-submit.cjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.cjs\""
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./stop-lessons.cjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-lessons.cjs\""
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./post-tool-lint.cjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-lint.cjs\""
           }
         ]
       },
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./post-task-lessons.cjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-task-lessons.cjs\""
           }
         ]
       },
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./post-memory-ops.cjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-memory-ops.cjs\""
           }
         ]
       }
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ./pre-task-memory.cjs"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-task-memory.cjs\""
           }
         ]
       }
@@ -65,6 +65,6 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "node ./statusline.cjs"
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/statusline.cjs\""
   }
 }

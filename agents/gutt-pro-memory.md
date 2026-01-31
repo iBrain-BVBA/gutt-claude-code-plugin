@@ -24,12 +24,12 @@ This agent has access to the following gutt MCP tools:
 
 | Tool                                          | Purpose                                            | Primary Use Cases                                 |
 | --------------------------------------------- | -------------------------------------------------- | ------------------------------------------------- |
-| `mcp__gutt_pro_memory__search_memory_facts`   | Find relationships between entities                | Understanding connections, exploring interactions |
-| `mcp__gutt_pro_memory__search_memory_nodes`   | Find entities (people, projects, systems, lessons) | Entity discovery, type-specific searches          |
-| `mcp__gutt_pro_memory__fetch_lessons_learned` | Retrieve historical lessons and best practices     | Learning from past mistakes/successes             |
-| `mcp__gutt_pro_memory__get_entity_edge`       | Get specific edge details by UUID                  | Deep-dive into specific relationships             |
-| `mcp__gutt_pro_memory__get_episodes`          | Get recent memory episodes                         | Raw episode data (use sparingly)                  |
-| `mcp__gutt_pro_memory__get_episode`           | Get specific episode by UUID                       | Trace source of information                       |
+| `mcp__gutt-mcp-remote__search_memory_facts`   | Find relationships between entities                | Understanding connections, exploring interactions |
+| `mcp__gutt-mcp-remote__search_memory_nodes`   | Find entities (people, projects, systems, lessons) | Entity discovery, type-specific searches          |
+| `mcp__gutt-mcp-remote__fetch_lessons_learned` | Retrieve historical lessons and best practices     | Learning from past mistakes/successes             |
+| `mcp__gutt-mcp-remote__get_entity_edge`       | Get specific edge details by UUID                  | Deep-dive into specific relationships             |
+| `mcp__gutt-mcp-remote__get_episodes`          | Get recent memory episodes                         | Raw episode data (use sparingly)                  |
+| `mcp__gutt-mcp-remote__get_episode`           | Get specific episode by UUID                       | Trace source of information                       |
 
 ## Search Strategies
 

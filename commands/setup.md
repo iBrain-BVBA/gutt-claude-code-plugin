@@ -82,10 +82,12 @@ Do you have the endpoint URL?
 
    ```javascript
    // Call a simple MCP tool to verify authentication succeeded
-   mcp__gutt_pro_memory__search_memory_nodes({
-     query: "test connection",
-     max_nodes: 1,
-   });
+   mcp__gutt -
+     mcp -
+     remote__search_memory_nodes({
+       query: "test connection",
+       max_nodes: 1,
+     });
    ```
 
    If authentication failed, show error and retry OAuth flow.
@@ -234,18 +236,24 @@ Setup complete! gutt memory is now available.
 
 ```javascript
 // Test search with configured groupID
-const searchResult = await mcp__gutt_pro_memory__search_memory_facts({
-  query: "test",
-  group_id: configuredGroupID,
-  max_results: 1,
-});
+const searchResult =
+  (await mcp__gutt) -
+  mcp -
+  remote__search_memory_facts({
+    query: "test",
+    group_id: configuredGroupID,
+    max_results: 1,
+  });
 
 // Test write capability (optional, only if user confirms)
-const addResult = await mcp__gutt_pro_memory__add_memory({
-  content: "gutt setup test - can be deleted",
-  group_id: configuredGroupID,
-  metadata: { test: true, timestamp: Date.now() },
-});
+const addResult =
+  (await mcp__gutt) -
+  mcp -
+  remote__add_memory({
+    content: "gutt setup test - can be deleted",
+    group_id: configuredGroupID,
+    metadata: { test: true, timestamp: Date.now() },
+  });
 
 // Show results
 if (searchResult.success && addResult.success) {

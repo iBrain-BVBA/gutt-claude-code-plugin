@@ -7,8 +7,9 @@
 const fs = require("fs");
 const path = require("path");
 
-// Use __dirname for reliable cross-platform path resolution (lesson 9407a251)
-const PROJECT_ROOT = path.resolve(__dirname, "../..");
+// Use CLAUDE_PROJECT_DIR to find the user's project directory (not the plugin install path)
+// Falls back to cwd() if env var not set
+const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const CONFIG_PATH = path.join(PROJECT_ROOT, "config.json");
 
 let cachedConfig = null;

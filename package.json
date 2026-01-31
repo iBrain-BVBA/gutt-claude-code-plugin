@@ -1,9 +1,19 @@
 {
   "name": "gutt-claude-code-plugin",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "description": "GUTT Plugin for Claude Code - Memory integration and enhanced tooling",
   "private": true,
   "type": "module",
+  "files": [
+    "agents",
+    "commands",
+    "hooks",
+    "skills",
+    ".claude-plugin",
+    "config.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

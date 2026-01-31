@@ -12,8 +12,8 @@ Scans repositories for Claude Code configurations to create a unified view of or
 
 Before scanning repositories, search organizational memory for previous discovery findings:
 
-1. Call `mcp__gutt_pro_memory__search_memory_facts` with "Claude Code configuration audit"
-2. Call `mcp__gutt_pro_memory__fetch_lessons_learned` for config standardization lessons
+1. Call `mcp__gutt-mcp-remote__search_memory_facts` with "Claude Code configuration audit"
+2. Call `mcp__gutt-mcp-remote__fetch_lessons_learned` for config standardization lessons
 3. Use findings to:
    - Compare against previous audits
    - Identify known drift patterns
