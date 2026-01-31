@@ -8,8 +8,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const STATE_DIR = path.join(projectDir, ".claude", "hooks", ".state");
+// Use __dirname for reliable cross-platform path resolution (lesson 9407a251)
+const STATE_DIR = path.join(__dirname, ".state");
 const STATE_PATH = path.join(STATE_DIR, "gutt-session.json");
 
 const DEFAULT_STATE = {
