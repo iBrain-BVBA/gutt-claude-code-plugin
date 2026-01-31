@@ -31,6 +31,15 @@
             "command": "node ./hooks/post-tool-lint.cjs"
           }
         ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/post-task-lessons.cjs"
+          }
+        ]
       }
     ],
     "PreToolUse": [
