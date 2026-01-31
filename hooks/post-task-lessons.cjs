@@ -63,7 +63,7 @@ Subagent "${subagentType}" completed with potential lessons:
 Detected patterns: ${lessonIndicators.join(", ")}
 
 Consider capturing lessons using:
-- mcp__gutt_pro_memory__add_memory with findings from this task (group_id: "${groupId}")
+- mcp__gutt-mcp-remote__add_memory with findings from this task (group_id: "${groupId}")
 
 Task context: "${prompt.substring(0, 100)}..."
 [End GUTT Lesson Capture]`);

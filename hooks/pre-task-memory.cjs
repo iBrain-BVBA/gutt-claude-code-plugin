@@ -7,7 +7,6 @@
  */
 
 const { incrementMemoryQueries } = require("./lib/session-state.cjs");
-const { getGroupId } = require("./lib/config.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -38,8 +37,6 @@ process.stdin.on("end", async () => {
 
     // Extract key terms from the prompt for memory search
     const searchQuery = extractSearchTerms(prompt, subagentType);
-    const groupId = getGroupId();
-
     // Increment memory query counter
     incrementMemoryQueries();
 
@@ -51,8 +48,8 @@ Before executing this task, the following organizational memory was retrieved:
 Search query: "${searchQuery}"
 
 IMPORTANT: Use the GUTT MCP tools to fetch relevant context:
-- mcp__gutt_pro_memory__fetch_lessons_learned("${searchQuery}", group_ids: ["${groupId}"])
-- mcp__gutt_pro_memory__search_memory_facts("${searchQuery}", group_ids: ["${groupId}"])
+- mcp__gutt-mcp-remote__fetch_lessons_learned(query: "${searchQuery}")
+- mcp__gutt-mcp-remote__search_memory_facts(query: "${searchQuery}")
 
 Apply any relevant lessons and patterns to inform your approach.
 [End GUTT Memory Context]`);
