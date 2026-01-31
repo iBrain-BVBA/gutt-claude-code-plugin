@@ -15,14 +15,27 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ### Installation
 
-```bash
-# Install via Claude Code plugin command
-/plugin add https://github.com/iBrain-BVBA/gutt-claude-code-plugin
-```
+1. Clone this repository to your Claude Code plugins directory:
+
+   ```bash
+   git clone https://github.com/iBrain-BVBA/gutt-claude-code-plugin ~/.claude-plugins/gutt-claude-code-plugin
+   ```
+
+2. Add to your Claude Code settings (`~/.claude/settings.json` or project `.claude/settings.json`):
+
+   ```json
+   {
+     "plugins": {
+       "gutt-claude-code-plugin": "~/.claude-plugins/gutt-claude-code-plugin"
+     }
+   }
+   ```
+
+3. Restart Claude Code to activate the plugin
 
 ### Setup
 
-Run the setup wizard to configure your GUTT connection:
+After installing the plugin, run the setup wizard to configure your GUTT connection:
 
 ```
 /gutt-setup
