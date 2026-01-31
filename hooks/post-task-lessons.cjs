@@ -6,6 +6,8 @@
  * Analyzes task results for learnings, decisions, patterns worth capturing.
  */
 
+const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
+
 // Read JSON input from stdin
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -47,6 +49,9 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
+    // Increment lessons captured counter
+    incrementLessonsCaptured();
+
     // Output lesson capture suggestion
     // The hook output becomes context for the orchestrator
     console.log(`[GUTT Lesson Capture Opportunity]
@@ -55,7 +60,7 @@ Subagent "${subagentType}" completed with potential lessons:
 Detected patterns: ${lessonIndicators.join(", ")}
 
 Consider capturing lessons using:
-- mcp__gutt-mcp-remote__add_memory with findings from this task
+- mcp__gutt_pro_memory__add_memory with findings from this task
 
 Task context: "${prompt.substring(0, 100)}..."
 [End GUTT Lesson Capture]`);

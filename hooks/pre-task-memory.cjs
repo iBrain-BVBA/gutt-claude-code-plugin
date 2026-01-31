@@ -6,6 +6,8 @@
  * This hook queries GUTT memory and injects relevant context into the task prompt.
  */
 
+const { incrementMemoryQueries } = require("./lib/session-state.cjs");
+
 // Read JSON input from stdin
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -36,6 +38,9 @@ process.stdin.on("end", async () => {
     // Extract key terms from the prompt for memory search
     const searchQuery = extractSearchTerms(prompt, subagentType);
 
+    // Increment memory query counter
+    incrementMemoryQueries();
+
     // Output context injection message
     // The hook output becomes additional context for the agent
     console.log(`[GUTT Memory Context]
@@ -44,8 +49,8 @@ Before executing this task, the following organizational memory was retrieved:
 Search query: "${searchQuery}"
 
 IMPORTANT: Use the GUTT MCP tools to fetch relevant context:
-- mcp__gutt-mcp-remote__fetch_lessons_learned("${searchQuery}")
-- mcp__gutt-mcp-remote__search_memory_facts("${searchQuery}")
+- mcp__gutt_pro_memory__fetch_lessons_learned("${searchQuery}")
+- mcp__gutt_pro_memory__search_memory_facts("${searchQuery}")
 
 Apply any relevant lessons and patterns to inform your approach.
 [End GUTT Memory Context]`);
