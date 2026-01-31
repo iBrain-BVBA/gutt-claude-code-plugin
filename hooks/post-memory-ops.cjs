@@ -9,6 +9,7 @@ const {
   incrementLessonsCaptured,
   incrementMemoryQueries,
   addTickerItem,
+  setConnectionStatus,
 } = require("./lib/session-state.cjs");
 
 let input = "";
@@ -25,6 +26,7 @@ process.stdin.on("end", () => {
     const toolResult = data.tool_result || {};
 
     if (toolName === "mcp__gutt-mcp-remote__add_memory") {
+      setConnectionStatus("ok");
       incrementLessonsCaptured();
       const name = toolInput.name || "memory";
       addTickerItem({
@@ -32,6 +34,7 @@ process.stdin.on("end", () => {
         text: `Created "${truncate(name, 25)}"`,
       });
     } else if (toolName === "mcp__gutt-mcp-remote__search_memory_facts") {
+      setConnectionStatus("ok");
       incrementMemoryQueries();
       const query = toolInput.query || "query";
       const result = extractFirstResult(toolResult);
@@ -40,6 +43,7 @@ process.stdin.on("end", () => {
         text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`,
       });
     } else if (toolName === "mcp__gutt-mcp-remote__fetch_lessons_learned") {
+      setConnectionStatus("ok");
       incrementMemoryQueries();
       const query = toolInput.query || "lessons";
       const result = extractFirstResult(toolResult);
