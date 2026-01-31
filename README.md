@@ -49,11 +49,15 @@ Or configure manually by creating `.mcp.json`:
 
 ### Hooks
 
-| Hook                     | Event            | Purpose                               |
-| ------------------------ | ---------------- | ------------------------------------- |
-| `user-prompt-submit.cjs` | UserPromptSubmit | Reminds to search memory before tasks |
-| `stop-lessons.cjs`       | Stop             | Prompts for lesson capture after work |
-| `post-tool-lint.cjs`     | PostToolUse      | Auto-lints files after Edit/Write     |
+| Hook                     | Event            | Purpose                                  |
+| ------------------------ | ---------------- | ---------------------------------------- |
+| `user-prompt-submit.cjs` | UserPromptSubmit | Reminds to search memory before tasks    |
+| `stop-lessons.cjs`       | Stop             | Prompts for lesson capture after work    |
+| `post-tool-lint.cjs`     | PostToolUse      | Auto-lints files after Edit/Write        |
+| `pre-task-memory.cjs`    | PreToolUse       | Injects memory context before subagents  |
+| `post-task-lessons.cjs`  | PostToolUse      | Captures lessons when subagents complete |
+
+**Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents (including OMC's 32 agents) get organizational context and contribute lessons back.
 
 ### Skills
 
@@ -116,9 +120,11 @@ gutt-claude-code-plugin/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin manifest
 ├── hooks/
-│   ├── user-prompt-submit.cjs
-│   ├── stop-lessons.cjs
-│   └── post-tool-lint.cjs
+│   ├── user-prompt-submit.cjs  # Memory reminder
+│   ├── stop-lessons.cjs        # Lesson capture prompt
+│   ├── post-tool-lint.cjs      # Auto-lint
+│   ├── pre-task-memory.cjs     # Subagent context injection
+│   └── post-task-lessons.cjs   # Subagent lesson capture
 ├── skills/
 │   ├── memory-retrieval/SKILL.md
 │   └── memory-capture/SKILL.md
