@@ -46,11 +46,11 @@
         ]
       },
       {
-        "matcher": "mcp__gutt-mcp-remote__add_memory",
+        "matcher": "mcp__gutt-mcp-remote__add_memory|mcp__gutt-mcp-remote__search_memory_facts|mcp__gutt-mcp-remote__fetch_lessons_learned",
         "hooks": [
           {
             "type": "command",
-            "command": "node ./hooks/post-memory-capture.cjs"
+            "command": "node ./hooks/post-memory-ops.cjs"
           }
         ]
       }

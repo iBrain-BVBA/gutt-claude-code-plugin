@@ -19,6 +19,9 @@ const DEFAULT_STATE = {
   memoryQueries: 0,
   lessonsCaptured: 0,
   lastUpdated: new Date().toISOString(),
+  ticker: {
+    items: [], // FIFO queue, max 5 items with createdAt timestamps
+  },
 };
 
 function ensureDir() {
@@ -90,12 +93,29 @@ function setConnectionStatus(status) {
   });
 }
 
+function addTickerItem(item) {
+  return updateState((state) => {
+    if (!state.ticker) {
+      state.ticker = { items: [] };
+    }
+    // Add timestamp
+    item.createdAt = Date.now();
+    state.ticker.items.push(item);
+    // FIFO: keep max 5 items
+    if (state.ticker.items.length > 5) {
+      state.ticker.items.shift();
+    }
+    return state;
+  });
+}
+
 module.exports = {
   getState,
   updateState,
   incrementMemoryQueries,
   incrementLessonsCaptured,
   setConnectionStatus,
+  addTickerItem,
   STATE_PATH,
   DEFAULT_STATE,
 };

@@ -10,6 +10,34 @@ const { getState } = require("./lib/session-state.cjs");
 const { getGroupId, isConfigured, getConfig } = require("./lib/config.cjs");
 
 /**
+ * Format ticker with toast-style display
+ * Shows each item for 5 seconds then disappears
+ * @param {Array} items - Ticker items with icon and text
+ * @returns {string|null} Formatted ticker text or null if nothing to show
+ */
+function formatTicker(items) {
+  if (!items || items.length === 0) {
+    return null;
+  }
+
+  const now = Date.now();
+  const DISPLAY_DURATION = 5000; // 5 seconds
+
+  // Find items that are less than 5 seconds old (most recent first)
+  const freshItems = items
+    .filter(item => (now - item.createdAt) < DISPLAY_DURATION)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  if (freshItems.length === 0) {
+    return null; // Nothing to show - all items expired
+  }
+
+  // Show the most recent fresh item
+  const item = freshItems[0];
+  return `${item.icon} ${item.text}`;
+}
+
+/**
  * Execute passthrough statusline with timeout
  * Returns empty string on failure (graceful fallback)
  * @param {string} command - Shell command to execute
@@ -101,21 +129,43 @@ process.stdin.on("end", async () => {
   // Check for passthrough config
   const passthroughCmd = config?.gutt?.statusline?.passthroughCommand;
   const multiLine = config?.gutt?.statusline?.multiLine === true;
+  const showTicker = config?.gutt?.statusline?.showTicker === true;
+
+  // Generate ticker line if enabled (toast-style: shows for 5 seconds then disappears)
+  let tickerLine = null;
+  if (showTicker) {
+    const tickerItems = state.ticker?.items || [];
+    tickerLine = formatTicker(tickerItems);
+  }
 
   if (passthroughCmd) {
     const passthroughOutput = await execPassthrough(passthroughCmd, data, 500);
     if (passthroughOutput) {
-      if (multiLine) {
+      if (multiLine && tickerLine) {
+        // Line 1: passthrough, Line 2: GUTT, Line 3: ticker (toast)
+        console.log(`${passthroughOutput}\n${guttSegment}\n${tickerLine}`);
+      } else if (multiLine) {
         // Line 1: passthrough, Line 2: GUTT
         console.log(`${passthroughOutput}\n${guttSegment}`);
+      } else if (tickerLine) {
+        // Line 1: passthrough + GUTT, Line 2: ticker (toast)
+        console.log(`${passthroughOutput} ${guttSegment}\n${tickerLine}`);
       } else {
         // Single line: passthrough + GUTT
         console.log(`${passthroughOutput} ${guttSegment}`);
       }
     } else {
-      console.log(guttSegment + claudeSegment);
+      if (tickerLine) {
+        console.log(`${guttSegment}${claudeSegment}\n${tickerLine}`);
+      } else {
+        console.log(guttSegment + claudeSegment);
+      }
     }
   } else {
-    console.log(guttSegment + claudeSegment);
+    if (tickerLine) {
+      console.log(`${guttSegment}${claudeSegment}\n${tickerLine}`);
+    } else {
+      console.log(guttSegment + claudeSegment);
+    }
   }
 });
