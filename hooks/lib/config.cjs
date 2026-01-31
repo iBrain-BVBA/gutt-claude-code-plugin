@@ -26,10 +26,7 @@ function loadConfigFile() {
     const content = fs.readFileSync(CONFIG_PATH, "utf8");
     return JSON.parse(content);
   } catch (err) {
-    console.error(
-      `[WARN] Failed to load config.json: ${err.message}`,
-      "\n",
-    );
+    console.error(`[WARN] Failed to load config.json: ${err.message}`, "\n");
     return null;
   }
 }
@@ -61,7 +58,7 @@ function getGroupId() {
   // Priority 3: Fallback to empty string
   console.error(
     "[WARN] No GUTT group_id configured. Set GUTT_GROUP_ID env var or add to config.json",
-    "\n",
+    "\n"
   );
   cachedConfig = "";
   cachedSource = "fallback";
