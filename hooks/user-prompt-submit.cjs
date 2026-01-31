@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { getGroupId } = require("./lib/config.cjs");
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
@@ -45,11 +46,13 @@ process.stdin.on("end", () => {
     .slice(0, 5)
     .join(" ");
 
+  const groupId = getGroupId();
+
   console.log(`🟠 GUTT MEMORY: Search organizational memory BEFORE starting this task.
 
 ACTION REQUIRED: Call one of these tools first:
-  - mcp__gutt-mcp-remote__search_memory_facts(query: "${searchTerms || "relevant context"}")
-  - mcp__gutt-mcp-remote__fetch_lessons_learned(query: "${searchTerms || "lessons"}")
+  - mcp__gutt-mcp-remote__search_memory_facts(query: "${searchTerms || "relevant context"}", group_ids: ["${groupId}"])
+  - mcp__gutt-mcp-remote__fetch_lessons_learned(query: "${searchTerms || "lessons"}", group_ids: ["${groupId}"])
 
 This retrieves past decisions, patterns, and lessons that may apply to this task.`);
 });

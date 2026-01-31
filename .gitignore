@@ -45,6 +45,9 @@ coverage/
 # MCP configuration (contains org-specific URLs)
 .mcp.json
 
+# GUTT plugin configuration (org-specific group_id)
+config.json
+
 # GUTT session state (generated at runtime)
 hooks/lib/.state/
 .claude/hooks/.state/

@@ -5,6 +5,7 @@
  */
 
 const { getState } = require("./lib/session-state.cjs");
+const { getGroupId, isConfigured } = require("./lib/config.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -28,11 +29,21 @@ process.stdin.on("end", () => {
     data = {};
   }
 
+  // Get group_id and configuration status
+  const groupId = getGroupId();
+  const configured = isConfigured();
+
+  // Truncate group_id to max 15 characters if needed
+  const displayGroupId = groupId.length > 15 ? groupId.substring(0, 15) : groupId;
+
   // Format gutt status (lowercase branding with colored circles)
   const statusIcon =
     state.connectionStatus === "ok" ? "🟢" : state.connectionStatus === "error" ? "🔴" : "⚪";
 
-  const guttSegment = `[gutt${statusIcon} mem:${state.memoryQueries || 0} lessons:${state.lessonsCaptured || 0}]`;
+  // Add warning indicator (!) if not configured
+  const configWarning = !configured ? "!" : "";
+
+  const guttSegment = `[gutt${statusIcon}${configWarning} ${displayGroupId || "(no group_id)"} mem:${state.memoryQueries || 0} lessons:${state.lessonsCaptured || 0}]`;
 
   // Extract Claude Code data if available
   let claudeSegment = "";
