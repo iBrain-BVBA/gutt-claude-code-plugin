@@ -1,4 +1,28 @@
 {
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/user-prompt-submit.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-lessons.sh\""
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(npm install)",
@@ -7,6 +31,8 @@
       "Bash(git *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(bash *)",
       "mcp__atlassian__*",
       "mcp__github__*",
       "mcp__gutt-mcp-remote__*"
