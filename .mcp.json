@@ -6,7 +6,7 @@
       "args": ["-y", "@gutt/mcp-remote"],
       "env": {
         "GUTT_API_KEY": "${GUTT_API_KEY}",
-        "GUTT_ENDPOINT": "https://api.gutt.io"
+        "GUTT_ENDPOINT": "${GUTT_ENDPOINT}"
       }
     }
   }

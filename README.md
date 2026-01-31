@@ -1,6 +1,6 @@
 # GUTT Claude Code Plugin
 
-Persistent organizational memory for Claude Code via GUTT (Graph-based Unified Thinking Tool).
+Persistent organizational memory for Claude Code via GUTT.
 
 ## Overview
 
@@ -38,7 +38,7 @@ Or configure manually by creating `.mcp.json`:
       "args": ["-y", "@gutt/mcp-remote"],
       "env": {
         "GUTT_API_KEY": "your-api-key",
-        "GUTT_ENDPOINT": "https://api.gutt.io"
+        "GUTT_ENDPOINT": "https://your-org-mcp-server.a.run.app/mcp"
       }
     }
   }
@@ -142,7 +142,7 @@ gutt-claude-code-plugin/
 
 - Claude Code CLI
 - Node.js 18+
-- GUTT account (sign up at https://app.gutt.io)
+- GUTT MCP server access (contact your organization admin)
 
 ## Cross-Platform Support
 
@@ -164,8 +164,8 @@ This plugin works on:
 
 ### MCP connection failed
 
-1. Verify API key at https://app.gutt.io/settings/api-keys
-2. Check network connectivity to api.gutt.io
+1. Verify API key with your organization admin
+2. Check network connectivity to your organization's MCP endpoint
 3. Try: `npx -y @gutt/mcp-remote --version`
 
 ### Memory search returns no results
@@ -187,7 +187,5 @@ MIT License - see [LICENSE](LICENSE)
 
 ## Links
 
-- [GUTT Documentation](https://docs.gutt.io)
-- [Claude Code](https://claude.ai/code)
-- [oh-my-claudecode](https://github.com/anthropics/oh-my-claudecode)
+- [gutt Website](https://gutt.pro)
 - [Report Issues](https://github.com/iBrain-BVBA/gutt-claude-code-plugin/issues)

@@ -18,37 +18,42 @@ if [ -f ".mcp.json" ]; then
 fi
 ```
 
-### Step 2: Account Status
+### Step 2: Get Configuration from Admin
 
 Ask user:
 
 ```
-Do you have a GUTT account?
+GUTT MCP Server Setup
 
-1. Yes, I have an account (login)
-2. No, I need to create one (signup)
+To configure GUTT memory, you need:
+1. GUTT_ENDPOINT - Your organization's MCP server URL
+2. GUTT_API_KEY - Your API key for authentication
+
+Contact your organization admin to get these values.
+
+Do you have these credentials?
+1. Yes, I have them
+2. No, I need to contact my admin
 3. Skip for now (manual setup later)
 ```
 
-### Step 3a: Login Flow (Existing Users)
+### Step 3: Enter Credentials
 
-1. **Get API Key**
-
-   ```
-   Please enter your GUTT API key:
-   (Find it at https://app.gutt.io/settings/api-keys)
-   ```
-
-2. **Optional: Custom Endpoint**
+1. **Get Endpoint URL**
 
    ```
-   Use default GUTT endpoint? (https://api.gutt.io)
-   - Yes (recommended)
-   - No, use custom endpoint
+   Enter your GUTT MCP endpoint URL:
+   (Example: https://your-org-graphiti-mcp-server.a.run.app/mcp)
+   ```
+
+2. **Get API Key**
+
+   ```
+   Enter your GUTT API key:
    ```
 
 3. **Validate Connection**
-   Test the API key works:
+   Test the connection works:
    ```javascript
    // Call a simple MCP tool to verify
    mcp__gutt -
@@ -58,28 +63,6 @@ Do you have a GUTT account?
        max_nodes: 1,
      });
    ```
-
-### Step 3b: Signup Flow (New Users)
-
-1. **Redirect to Signup**
-
-   ```
-   Opening GUTT signup page...
-   URL: https://app.gutt.io/signup?ref=claude-code-plugin
-
-   After creating your account:
-   1. Go to Settings > API Keys
-   2. Create a new API key
-   3. Copy the key and paste it here
-   ```
-
-2. **Wait for API Key**
-
-   ```
-   Paste your new GUTT API key:
-   ```
-
-3. **Continue with validation**
 
 ### Step 4: Configure MCP
 
@@ -94,7 +77,7 @@ Create or update `.mcp.json`:
       "args": ["-y", "@gutt/mcp-remote"],
       "env": {
         "GUTT_API_KEY": "[user-provided-key]",
-        "GUTT_ENDPOINT": "https://api.gutt.io"
+        "GUTT_ENDPOINT": "[user-provided-endpoint]"
       }
     }
   }
@@ -125,8 +108,6 @@ You can now use:
 
 The UserPromptSubmit hook will remind you to check memory before tasks.
 The Stop hook will prompt you to capture learnings after significant work.
-
-Need help? Visit https://docs.gutt.io/claude-code-plugin
 ```
 
 ## Error Handling
@@ -141,7 +122,7 @@ Please check:
 2. Key hasn't expired
 3. Key has correct permissions
 
-Try again or visit https://app.gutt.io/settings/api-keys
+Contact your organization admin for a new key.
 ```
 
 ### Network Error
@@ -151,7 +132,7 @@ Could not connect to GUTT servers.
 
 Please check:
 1. Internet connection
-2. Firewall settings (allow api.gutt.io)
+2. Firewall settings (allow your GUTT endpoint)
 3. VPN configuration
 
 Retry? (yes/no)
@@ -176,15 +157,17 @@ For users who skip the wizard:
 
 1. Create `.mcp.json` in project root
 2. Add gutt-mcp-remote configuration
-3. Set GUTT_API_KEY environment variable
+3. Set GUTT_API_KEY and GUTT_ENDPOINT environment variables
 4. Restart Claude Code
 
 ```bash
-# Set API key in environment
+# Set credentials in environment
 export GUTT_API_KEY="your-key-here"
+export GUTT_ENDPOINT="https://your-org-mcp-server.run.app/mcp"
 
 # Or add to .env file
 echo "GUTT_API_KEY=your-key-here" >> .env
+echo "GUTT_ENDPOINT=https://your-org-mcp-server.run.app/mcp" >> .env
 ```
 
 ## Security Notes
@@ -192,4 +175,4 @@ echo "GUTT_API_KEY=your-key-here" >> .env
 - API keys are stored in `.mcp.json` (add to .gitignore)
 - Never commit API keys to version control
 - Use environment variables for CI/CD
-- Rotate keys periodically at https://app.gutt.io/settings/api-keys
+- Contact your admin to rotate keys periodically
