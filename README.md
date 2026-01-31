@@ -57,22 +57,26 @@ After installing the plugin, run the setup wizard to configure your GUTT connect
 /gutt-setup
 ```
 
-Or configure manually by creating `.mcp.json`:
+Or configure manually:
 
-```json
-{
-  "mcpServers": {
-    "gutt-mcp-remote": {
-      "command": "npx",
-      "args": ["-y", "@gutt/mcp-remote"],
-      "env": {
-        "GUTT_API_KEY": "your-api-key",
-        "GUTT_ENDPOINT": "https://your-org-mcp-server.a.run.app/mcp"
-      }
-    }
-  }
-}
-```
+1. Copy the template:
+
+   ```bash
+   cp .mcp.json.template .mcp.json
+   ```
+
+2. Edit `.mcp.json` and replace `YOUR-ORG` with your organization's MCP server URL:
+
+   ```json
+   {
+     "gutt-pro-memory": {
+       "type": "http",
+       "url": "https://your-org-mcp-server.a.run.app/mcp"
+     }
+   }
+   ```
+
+3. Restart Claude Code to load the MCP server
 
 ## Features
 

@@ -41,3 +41,9 @@ coverage/
 # Temp files
 *.tmp
 *.temp
+
+# MCP configuration (contains org-specific URLs)
+.mcp.json
+
+# GUTT session state (generated at runtime)
+hooks/lib/.state/

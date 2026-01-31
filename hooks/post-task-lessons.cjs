@@ -6,6 +6,8 @@
  * Analyzes task results for learnings, decisions, patterns worth capturing.
  */
 
+const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
+
 // Read JSON input from stdin
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -46,6 +48,9 @@ process.stdin.on("end", () => {
       // No lessons detected - silent exit
       process.exit(0);
     }
+
+    // Increment lessons captured counter
+    incrementLessonsCaptured();
 
     // Output lesson capture suggestion
     // The hook output becomes context for the orchestrator

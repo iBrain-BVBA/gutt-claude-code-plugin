@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { incrementMemoryQueries } = require("./lib/session-state.cjs");
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
@@ -34,6 +35,9 @@ process.stdin.on("end", () => {
 
   // Log the hook invocation
   fs.appendFileSync(logFile, `[${timestamp}] Prompt: ${prompt}\n`);
+
+  // Increment memory query counter
+  incrementMemoryQueries();
 
   // Output the reminder message
   console.log(

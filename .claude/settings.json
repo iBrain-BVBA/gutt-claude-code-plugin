@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "./hooks/statusline.cjs"
+  },
   "hooks": {
     "UserPromptSubmit": [
       {

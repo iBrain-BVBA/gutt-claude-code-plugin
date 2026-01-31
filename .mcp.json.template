@@ -1,0 +1,6 @@
+{
+  "gutt-pro-memory": {
+    "type": "http",
+    "url": "https://YOUR-ORG-mcp-server.a.run.app/mcp"
+  }
+}
