@@ -181,14 +181,12 @@ Attempt to verify the connection works:
 
 ```javascript
 try {
-  const result =
-    (await mcp__gutt) -
-    mcp -
-    remote__search_memory_nodes({
-      query: "connection test",
-      limit: 1,
-      group_id: "gutt_pro_v1",
-    });
+  // prettier-ignore
+  const result = await mcp__gutt-mcp-remote__search_memory_nodes({
+    query: "connection test",
+    limit: 1,
+    group_id: "gutt_pro_v1",
+  });
 
   // Connection successful
   return "CONNECTION_SUCCESS";
