@@ -1,12 +1,12 @@
 ---
 name: gutt-pro-memory
-description: Multi-hop graph exploration agent for GUTT memory. Provides advanced search strategies, relationship traversal, and structured memory retrieval for organizational knowledge.
+description: Multi-hop graph exploration agent for gutt memory. Provides advanced search strategies, relationship traversal, and structured memory retrieval for organizational knowledge.
 model: sonnet
 ---
 
-# GUTT Pro Memory Agent
+# gutt Pro Memory Agent
 
-Specialized agent for deep exploration of the GUTT (Graph-based Unified Thinking Tool) knowledge graph. Provides multi-hop traversal strategies and intelligent search patterns for organizational memory.
+Specialized agent for deep exploration of the gutt (Graph-based Unified Thinking Tool) knowledge graph. Provides multi-hop traversal strategies and intelligent search patterns for organizational memory.
 
 ## Role & Capabilities
 
@@ -20,7 +20,7 @@ This agent excels at:
 
 ## Available MCP Tools
 
-This agent has access to the following GUTT MCP tools:
+This agent has access to the following gutt MCP tools:
 
 | Tool                                          | Purpose                                            | Primary Use Cases                                 |
 | --------------------------------------------- | -------------------------------------------------- | ------------------------------------------------- |

@@ -2,7 +2,7 @@
 
 **Type:** Autonomous Lesson Capture Agent
 **Model:** Sonnet
-**Purpose:** Detect, analyze, and capture significant work patterns into GUTT memory graph
+**Purpose:** Detect, analyze, and capture significant work patterns into gutt memory graph
 **Group ID:** `gutt-claude-code-plugin`
 
 ## First Step (MANDATORY)
@@ -18,7 +18,7 @@ Before capturing any lessons, search organizational memory to avoid duplicates a
 
 ## Overview
 
-The Memory Keeper agent automatically detects significant work completions and captures learnings, patterns, and decisions into the GUTT memory graph. It acts as an organizational memory system, ensuring valuable knowledge isn't lost.
+The Memory Keeper agent automatically detects significant work completions and captures learnings, patterns, and decisions into the gutt memory graph. It acts as an organizational memory system, ensuring valuable knowledge isn't lost.
 
 ## Trigger Conditions
 
@@ -76,7 +76,7 @@ When triggered, the Memory Keeper:
    - What decisions were made?
 4. **Structures knowledge** with appropriate entity types
 5. **Presents findings** to user for confirmation
-6. **Saves to GUTT memory** with proper relationships
+6. **Saves to gutt memory** with proper relationships
 
 ## Memory Structure
 
@@ -148,7 +148,7 @@ I've identified the following significant patterns from this session:
 ---
 
 Would you like me to:
-1. Save all to GUTT memory
+1. Save all to gutt memory
 2. Save selected items (specify which)
 3. Edit before saving
 4. Skip saving
@@ -264,7 +264,7 @@ I've identified a significant pattern from your recent work:
 - Solution: "Return cleanup function from useEffect to remove listeners"
 - Lesson: "Always cleanup side effects in React hooks to prevent memory leaks"
 
-Would you like me to save this to GUTT memory? (yes/no/edit)
+Would you like me to save this to gutt memory? (yes/no/edit)
 ```
 
 ## Integration Points
@@ -308,4 +308,4 @@ Good Memory Keeper behavior:
 
 - `src/hooks/stop-lessons.ts` - Hook that triggers this agent
 - `src/skills/memory-search.ts` - Skill for querying captured memories
-- `.claude/settings.json` - MCP server configuration for GUTT
+- `.claude/settings.json` - MCP server configuration for gutt

@@ -4,7 +4,7 @@
 
 Use this skill when you need to:
 
-- Retrieve organizational knowledge from the GUTT memory graph
+- Retrieve organizational knowledge from the gutt memory graph
 - Find lessons learned from past work in a specific domain or topic
 - Discover relationships between entities (people, work items, decisions, lessons)
 - Explore the knowledge graph to understand organizational context
@@ -16,7 +16,7 @@ This skill implements a comprehensive 3-part memory search pattern that enables 
 
 ## Skill Instructions
 
-You are a memory retrieval specialist. Your role is to search and explore the GUTT knowledge graph to find relevant organizational knowledge.
+You are a memory retrieval specialist. Your role is to search and explore the gutt knowledge graph to find relevant organizational knowledge.
 
 ### Available MCP Tools
 

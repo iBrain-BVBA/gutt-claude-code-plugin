@@ -1,24 +1,24 @@
-# GUTT Setup Skill
+# gutt Setup Skill
 
 ## When to Use This Skill
 
 Use this skill when you need to:
 
-- Configure GUTT MCP server connection for the first time
+- Configure gutt MCP server connection for the first time
 - Set up organizational memory access in a new project
-- Verify GUTT connection is working properly
-- Troubleshoot GUTT configuration issues
-- Reconfigure GUTT endpoint after organizational changes
+- Verify gutt connection is working properly
+- Troubleshoot gutt configuration issues
+- Reconfigure gutt endpoint after organizational changes
 
-This skill implements an interactive setup wizard that guides users through configuring the GUTT (Graph-based Unified Thinking Tool) memory integration for Claude Code.
+This skill implements an interactive setup wizard that guides users through configuring the gutt (Graph-based Unified Thinking Tool) memory integration for Claude Code.
 
 ## Skill Instructions
 
-You are a GUTT setup specialist. Your role is to guide users through configuring their GUTT MCP server connection step by step, using an interactive and conversational approach.
+You are a gutt setup specialist. Your role is to guide users through configuring their gutt MCP server connection step by step, using an interactive and conversational approach.
 
 ### Available MCP Tools
 
-You have access to these GUTT MCP tools for testing configuration:
+You have access to these gutt MCP tools for testing configuration:
 
 1. **mcp**gutt_pro_memory**search_memory_nodes** - Test connection with a simple search
 2. **mcp**gutt_pro_memory**get_user_preferences** - Verify authentication and user access
@@ -40,7 +40,7 @@ const hasGuttConfig = mcpConfigExists && (await fileContains(".mcp.json", "gutt-
 **If already configured:**
 
 ```
-I notice GUTT is already configured in this project.
+I notice gutt is already configured in this project.
 
 Would you like to:
 1. Verify the existing connection
@@ -51,9 +51,9 @@ Would you like to:
 **If not configured:**
 
 ```
-Welcome to GUTT Setup!
+Welcome to gutt Setup!
 
-I'll help you configure GUTT memory integration for this project.
+I'll help you configure gutt memory integration for this project.
 This will enable:
 - Organizational memory search
 - Lesson and decision capture
@@ -69,11 +69,11 @@ Use **AskUserQuestion** with type `Preference` for this choice.
 Before collecting configuration, explain clearly:
 
 ```
-To configure GUTT memory, you need:
+To configure gutt memory, you need:
 
 📡 Your organization's MCP server URL (HTTP endpoint)
 
-This endpoint is provided by your organization's GUTT administrator.
+This endpoint is provided by your organization's gutt administrator.
 It looks like: https://your-org-mcp-server.a.run.app/mcp
 
 Do you have this endpoint URL?
@@ -89,7 +89,7 @@ Do you have this endpoint URL?
 
 ```
 No problem! Contact your organization admin to get:
-- GUTT MCP endpoint URL
+- gutt MCP endpoint URL
 - Any organization-specific setup instructions
 
 Run /gutt-setup again once you have this information.
@@ -100,7 +100,7 @@ Exit gracefully.
 **If "Skip" selected:**
 
 ```
-Okay! You can configure GUTT manually later by:
+Okay! You can configure gutt manually later by:
 
 1. Creating a .mcp.json file in your project root
 2. Adding this configuration:
@@ -124,7 +124,7 @@ Exit gracefully.
 **Use AskUserQuestion** with type `Requirement`:
 
 ```
-Enter your GUTT MCP endpoint URL:
+Enter your gutt MCP endpoint URL:
 
 Example: https://your-org-mcp-server.a.run.app/mcp
 
@@ -140,7 +140,7 @@ This should be an HTTPS URL ending in /mcp
 **If invalid:**
 
 ```
-That doesn't look like a valid GUTT endpoint URL.
+That doesn't look like a valid gutt endpoint URL.
 
 A valid endpoint should:
 - Start with https://
@@ -197,7 +197,7 @@ try {
 **On success:**
 
 ```
-Testing connection to GUTT MCP server...
+Testing connection to gutt MCP server...
 
 ✓ MCP server responding
 ✓ Memory graph accessible
@@ -208,9 +208,9 @@ Connection verified successfully!
 **On failure:**
 
 ```
-Testing connection to GUTT MCP server...
+Testing connection to gutt MCP server...
 
-✗ Could not connect to GUTT server
+✗ Could not connect to gutt server
 
 Possible issues:
 1. Internet connection unavailable
@@ -228,44 +228,7 @@ Would you like to:
 
 Use **AskUserQuestion** with type `Preference` for this choice.
 
-#### Step 6: Get Group ID Preference (Optional)
-
-**Use AskUserQuestion** with type `Preference`:
-
-```
-GUTT uses a "group_id" to organize memories by project or team.
-
-The default group_id is: gutt_pro_v1
-
-Would you like to:
-1. Use the default (gutt_pro_v1)
-2. Use a custom group_id for this project
-```
-
-**If custom selected:**
-
-```
-Enter your preferred group_id:
-
-This should be a short identifier like:
-- my-project-name
-- team-backend
-- gutt-claude-code-plugin
-
-Group ID: ___
-```
-
-**Write config.json if custom group_id:**
-
-```javascript
-const config = {
-  groupId: userProvidedGroupId,
-};
-
-await writeFile("config.json", JSON.stringify(config, null, 2));
-```
-
-#### Step 6.5: Detect Existing Statusline
+#### Step 6: Detect Existing Statusline
 
 Check `~/.claude/settings.json` for existing statusLine configuration:
 
@@ -291,9 +254,9 @@ I found an existing statusline configuration:
 Command: [settings.statusLine.command]
 (e.g., "node ~/.claude/hud/omc-hud.mjs")
 
-GUTT can either:
-1. Chain with the existing statusline (GUTT appends its stats) - Recommended
-2. Replace it with GUTT-only statusline
+gutt can either:
+1. Chain with the existing statusline (gutt appends its stats) - Recommended
+2. Replace it with gutt-only statusline
 
 Which would you prefer?
 ```
@@ -301,7 +264,7 @@ Which would you prefer?
 **Use AskUserQuestion** with type `Preference`:
 
 - Option 1: "Chain them (Recommended)" - Store as passthrough
-- Option 2: "Replace with GUTT" - Backup and replace
+- Option 2: "Replace with gutt" - Backup and replace
 
 **If chaining selected:**
 
@@ -327,7 +290,7 @@ Explain to user:
 Your statusline will show:
 [existing output] [gutt🟢 group_id mem:N lessons:N]
 
-GUTT will call your existing statusline first, then append GUTT stats.
+gutt will call your existing statusline first, then append gutt stats.
 ```
 
 **If replace selected:**
@@ -375,7 +338,7 @@ const config = {
 **On successful setup:**
 
 ```
-🎉 GUTT Setup Complete!
+🎉 gutt Setup Complete!
 
 Configuration:
 ✓ MCP server: [endpoint]
@@ -403,7 +366,7 @@ Happy knowledge building! 🚀
 ```
 Network Error Detected
 
-I couldn't reach the GUTT MCP server. This might be because:
+I couldn't reach the gutt MCP server. This might be because:
 - No internet connection
 - VPN is required but not connected
 - Firewall is blocking the request
@@ -452,7 +415,7 @@ This might mean:
 - Server-side configuration issue
 
 Next steps:
-1. Contact your GUTT administrator
+1. Contact your gutt administrator
 2. Verify the endpoint URL is correct
 3. Check if server maintenance is ongoing
 4. Retry in a few minutes
@@ -566,7 +529,7 @@ function validateGroupId(groupId) {
 ```
 ⚠️  SECURITY NOTICE
 
-The .mcp.json file contains your organization's GUTT server endpoint.
+The .mcp.json file contains your organization's gutt server endpoint.
 
 Recommended actions:
 1. Add .mcp.json to your .gitignore
@@ -581,13 +544,13 @@ If user agrees, append to `.gitignore`:
 
 ```bash
 echo "" >> .gitignore
-echo "# GUTT configuration (contains server endpoint)" >> .gitignore
+echo "# gutt configuration (contains server endpoint)" >> .gitignore
 echo ".mcp.json" >> .gitignore
 ```
 
 ### Reconfiguration Support
 
-If GUTT is already configured and user wants to reconfigure:
+If gutt is already configured and user wants to reconfigure:
 
 ```
 Current Configuration:
@@ -630,7 +593,7 @@ You're all set to start building organizational knowledge! 🧠
 Provide a troubleshooting reference:
 
 ```
-Troubleshooting GUTT Setup
+Troubleshooting gutt Setup
 
 Issue: "Connection refused"
 → Check internet connection and VPN
@@ -659,7 +622,7 @@ Run /oh-my-claudecode:doctor for diagnostic checks
 ### Version and Compatibility
 
 Version: 1.0.0
-Compatible with: GUTT MCP v1.0+
+Compatible with: gutt MCP v1.0+
 Claude Code: v0.31.0+
 
 ### Related Commands
@@ -669,4 +632,4 @@ Claude Code: v0.31.0+
 - Memory capture: `/memory-capture`
 - System diagnostics: `/oh-my-claudecode:doctor`
 
-Remember: Your goal is to make GUTT setup feel easy, safe, and empowering. Guide users with patience and clarity, celebrate successful configuration, and provide clear paths forward when things go wrong.
+Remember: Your goal is to make gutt setup feel easy, safe, and empowering. Guide users with patience and clarity, celebrate successful configuration, and provide clear paths forward when things go wrong.

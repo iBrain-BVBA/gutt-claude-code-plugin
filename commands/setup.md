@@ -1,6 +1,6 @@
-# GUTT Setup Command
+# gutt Setup Command
 
-Setup wizard for configuring the GUTT MCP server connection.
+Setup wizard for configuring the gutt MCP server connection.
 
 ## Trigger
 
@@ -14,14 +14,14 @@ Setup wizard for configuring the GUTT MCP server connection.
 Check for both MCP endpoint and groupID configuration:
 
 ```bash
-# Check if GUTT MCP is already configured
+# Check if gutt MCP is already configured
 if [ -f ".mcp.json" ]; then
-  grep -q "gutt-pro-memory" .mcp.json && echo "GUTT MCP endpoint already configured"
+  grep -q "gutt-pro-memory" .mcp.json && echo "gutt MCP endpoint already configured"
 fi
 
 # Check if groupID is already configured
 if [ -f "config.json" ]; then
-  grep -q "group_id" config.json && echo "GUTT groupID already configured"
+  grep -q "group_id" config.json && echo "gutt groupID already configured"
 fi
 ```
 
@@ -35,9 +35,9 @@ If both exist and are valid:
 Ask user:
 
 ```
-GUTT MCP Server Setup
+gutt MCP Server Setup
 
-To configure GUTT memory, you need:
+To configure gutt memory, you need:
 - Your organization's MCP server URL (HTTP endpoint)
 
 Contact your organization admin to get this URL.
@@ -53,7 +53,7 @@ Do you have the endpoint URL?
 1. **Get Endpoint URL**
 
    ```
-   Enter your GUTT MCP endpoint URL:
+   Enter your gutt MCP endpoint URL:
    (Example: https://your-org-mcp-server.a.run.app/mcp)
    ```
 
@@ -66,7 +66,7 @@ Do you have the endpoint URL?
    URL: https://[endpoint-domain]/auth/login
 
    Please complete the authentication in your browser.
-   This will authorize Claude Code to access your GUTT memory graph.
+   This will authorize Claude Code to access your gutt memory graph.
 
    Press Enter when authentication is complete...
    ```
@@ -95,7 +95,7 @@ Do you have the endpoint URL?
 Ask user for their memory graph groupID:
 
 ```
-Enter your GUTT memory graph groupID:
+Enter your gutt memory graph groupID:
 (Default: gutt_pro_v1)
 (Leave blank to use default)
 
@@ -139,9 +139,9 @@ if (fs.existsSync(globalSettingsPath)) {
 Found existing statusline: [command]
 (e.g., "node ~/.claude/hud/omc-hud.mjs")
 
-Would you like to chain it with GUTT statusline?
-1. Yes, chain them (GUTT appends to existing) - Recommended
-2. No, replace with GUTT only
+Would you like to chain it with gutt statusline?
+1. Yes, chain them (gutt appends to existing) - Recommended
+2. No, replace with gutt only
 ```
 
 Use **AskUserQuestion** with type `Preference` for this choice.
@@ -149,18 +149,18 @@ Use **AskUserQuestion** with type `Preference` for this choice.
 **3. If user chooses "Yes, chain":**
 
 - BACKUP: Store original command in config.json under `gutt.statusline.passthroughCommand`
-- GUTT will call passthrough first, then append GUTT stats
+- gutt will call passthrough first, then append gutt stats
 - Output format: `[existing output] [gutt🟢 group_id mem:N lessons:N]`
 
 **4. If user chooses "No, replace":**
 
 - BACKUP: Store original command in config.json under `gutt.statusline.originalCommand`
 - This allows future restore if user changes mind
-- GUTT statusline replaces existing
+- gutt statusline replaces existing
 
 **5. If no existing statusline:**
 
-- Skip this step, just use GUTT statusline directly
+- Skip this step, just use gutt statusline directly
 
 ### Step 5: Write Configuration Files
 
@@ -210,7 +210,7 @@ Write both configuration files:
 Run comprehensive verification with the configured groupID:
 
 ```
-Verifying GUTT setup...
+Verifying gutt setup...
 
 1. Testing MCP server connection...
    ✓ MCP server responding
@@ -227,7 +227,7 @@ Verifying GUTT setup...
 5. Testing write permissions...
    ✓ Can add memories
 
-Setup complete! GUTT memory is now available.
+Setup complete! gutt memory is now available.
 ```
 
 **Validation Implementation:**
@@ -242,7 +242,7 @@ const searchResult = await mcp__gutt_pro_memory__search_memory_facts({
 
 // Test write capability (optional, only if user confirms)
 const addResult = await mcp__gutt_pro_memory__add_memory({
-  content: "GUTT setup test - can be deleted",
+  content: "gutt setup test - can be deleted",
   group_id: configuredGroupID,
   metadata: { test: true, timestamp: Date.now() },
 });
@@ -258,7 +258,7 @@ if (searchResult.success && addResult.success) {
 ### Step 7: Show Summary & Next Steps
 
 ```
-GUTT Setup Complete!
+gutt Setup Complete!
 
 Configuration Summary:
 - MCP Endpoint: [configured-endpoint]
@@ -280,11 +280,11 @@ To reconfigure later, run /gutt-setup again.
 ### Network Error
 
 ```
-Could not connect to GUTT servers.
+Could not connect to gutt servers.
 
 Please check:
 1. Internet connection
-2. Firewall settings (allow your GUTT endpoint)
+2. Firewall settings (allow your gutt endpoint)
 3. VPN configuration
 4. Endpoint URL is correct
 

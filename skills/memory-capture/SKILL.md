@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Memory Capture skill provides a structured workflow for capturing lessons, decisions, insights, and patterns into the GUTT memory graph. It guides users through pattern-based lesson capture with anti-rationalization enforcement and proper entity classification.
+The Memory Capture skill provides a structured workflow for capturing lessons, decisions, insights, and patterns into the gutt memory graph. It guides users through pattern-based lesson capture with anti-rationalization enforcement and proper entity classification.
 
 ## Capabilities
 
@@ -355,14 +355,14 @@ Always includes:
 
 All captures are logged to:
 
-- GUTT memory graph (queryable via memory-retrieval)
+- gutt memory graph (queryable via memory-retrieval)
 - Standard Claude Code conversation history
 - Returns UUID for audit trail
 
 ## Version
 
 Version: 1.0.0
-Compatible with: GUTT MCP v1.0+
+Compatible with: gutt MCP v1.0+
 
 ## Related
 
