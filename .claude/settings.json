@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/user-prompt-submit.sh\""
+            "command": "node ./hooks/user-prompt-submit.cjs"
           }
         ]
       }
@@ -17,7 +17,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-lessons.sh\""
+            "command": "node ./hooks/stop-lessons.cjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/post-tool-lint.cjs"
           }
         ]
       }
