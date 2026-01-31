@@ -265,6 +265,111 @@ const config = {
 await writeFile("config.json", JSON.stringify(config, null, 2));
 ```
 
+#### Step 6.5: Detect Existing Statusline
+
+Check `~/.claude/settings.json` for existing statusLine configuration:
+
+```javascript
+// Detection logic
+const globalSettingsPath = path.join(
+  process.env.HOME || process.env.USERPROFILE,
+  ".claude",
+  "settings.json"
+);
+if (fs.existsSync(globalSettingsPath)) {
+  const settings = JSON.parse(fs.readFileSync(globalSettingsPath, "utf8"));
+  if (settings.statusLine?.command) {
+    // Existing statusline found - ask user about chaining
+  }
+}
+```
+
+**If existing statusline detected:**
+
+```
+I found an existing statusline configuration:
+Command: [settings.statusLine.command]
+(e.g., "node ~/.claude/hud/omc-hud.mjs")
+
+GUTT can either:
+1. Chain with the existing statusline (GUTT appends its stats) - Recommended
+2. Replace it with GUTT-only statusline
+
+Which would you prefer?
+```
+
+**Use AskUserQuestion** with type `Preference`:
+
+- Option 1: "Chain them (Recommended)" - Store as passthrough
+- Option 2: "Replace with GUTT" - Backup and replace
+
+**If chaining selected:**
+
+Write to config.json:
+
+```javascript
+const config = {
+  gutt: {
+    group_id: userProvidedGroupId || "gutt_pro_v1",
+    statusline: {
+      passthroughCommand: existingCommand,
+      originalCommand: null,
+    },
+  },
+};
+```
+
+Explain to user:
+
+```
+✓ Statusline chaining configured
+
+Your statusline will show:
+[existing output] [gutt🟢 group_id mem:N lessons:N]
+
+GUTT will call your existing statusline first, then append GUTT stats.
+```
+
+**If replace selected:**
+
+Write to config.json:
+
+```javascript
+const config = {
+  gutt: {
+    group_id: userProvidedGroupId || "gutt_pro_v1",
+    statusline: {
+      passthroughCommand: null,
+      originalCommand: existingCommand, // Backup for potential restore
+    },
+  },
+};
+```
+
+Explain to user:
+
+```
+✓ Statusline replacement configured
+
+Original command backed up in config.json.
+You can restore it later if needed.
+
+Your statusline will show:
+[gutt🟢 group_id mem:N lessons:N]
+```
+
+**If no existing statusline:**
+
+Skip this step entirely, proceed to write config.json without statusline fields:
+
+```javascript
+const config = {
+  gutt: {
+    group_id: userProvidedGroupId || "gutt_pro_v1",
+  },
+};
+```
+
 #### Step 7: Success Summary and Next Steps
 
 **On successful setup:**

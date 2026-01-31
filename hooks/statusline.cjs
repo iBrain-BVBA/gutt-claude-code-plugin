@@ -2,10 +2,53 @@
 /**
  * GUTT Statusline Hook
  * Displays GUTT connection status and session metrics
+ * Supports chaining with other statusline scripts via passthroughCommand
  */
 
+const { spawn } = require("child_process");
 const { getState } = require("./lib/session-state.cjs");
-const { getGroupId, isConfigured } = require("./lib/config.cjs");
+const { getGroupId, isConfigured, getConfig } = require("./lib/config.cjs");
+
+/**
+ * Execute passthrough statusline with timeout
+ * Returns empty string on failure (graceful fallback)
+ * @param {string} command - Shell command to execute
+ * @param {Object} inputData - JSON data to pipe to stdin
+ * @param {number} timeoutMs - Timeout in milliseconds (default 500ms)
+ * @returns {Promise<string>} Output from passthrough command
+ */
+function execPassthrough(command, inputData, timeoutMs = 500) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(command, { shell: true });
+      let output = "";
+
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve("");
+      }, timeoutMs);
+
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+      });
+
+      child.on("close", () => {
+        clearTimeout(timer);
+        resolve(output.trim());
+      });
+
+      child.on("error", () => {
+        clearTimeout(timer);
+        resolve("");
+      });
+
+      child.stdin.write(JSON.stringify(inputData));
+      child.stdin.end();
+    } catch {
+      resolve("");
+    }
+  });
+}
 
 // Read JSON input from stdin
 let input = "";
@@ -14,8 +57,9 @@ process.stdin.on("data", (chunk) => {
   input += chunk;
 });
 
-process.stdin.on("end", () => {
+process.stdin.on("end", async () => {
   const state = getState();
+  const config = getConfig();
 
   let data = {};
   try {
@@ -34,7 +78,7 @@ process.stdin.on("end", () => {
   const configured = isConfigured();
 
   // Truncate group_id to max 15 characters if needed
-  const displayGroupId = groupId.length > 15 ? groupId.substring(0, 15) : groupId;
+  const displayGroupId = groupId.length > 15 ? groupId.substring(0, 12) + "..." : groupId;
 
   // Format gutt status (lowercase branding with colored circles)
   const statusIcon =
@@ -54,5 +98,16 @@ process.stdin.on("end", () => {
     claudeSegment = ` | [${model}]${cost ? " " + cost : ""}`;
   }
 
-  console.log(guttSegment + claudeSegment);
+  // Check for passthrough config
+  const passthroughCmd = config?.gutt?.statusline?.passthroughCommand;
+
+  if (passthroughCmd) {
+    const passthroughOutput = await execPassthrough(passthroughCmd, data, 500);
+    const output = passthroughOutput
+      ? `${passthroughOutput} ${guttSegment}`
+      : guttSegment + claudeSegment;
+    console.log(output);
+  } else {
+    console.log(guttSegment + claudeSegment);
+  }
 });

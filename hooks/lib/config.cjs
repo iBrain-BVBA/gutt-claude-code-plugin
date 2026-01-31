@@ -83,9 +83,39 @@ function getConfigSource() {
   return cachedSource || "fallback";
 }
 
+/**
+ * Get full config object
+ * @returns {Object} Full config object with config and source
+ */
+function loadConfig() {
+  return {
+    config: loadConfigFile(),
+    source: getConfigSource(),
+  };
+}
+
+/**
+ * Get full config object (alias for backward compatibility)
+ * @returns {Object} Full config object
+ */
+function getConfig() {
+  return loadConfigFile();
+}
+
+/**
+ * Get statusline configuration
+ * @returns {Object} Statusline config object
+ */
+function getStatuslineConfig() {
+  return loadConfig().config?.gutt?.statusline || {};
+}
+
 module.exports = {
   getGroupId,
   isConfigured,
   getConfigSource,
+  getConfig,
+  loadConfig,
+  getStatuslineConfig,
   CONFIG_PATH,
 };

@@ -114,6 +114,54 @@ Your groupID: _
 - No spaces allowed
 - Minimum 3 characters
 
+### Step 4.5: Detect Existing Statusline
+
+Check for existing statusLine in user's global Claude settings:
+
+**1. Read existing statusLine** from `~/.claude/settings.json`:
+
+```javascript
+// Check if statusLine.command exists
+const globalSettingsPath = path.join(
+  process.env.HOME || process.env.USERPROFILE,
+  ".claude",
+  "settings.json"
+);
+if (fs.existsSync(globalSettingsPath)) {
+  const globalSettings = JSON.parse(fs.readFileSync(globalSettingsPath, "utf8"));
+  const existingCommand = globalSettings?.statusLine?.command;
+}
+```
+
+**2. If existing statusline found:**
+
+```
+Found existing statusline: [command]
+(e.g., "node ~/.claude/hud/omc-hud.mjs")
+
+Would you like to chain it with GUTT statusline?
+1. Yes, chain them (GUTT appends to existing) - Recommended
+2. No, replace with GUTT only
+```
+
+Use **AskUserQuestion** with type `Preference` for this choice.
+
+**3. If user chooses "Yes, chain":**
+
+- BACKUP: Store original command in config.json under `gutt.statusline.passthroughCommand`
+- GUTT will call passthrough first, then append GUTT stats
+- Output format: `[existing output] [gutt🟢 group_id mem:N lessons:N]`
+
+**4. If user chooses "No, replace":**
+
+- BACKUP: Store original command in config.json under `gutt.statusline.originalCommand`
+- This allows future restore if user changes mind
+- GUTT statusline replaces existing
+
+**5. If no existing statusline:**
+
+- Skip this step, just use GUTT statusline directly
+
 ### Step 5: Write Configuration Files
 
 Write both configuration files:
@@ -134,10 +182,21 @@ Write both configuration files:
 ```json
 {
   "gutt": {
-    "group_id": "[user-provided-groupID]"
+    "group_id": "[user-provided-groupID]",
+    "statusline": {
+      "passthroughCommand": "node ~/.claude/hud/omc-hud.mjs",
+      "originalCommand": null
+    }
   }
 }
 ```
+
+**Note:** Only include statusline fields if existing statusline was detected.
+
+**Config Schema for Passthrough:**
+
+- `passthroughCommand`: If user chose to chain, stores the original command to call first
+- `originalCommand`: If user chose to replace, stores backup for future restore
 
 **Implementation Notes:**
 
