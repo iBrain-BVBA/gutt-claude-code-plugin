@@ -32,6 +32,17 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/pre-task-memory.cjs"
+          }
+        ]
+      }
     ]
   },
   "permissions": {

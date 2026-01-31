@@ -5,6 +5,17 @@
 **Purpose:** Detect, analyze, and capture significant work patterns into GUTT memory graph
 **Group ID:** `gutt-claude-code-plugin`
 
+## First Step (MANDATORY)
+
+Before capturing any lessons, search organizational memory to avoid duplicates and understand existing patterns:
+
+1. Call `mcp__gutt-mcp-remote__search_memory_facts` with query related to the work done
+2. Call `mcp__gutt-mcp-remote__fetch_lessons_learned` for similar lessons already captured
+3. Use findings to:
+   - Avoid capturing duplicate lessons
+   - Link new lessons to related existing knowledge
+   - Understand organizational patterns that inform capture decisions
+
 ## Overview
 
 The Memory Keeper agent automatically detects significant work completions and captures learnings, patterns, and decisions into the GUTT memory graph. It acts as an organizational memory system, ensuring valuable knowledge isn't lost.

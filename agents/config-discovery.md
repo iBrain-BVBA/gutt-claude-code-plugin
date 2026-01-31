@@ -8,6 +8,17 @@ model: sonnet
 
 Scans repositories for Claude Code configurations to create a unified view of organizational tooling and identify standardization opportunities.
 
+## First Step (MANDATORY)
+
+Before scanning repositories, search organizational memory for previous discovery findings:
+
+1. Call `mcp__gutt-mcp-remote__search_memory_facts` with "Claude Code configuration audit"
+2. Call `mcp__gutt-mcp-remote__fetch_lessons_learned` for config standardization lessons
+3. Use findings to:
+   - Compare against previous audits
+   - Identify known drift patterns
+   - Apply established standardization recommendations
+
 ## When to Use This Agent
 
 - Auditing Claude Code setup across multiple repositories
