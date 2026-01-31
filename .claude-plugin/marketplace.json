@@ -1,13 +1,26 @@
 {
-  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/marketplace.json",
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "gutt-plugins",
+  "version": "1.0.0",
   "description": "GUTT organizational memory plugins for Claude Code",
+  "owner": {
+    "name": "iBRAIN BV",
+    "email": "support@gutt.pro"
+  },
+  "metadata": {
+    "description": "GUTT organizational memory plugins for Claude Code - persistent memory, lesson capture, and multi-hop graph exploration"
+  },
   "plugins": [
     {
       "name": "gutt-claude-code-plugin",
       "description": "Persistent organizational memory for Claude Code via GUTT",
       "version": "1.0.0",
-      "path": "."
+      "author": {
+        "name": "iBRAIN BV",
+        "email": "support@gutt.pro"
+      },
+      "source": "./",
+      "category": "productivity"
     }
   ]
 }
