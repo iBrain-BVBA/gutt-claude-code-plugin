@@ -1,10 +1,10 @@
-# GUTT Claude Code Plugin
+# gutt Claude Code Plugin
 
 ## Project Overview
 
-This is a Claude Code plugin that integrates GUTT (Graph-based Unified Thinking Tool) memory capabilities into Claude Code workflows. The plugin provides:
+This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking Tool) memory capabilities into Claude Code workflows. The plugin provides:
 
-- **Memory Integration**: Connect Claude Code to GUTT's knowledge graph for persistent organizational memory
+- **Memory Integration**: Connect Claude Code to gutt's knowledge graph for persistent organizational memory
 - **Skills & Hooks**: Custom skills and hooks for enhanced agent workflows
 - **MCP Tools**: Additional MCP server configurations for extended capabilities
 
@@ -55,13 +55,13 @@ npm run format       # Format with Prettier
 
 This project is configured to use:
 
-- **gutt-pro-memory**: GUTT memory graph for organizational knowledge
+- **gutt-pro-memory**: gutt memory graph for organizational knowledge
 - **atlassian**: Jira/Confluence integration
 - **github**: GitHub API integration
 
 ## Memory Integration
 
-When working on this project, use the GUTT memory graph to:
+When working on this project, use the gutt memory graph to:
 
 - Store architectural decisions
 - Track lessons learned
@@ -74,5 +74,5 @@ Use `gutt-claude-code-plugin` as the group_id for all memory operations in this 
 
 ## Related Tickets
 
-- GP-421: Create GUTT Plugin for Claude Code (parent story)
+- GP-421: Create gutt Plugin for Claude Code (parent story)
 - GP-435: Repository Tooling Setup

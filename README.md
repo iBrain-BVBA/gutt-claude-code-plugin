@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="https://gutt.pro/assets/gutt-logo-DB4ySUa1.webp" alt="gutt logo" width="200">
+  <img src="https://gutt.pro/assets/gutt-logo-DB4ySUa1.webp" alt="gutt logo" height="80">
+  &nbsp;&nbsp;✕&nbsp;&nbsp;
+  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Claude_AI_logo.svg/1200px-Claude_AI_logo.svg.png" alt="Claude logo" height="80">
 </p>
 
-# GUTT Claude Code Plugin
+# gutt Claude Code Plugin
 
 Persistent organizational memory for Claude Code via [gutt](https://gutt.pro).
 
@@ -40,7 +42,7 @@ This plugin provides a memory backbone for Claude Code, enabling:
 #### Via Marketplace (Recommended)
 
 ```bash
-# Add the GUTT marketplace
+# Add the gutt marketplace
 /plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
 
 # Install the plugin
@@ -69,7 +71,7 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ### Setup
 
-After installing the plugin, run the setup wizard to configure your GUTT connection:
+After installing the plugin, run the setup wizard to configure your gutt connection:
 
 ```
 /gutt-setup
@@ -184,9 +186,9 @@ Capture learnings using one of 4 patterns:
 
 This plugin works seamlessly alongside oh-my-claudecode:
 
-1. GUTT hooks fire **before** OMC hooks
+1. gutt hooks fire **before** OMC hooks
 2. Memory context is available when OMC orchestration starts
-3. OMC sub-agents can call GUTT MCP tools
+3. OMC sub-agents can call gutt MCP tools
 
 ## File Structure
 
@@ -221,7 +223,7 @@ gutt-claude-code-plugin/
 
 - Claude Code CLI
 - Node.js 18+
-- GUTT MCP server access (contact your organization admin)
+- gutt MCP server access (contact your organization admin)
 
 ## Cross-Platform Support
 
