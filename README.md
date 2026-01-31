@@ -15,6 +15,18 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ### Installation
 
+#### Via Marketplace (Recommended)
+
+```bash
+# Add the GUTT marketplace
+/plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
+
+# Install the plugin
+/plugin install gutt-claude-code-plugin
+```
+
+#### Manual Installation
+
 1. Clone this repository to your Claude Code plugins directory:
 
    ```bash

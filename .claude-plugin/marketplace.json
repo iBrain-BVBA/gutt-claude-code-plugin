@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/marketplace.json",
+  "name": "gutt-plugins",
+  "description": "GUTT organizational memory plugins for Claude Code",
+  "plugins": [
+    {
+      "name": "gutt-claude-code-plugin",
+      "description": "Persistent organizational memory for Claude Code via GUTT",
+      "version": "1.0.0",
+      "path": "."
+    }
+  ]
+}
