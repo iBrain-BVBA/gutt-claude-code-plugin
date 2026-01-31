@@ -98,6 +98,28 @@ Or configure manually:
 
 ## Features
 
+### Statusline
+
+Real-time gutt status in your Claude Code HUD:
+
+![gutt statusline](docs/statusline-hud.png)
+
+- **Connection status** — Green circle when connected
+- **Memory stats** — `mem:X` queries, `lessons:X` captured
+- **Toast notifications** — Shows memory operations for 5 seconds
+
+Enable in `config.json`:
+
+```json
+{
+  "gutt": {
+    "statusline": {
+      "showTicker": true
+    }
+  }
+}
+```
+
 ### Hooks
 
 | Hook                     | Event            | Purpose                                  |
@@ -107,6 +129,8 @@ Or configure manually:
 | `post-tool-lint.cjs`     | PostToolUse      | Auto-lints files after Edit/Write        |
 | `pre-task-memory.cjs`    | PreToolUse       | Injects memory context before subagents  |
 | `post-task-lessons.cjs`  | PostToolUse      | Captures lessons when subagents complete |
+| `post-memory-ops.cjs`    | PostToolUse      | Tracks memory tool calls for statusline  |
+| `statusline.cjs`         | Notification     | Renders gutt status in HUD               |
 
 **Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents (including OMC's 32 agents) get organizational context and contribute lessons back.
 
@@ -170,12 +194,16 @@ This plugin works seamlessly alongside oh-my-claudecode:
 gutt-claude-code-plugin/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin manifest
+├── docs/
+│   └── statusline-hud.png   # HUD screenshot
 ├── hooks/
 │   ├── user-prompt-submit.cjs  # Memory reminder
 │   ├── stop-lessons.cjs        # Lesson capture prompt
 │   ├── post-tool-lint.cjs      # Auto-lint
 │   ├── pre-task-memory.cjs     # Subagent context injection
-│   └── post-task-lessons.cjs   # Subagent lesson capture
+│   ├── post-task-lessons.cjs   # Subagent lesson capture
+│   ├── post-memory-ops.cjs     # Memory tool tracking
+│   └── statusline.cjs          # HUD statusline
 ├── skills/
 │   ├── memory-retrieval/SKILL.md
 │   └── memory-capture/SKILL.md
