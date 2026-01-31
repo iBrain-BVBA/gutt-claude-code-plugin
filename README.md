@@ -1,7 +1,5 @@
 <p align="center">
-  <img src="https://gutt.pro/assets/gutt-logo-DB4ySUa1.webp" alt="gutt logo" height="80">
-  &nbsp;&nbsp;✕&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Claude_AI_logo.svg/1200px-Claude_AI_logo.svg.png" alt="Claude logo" height="80">
+  <img src="docs/banner.jpg" alt="gutt × Claude Code" width="600">
 </p>
 
 # gutt Claude Code Plugin
