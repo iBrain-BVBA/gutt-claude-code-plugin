@@ -6,6 +6,24 @@
 
 Persistent organizational memory for Claude Code via [gutt](https://gutt.pro).
 
+## What is gutt?
+
+[gutt](https://gutt.pro) is persistent organizational memory for AI agents.
+
+- **Decisions** — Who decided what, when, and why
+- **Lessons** — What worked, what didn't, don't repeat mistakes
+- **Context** — Projects, people, relationships, history
+
+This plugin connects Claude Code to your gutt memory, automatically:
+
+- 📥 **Retrieves** relevant context before every task
+- 📤 **Captures** lessons after every task
+- 🔄 **Works with OMC** — All agents get memory, automatically
+
+[**Sign up for gutt →**](https://gutt.pro)
+
+---
+
 ## Overview
 
 This plugin provides a memory backbone for Claude Code, enabling:
