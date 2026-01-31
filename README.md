@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://gutt.pro/assets/gutt-logo-DB4ySUa1.webp" alt="gutt logo" width="200">
+</p>
+
 # GUTT Claude Code Plugin
 
-Persistent organizational memory for Claude Code via GUTT.
+Persistent organizational memory for Claude Code via [gutt](https://gutt.pro).
 
 ## Overview
 
