@@ -5,7 +5,11 @@
  * Consolidates: add_memory, search_memory_facts, fetch_lessons_learned
  */
 
-const { incrementLessonsCaptured, incrementMemoryQueries, addTickerItem } = require("./lib/session-state.cjs");
+const {
+  incrementLessonsCaptured,
+  incrementMemoryQueries,
+  addTickerItem,
+} = require("./lib/session-state.cjs");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -25,7 +29,7 @@ process.stdin.on("end", () => {
       const name = toolInput.name || "memory";
       addTickerItem({
         icon: "📤",
-        text: `Created "${truncate(name, 25)}"`
+        text: `Created "${truncate(name, 25)}"`,
       });
     } else if (toolName === "mcp__gutt-mcp-remote__search_memory_facts") {
       incrementMemoryQueries();
@@ -33,7 +37,7 @@ process.stdin.on("end", () => {
       const result = extractFirstResult(toolResult);
       addTickerItem({
         icon: "📥",
-        text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`
+        text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`,
       });
     } else if (toolName === "mcp__gutt-mcp-remote__fetch_lessons_learned") {
       incrementMemoryQueries();
@@ -41,7 +45,7 @@ process.stdin.on("end", () => {
       const result = extractFirstResult(toolResult);
       addTickerItem({
         icon: "📥",
-        text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`
+        text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`,
       });
     }
   } catch {

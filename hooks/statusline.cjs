@@ -25,7 +25,7 @@ function formatTicker(items) {
 
   // Find items that are less than 5 seconds old (most recent first)
   const freshItems = items
-    .filter(item => (now - item.createdAt) < DISPLAY_DURATION)
+    .filter((item) => now - item.createdAt < DISPLAY_DURATION)
     .sort((a, b) => b.createdAt - a.createdAt);
 
   if (freshItems.length === 0) {
