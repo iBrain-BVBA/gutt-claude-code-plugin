@@ -60,7 +60,7 @@ This registers the MCP server in Claude Code's user settings.
 After adding the MCP server, trigger OAuth authentication by calling:
 
 ```
-mcp__gutt-mcp-remote__search_memory_nodes(query: "connection test", group_id: "default", max_nodes: 1)
+mcp__gutt-mcp-remote__search_memory_nodes(query: "connection test", max_nodes: 1)
 ```
 
 This opens the OAuth popup in the browser where the user authenticates.

@@ -6,44 +6,11 @@
 
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
+const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
+
 const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
-
-/**
- * Check if gutt-mcp-remote is configured in user or project scope
- * @returns {boolean} true if gutt-mcp-remote is configured
- */
-function isGuttMcpConfigured() {
-  // Check user scope (~/.claude/settings.json)
-  const userSettingsPath = path.join(os.homedir(), ".claude", "settings.json");
-  if (fs.existsSync(userSettingsPath)) {
-    try {
-      const settings = JSON.parse(fs.readFileSync(userSettingsPath, "utf8"));
-      if (settings.mcpServers && settings.mcpServers["gutt-mcp-remote"]) {
-        return true;
-      }
-    } catch {
-      // Ignore parse errors
-    }
-  }
-
-  // Check project scope (.mcp.json)
-  const projectMcpPath = path.join(projectDir, ".mcp.json");
-  if (fs.existsSync(projectMcpPath)) {
-    try {
-      const mcpConfig = JSON.parse(fs.readFileSync(projectMcpPath, "utf8"));
-      if (mcpConfig["gutt-mcp-remote"]) {
-        return true;
-      }
-    } catch {
-      // Ignore parse errors
-    }
-  }
-
-  return false;
-}
 
 // Read JSON input from stdin
 let input = "";
@@ -53,7 +20,7 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("end", () => {
   // Check if gutt-mcp-remote is configured - exit silently if not
-  if (!isGuttMcpConfigured()) {
+  if (!isGuttMcpConfigured(projectDir)) {
     process.exit(0);
   }
 
