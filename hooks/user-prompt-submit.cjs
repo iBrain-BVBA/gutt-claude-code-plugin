@@ -20,7 +20,7 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("end", () => {
   // Check if gutt-mcp-remote is configured - exit silently if not
-  if (!isGuttMcpConfigured(projectDir)) {
+  if (!isGuttMcpConfigured()) {
     process.exit(0);
   }
 

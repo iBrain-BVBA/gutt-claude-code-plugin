@@ -6,8 +6,6 @@
 
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 
-const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-
 // Read JSON input from stdin (required for hooks)
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", () => {
@@ -15,7 +13,7 @@ process.stdin.on("data", () => {
 });
 process.stdin.on("end", () => {
   // Check if gutt-mcp-remote is configured
-  if (!isGuttMcpConfigured(projectDir)) {
+  if (!isGuttMcpConfigured()) {
     console.log(`💡 gutt memory features are available but not configured.
 
 Run /gutt-claude-code-plugin:setup to enable organizational memory integration.`);
