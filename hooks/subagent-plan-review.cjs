@@ -23,6 +23,10 @@ process.stdin.on("end", () => {
     // Create search query from plan
     const searchQuery = createSearchQuery(planSummary);
 
+    // Sanitize for safe embedding in output
+    const sanitizedQuery = sanitizeForDisplay(searchQuery);
+    const sanitizedSummary = sanitizeForDisplay(planSummary.substring(0, 200));
+
     // Output context injection via hookSpecificOutput
     const output = {
       hookSpecificOutput: {
@@ -37,10 +41,10 @@ A plan has been created. Before proceeding with implementation:
 - Potential pitfalls to avoid
 
 Suggested queries:
-- mcp__gutt-mcp-remote__fetch_lessons_learned(query="${searchQuery}")
-- mcp__gutt-mcp-remote__search_memory_facts(query="${searchQuery}")
+- mcp__gutt-mcp-remote__fetch_lessons_learned(query="${sanitizedQuery}")
+- mcp__gutt-mcp-remote__search_memory_facts(query="${sanitizedQuery}")
 
-Plan summary: "${planSummary.substring(0, 200)}${planSummary.length > 200 ? "..." : ""}"`,
+Plan summary: "${sanitizedSummary}${planSummary.length > 200 ? "..." : ""}"`,
       },
     };
 
@@ -123,6 +127,18 @@ function extractPlanFromTranscript(transcriptPath) {
   } catch {
     return "";
   }
+}
+
+/**
+ * Sanitize text for safe embedding in query strings and display
+ * Removes quotes, normalizes whitespace
+ */
+function sanitizeForDisplay(text) {
+  return text
+    .replace(/[\r\n]+/g, " ") // Replace newlines with space
+    .replace(/["'`]/g, "") // Remove quotes
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim();
 }
 
 function createSearchQuery(summary) {
