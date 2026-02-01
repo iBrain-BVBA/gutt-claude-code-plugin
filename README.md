@@ -114,16 +114,18 @@ The statusline is auto-enabled on first session. Optional settings in `~/.claude
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                     | Event            | Purpose                                  |
-| ------------------------ | ---------------- | ---------------------------------------- |
-| `session-start.cjs`      | SessionStart     | Shows setup reminder if not configured   |
-| `sessionstart-setup.cjs` | SessionStart     | Auto-enables HUD statusline on first run |
-| `user-prompt-submit.cjs` | UserPromptSubmit | Reminds to search memory before tasks    |
-| `stop-lessons.cjs`       | Stop             | Prompts for lesson capture after work    |
-| `post-tool-lint.cjs`     | PostToolUse      | Auto-lints files after Edit/Write        |
-| `pre-task-memory.cjs`    | PreToolUse       | Injects memory context before subagents  |
-| `post-task-lessons.cjs`  | PostToolUse      | Captures lessons when subagents complete |
-| `post-memory-ops.cjs`    | PostToolUse      | Tracks memory tool calls for statusline  |
+| Hook                        | Event            | Purpose                                      |
+| --------------------------- | ---------------- | -------------------------------------------- |
+| `session-start.cjs`         | SessionStart     | Shows setup reminder if not configured       |
+| `sessionstart-setup.cjs`    | SessionStart     | Auto-enables HUD statusline on first run     |
+| `user-prompt-submit.cjs`    | UserPromptSubmit | Reminds to search memory before tasks        |
+| `stop-lessons.cjs`          | Stop             | Prompts for lesson capture after work        |
+| `post-tool-lint.cjs`        | PostToolUse      | Auto-lints files after Edit/Write            |
+| `pre-task-memory.cjs`       | PreToolUse       | Injects memory context before subagents      |
+| `post-task-lessons.cjs`     | PostToolUse      | Captures lessons when subagents complete     |
+| `post-memory-ops.cjs`       | PostToolUse      | Tracks memory tool calls for statusline      |
+| `subagent-start-memory.cjs` | SubagentStart    | Injects cached memory context into subagents |
+| `subagent-plan-review.cjs`  | SubagentStop     | Suggests GUTT memory search after plans      |
 
 **Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents (including OMC's 32 agents) get organizational context and contribute lessons back.
 
@@ -198,6 +200,8 @@ gutt-claude-code-plugin/
 │   ├── pre-task-memory.cjs     # Subagent context injection
 │   ├── post-task-lessons.cjs   # Subagent lesson capture
 │   ├── post-memory-ops.cjs     # Memory tool tracking
+│   ├── subagent-start-memory.cjs # Subagent context injection
+│   ├── subagent-plan-review.cjs  # Plan review suggestions
 │   └── statusline.cjs          # HUD statusline
 ├── skills/
 │   ├── memory-retrieval/SKILL.md
