@@ -68,9 +68,7 @@ When working on this project, use the gutt memory graph to:
 - Capture user preferences
 - Record project patterns
 
-### Memory Group ID
-
-Use `gutt-claude-code-plugin` as the group_id for all memory operations in this project.
+Note: The MCP server determines the group_id automatically from authentication. Do not specify group_id manually.
 
 ## Related Tickets
 
