@@ -56,13 +56,10 @@ function getGroupId() {
     return cachedConfig;
   }
 
-  // Priority 3: Fallback to empty string
-  console.error(
-    "[WARN] No GUTT group_id configured. Set GUTT_GROUP_ID env var or add to config.json",
-    "\n"
-  );
+  // Priority 3: Fallback - MCP server handles group_id via authentication
+  // No local config needed, no warning required
   cachedConfig = "";
-  cachedSource = "fallback";
+  cachedSource = "mcp-auth";
   return cachedConfig;
 }
 
