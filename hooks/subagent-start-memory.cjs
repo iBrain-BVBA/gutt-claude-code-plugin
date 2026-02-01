@@ -13,11 +13,24 @@
  * 4. Fallback: if cache empty, inject instruction to call MCP tools
  */
 
+const fs = require("fs");
+const path = require("path");
 const {
   hasCachedContent,
   formatMemoryContext,
   getLastSearchQuery,
 } = require("./lib/memory-cache.cjs");
+
+// Debug logging for troubleshooting (writes to .state dir)
+function debugLog(hook, error) {
+  try {
+    const logFile = path.join(process.cwd(), ".claude", "hooks", ".state", "hook-errors.log");
+    const entry = `${new Date().toISOString()} [${hook}] ${error?.message || error}\n`;
+    fs.appendFileSync(logFile, entry);
+  } catch {
+    /* ignore logging errors */
+  }
+}
 
 // Capture stdin to variable first (can only read once - per GUTT lesson)
 let input = "";
@@ -79,8 +92,9 @@ Apply any relevant lessons and patterns to inform your approach.
     }
 
     process.exitCode = 0;
-  } catch {
-    // Silent failure - don't block workflow
+  } catch (err) {
+    // Log error for debugging, but don't block workflow
+    debugLog("SubagentStart", err);
     process.exitCode = 0;
   }
 });
