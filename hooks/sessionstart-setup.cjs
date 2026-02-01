@@ -93,12 +93,29 @@ function saveSettings(settings) {
 }
 
 /**
+ * Get plugin version from package.json
+ * @returns {string} Plugin version or "unknown"
+ */
+function getPluginVersion() {
+  try {
+    const pkgPath = path.join(__dirname, "..", "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      return pkg.version || "unknown";
+    }
+  } catch {
+    // ignore
+  }
+  return "unknown";
+}
+
+/**
  * Write marker file with timestamp and version
  */
 function writeMarker() {
   const marker = {
     configuredAt: new Date().toISOString(),
-    version: "1.0.0",
+    version: getPluginVersion(),
   };
   const content = JSON.stringify(marker, null, 2);
   atomicWrite(MARKER_FILE, content);
@@ -162,5 +179,11 @@ function setup() {
   }
 }
 
-// Run setup
-setup();
+// Read JSON input from stdin (required for hooks)
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", () => {
+  // Consume stdin data (required for hook protocol)
+});
+process.stdin.on("end", () => {
+  setup();
+});

@@ -5,6 +5,9 @@
  * Supports chaining with other statusline scripts via passthroughCommand
  */
 
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 const { spawn } = require("child_process");
 const { getState } = require("./lib/session-state.cjs");
 const { getGroupId, isConfigured, getConfig } = require("./lib/config.cjs");
@@ -35,6 +38,25 @@ function formatTicker(items) {
   // Show the most recent fresh item
   const item = freshItems[0];
   return `${item.icon} ${item.text}`;
+}
+
+/**
+ * Load user settings from ~/.claude/settings.json
+ * Returns empty object on failure (fail-safe)
+ * @returns {Object} Parsed settings or empty object
+ */
+function loadUserSettings() {
+  try {
+    const HOME_DIR = process.env.HOME || process.env.USERPROFILE || os.homedir();
+    const settingsPath = path.join(HOME_DIR, ".claude", "settings.json");
+    if (!fs.existsSync(settingsPath)) {
+      return {};
+    }
+    const content = fs.readFileSync(settingsPath, "utf8");
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -126,8 +148,11 @@ process.stdin.on("end", async () => {
     claudeSegment = ` | [${model}]${cost ? " " + cost : ""}`;
   }
 
-  // Check for passthrough config
-  const passthroughCmd = config?.gutt?.statusline?.passthroughCommand;
+  // Check for passthrough config - try user settings first, then project config
+  const userSettings = loadUserSettings();
+  const passthroughCmd =
+    userSettings?.gutt?.statusline?.passthroughCommand ||
+    config?.gutt?.statusline?.passthroughCommand;
   const multiLine = config?.gutt?.statusline?.multiLine === true;
   const showTicker = config?.gutt?.statusline?.showTicker === true;
 
