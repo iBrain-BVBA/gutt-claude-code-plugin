@@ -112,6 +112,8 @@ The statusline is auto-enabled on first session. Optional settings in `~/.claude
 
 ### Hooks
 
+> **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
+
 | Hook                     | Event            | Purpose                                  |
 | ------------------------ | ---------------- | ---------------------------------------- |
 | `session-start.cjs`      | SessionStart     | Shows setup reminder if not configured   |
