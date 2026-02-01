@@ -1,11 +1,10 @@
 {
   "name": "gutt-claude-code-plugin",
-  "version": "1.2.3",
+  "version": "1.2.5",
   "author": {
     "name": "iBRAIN BV",
     "email": "support@gutt.pro"
   },
   "description": "Persistent organizational memory for Claude Code via GUTT",
-  "homepage": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
-  "hooks": "./hooks/hooks.json"
+  "homepage": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin"
 }
