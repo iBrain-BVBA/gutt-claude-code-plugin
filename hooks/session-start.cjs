@@ -5,21 +5,9 @@
  * Clears memory cache for fresh state each session
  */
 
-const fs = require("fs");
-const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
-
-// Debug logging for troubleshooting
-function debugLog(hook, error) {
-  try {
-    const logFile = path.join(process.cwd(), ".claude", "hooks", ".state", "hook-errors.log");
-    const entry = `${new Date().toISOString()} [${hook}] ${error?.message || error}\n`;
-    fs.appendFileSync(logFile, entry);
-  } catch {
-    /* ignore */
-  }
-}
+const { debugLog } = require("./lib/debug.cjs");
 
 // Read JSON input from stdin (required for hooks)
 process.stdin.setEncoding("utf8");

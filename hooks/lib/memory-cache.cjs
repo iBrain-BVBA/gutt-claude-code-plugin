@@ -11,18 +11,7 @@
 
 const fs = require("fs");
 const path = require("path");
-
-// Debug logging for troubleshooting
-function debugLog(context, error) {
-  try {
-    const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const logFile = path.join(PROJECT_ROOT, ".claude", "hooks", ".state", "hook-errors.log");
-    const entry = `${new Date().toISOString()} [memory-cache:${context}] ${error?.message || error}\n`;
-    fs.appendFileSync(logFile, entry);
-  } catch {
-    /* ignore logging errors */
-  }
-}
+const { debugLog } = require("./debug.cjs");
 
 // Store cache in the project's .claude directory (same location as session-state.cjs)
 const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();

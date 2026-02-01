@@ -13,24 +13,12 @@
  * 4. Fallback: if cache empty, inject instruction to call MCP tools
  */
 
-const fs = require("fs");
-const path = require("path");
 const {
   hasCachedContent,
   formatMemoryContext,
   getLastSearchQuery,
 } = require("./lib/memory-cache.cjs");
-
-// Debug logging for troubleshooting (writes to .state dir)
-function debugLog(hook, error) {
-  try {
-    const logFile = path.join(process.cwd(), ".claude", "hooks", ".state", "hook-errors.log");
-    const entry = `${new Date().toISOString()} [${hook}] ${error?.message || error}\n`;
-    fs.appendFileSync(logFile, entry);
-  } catch {
-    /* ignore logging errors */
-  }
-}
+const { debugLog } = require("./lib/debug.cjs");
 
 // Capture stdin to variable first (can only read once - per GUTT lesson)
 let input = "";
