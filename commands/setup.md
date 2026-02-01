@@ -27,11 +27,9 @@ Configure gutt MCP server connection.
 
 ### Step 1: Check Existing Configuration
 
-Read `.mcp.json` in the CURRENT PROJECT DIRECTORY (not user home).
+Check if `gutt-mcp-remote` is already configured by attempting to list MCP resources.
 
-Look for `gutt-mcp-remote` entry.
-
-If found, show the URL and ask: "Reconfigure?" / "Test connection?" / "Exit"
+If found, show the configured endpoint and ask: "Reconfigure?" / "Test connection?" / "Exit"
 
 ### Step 2: Get MCP Endpoint URL
 
@@ -47,35 +45,41 @@ Validate:
 - Must start with `https://`
 - Must end with `/mcp`
 
-### Step 3: Write Configuration
+### Step 3: Add MCP Server
 
-Write `.mcp.json` in project root:
+Run the `claude mcp add` command:
 
-```json
-{
-  "gutt-mcp-remote": {
-    "type": "http",
-    "url": "[USER_PROVIDED_URL]"
-  }
-}
+```bash
+claude mcp add gutt-mcp-remote --transport http --scope user "[USER_PROVIDED_URL]"
 ```
 
-Add `.mcp.json` to `.gitignore` if not present.
+This registers the MCP server in Claude Code's user settings.
 
-### Step 4: Done
+### Step 4: Trigger OAuth
+
+After adding the MCP server, trigger OAuth authentication by calling:
+
+```
+mcp__gutt-mcp-remote__search_memory_nodes(query: "connection test", max_nodes: 1)
+```
+
+This opens the OAuth popup in the browser where the user authenticates.
+
+### Step 5: Done
 
 ```
 gutt Setup Complete!
 
 Endpoint: [url]
 
-Restart Claude Code to activate.
+Memory features are now active. No restart needed.
 ```
 
 ## What NOT To Do
 
 - Do NOT read `~/.claude/settings.json` to find URLs
 - Do NOT construct paths with usernames
-- Do NOT open browsers
+- Do NOT open browsers manually (OAuth popup opens automatically)
 - Do NOT ask about group_id
 - Do NOT use AskUserQuestion for the URL - just ask as plain text
+- Do NOT write `.mcp.json` files - use `claude mcp add` instead

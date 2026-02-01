@@ -6,6 +6,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
+
 const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
@@ -17,6 +19,11 @@ process.stdin.on("data", (chunk) => {
   input += chunk;
 });
 process.stdin.on("end", () => {
+  // Check if gutt-mcp-remote is configured - exit silently if not
+  if (!isGuttMcpConfigured(projectDir)) {
+    process.exit(0);
+  }
+
   let prompt = "unknown";
   try {
     const data = JSON.parse(input);
