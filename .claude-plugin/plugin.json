@@ -7,8 +7,8 @@
   },
   "description": "Persistent organizational memory for Claude Code via GUTT",
   "homepage": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
-  "agents": "./agents/",
-  "commands": "./commands/",
-  "skills": "./skills/",
+  "agents": ["./agents/"],
+  "commands": ["./commands/"],
+  "skills": ["./skills/"],
   "hooks": "./hooks/hooks.json"
 }
