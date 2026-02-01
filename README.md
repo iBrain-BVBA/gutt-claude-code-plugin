@@ -69,38 +69,24 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ### Setup
 
-After installing the plugin, run the setup wizard to configure your gutt connection:
+After installing the plugin, run the setup wizard:
 
 ```
 /gutt-claude-code-plugin:setup
 ```
 
-Or use the shorter alias:
+The wizard will:
 
-```
-/gutt-claude-code-plugin:start
-```
+1. Ask for your organization's gutt MCP endpoint URL
+2. Register the MCP server with Claude Code
 
-Or configure manually:
+After the wizard completes:
 
-1. Copy the template:
+1. **Restart Claude Code** (Ctrl+C, then run `claude` again)
+2. Run `/mcp` and select `gutt-mcp-remote`
+3. Choose **"Authenticate"** to complete OAuth login
 
-   ```bash
-   cp .mcp.json.template .mcp.json
-   ```
-
-2. Edit `.mcp.json` and replace the entire URL with your organization's MCP endpoint:
-
-   ```json
-   {
-     "gutt-mcp-remote": {
-       "type": "http",
-       "url": "https://your-org-mcp-server.a.run.app/mcp"
-     }
-   }
-   ```
-
-3. Restart Claude Code to load the MCP server
+Memory features will be active after authentication.
 
 ## Features
 
@@ -220,7 +206,7 @@ gutt-claude-code-plugin/
 ├── commands/
 │   ├── setup.md               # Setup wizard
 │   └── start.md               # Alias for setup
-├── .mcp.json                 # MCP server template
+├── .mcp.json.template        # Reference template (setup uses `claude mcp add`)
 └── README.md
 ```
 
@@ -244,15 +230,15 @@ This plugin works on:
 
 ### Hook not firing
 
-1. Check `.claude/settings.json` includes the hooks
+1. Verify plugin is installed: run `/plugins` to check gutt-claude-code-plugin is listed
 2. Verify Node.js is in PATH
-3. Check hook file permissions
+3. Restart Claude Code to reload hooks
 
 ### MCP connection failed
 
-1. Verify API key with your organization admin
+1. Verify OAuth completed: run `/mcp`, select `gutt-mcp-remote`, choose "Authenticate"
 2. Check network connectivity to your organization's MCP endpoint
-3. Try: `npx -y @gutt/mcp-remote --version`
+3. Contact your organization admin if authentication fails
 
 ### Memory search returns no results
 
