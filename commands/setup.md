@@ -55,24 +55,22 @@ claude mcp add gutt-mcp-remote --transport http --scope user "[USER_PROVIDED_URL
 
 This registers the MCP server in Claude Code's user settings.
 
-### Step 4: Trigger OAuth
+### Step 4: Done - Next Steps
 
-After adding the MCP server, trigger OAuth authentication by calling:
-
-```
-mcp__gutt-mcp-remote__search_memory_nodes(query: "connection test", max_nodes: 1)
-```
-
-This opens the OAuth popup in the browser where the user authenticates.
-
-### Step 5: Done
+Show the user:
 
 ```
-gutt Setup Complete!
+gutt MCP Server Added!
 
 Endpoint: [url]
 
-Memory features are now active. No restart needed.
+NEXT STEPS:
+1. Restart Claude Code (Ctrl+C, then run `claude` again)
+2. After restart, run `/mcp`
+3. Select `gutt-mcp-remote`
+4. Choose "Authenticate" to complete OAuth login
+
+After authentication, memory features will be active.
 ```
 
 ## What NOT To Do
