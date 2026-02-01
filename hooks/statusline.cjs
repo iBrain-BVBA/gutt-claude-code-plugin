@@ -153,8 +153,12 @@ process.stdin.on("end", async () => {
   const passthroughCmd =
     userSettings?.gutt?.statusline?.passthroughCommand ||
     config?.gutt?.statusline?.passthroughCommand;
-  const multiLine = config?.gutt?.statusline?.multiLine === true;
-  const showTicker = config?.gutt?.statusline?.showTicker === true;
+  const multiLine =
+    userSettings?.gutt?.statusline?.multiLine === true ||
+    config?.gutt?.statusline?.multiLine === true;
+  const showTicker =
+    userSettings?.gutt?.statusline?.showTicker === true ||
+    config?.gutt?.statusline?.showTicker === true;
 
   // Generate ticker line if enabled (toast-style: shows for 5 seconds then disappears)
   let tickerLine = null;

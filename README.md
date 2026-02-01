@@ -40,11 +40,8 @@ This plugin provides a memory backbone for Claude Code, enabling:
 #### Via Marketplace (Recommended)
 
 ```bash
-# Add the gutt marketplace
-/plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
-
-# Install the plugin
-/plugin install gutt-claude-code-plugin
+# Add the plugin from marketplace
+/plugin add iBrain-BVBA/gutt-claude-code-plugin
 ```
 
 #### Manual Installation
@@ -100,13 +97,14 @@ Real-time gutt status in your Claude Code HUD:
 - **Memory stats** — `mem:X` queries, `lessons:X` captured
 - **Toast notifications** — Shows memory operations for 5 seconds
 
-Enable in `config.json`:
+The statusline is auto-enabled on first session. Optional settings in `~/.claude/settings.json`:
 
 ```json
 {
   "gutt": {
     "statusline": {
-      "showTicker": true
+      "showTicker": true,
+      "multiLine": true
     }
   }
 }
@@ -114,15 +112,18 @@ Enable in `config.json`:
 
 ### Hooks
 
+> **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
+
 | Hook                     | Event            | Purpose                                  |
 | ------------------------ | ---------------- | ---------------------------------------- |
+| `session-start.cjs`      | SessionStart     | Shows setup reminder if not configured   |
+| `sessionstart-setup.cjs` | SessionStart     | Auto-enables HUD statusline on first run |
 | `user-prompt-submit.cjs` | UserPromptSubmit | Reminds to search memory before tasks    |
 | `stop-lessons.cjs`       | Stop             | Prompts for lesson capture after work    |
 | `post-tool-lint.cjs`     | PostToolUse      | Auto-lints files after Edit/Write        |
 | `pre-task-memory.cjs`    | PreToolUse       | Injects memory context before subagents  |
 | `post-task-lessons.cjs`  | PostToolUse      | Captures lessons when subagents complete |
 | `post-memory-ops.cjs`    | PostToolUse      | Tracks memory tool calls for statusline  |
-| `statusline.cjs`         | Notification     | Renders gutt status in HUD               |
 
 **Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents (including OMC's 32 agents) get organizational context and contribute lessons back.
 
@@ -189,6 +190,8 @@ gutt-claude-code-plugin/
 ├── docs/
 │   └── statusline-hud.png   # HUD screenshot
 ├── hooks/
+│   ├── session-start.cjs       # Setup reminder
+│   ├── sessionstart-setup.cjs  # Auto-enable HUD
 │   ├── user-prompt-submit.cjs  # Memory reminder
 │   ├── stop-lessons.cjs        # Lesson capture prompt
 │   ├── post-tool-lint.cjs      # Auto-lint
@@ -242,9 +245,9 @@ This plugin works on:
 
 ### Memory search returns no results
 
-1. Ensure you're using the correct group_id
+1. Verify OAuth authentication completed successfully
 2. Try broader search terms
-3. Check if memory has been populated
+3. Check if memory has been populated for your organization
 
 ## Contributing
 
