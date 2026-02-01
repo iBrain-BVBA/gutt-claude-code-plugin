@@ -27,6 +27,17 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/subagent-plan-review.cjs"
+          }
+        ]
+      }
     ]
   }
 }
