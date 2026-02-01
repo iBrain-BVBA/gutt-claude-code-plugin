@@ -11,9 +11,8 @@ Run the full setup wizard to configure your gutt MCP server connection.
 **What it does:**
 
 1. Asks for your MCP endpoint URL (text input)
-2. Optionally chains with existing statusline
-3. Writes `.mcp.json` configuration
-4. Tests the connection
+2. Writes `.mcp.json` configuration
+3. Tells you to restart Claude Code
 
 **Usage:**
 

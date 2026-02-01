@@ -62,20 +62,7 @@ Write `.mcp.json` in project root:
 
 Add `.mcp.json` to `.gitignore` if not present.
 
-### Step 4: Test Connection
-
-Call `mcp__gutt-mcp-remote__search_memory_nodes` with:
-
-- query: "connection test"
-- max_nodes: 1
-
-**IMPORTANT:** Just call the MCP tool. Do NOT open any browser windows.
-
-- If successful: Show "Connected!"
-- If auth error: The MCP response will contain instructions. Show them to the user.
-- If other error: Show the error message.
-
-### Step 5: Done
+### Step 4: Done
 
 ```
 gutt Setup Complete!
