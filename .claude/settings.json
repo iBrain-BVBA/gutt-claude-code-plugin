@@ -15,5 +15,18 @@
     ],
     "deny": []
   },
-  "mcpServers": {}
+  "mcpServers": {},
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/sessionstart-setup.cjs"
+          }
+        ]
+      }
+    ]
+  }
 }
