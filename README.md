@@ -72,7 +72,13 @@ This plugin provides a memory backbone for Claude Code, enabling:
 After installing the plugin, run the setup wizard to configure your gutt connection:
 
 ```
-/gutt-setup
+/gutt-claude-code-plugin:setup
+```
+
+Or use the shorter alias:
+
+```
+/gutt-claude-code-plugin:start
 ```
 
 Or configure manually:
@@ -87,7 +93,7 @@ Or configure manually:
 
    ```json
    {
-     "gutt-pro-memory": {
+     "gutt-mcp-remote": {
        "type": "http",
        "url": "https://your-org-mcp-server.a.run.app/mcp"
      }
@@ -136,10 +142,10 @@ Enable in `config.json`:
 
 ### Skills
 
-| Skill            | Command             | Purpose                                      |
-| ---------------- | ------------------- | -------------------------------------------- |
-| memory-retrieval | `/memory-retrieval` | 3-part memory search (facts, nodes, lessons) |
-| memory-capture   | `/memory-capture`   | Structured lesson capture with 4 patterns    |
+| Skill            | Command                                     | Purpose                                      |
+| ---------------- | ------------------------------------------- | -------------------------------------------- |
+| memory-retrieval | `/gutt-claude-code-plugin:memory-retrieval` | 3-part memory search (facts, nodes, lessons) |
+| memory-capture   | `/gutt-claude-code-plugin:memory-capture`   | Structured lesson capture with 4 patterns    |
 
 ### Agents
 
@@ -156,7 +162,7 @@ Enable in `config.json`:
 Search organizational memory before starting work:
 
 ```
-/memory-retrieval "authentication patterns"
+/gutt-claude-code-plugin:memory-retrieval "authentication patterns"
 ```
 
 Returns:
@@ -170,7 +176,7 @@ Returns:
 Capture learnings using one of 4 patterns:
 
 ```
-/memory-capture "We decided to use relative paths instead of env vars for cross-platform compatibility"
+/gutt-claude-code-plugin:memory-capture "We decided to use relative paths instead of env vars for cross-platform compatibility"
 ```
 
 **Patterns:**
@@ -212,7 +218,8 @@ gutt-claude-code-plugin/
 │   ├── memory-keeper.md
 │   └── config-discovery.md
 ├── commands/
-│   └── setup.md
+│   ├── setup.md               # Setup wizard
+│   └── start.md               # Alias for setup
 ├── .mcp.json                 # MCP server template
 └── README.md
 ```
