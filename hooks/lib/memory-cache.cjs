@@ -11,6 +11,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { debugLog } = require("./debug.cjs");
 
 // Store cache in the project's .claude directory (same location as session-state.cjs)
 const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -204,8 +205,9 @@ function writeCache(cache) {
       fs.unlinkSync(CACHE_PATH);
     }
     fs.renameSync(tempPath, CACHE_PATH);
-  } catch {
+  } catch (err) {
     // Fallback: write directly
+    debugLog("writeCache", err);
     fs.writeFileSync(CACHE_PATH, serialized);
   } finally {
     // Cleanup temp file if it exists

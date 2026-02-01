@@ -7,6 +7,7 @@
 
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 // Read JSON input from stdin (required for hooks)
 process.stdin.setEncoding("utf8");
@@ -17,8 +18,8 @@ process.stdin.on("end", () => {
   // Clear memory cache for fresh state each session
   try {
     clearMemoryCache();
-  } catch {
-    // Silent - don't block session start
+  } catch (err) {
+    debugLog("SessionStart", err);
   }
 
   // Check if gutt-mcp-remote is configured

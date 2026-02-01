@@ -18,6 +18,7 @@ const {
   formatMemoryContext,
   getLastSearchQuery,
 } = require("./lib/memory-cache.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 // Capture stdin to variable first (can only read once - per GUTT lesson)
 let input = "";
@@ -79,8 +80,9 @@ Apply any relevant lessons and patterns to inform your approach.
     }
 
     process.exitCode = 0;
-  } catch {
-    // Silent failure - don't block workflow
+  } catch (err) {
+    // Log error for debugging, but don't block workflow
+    debugLog("SubagentStart", err);
     process.exitCode = 0;
   }
 });

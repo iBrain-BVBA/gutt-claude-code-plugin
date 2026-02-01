@@ -7,29 +7,39 @@
  * Usage: node tests/e2e-memory-injection.test.cjs
  */
 
+let failures = 0;
+
+function fail(msg) {
+  console.log(`  ✗ ${msg}`);
+  failures++;
+}
+
+function pass(msg) {
+  console.log(`  ✓ ${msg}`);
+}
+
 console.log("=== GP-454 E2E Test: Deterministic Memory Injection ===\n");
 
 // Test 1: Cache module loads correctly
 console.log("Test 1: Cache module loads...");
 try {
   const cache = require("../hooks/lib/memory-cache.cjs");
-  console.log("  ✓ memory-cache.cjs loads successfully");
-  console.log(`  ✓ Exports: ${Object.keys(cache).join(", ")}`);
+  pass("memory-cache.cjs loads successfully");
+  pass(`Exports: ${Object.keys(cache).join(", ")}`);
 } catch (e) {
-  console.log(`  ✗ Failed: ${e.message}`);
+  fail(`Failed: ${e.message}`);
   process.exit(1);
 }
 
 // Test 2: SubagentStart hook loads correctly
 console.log("\nTest 2: SubagentStart hook loads...");
 try {
-  // Just check syntax - can't test stdin interaction here
   require("child_process").execSync("node --check hooks/subagent-start-memory.cjs", {
     stdio: "pipe",
   });
-  console.log("  ✓ subagent-start-memory.cjs syntax OK");
+  pass("subagent-start-memory.cjs syntax OK");
 } catch (e) {
-  console.log(`  ✗ Syntax error: ${e.message}`);
+  fail(`Syntax error: ${e.message}`);
   process.exit(1);
 }
 
@@ -44,7 +54,7 @@ const {
 } = require("../hooks/lib/memory-cache.cjs");
 
 clearMemoryCache();
-console.log("  ✓ Cache cleared");
+pass("Cache cleared");
 
 const testLessons = [
   { summary: "Test lesson 1", guidance: "Test guidance 1", outcome: "positive" },
@@ -60,17 +70,17 @@ updateMemoryCache("facts", testFacts);
 
 const cached = getMemoryCache();
 if (cached.lessons.length === 2 && cached.facts.length === 2) {
-  console.log("  ✓ Cache populated with 2 lessons and 2 facts");
+  pass("Cache populated with 2 lessons and 2 facts");
 } else {
-  console.log(`  ✗ Cache mismatch: ${cached.lessons.length} lessons, ${cached.facts.length} facts`);
+  fail(`Cache mismatch: ${cached.lessons.length} lessons, ${cached.facts.length} facts`);
 }
 
 // Test 4: hasCachedContent
 console.log("\nTest 4: hasCachedContent...");
 if (hasCachedContent()) {
-  console.log("  ✓ hasCachedContent() returns true");
+  pass("hasCachedContent() returns true");
 } else {
-  console.log("  ✗ hasCachedContent() returns false");
+  fail("hasCachedContent() returns false");
 }
 
 // Test 5: formatMemoryContext
@@ -81,7 +91,7 @@ if (
   formatted.includes("[GUTT Organizational Memory]") &&
   formatted.includes("Test lesson 1")
 ) {
-  console.log("  ✓ formatMemoryContext() generates correct output");
+  pass("formatMemoryContext() generates correct output");
   console.log("  Preview:");
   console.log(
     formatted
@@ -91,7 +101,7 @@ if (
       .join("\n")
   );
 } else {
-  console.log("  ✗ formatMemoryContext() output incorrect");
+  fail("formatMemoryContext() output incorrect");
 }
 
 // Test 6: SubagentStart hook output simulation
@@ -110,20 +120,28 @@ try {
     parsed.hookSpecificOutput?.hookEventName === "SubagentStart" &&
     parsed.hookSpecificOutput?.additionalContext?.includes("[GUTT Organizational Memory]")
   ) {
-    console.log("  ✓ Hook outputs correct JSON structure");
-    console.log("  ✓ additionalContext contains memory");
+    pass("Hook outputs correct JSON structure");
+    pass("additionalContext contains memory");
   } else {
-    console.log("  ✗ Hook output structure incorrect");
+    fail("Hook output structure incorrect");
     console.log("  Output:", output.substring(0, 200));
   }
 } catch (e) {
-  console.log(`  ✗ Hook execution failed: ${e.message}`);
+  fail(`Hook execution failed: ${e.message}`);
 }
 
 // Cleanup
 clearMemoryCache();
 
 console.log("\n=== E2E Test Complete ===");
+
+if (failures > 0) {
+  console.log(`\n❌ ${failures} test(s) failed`);
+  process.exit(1);
+} else {
+  console.log("\n✅ All tests passed");
+}
+
 console.log("\nTo complete full E2E testing:");
 console.log("1. Restart Claude Code to load new hooks");
 console.log("2. Call: mcp__gutt-mcp-remote__fetch_lessons_learned(query: 'test')");

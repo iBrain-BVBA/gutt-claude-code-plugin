@@ -27,7 +27,7 @@ process.stdin.on("end", () => {
 
     // Extract task details
     const toolInput = data.tool_input || {};
-    const toolResult = data.tool_result || data.result || "";
+    const toolResult = data.tool_response || data.tool_result || data.result || "";
     const prompt = toolInput.prompt || "";
     const subagentType = toolInput.subagent_type || "";
 
