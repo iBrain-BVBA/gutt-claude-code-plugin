@@ -1,51 +1,51 @@
 # gutt Setup Skill
 
-Configure gutt MCP server connection. The MCP server handles authentication (OAuth) and authorization automatically.
+Configure gutt MCP server connection.
 
-## When to Use
+## CRITICAL RULES - READ FIRST
 
-- First-time gutt setup
-- Reconfigure endpoint URL
-- Test existing connection
+**YOU MUST FOLLOW THESE RULES:**
+
+1. **NO HARDCODED PATHS** - Never use paths like `C:\Users\username`. Always use:
+   - Windows: `%USERPROFILE%` or `$env:USERPROFILE` (PowerShell)
+   - Unix: `$HOME`
+
+2. **NO MANUAL BROWSER OPENING** - NEVER run Bash commands like:
+   - `start "" "https://..."`
+   - `open https://...`
+   - `xdg-open https://...`
+
+3. **NO CONSTRUCTED AUTH URLs** - NEVER construct URLs like `https://domain/auth/login`. The MCP server returns auth URLs in its response if needed.
+
+4. **NO GROUP_ID QUESTION** - The MCP server handles authorization automatically.
 
 ## Setup Flow
 
 ### Step 1: Check Existing Configuration
 
-Read `.mcp.json` in project root. Look for `gutt-mcp-remote` entry.
+Read `.mcp.json` in the CURRENT PROJECT DIRECTORY (not user home).
 
-If already configured:
+Look for `gutt-mcp-remote` entry.
 
-- Show current endpoint URL
-- Ask: "Reconfigure?" / "Test connection?" / "Exit"
+If found, show the URL and ask: "Reconfigure?" / "Test connection?" / "Exit"
 
 ### Step 2: Get MCP Endpoint URL
 
-**Ask for text input directly** (NOT multiple choice - just ask for the URL):
+Ask the user directly for their URL (plain text question, NOT multiple choice):
 
 ```
 Enter your organization's gutt MCP endpoint URL:
 (Example: https://your-org.a.run.app/mcp)
 ```
 
-**Validation:**
+Validate:
 
 - Must start with `https://`
 - Must end with `/mcp`
-- If invalid, show error and ask again
 
-### Step 3: Detect Existing Statusline (Optional)
+### Step 3: Write Configuration
 
-Read `~/.claude/settings.json` (Windows: `%USERPROFILE%\.claude\settings.json`).
-
-If `statusLine.command` exists:
-
-- Ask: "Chain with existing?" (Recommended) / "Replace?"
-- If chain: Store in `config.json` → `gutt.statusline.passthroughCommand`
-
-### Step 4: Write Configuration
-
-Create `.mcp.json` in project root:
+Write `.mcp.json` in project root:
 
 ```json
 {
@@ -56,76 +56,35 @@ Create `.mcp.json` in project root:
 }
 ```
 
-If chaining statusline, create `config.json`:
+Add `.mcp.json` to `.gitignore` if not present.
 
-```json
-{
-  "gutt": {
-    "statusline": {
-      "passthroughCommand": "[EXISTING_COMMAND]"
-    }
-  }
-}
-```
+### Step 4: Test Connection
 
-Add `.mcp.json` to `.gitignore` if not already present.
+Call `mcp__gutt-mcp-remote__search_memory_nodes` with:
 
-### Step 5: Test Connection
+- query: "connection test"
+- max_nodes: 1
 
-Call `mcp__gutt-mcp-remote__search_memory_nodes` with query "connection test".
+**IMPORTANT:** Just call the MCP tool. Do NOT open any browser windows.
 
-**IMPORTANT: DO NOT manually open browser or construct auth URLs!**
-The MCP transport layer handles OAuth automatically. Just call the tool.
+- If successful: Show "Connected!"
+- If auth error: The MCP response will contain instructions. Show them to the user.
+- If other error: Show the error message.
 
-- Success: Show "Connected!"
-- Auth needed: The MCP server response will contain the auth URL. Show that URL to the user and say "Please open this URL in your browser to authenticate, then say 'retry'."
-- Other failure: Show error message from MCP response
-
-### Step 6: Success
+### Step 5: Done
 
 ```
 gutt Setup Complete!
 
-Endpoint: [endpoint]
-Auth: Handled automatically by MCP server
+Endpoint: [url]
 
-Restart Claude Code to activate hooks and statusline.
-
-Available commands:
-  /gutt-claude-code-plugin:memory-retrieval - Search memory
-  /gutt-claude-code-plugin:memory-capture - Capture lessons
+Restart Claude Code to activate.
 ```
 
-## Error Handling
+## What NOT To Do
 
-### Invalid URL
-
-```
-Invalid endpoint URL.
-
-Requirements:
-- Must start with https://
-- Must end with /mcp
-
-Example: https://your-org.a.run.app/mcp
-```
-
-### Connection Failed
-
-```
-Could not connect to gutt MCP server.
-
-Please check:
-1. Endpoint URL is correct
-2. Network can reach the endpoint
-3. MCP server is running
-
-Contact your organization admin if the problem persists.
-```
-
-## Important Notes
-
-- **NO group_id question** - MCP server handles this via OAuth/authorization
-- **Text input for URL** - Don't use AskUserQuestion with options, just ask for the URL directly
-- **NO manual auth URLs** - NEVER use Bash to open browser or construct auth URLs. The MCP response contains the auth URL if needed.
-- MCP key is `gutt-mcp-remote` (not `gutt-pro-memory`)
+- Do NOT read `~/.claude/settings.json` to find URLs
+- Do NOT construct paths with usernames
+- Do NOT open browsers
+- Do NOT ask about group_id
+- Do NOT use AskUserQuestion for the URL - just ask as plain text
