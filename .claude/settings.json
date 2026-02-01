@@ -28,6 +28,39 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/pre-task-memory.cjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__gutt-mcp-remote__*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/post-memory-ops.cjs"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/subagent-start-memory.cjs"
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "matcher": "",

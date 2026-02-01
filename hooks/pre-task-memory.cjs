@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * PreToolUse hook for Task tool - injects organizational memory context
+ * PreToolUse hook for Task tool - extracts search query for SubagentStart
  *
- * ENFORCEMENT: Subagents cannot start without memory being fetched first.
- * This hook queries GUTT memory and injects relevant context into the task prompt.
+ * This hook extracts search terms from the task prompt and stores them
+ * for the SubagentStart hook to use when injecting cached memory.
+ *
+ * Data flow:
+ * 1. THIS HOOK extracts search query from task prompt and stores it
+ * 2. SubagentStart hook reads the query and injects cached memory results
  */
 
 const { incrementMemoryQueries } = require("./lib/session-state.cjs");
+const { setLastSearchQuery } = require("./lib/memory-cache.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -37,22 +42,15 @@ process.stdin.on("end", async () => {
 
     // Extract key terms from the prompt for memory search
     const searchQuery = extractSearchTerms(prompt, subagentType);
+
+    // Store search query for SubagentStart hook to use
+    setLastSearchQuery(searchQuery);
+
     // Increment memory query counter
     incrementMemoryQueries();
 
-    // Output context injection message
-    // The hook output becomes additional context for the agent
-    console.log(`[GUTT Memory Context]
-Before executing this task, the following organizational memory was retrieved:
-
-Search query: "${searchQuery}"
-
-IMPORTANT: Use the GUTT MCP tools to fetch relevant context:
-- mcp__gutt-mcp-remote__fetch_lessons_learned(query: "${searchQuery}")
-- mcp__gutt-mcp-remote__search_memory_facts(query: "${searchQuery}")
-
-Apply any relevant lessons and patterns to inform your approach.
-[End GUTT Memory Context]`);
+    // Silent exit - SubagentStart will handle the actual injection
+    process.exit(0);
   } catch {
     // Silent exit on errors - don't block the tool
     process.exit(0);
