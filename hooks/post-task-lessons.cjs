@@ -8,6 +8,18 @@
 
 const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
 
+/**
+ * Sanitize text for safe embedding in query strings and display
+ * Removes quotes, normalizes whitespace
+ */
+function sanitizeForDisplay(text) {
+  return text
+    .replace(/[\r\n]+/g, " ") // Replace newlines with space
+    .replace(/["'`]/g, "") // Remove quotes
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim();
+}
+
 // Read JSON input from stdin
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -52,6 +64,9 @@ process.stdin.on("end", () => {
     // Increment lessons captured counter
     incrementLessonsCaptured();
 
+    // Sanitize user-derived content for embedding
+    const sanitizedPrompt = sanitizeForDisplay(prompt.substring(0, 100));
+
     // Output lesson capture suggestion
     // The hook output becomes context for the orchestrator
     console.log(`[GUTT Lesson Capture Opportunity]
@@ -61,9 +76,9 @@ Detected patterns: ${lessonIndicators.join(", ")}
 
 Consider capturing lessons using memory-keeper agent:
 
-Task(subagent_type="memory-keeper", model="haiku", prompt="Review and capture lessons from this task result: ${prompt.substring(0, 100)}...")
+Task(subagent_type="memory-keeper", model="haiku", prompt="Review and capture lessons from this task result: ${sanitizedPrompt}...")
 
-Task context: "${prompt.substring(0, 100)}..."
+Task context: "${sanitizedPrompt}..."
 [End GUTT Lesson Capture]`);
   } catch {
     // Silent exit on errors - don't block the tool

@@ -8,6 +8,18 @@
 
 const { debugLog } = require("./debug.cjs");
 
+/**
+ * Sanitize text for safe embedding in query strings and display
+ * Removes quotes, normalizes whitespace
+ */
+function sanitizeForDisplay(text) {
+  return text
+    .replace(/[\r\n]+/g, " ") // Replace newlines with space
+    .replace(/["'`]/g, "") // Remove quotes
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim();
+}
+
 const rejectionPatterns = [
   /no,?\s*(that's\s+)?wrong/i,
   /wrong approach/i,
@@ -179,15 +191,19 @@ ${feedback.modification ? `Modification: ${feedback.modification}` : ""}
 Outcome: ${feedback.outcome}
 Guidance: ${guidance}`;
 
+  // Sanitize user-derived content for embedding
+  const sanitizedTopic = sanitizeForDisplay(feedback.topic.substring(0, 50));
+  const sanitizedContext = sanitizeForDisplay(lessonContext);
+
   debugLog("plan-feedback-detector", `Built capture instruction for ${feedback.type} feedback`);
 
   return `🟠 ACTION REQUIRED: Capture plan feedback as lesson.
 
 ${outcomeText}. Delegate to memory-keeper agent:
 
-Task(subagent_type="memory-keeper", model="haiku", prompt="Capture plan lesson with name 'Plan Lesson: ${feedback.topic.substring(0, 50)}':
+Task(subagent_type="memory-keeper", model="haiku", prompt="Capture plan lesson with name 'Plan Lesson: ${sanitizedTopic}':
 
-${lessonContext}
+${sanitizedContext}
 
 Source: Human plan review feedback")
 
