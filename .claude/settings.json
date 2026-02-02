@@ -71,6 +71,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/stop-lessons.cjs"
+          }
+        ]
+      }
     ]
   }
 }
