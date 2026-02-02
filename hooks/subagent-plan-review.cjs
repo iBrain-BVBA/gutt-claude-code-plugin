@@ -1,6 +1,17 @@
 // hooks/subagent-plan-review.cjs
 const fs = require("fs");
 
+// Shared plan detection patterns - used by both hasPlanContent and countPlanPatterns
+const PLAN_PATTERNS = [
+  /##?\s*(plan|implementation|steps|approach|overview)/i,
+  /\b(will|going to|need to)\s+(implement|create|build|add|refactor|update|migrate)/i,
+  /\d+\.\s+(create|add|implement|update|modify|build|configure|set up)/i,
+  /files?\s+to\s+(create|modify|update|change)/i,
+  /\btask\s*\d+[:\s]/i,
+  /\b(phase|step)\s+\d+/i,
+  /(implementation|execution|development)\s+(plan|steps|tasks)/i,
+];
+
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => (input += chunk));
@@ -10,28 +21,25 @@ process.stdin.on("end", () => {
 
     // Read transcript content from any subagent
     const transcriptPath = data.agent_transcript_path;
-    const transcriptContent = extractPlanFromTranscript(transcriptPath);
+    const { fullText, summary } = extractPlanFromTranscript(transcriptPath);
 
-    // Check if transcript contains plan-like content
-    if (!hasPlanContent(transcriptContent)) {
+    // Check if the best-matching transcript message contains plan-like content
+    if (!hasPlanContent(fullText)) {
       process.exitCode = 0;
       return;
     }
 
-    const planSummary = transcriptContent;
-
-    // Create search query from plan
-    const searchQuery = createSearchQuery(planSummary);
+    // Create search query from plan summary
+    const searchQuery = createSearchQuery(summary);
 
     // Sanitize for safe embedding in output
     const sanitizedQuery = sanitizeForDisplay(searchQuery);
-    const sanitizedSummary = sanitizeForDisplay(planSummary.substring(0, 200));
+    const sanitizedSummary = sanitizeForDisplay(summary.substring(0, 200));
 
-    // Output context injection via hookSpecificOutput
+    // Output using blocking format for SubagentStop
     const output = {
-      hookSpecificOutput: {
-        hookEventName: "SubagentStop",
-        additionalContext: `[GUTT Plan Review]
+      decision: "block",
+      reason: `[GUTT Plan Review]
 
 A plan has been created. Before proceeding with implementation:
 
@@ -40,12 +48,11 @@ A plan has been created. Before proceeding with implementation:
 - Lessons learned from related work
 - Potential pitfalls to avoid
 
-Delegate to gutt-pro-memory agent:
+Delegate to memory-keeper agent:
 
-Task(subagent_type="gutt-pro-memory", model="haiku", prompt="Search for lessons and context about: ${sanitizedQuery}")
+Task(subagent_type="memory-keeper", model="haiku", prompt="Search for lessons and context about: ${sanitizedQuery}")
 
-Plan summary: "${sanitizedSummary}${planSummary.length > 200 ? "..." : ""}"`,
-      },
+Plan summary: "${sanitizedSummary}${summary.length > 200 ? "..." : ""}"`,
     };
 
     console.log(JSON.stringify(output));
@@ -58,31 +65,33 @@ Plan summary: "${sanitizedSummary}${planSummary.length > 200 ? "..." : ""}"`,
 
 /**
  * Detect if content contains plan-like patterns
- * Matches the content-based approach used in post-task-lessons.cjs
+ * Requires at least 2 pattern matches for confidence
  */
 function hasPlanContent(text) {
   if (!text || text.length < 50) {
     return false;
   }
 
-  const planPatterns = [
-    /##?\s*(plan|implementation|steps|approach|overview)/i,
-    /\b(will|going to|need to)\s+(implement|create|build|add|refactor|update|migrate)/i,
-    /\d+\.\s+(create|add|implement|update|modify|build|configure|set up)/i,
-    /files?\s+to\s+(create|modify|update|change)/i,
-    /\btask\s*\d+[:\s]/i,
-    /\b(phase|step)\s+\d+/i,
-    /(implementation|execution|development)\s+(plan|steps|tasks)/i,
-  ];
-
-  // Require at least 2 pattern matches for confidence
-  const matches = planPatterns.filter((p) => p.test(text)).length;
+  const matches = PLAN_PATTERNS.filter((p) => p.test(text)).length;
   return matches >= 2;
 }
 
+/**
+ * Count how many plan patterns match in text
+ */
+function countPlanPatterns(text) {
+  if (!text || text.length < 50) {
+    return 0;
+  }
+
+  return PLAN_PATTERNS.filter((p) => p.test(text)).length;
+}
+
 function extractPlanFromTranscript(transcriptPath) {
+  const emptyResult = { fullText: "", summary: "" };
+
   if (!transcriptPath) {
-    return "";
+    return emptyResult;
   }
 
   try {
@@ -93,39 +102,65 @@ function extractPlanFromTranscript(transcriptPath) {
     );
 
     if (!fs.existsSync(expandedPath)) {
-      return "";
+      return emptyResult;
     }
 
     const content = fs.readFileSync(expandedPath, "utf8");
     const lines = content.trim().split("\n");
 
     // Parse JSONL and find assistant messages
+    // Handles both nested format {message: {role, content}} and flat format {role, content}
     const assistantMessages = [];
     for (const line of lines) {
       try {
         const entry = JSON.parse(line);
-        if (entry.role === "assistant" && entry.content) {
-          const text = Array.isArray(entry.content)
-            ? entry.content
+        // Handle both nested and flat message formats
+        const msg = entry.message || entry;
+        const role = msg.role;
+        const msgContent = msg.content;
+
+        if (role === "assistant" && msgContent) {
+          const text = Array.isArray(msgContent)
+            ? msgContent
                 .filter((c) => c.type === "text")
                 .map((c) => c.text)
                 .join("\n")
-            : entry.content;
-          assistantMessages.push(text);
+            : msgContent;
+          if (text) {
+            assistantMessages.push(text);
+          }
         }
       } catch {
         // Skip malformed lines
       }
     }
 
-    // Get the last substantial assistant message (likely the plan)
-    const lastMessage = assistantMessages[assistantMessages.length - 1] || "";
+    // Find the message with the most plan patterns (not just the last message)
+    let bestMessage = "";
+    let bestPatternCount = 0;
 
-    // Extract first meaningful paragraphs
-    const paragraphs = lastMessage.split("\n").filter((l) => l.trim().length > 10);
-    return paragraphs.slice(0, 5).join(" ").substring(0, 500);
+    for (let i = 0; i < assistantMessages.length; i++) {
+      const msg = assistantMessages[i];
+      const patternCount = countPlanPatterns(msg);
+      if (patternCount > bestPatternCount) {
+        bestPatternCount = patternCount;
+        bestMessage = msg;
+      }
+    }
+
+    // If no plan-like patterns were found in any message, return empty result
+    if (bestPatternCount === 0) {
+      return emptyResult;
+    }
+
+    // Extract first meaningful paragraphs for summary
+    const paragraphs = bestMessage.split("\n").filter((l) => l.trim().length > 10);
+    const summary = paragraphs.slice(0, 5).join(" ").substring(0, 500);
+
+    // Return both full text (for pattern matching) and summary (for display)
+    return { fullText: bestMessage, summary };
   } catch {
-    return "";
+    return emptyResult;
   }
 }
 
@@ -144,7 +179,7 @@ function sanitizeForDisplay(text) {
 function createSearchQuery(summary) {
   const techTerms =
     summary.match(
-      /\b(implement|create|add|fix|refactor|update|build|api|hook|component|service|database|auth|test|feature|endpoint|migration)\w*/gi
+      /\b(implement|create|add|fix|refactor|update|build|api|hook|component|service|database|auth|test|feature|endpoint|migration)\w*\b/gi
     ) || [];
   const uniqueTerms = [...new Set(techTerms.map((t) => t.toLowerCase()))];
   return uniqueTerms.slice(0, 5).join(" ") || summary.substring(0, 50);

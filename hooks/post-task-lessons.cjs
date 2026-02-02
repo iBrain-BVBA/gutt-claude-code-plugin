@@ -53,6 +53,13 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
+    // Plan agents are handled by SubagentStop hook (subagent-plan-review.cjs)
+    // to avoid duplicate prompts. Skip them here.
+    const planAgentTypes = new Set(["plan", "oh-my-claudecode:plan", "oh-my-claudecode:planner"]);
+    if (planAgentTypes.has(subagentType.toLowerCase())) {
+      process.exit(0);
+    }
+
     // Detect if result contains lesson-worthy content
     const lessonIndicators = detectLessonIndicators(toolResult);
 
@@ -67,9 +74,10 @@ process.stdin.on("end", () => {
     // Sanitize user-derived content for embedding
     const sanitizedPrompt = sanitizeForDisplay(prompt.substring(0, 100));
 
-    // Output lesson capture suggestion
-    // The hook output becomes context for the orchestrator
-    console.log(`[GUTT Lesson Capture Opportunity]
+    // Output lesson capture suggestion using hookSpecificOutput format
+    const output = {
+      hookSpecificOutput: {
+        additionalContext: `[GUTT Lesson Capture Opportunity]
 Subagent "${subagentType}" completed with potential lessons:
 
 Detected patterns: ${lessonIndicators.join(", ")}
@@ -78,8 +86,11 @@ Consider capturing lessons using memory-keeper agent:
 
 Task(subagent_type="memory-keeper", model="haiku", prompt="Review and capture lessons from this task result: ${sanitizedPrompt}...")
 
-Task context: "${sanitizedPrompt}..."
-[End GUTT Lesson Capture]`);
+Task context: "${sanitizedPrompt}..."`,
+      },
+    };
+
+    console.log(JSON.stringify(output));
   } catch {
     // Silent exit on errors - don't block the tool
     process.exit(0);
