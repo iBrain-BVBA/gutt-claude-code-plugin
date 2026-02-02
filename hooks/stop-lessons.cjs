@@ -10,9 +10,15 @@ const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { getState } = require("./lib/session-state.cjs");
 const {
   parseTranscript,
+  parseTranscriptRaw,
   getSessionDuration,
   generateSummary,
 } = require("./lib/transcript-parser.cjs");
+const {
+  detectPlanContext,
+  extractPlanFeedback,
+  buildCaptureInstruction,
+} = require("./lib/plan-feedback-detector.cjs");
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
@@ -42,6 +48,7 @@ process.stdin.on("end", () => {
   }
 
   const stateFile = path.join(stateDir, `${sessionId}.lessons-prompted`);
+  const planFeedbackStateFile = path.join(stateDir, `${sessionId}.plan-feedback-prompted`);
 
   // Ensure directories exist
   if (!fs.existsSync(path.dirname(logFile))) {
@@ -51,6 +58,46 @@ process.stdin.on("end", () => {
     fs.mkdirSync(stateDir, { recursive: true });
   }
 
+  // Parse transcript if provided
+  const transcriptPath = hookInput.transcript_path;
+
+  // STEP 1: Check for plan feedback FIRST (before regular lesson capture)
+  const transcriptEntries = parseTranscriptRaw(transcriptPath);
+  const planContext = detectPlanContext(transcriptEntries);
+
+  if (planContext) {
+    // Plan detected - check for user feedback
+    const planFeedback = extractPlanFeedback(transcriptEntries, planContext);
+
+    if (planFeedback && !planFeedback.skip) {
+      // Rejected or modified plan - check if already prompted
+      if (fs.existsSync(planFeedbackStateFile)) {
+        fs.appendFileSync(
+          logFile,
+          `[${timestamp}] Stop hook: Plan feedback already prompted for session ${sessionId}, allowing stop\n`
+        );
+        process.exit(0);
+      }
+
+      // Block stop and prompt for plan feedback capture
+      fs.writeFileSync(planFeedbackStateFile, "");
+      fs.appendFileSync(
+        logFile,
+        `[${timestamp}] Stop hook: Blocking stop for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
+      );
+
+      console.log(
+        JSON.stringify({
+          decision: "block",
+          reason: buildCaptureInstruction(planFeedback),
+        })
+      );
+      return; // Exit after blocking
+    }
+    // If planFeedback.skip = true (approved), continue to regular lesson capture
+  }
+
+  // STEP 2: Regular lesson capture (existing logic)
   // Check if we've already prompted this session
   if (fs.existsSync(stateFile)) {
     // Already prompted - allow stop
@@ -68,8 +115,7 @@ process.stdin.on("end", () => {
   const startedAt = sessionState.startedAt;
   const durationMinutes = getSessionDuration(startedAt);
 
-  // Parse transcript if provided
-  const transcriptPath = hookInput.transcript_path;
+  // Parse transcript metadata
   const transcriptData = parseTranscript(transcriptPath);
 
   // Determine if we should skip capture (allow stop)

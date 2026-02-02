@@ -135,8 +135,43 @@ function generateSummary(metadata) {
   return parts.length > 0 ? parts.join(", ") : "No significant activity";
 }
 
+/**
+ * Parse transcript JSONL into raw array of entries
+ * @param {string} transcriptPath - Path to transcript file
+ * @returns {Array<object>} Array of parsed JSONL entries
+ */
+function parseTranscriptRaw(transcriptPath) {
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) {
+    debugLog("parseTranscriptRaw", `Transcript not found: ${transcriptPath}`);
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(transcriptPath, "utf8");
+    const entries = content
+      .trim()
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    debugLog("parseTranscriptRaw", `Parsed ${entries.length} entries from transcript`);
+    return entries;
+  } catch (err) {
+    debugLog("parseTranscriptRaw", `Error reading transcript: ${err.message}`);
+    return [];
+  }
+}
+
 module.exports = {
   parseTranscript,
   getSessionDuration,
   generateSummary,
+  parseTranscriptRaw,
 };
