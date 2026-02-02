@@ -53,7 +53,7 @@
         ]
       },
       {
-        "matcher": "mcp__gutt-mcp-remote__add_memory|mcp__gutt-mcp-remote__search_memory_facts|mcp__gutt-mcp-remote__fetch_lessons_learned",
+        "matcher": "mcp__gutt-mcp-remote__add_memory|mcp__gutt-mcp-remote__search_memory_facts|mcp__gutt-mcp-remote__fetch_lessons_learned|mcp__gutt-mcp-remote__search_memory_nodes|mcp__gutt-mcp-remote__get_user_preferences|mcp__gutt-mcp-remote__get_episodes|mcp__gutt-mcp-remote__get_episode|mcp__gutt-mcp-remote__get_entity_edge",
         "hooks": [
           {
             "type": "command",
