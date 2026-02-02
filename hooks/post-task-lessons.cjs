@@ -53,34 +53,10 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
-    // Check if this is a Plan agent - always present plans for user review
-    const isPlanAgent = subagentType.toLowerCase().includes("plan");
-
-    if (isPlanAgent) {
-      // Output plan review suggestion using hookSpecificOutput format
-      const sanitizedSummary = sanitizeForDisplay(toolResult.substring(0, 200));
-      const searchTerms = extractSearchTerms(toolResult);
-
-      const output = {
-        hookSpecificOutput: {
-          additionalContext: `[GUTT Plan Review]
-
-A plan has been created. Before proceeding with implementation:
-
-**Search organizational memory for:**
-- Similar past implementations
-- Lessons learned from related work
-- Potential pitfalls to avoid
-
-Delegate to memory-keeper agent:
-
-Task(subagent_type="memory-keeper", model="haiku", prompt="Search for lessons and context about: ${searchTerms}")
-
-Plan summary: "${sanitizedSummary}..."`,
-        },
-      };
-
-      console.log(JSON.stringify(output));
+    // Plan agents are handled by SubagentStop hook (subagent-plan-review.cjs)
+    // to avoid duplicate prompts. Skip them here.
+    const planAgentTypes = new Set(["plan", "oh-my-claudecode:plan", "oh-my-claudecode:planner"]);
+    if (planAgentTypes.has(subagentType.toLowerCase())) {
       process.exit(0);
     }
 
@@ -120,18 +96,6 @@ Task context: "${sanitizedPrompt}..."`,
     process.exit(0);
   }
 });
-
-/**
- * Extract search terms from plan content
- */
-function extractSearchTerms(text) {
-  const techTerms =
-    text.match(
-      /\b(implement|create|add|fix|refactor|update|build|api|hook|component|service|database|auth|test|feature|endpoint|migration)\w*/gi
-    ) || [];
-  const uniqueTerms = [...new Set(techTerms.map((t) => t.toLowerCase()))];
-  return uniqueTerms.slice(0, 5).join(" ") || text.substring(0, 50);
-}
 
 /**
  * Detect indicators that suggest lesson-worthy content

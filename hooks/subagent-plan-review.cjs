@@ -1,6 +1,17 @@
 // hooks/subagent-plan-review.cjs
 const fs = require("fs");
 
+// Shared plan detection patterns - used by both hasPlanContent and countPlanPatterns
+const PLAN_PATTERNS = [
+  /##?\s*(plan|implementation|steps|approach|overview)/i,
+  /\b(will|going to|need to)\s+(implement|create|build|add|refactor|update|migrate)/i,
+  /\d+\.\s+(create|add|implement|update|modify|build|configure|set up)/i,
+  /files?\s+to\s+(create|modify|update|change)/i,
+  /\btask\s*\d+[:\s]/i,
+  /\b(phase|step)\s+\d+/i,
+  /(implementation|execution|development)\s+(plan|steps|tasks)/i,
+];
+
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => (input += chunk));
@@ -12,20 +23,18 @@ process.stdin.on("end", () => {
     const transcriptPath = data.agent_transcript_path;
     const { fullText, summary } = extractPlanFromTranscript(transcriptPath);
 
-    // Check if transcript contains plan-like content (check FULL text, not just summary)
+    // Check if the best-matching transcript message contains plan-like content
     if (!hasPlanContent(fullText)) {
       process.exitCode = 0;
       return;
     }
 
-    const planSummary = summary;
-
-    // Create search query from plan
-    const searchQuery = createSearchQuery(planSummary);
+    // Create search query from plan summary
+    const searchQuery = createSearchQuery(summary);
 
     // Sanitize for safe embedding in output
     const sanitizedQuery = sanitizeForDisplay(searchQuery);
-    const sanitizedSummary = sanitizeForDisplay(planSummary.substring(0, 200));
+    const sanitizedSummary = sanitizeForDisplay(summary.substring(0, 200));
 
     // Output using blocking format for SubagentStop
     const output = {
@@ -39,11 +48,11 @@ A plan has been created. Before proceeding with implementation:
 - Lessons learned from related work
 - Potential pitfalls to avoid
 
-Delegate to gutt-pro-memory agent:
+Delegate to memory-keeper agent:
 
-Task(subagent_type="gutt-pro-memory", model="haiku", prompt="Search for lessons and context about: ${sanitizedQuery}")
+Task(subagent_type="memory-keeper", model="haiku", prompt="Search for lessons and context about: ${sanitizedQuery}")
 
-Plan summary: "${sanitizedSummary}${planSummary.length > 200 ? "..." : ""}"`,
+Plan summary: "${sanitizedSummary}${summary.length > 200 ? "..." : ""}"`,
     };
 
     console.log(JSON.stringify(output));
@@ -56,25 +65,14 @@ Plan summary: "${sanitizedSummary}${planSummary.length > 200 ? "..." : ""}"`,
 
 /**
  * Detect if content contains plan-like patterns
- * Matches the content-based approach used in post-task-lessons.cjs
+ * Requires at least 2 pattern matches for confidence
  */
 function hasPlanContent(text) {
   if (!text || text.length < 50) {
     return false;
   }
 
-  const planPatterns = [
-    /##?\s*(plan|implementation|steps|approach|overview)/i,
-    /\b(will|going to|need to)\s+(implement|create|build|add|refactor|update|migrate)/i,
-    /\d+\.\s+(create|add|implement|update|modify|build|configure|set up)/i,
-    /files?\s+to\s+(create|modify|update|change)/i,
-    /\btask\s*\d+[:\s]/i,
-    /\b(phase|step)\s+\d+/i,
-    /(implementation|execution|development)\s+(plan|steps|tasks)/i,
-  ];
-
-  // Require at least 2 pattern matches for confidence
-  const matches = planPatterns.filter((p) => p.test(text)).length;
+  const matches = PLAN_PATTERNS.filter((p) => p.test(text)).length;
   return matches >= 2;
 }
 
@@ -86,17 +84,7 @@ function countPlanPatterns(text) {
     return 0;
   }
 
-  const planPatterns = [
-    /##?\s*(plan|implementation|steps|approach|overview)/i,
-    /\b(will|going to|need to)\s+(implement|create|build|add|refactor|update|migrate)/i,
-    /\d+\.\s+(create|add|implement|update|modify|build|configure|set up)/i,
-    /files?\s+to\s+(create|modify|update|change)/i,
-    /\btask\s*\d+[:\s]/i,
-    /\b(phase|step)\s+\d+/i,
-    /(implementation|execution|development)\s+(plan|steps|tasks)/i,
-  ];
-
-  return planPatterns.filter((p) => p.test(text)).length;
+  return PLAN_PATTERNS.filter((p) => p.test(text)).length;
 }
 
 function extractPlanFromTranscript(transcriptPath) {
@@ -121,12 +109,12 @@ function extractPlanFromTranscript(transcriptPath) {
     const lines = content.trim().split("\n");
 
     // Parse JSONL and find assistant messages
-    // Format: {message: {role: "assistant", content: [{type: "text", text: "..."}]}}
+    // Handles both nested format {message: {role, content}} and flat format {role, content}
     const assistantMessages = [];
     for (const line of lines) {
       try {
         const entry = JSON.parse(line);
-        // Handle nested message format (actual Claude Code transcript format)
+        // Handle both nested and flat message formats
         const msg = entry.message || entry;
         const role = msg.role;
         const msgContent = msg.content;
@@ -147,8 +135,7 @@ function extractPlanFromTranscript(transcriptPath) {
       }
     }
 
-    // Check ALL messages for plan content, not just the last one
-    // Find the message with the most plan patterns
+    // Find the message with the most plan patterns (not just the last message)
     let bestMessage = "";
     let bestPatternCount = 0;
 
@@ -159,6 +146,11 @@ function extractPlanFromTranscript(transcriptPath) {
         bestPatternCount = patternCount;
         bestMessage = msg;
       }
+    }
+
+    // If no plan-like patterns were found in any message, return empty result
+    if (bestPatternCount === 0) {
+      return emptyResult;
     }
 
     // Extract first meaningful paragraphs for summary
@@ -187,7 +179,7 @@ function sanitizeForDisplay(text) {
 function createSearchQuery(summary) {
   const techTerms =
     summary.match(
-      /\b(implement|create|add|fix|refactor|update|build|api|hook|component|service|database|auth|test|feature|endpoint|migration)\w*/gi
+      /\b(implement|create|add|fix|refactor|update|build|api|hook|component|service|database|auth|test|feature|endpoint|migration)\w*\b/gi
     ) || [];
   const uniqueTerms = [...new Set(techTerms.map((t) => t.toLowerCase()))];
   return uniqueTerms.slice(0, 5).join(" ") || summary.substring(0, 50);
