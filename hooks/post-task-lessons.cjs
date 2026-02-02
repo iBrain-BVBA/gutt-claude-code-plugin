@@ -74,19 +74,33 @@ process.stdin.on("end", () => {
     // Sanitize user-derived content for embedding
     const sanitizedPrompt = sanitizeForDisplay(prompt.substring(0, 100));
 
-    // Output lesson capture suggestion using hookSpecificOutput format
+    // Format the lesson as a proper episode body
+    const episodeName = `Lesson: ${subagentType} - ${lessonIndicators[0] || "insight"}`;
+    const episodeBody = formatLessonEpisode(subagentType, prompt, toolResult, lessonIndicators);
+
+    // Output DIRECTIVE (not suggestion) using hookSpecificOutput format
+    // Claude MUST execute this - it's not optional
     const output = {
       hookSpecificOutput: {
-        additionalContext: `[GUTT Lesson Capture Opportunity]
-Subagent "${subagentType}" completed with potential lessons:
+        additionalContext: `[GUTT AUTO-CAPTURE REQUIRED]
 
-Detected patterns: ${lessonIndicators.join(", ")}
+A lesson-worthy subagent result was detected. You MUST capture this to organizational memory NOW.
 
-Consider capturing lessons using memory-keeper agent:
+**Detected patterns:** ${lessonIndicators.join(", ")}
+**Subagent:** ${subagentType}
+**Task:** ${sanitizedPrompt}
 
-Task(subagent_type="memory-keeper", model="haiku", prompt="Review and capture lessons from this task result: ${sanitizedPrompt}...")
+EXECUTE THIS IMMEDIATELY (do not ask, do not skip):
 
-Task context: "${sanitizedPrompt}..."`,
+mcp__gutt-mcp-remote__add_memory(
+  name: "${episodeName}",
+  episode_body: "${escapeForJson(episodeBody)}",
+  source: "text",
+  source_description: "Auto-captured from ${subagentType} subagent",
+  last_n_episodes: 0
+)
+
+This is MANDATORY per GP-437. Lessons from subagent work must be captured automatically.`,
       },
     };
 
@@ -96,6 +110,60 @@ Task context: "${sanitizedPrompt}..."`,
     process.exit(0);
   }
 });
+
+/**
+ * Escape string for embedding in JSON
+ */
+function escapeForJson(str) {
+  return str
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+/**
+ * Format lesson content as a proper episode body for GUTT memory
+ */
+function formatLessonEpisode(subagentType, prompt, result, indicators) {
+  const summary = result.substring(0, 300).trim();
+  const outcomeType =
+    indicators.includes("problem-solved") || indicators.includes("improvement")
+      ? "positive"
+      : indicators.includes("error-encountered")
+        ? "negative"
+        : "neutral";
+
+  return `**Trigger:** Subagent ${subagentType} completed task
+**Task:** ${sanitizeForDisplay(prompt.substring(0, 150))}
+**Patterns:** ${indicators.join(", ")}
+**Outcome:** ${outcomeType}
+**Summary:** ${sanitizeForDisplay(summary)}
+**Guidance:** ${generateGuidance(indicators, result)}`;
+}
+
+/**
+ * Generate guidance based on detected patterns
+ */
+function generateGuidance(indicators, _result) {
+  if (indicators.includes("problem-solved")) {
+    return "Repeat: This approach successfully resolved the issue";
+  }
+  if (indicators.includes("error-encountered")) {
+    return "Avoid: This approach encountered errors - consider alternatives";
+  }
+  if (indicators.includes("workaround")) {
+    return "Note: Workaround used - may need proper fix later";
+  }
+  if (indicators.includes("decision-made")) {
+    return "Decision: Architectural or design choice was made";
+  }
+  if (indicators.includes("discovery")) {
+    return "Insight: New understanding gained about the system";
+  }
+  return "General: Captured for future reference";
+}
 
 /**
  * Detect indicators that suggest lesson-worthy content
