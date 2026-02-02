@@ -111,6 +111,16 @@ function addTickerItem(item) {
   });
 }
 
+function resetCounters() {
+  return updateState((state) => {
+    state.memoryQueries = 0;
+    state.lessonsCaptured = 0;
+    state.connectionStatus = "unknown";
+    state.lastReset = new Date().toISOString();
+    return state;
+  });
+}
+
 module.exports = {
   getState,
   updateState,
@@ -118,6 +128,7 @@ module.exports = {
   incrementLessonsCaptured,
   setConnectionStatus,
   addTickerItem,
+  resetCounters,
   STATE_PATH,
   DEFAULT_STATE,
 };
