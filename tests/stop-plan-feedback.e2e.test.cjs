@@ -85,9 +85,21 @@ function runHook(tmpDir, sessionId, transcriptPath) {
       return { decision: "allow" };
     }
     return JSON.parse(output.trim());
-  } catch {
-    // Hook exited 0 (allowed stop) - no JSON output
-    return { decision: "allow" };
+  } catch (e) {
+    // Distinguish between clean exit with no output vs actual failure
+    // execSync throws on non-zero exit OR if command fails
+    if (e.status === 0 || e.status === null) {
+      // Hook exited cleanly with no JSON output - treat as allow
+      return { decision: "allow" };
+    }
+    // Hook crashed or had runtime error - fail the test
+    fail(
+      `Hook execution failed for session "${sessionId}":\n` +
+        `  Exit status: ${e.status}\n` +
+        `  STDOUT: ${e.stdout || "(empty)"}\n` +
+        `  STDERR: ${e.stderr || "(empty)"}`
+    );
+    return { decision: "error", reason: "hook_crashed" };
   }
 }
 

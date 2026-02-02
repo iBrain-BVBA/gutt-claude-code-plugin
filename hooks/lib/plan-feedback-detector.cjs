@@ -48,18 +48,16 @@ function detectPlanContext(transcriptData) {
   debugLog("plan-feedback-detector", `Scanning ${transcriptData.length} entries for plan context`);
 
   // Look for Task tool with planner subagent
-  for (const entry of transcriptData) {
+  for (let i = 0; i < transcriptData.length; i++) {
+    const entry = transcriptData[i];
     if (entry.type === "tool_use" && entry.name === "Task") {
       const subagentType = entry.input?.subagent_type || "";
       if (subagentType.includes("planner") || subagentType.includes("Plan")) {
-        debugLog(
-          "plan-feedback-detector",
-          `Found plan context: ${subagentType} at index ${transcriptData.indexOf(entry)}`
-        );
+        debugLog("plan-feedback-detector", `Found plan context: ${subagentType} at index ${i}`);
         return {
           found: true,
           subagentType,
-          index: transcriptData.indexOf(entry),
+          index: i,
         };
       }
     }
@@ -160,6 +158,17 @@ function extractTopic(transcriptData, planContext) {
 }
 
 /**
+ * Escape a string for use in MCP tool call arguments
+ * Handles backslashes, quotes, and newlines
+ */
+function escapeForMcp(str) {
+  return str
+    .replace(/\\/g, "\\\\") // Escape backslashes first
+    .replace(/"/g, '\\"') // Escape double quotes
+    .replace(/\n/g, "\\n"); // Escape newlines
+}
+
+/**
  * Build capture instruction with exact MCP tool call
  */
 function buildCaptureInstruction(feedback) {
@@ -183,13 +192,16 @@ Guidance: ${guidance}`;
 
   debugLog("plan-feedback-detector", `Built capture instruction for ${feedback.type} feedback`);
 
+  const escapedName = escapeForMcp(`Plan Lesson: ${feedback.topic.substring(0, 50)}`);
+  const escapedBody = escapeForMcp(episodeBody);
+
   return `🟠 ACTION REQUIRED: Capture plan feedback as lesson.
 
 ${outcomeText}. Use this exact command:
 
 mcp__gutt-mcp-remote__add_memory(
-  name="Plan Lesson: ${feedback.topic.substring(0, 50)}",
-  episode_body="${episodeBody.replace(/"/g, '\\"').replace(/\n/g, "\\n")}",
+  name="${escapedName}",
+  episode_body="${escapedBody}",
   source="text",
   source_description="Human plan review feedback"
 )
