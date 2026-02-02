@@ -70,9 +70,10 @@ process.stdin.on("end", () => {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const query = toolInput.query || "nodes";
+      const result = extractFirstResult(toolResult);
       addTickerItem({
         icon: "📥",
-        text: `Searched nodes "${truncate(query, 20)}"`,
+        text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`,
       });
     } else if (toolName === "mcp__gutt-mcp-remote__get_user_preferences") {
       setConnectionStatus("ok");
