@@ -66,6 +66,47 @@ process.stdin.on("end", () => {
         updateMemoryCache("lessons", lessons);
         addQueryToCache(query);
       }
+    } else if (toolName === "mcp__gutt-mcp-remote__search_memory_nodes") {
+      setConnectionStatus("ok");
+      incrementMemoryQueries();
+      const query = toolInput.query || "nodes";
+      const result = extractFirstResult(toolResult);
+      addTickerItem({
+        icon: "📥",
+        text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`,
+      });
+    } else if (toolName === "mcp__gutt-mcp-remote__get_user_preferences") {
+      setConnectionStatus("ok");
+      incrementMemoryQueries();
+      const contextType = toolInput.context_type || "general";
+      addTickerItem({
+        icon: "⚙️",
+        text: `Fetched preferences (${truncate(contextType, 15)})`,
+      });
+    } else if (toolName === "mcp__gutt-mcp-remote__get_episodes") {
+      setConnectionStatus("ok");
+      incrementMemoryQueries();
+      const lastN = toolInput.last_n || 10;
+      addTickerItem({
+        icon: "📜",
+        text: `Fetched last ${lastN} episodes`,
+      });
+    } else if (toolName === "mcp__gutt-mcp-remote__get_episode") {
+      setConnectionStatus("ok");
+      incrementMemoryQueries();
+      const uuid = toolInput.episode_uuid || "unknown";
+      addTickerItem({
+        icon: "📜",
+        text: `Fetched episode ${truncate(uuid, 12)}`,
+      });
+    } else if (toolName === "mcp__gutt-mcp-remote__get_entity_edge") {
+      setConnectionStatus("ok");
+      incrementMemoryQueries();
+      const uuid = toolInput.uuid || "unknown";
+      addTickerItem({
+        icon: "🔗",
+        text: `Fetched edge ${truncate(uuid, 12)}`,
+      });
     }
   } catch {
     // Silent exit
