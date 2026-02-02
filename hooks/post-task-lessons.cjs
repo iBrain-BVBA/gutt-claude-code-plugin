@@ -7,7 +7,18 @@
  */
 
 const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
-const { getGroupId } = require("./lib/config.cjs");
+
+/**
+ * Sanitize text for safe embedding in query strings and display
+ * Removes quotes, normalizes whitespace
+ */
+function sanitizeForDisplay(text) {
+  return text
+    .replace(/[\r\n]+/g, " ") // Replace newlines with space
+    .replace(/["'`]/g, "") // Remove quotes
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim();
+}
 
 // Read JSON input from stdin
 let input = "";
@@ -53,7 +64,8 @@ process.stdin.on("end", () => {
     // Increment lessons captured counter
     incrementLessonsCaptured();
 
-    const groupId = getGroupId();
+    // Sanitize user-derived content for embedding
+    const sanitizedPrompt = sanitizeForDisplay(prompt.substring(0, 100));
 
     // Output lesson capture suggestion
     // The hook output becomes context for the orchestrator
@@ -62,10 +74,11 @@ Subagent "${subagentType}" completed with potential lessons:
 
 Detected patterns: ${lessonIndicators.join(", ")}
 
-Consider capturing lessons using:
-- mcp__gutt-mcp-remote__add_memory with findings from this task (group_id: "${groupId}")
+Consider capturing lessons using memory-keeper agent:
 
-Task context: "${prompt.substring(0, 100)}..."
+Task(subagent_type="memory-keeper", model="haiku", prompt="Review and capture lessons from this task result: ${sanitizedPrompt}...")
+
+Task context: "${sanitizedPrompt}..."
 [End GUTT Lesson Capture]`);
   } catch {
     // Silent exit on errors - don't block the tool

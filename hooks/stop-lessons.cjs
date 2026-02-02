@@ -25,6 +25,18 @@ const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log"
 const stateDir = path.join(projectDir, ".claude", "hooks", ".state");
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
 
+/**
+ * Sanitize text for safe embedding in query strings and display
+ * Removes quotes, normalizes whitespace
+ */
+function sanitizeForDisplay(text) {
+  return text
+    .replace(/[\r\n]+/g, " ") // Replace newlines with space
+    .replace(/["'`]/g, "") // Remove quotes
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim();
+}
+
 // Read JSON input from stdin (parse once per GUTT lesson)
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -135,20 +147,6 @@ process.stdin.on("end", () => {
   // Extract session goal
   const goal = transcriptData.firstUserMessage || "Session work (no goal extracted)";
 
-  // Generate episode body
-  const episodeLines = [
-    "## Session Summary",
-    `- Goal: ${goal}`,
-    `- Duration: ${durationMinutes} minutes`,
-    `- Files modified: ${transcriptData.filesModified}`,
-    `- Memory queries: ${memoryQueries}`,
-    "",
-    "## Work Done",
-    generateSummary(transcriptData),
-  ];
-
-  const episodeBody = episodeLines.join("\\n");
-
   // Create state file to track first block
   fs.writeFileSync(stateFile, "");
   fs.appendFileSync(
@@ -156,11 +154,19 @@ process.stdin.on("end", () => {
     `[${timestamp}] Stop hook: Blocking stop for session ${sessionId} - significant work detected\n`
   );
 
-  // Block Claude from stopping with structured capture instruction
-  const captureInstruction = `mcp__gutt-mcp-remote__add_memory(
-  name="Session: ${goal.replace(/"/g, '\\"')}",
-  episode_body="${episodeBody}"
-)`;
+  // Build session summary for agent prompt
+  const sessionSummary = `## Session Summary
+- Goal: ${goal}
+- Duration: ${durationMinutes} minutes
+- Files modified: ${transcriptData.filesModified}
+- Memory queries: ${memoryQueries}
+
+## Work Done
+${generateSummary(transcriptData)}`;
+
+  // Sanitize user-derived content for embedding
+  const sanitizedGoal = sanitizeForDisplay(goal);
+  const sanitizedSummary = sanitizeForDisplay(sessionSummary);
 
   console.log(
     JSON.stringify({
@@ -173,8 +179,13 @@ Session Context:
 - Memory queries: ${memoryQueries}
 - Lessons captured: ${lessonsCaptured}
 
-Use this exact command to capture:
-${captureInstruction}
+Delegate to memory-keeper agent to capture lessons:
+
+Task(subagent_type="memory-keeper", model="haiku", prompt="Capture session lessons with this context:
+
+${sanitizedSummary}
+
+Create a memory with name 'Session: ${sanitizedGoal}' containing the key lessons and findings from this session.")
 
 Or describe what you learned and I'll format it properly.`,
     })

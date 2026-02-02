@@ -8,6 +8,18 @@
 
 const { debugLog } = require("./debug.cjs");
 
+/**
+ * Sanitize text for safe embedding in query strings and display
+ * Removes quotes, normalizes whitespace
+ */
+function sanitizeForDisplay(text) {
+  return text
+    .replace(/[\r\n]+/g, " ") // Replace newlines with space
+    .replace(/["'`]/g, "") // Remove quotes
+    .replace(/\s+/g, " ") // Normalize whitespace
+    .trim();
+}
+
 const rejectionPatterns = [
   /no,?\s*(that's\s+)?wrong/i,
   /wrong approach/i,
@@ -158,18 +170,7 @@ function extractTopic(transcriptData, planContext) {
 }
 
 /**
- * Escape a string for use in MCP tool call arguments
- * Handles backslashes, quotes, and newlines
- */
-function escapeForMcp(str) {
-  return str
-    .replace(/\\/g, "\\\\") // Escape backslashes first
-    .replace(/"/g, '\\"') // Escape double quotes
-    .replace(/\n/g, "\\n"); // Escape newlines
-}
-
-/**
- * Build capture instruction with exact MCP tool call
+ * Build capture instruction using memory-keeper agent
  */
 function buildCaptureInstruction(feedback) {
   const outcomeText =
@@ -182,7 +183,7 @@ function buildCaptureInstruction(feedback) {
       ? `Avoid this approach when planning similar features`
       : `Apply this modification pattern for similar planning tasks`;
 
-  const episodeBody = `Plan for '${feedback.topic}' - ${outcomeText}
+  const lessonContext = `Plan for '${feedback.topic}' - ${outcomeText}
 
 Feedback: ${feedback.reason}
 ${feedback.modification ? `Modification: ${feedback.modification}` : ""}
@@ -190,21 +191,21 @@ ${feedback.modification ? `Modification: ${feedback.modification}` : ""}
 Outcome: ${feedback.outcome}
 Guidance: ${guidance}`;
 
-  debugLog("plan-feedback-detector", `Built capture instruction for ${feedback.type} feedback`);
+  // Sanitize user-derived content for embedding
+  const sanitizedTopic = sanitizeForDisplay(feedback.topic.substring(0, 50));
+  const sanitizedContext = sanitizeForDisplay(lessonContext);
 
-  const escapedName = escapeForMcp(`Plan Lesson: ${feedback.topic.substring(0, 50)}`);
-  const escapedBody = escapeForMcp(episodeBody);
+  debugLog("plan-feedback-detector", `Built capture instruction for ${feedback.type} feedback`);
 
   return `🟠 ACTION REQUIRED: Capture plan feedback as lesson.
 
-${outcomeText}. Use this exact command:
+${outcomeText}. Delegate to memory-keeper agent:
 
-mcp__gutt-mcp-remote__add_memory(
-  name="${escapedName}",
-  episode_body="${escapedBody}",
-  source="text",
-  source_description="Human plan review feedback"
-)
+Task(subagent_type="memory-keeper", model="haiku", prompt="Capture plan lesson with name 'Plan Lesson: ${sanitizedTopic}':
+
+${sanitizedContext}
+
+Source: Human plan review feedback")
 
 Or describe the lesson in your own words and I'll capture it.`;
 }

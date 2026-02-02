@@ -153,10 +153,10 @@ console.log("Test 1: Plan rejection (negative outcome)...");
       fail("Reason missing orange emoji");
     }
 
-    if (result.reason.includes("mcp__gutt-mcp-remote__add_memory")) {
-      pass("Reason includes exact MCP tool call");
+    if (result.reason.includes("memory-keeper")) {
+      pass("Reason includes memory-keeper agent");
     } else {
-      fail("Reason missing MCP tool call");
+      fail("Reason missing memory-keeper agent");
     }
 
     if (result.reason.toLowerCase().includes("negative")) {
@@ -220,10 +220,10 @@ console.log("\nTest 2: Plan modification (positive outcome)...");
       fail("Reason missing orange emoji");
     }
 
-    if (result.reason.includes("mcp__gutt-mcp-remote__add_memory")) {
-      pass("Reason includes exact MCP tool call");
+    if (result.reason.includes("memory-keeper")) {
+      pass("Reason includes memory-keeper agent");
     } else {
-      fail("Reason missing MCP tool call");
+      fail("Reason missing memory-keeper agent");
     }
 
     if (result.reason.toLowerCase().includes("positive")) {
@@ -414,4 +414,4 @@ console.log("\nNote: This test verifies plan feedback detection logic.");
 console.log("For full integration testing:");
 console.log("1. Restart Claude Code");
 console.log("2. Run /plan skill and reject with 'no, wrong approach'");
-console.log("3. Verify 🟠 prompt appears with exact MCP tool call");
+console.log("3. Verify 🟠 prompt appears with memory-keeper agent reference");
