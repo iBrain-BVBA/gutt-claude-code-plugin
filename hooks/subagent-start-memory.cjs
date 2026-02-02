@@ -10,14 +10,10 @@
  * 1. PostToolUse caches memory results from MCP calls
  * 2. PreToolUse on Task extracts search query and stores it
  * 3. THIS HOOK injects cached results directly into subagent context
- * 4. Fallback: if cache empty, inject instruction to call MCP tools
+ * 4. If no cache, exit silently (do NOT instruct agents to call MCP tools)
  */
 
-const {
-  hasCachedContent,
-  formatMemoryContext,
-  getLastSearchQuery,
-} = require("./lib/memory-cache.cjs");
+const { hasCachedContent, formatMemoryContext } = require("./lib/memory-cache.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
 // Capture stdin to variable first (can only read once - per GUTT lesson)
@@ -55,28 +51,10 @@ process.stdin.on("end", () => {
 
       console.log(JSON.stringify(output));
     } else {
-      // Fallback: inject instruction to call MCP tools
-      const lastQuery = getLastSearchQuery();
-      const searchQuery = lastQuery || "organizational context patterns";
-
-      const fallbackContext = `[GUTT Memory]
-No cached organizational memory available yet.
-
-To fetch relevant context, use these MCP tools:
-- mcp__gutt-mcp-remote__fetch_lessons_learned(query: "${sanitizeQuery(searchQuery)}")
-- mcp__gutt-mcp-remote__search_memory_facts(query: "${sanitizeQuery(searchQuery)}")
-
-Apply any relevant lessons and patterns to inform your approach.
-[End GUTT Memory]`;
-
-      const output = {
-        hookSpecificOutput: {
-          hookEventName: "SubagentStart",
-          additionalContext: fallbackContext,
-        },
-      };
-
-      console.log(JSON.stringify(output));
+      // No cached content - just exit silently
+      // DO NOT instruct agents to call MCP tools - that causes them to go off the rails
+      process.exitCode = 0;
+      return;
     }
 
     process.exitCode = 0;
@@ -86,18 +64,3 @@ Apply any relevant lessons and patterns to inform your approach.
     process.exitCode = 0;
   }
 });
-
-/**
- * Sanitize query for safe embedding in output
- */
-function sanitizeQuery(query) {
-  if (!query) {
-    return "organizational context";
-  }
-  return query
-    .replace(/[\r\n]+/g, " ")
-    .replace(/["'`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .substring(0, 100);
-}
