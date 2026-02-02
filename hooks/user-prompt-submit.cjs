@@ -53,9 +53,9 @@ process.stdin.on("end", () => {
 
   console.log(`🟠 GUTT MEMORY: Search organizational memory BEFORE starting this task.
 
-ACTION REQUIRED: Call one of these tools first:
-  - mcp__gutt-mcp-remote__search_memory_facts(query: "${searchTerms || "relevant context"}")
-  - mcp__gutt-mcp-remote__fetch_lessons_learned(query: "${searchTerms || "lessons"}")
+ACTION REQUIRED: Delegate to gutt-pro-memory agent first:
+
+Task(subagent_type="gutt-pro-memory", model="haiku", prompt="Search for relevant lessons and context about: ${searchTerms || "this task"}")
 
 This retrieves past decisions, patterns, and lessons that may apply to this task.`);
 });

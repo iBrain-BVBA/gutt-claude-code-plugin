@@ -40,9 +40,9 @@ A plan has been created. Before proceeding with implementation:
 - Lessons learned from related work
 - Potential pitfalls to avoid
 
-Suggested queries:
-- mcp__gutt-mcp-remote__fetch_lessons_learned(query="${sanitizedQuery}")
-- mcp__gutt-mcp-remote__search_memory_facts(query="${sanitizedQuery}")
+Delegate to gutt-pro-memory agent:
+
+Task(subagent_type="gutt-pro-memory", model="haiku", prompt="Search for lessons and context about: ${sanitizedQuery}")
 
 Plan summary: "${sanitizedSummary}${planSummary.length > 200 ? "..." : ""}"`,
       },

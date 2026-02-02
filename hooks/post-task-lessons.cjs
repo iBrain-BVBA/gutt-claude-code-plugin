@@ -7,7 +7,6 @@
  */
 
 const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
-const { getGroupId } = require("./lib/config.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -53,8 +52,6 @@ process.stdin.on("end", () => {
     // Increment lessons captured counter
     incrementLessonsCaptured();
 
-    const groupId = getGroupId();
-
     // Output lesson capture suggestion
     // The hook output becomes context for the orchestrator
     console.log(`[GUTT Lesson Capture Opportunity]
@@ -62,8 +59,9 @@ Subagent "${subagentType}" completed with potential lessons:
 
 Detected patterns: ${lessonIndicators.join(", ")}
 
-Consider capturing lessons using:
-- mcp__gutt-mcp-remote__add_memory with findings from this task (group_id: "${groupId}")
+Consider capturing lessons using memory-keeper agent:
+
+Task(subagent_type="memory-keeper", model="haiku", prompt="Review and capture lessons from this task result: ${prompt.substring(0, 100)}...")
 
 Task context: "${prompt.substring(0, 100)}..."
 [End GUTT Lesson Capture]`);
