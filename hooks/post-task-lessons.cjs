@@ -53,6 +53,37 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
+    // Check if this is a Plan agent - always present plans for user review
+    const isPlanAgent = subagentType.toLowerCase().includes("plan");
+
+    if (isPlanAgent) {
+      // Output plan review suggestion using hookSpecificOutput format
+      const sanitizedSummary = sanitizeForDisplay(toolResult.substring(0, 200));
+      const searchTerms = extractSearchTerms(toolResult);
+
+      const output = {
+        hookSpecificOutput: {
+          additionalContext: `[GUTT Plan Review]
+
+A plan has been created. Before proceeding with implementation:
+
+**Search organizational memory for:**
+- Similar past implementations
+- Lessons learned from related work
+- Potential pitfalls to avoid
+
+Delegate to memory-keeper agent:
+
+Task(subagent_type="memory-keeper", model="haiku", prompt="Search for lessons and context about: ${searchTerms}")
+
+Plan summary: "${sanitizedSummary}..."`,
+        },
+      };
+
+      console.log(JSON.stringify(output));
+      process.exit(0);
+    }
+
     // Detect if result contains lesson-worthy content
     const lessonIndicators = detectLessonIndicators(toolResult);
 
@@ -67,9 +98,10 @@ process.stdin.on("end", () => {
     // Sanitize user-derived content for embedding
     const sanitizedPrompt = sanitizeForDisplay(prompt.substring(0, 100));
 
-    // Output lesson capture suggestion
-    // The hook output becomes context for the orchestrator
-    console.log(`[GUTT Lesson Capture Opportunity]
+    // Output lesson capture suggestion using hookSpecificOutput format
+    const output = {
+      hookSpecificOutput: {
+        additionalContext: `[GUTT Lesson Capture Opportunity]
 Subagent "${subagentType}" completed with potential lessons:
 
 Detected patterns: ${lessonIndicators.join(", ")}
@@ -78,13 +110,28 @@ Consider capturing lessons using memory-keeper agent:
 
 Task(subagent_type="memory-keeper", model="haiku", prompt="Review and capture lessons from this task result: ${sanitizedPrompt}...")
 
-Task context: "${sanitizedPrompt}..."
-[End GUTT Lesson Capture]`);
+Task context: "${sanitizedPrompt}..."`,
+      },
+    };
+
+    console.log(JSON.stringify(output));
   } catch {
     // Silent exit on errors - don't block the tool
     process.exit(0);
   }
 });
+
+/**
+ * Extract search terms from plan content
+ */
+function extractSearchTerms(text) {
+  const techTerms =
+    text.match(
+      /\b(implement|create|add|fix|refactor|update|build|api|hook|component|service|database|auth|test|feature|endpoint|migration)\w*/gi
+    ) || [];
+  const uniqueTerms = [...new Set(techTerms.map((t) => t.toLowerCase()))];
+  return uniqueTerms.slice(0, 5).join(" ") || text.substring(0, 50);
+}
 
 /**
  * Detect indicators that suggest lesson-worthy content
