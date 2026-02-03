@@ -7,29 +7,36 @@
 const fs = require("fs");
 const path = require("path");
 
-// Use CLAUDE_PROJECT_DIR to find the user's project directory (not the plugin install path)
-// Falls back to cwd() if env var not set
+// Check plugin directory first (for org-wide config), then project directory
+const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, "../..");
 const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const CONFIG_PATH = path.join(PROJECT_ROOT, "config.json");
+
+// Config search paths in priority order
+const CONFIG_PATHS = [
+  path.join(PLUGIN_ROOT, "config.json"), // Plugin-level config (org-wide)
+  path.join(PROJECT_ROOT, "config.json"), // Project-level override
+];
 
 let cachedConfig = null;
 let cachedSource = null;
 
 /**
- * Load and parse config.json from project root
+ * Load and parse config.json from plugin or project root
+ * Searches CONFIG_PATHS in priority order
  * @returns {Object|null} Parsed config or null if not found/invalid
  */
 function loadConfigFile() {
-  try {
-    if (!fs.existsSync(CONFIG_PATH)) {
-      return null;
+  for (const configPath of CONFIG_PATHS) {
+    try {
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, "utf8");
+        return JSON.parse(content);
+      }
+    } catch (err) {
+      console.error(`[WARN] Failed to load ${configPath}: ${err.message}`, "\n");
     }
-    const content = fs.readFileSync(CONFIG_PATH, "utf8");
-    return JSON.parse(content);
-  } catch (err) {
-    console.error(`[WARN] Failed to load config.json: ${err.message}`, "\n");
-    return null;
   }
+  return null;
 }
 
 /**
@@ -115,5 +122,6 @@ module.exports = {
   getConfig,
   loadConfig,
   getStatuslineConfig,
-  CONFIG_PATH,
+  CONFIG_PATHS,
+  PLUGIN_ROOT,
 };
