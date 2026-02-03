@@ -40,8 +40,11 @@ This plugin provides a memory backbone for Claude Code, enabling:
 #### Via Marketplace (Recommended)
 
 ```bash
-# Add the plugin from marketplace
-/plugin add iBrain-BVBA/gutt-claude-code-plugin
+# Step 1: Add the marketplace
+/plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
+
+# Step 2: Install the plugin
+/plugin install gutt-claude-code-plugin@gutt-plugins
 ```
 
 #### Manual Installation
