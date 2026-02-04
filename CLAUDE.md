@@ -12,13 +12,15 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 
 ```
 gutt-claude-code-plugin/
-├── src/
-│   ├── hooks/          # Claude Code hooks (PreToolUse, PostToolUse, etc.)
-│   ├── skills/         # Custom skills for Claude Code
-│   ├── mcp/            # MCP server configurations
-│   └── utils/          # Shared utilities
-├── .claude/
-│   └── settings.json   # Project Claude settings (MCP, permissions)
+├── hooks/                  # Claude Code hooks (.cjs scripts)
+│   └── lib/                # Shared utilities for hooks
+├── skills/                 # Skill definitions (markdown)
+├── agents/                 # Agent definitions (markdown)
+├── commands/               # Command definitions (markdown)
+├── .claude-plugin/         # Plugin manifest (plugin.json, marketplace.json)
+├── .claude/                # Project settings (MCP, permissions)
+├── tests/                  # Unit and E2E tests
+├── docs/                   # Documentation and test plans
 └── package.json
 ```
 

@@ -11,6 +11,40 @@ const os = require("os");
 const { spawn } = require("child_process");
 const { getState } = require("./lib/session-state.cjs");
 const { getGroupId, isConfigured, getConfig } = require("./lib/config.cjs");
+const { debugLog } = require("./lib/debug.cjs");
+
+/**
+ * Validate passthrough command to prevent command injection
+ * Allows: file paths, node/npx commands, common statusline scripts
+ * Rejects: shell metacharacters that could chain commands
+ * @param {string} command - Command string to validate
+ * @returns {boolean} True if command is safe to execute
+ */
+function isValidPassthroughCommand(command) {
+  if (!command || typeof command !== "string") {
+    return false;
+  }
+
+  // Reject commands with dangerous shell metacharacters
+  // These could be used to chain arbitrary commands
+  const dangerousPatterns = [
+    /[;&|]/, // Command chaining: ; && || |
+    /\$\(/, // Command substitution: $(...)
+    /`/, // Backtick substitution
+    />\s*[&]?/, // Output redirection: > >> >&
+    /<\s*[&]?/, // Input redirection: < <<
+    /\n|\r/, // Newlines (could execute multiple commands)
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(command)) {
+      debugLog("statusline", `Rejected passthrough command with dangerous pattern: ${pattern}`);
+      return false;
+    }
+  }
+
+  return true;
+}
 
 /**
  * Format ticker with toast-style display
@@ -167,7 +201,8 @@ process.stdin.on("end", async () => {
     tickerLine = formatTicker(tickerItems);
   }
 
-  if (passthroughCmd) {
+  if (passthroughCmd && isValidPassthroughCommand(passthroughCmd)) {
+    debugLog("statusline", `Executing passthrough command: ${passthroughCmd}`);
     const passthroughOutput = await execPassthrough(passthroughCmd, data, 500);
     if (passthroughOutput) {
       if (multiLine && tickerLine) {

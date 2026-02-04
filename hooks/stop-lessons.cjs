@@ -19,23 +19,12 @@ const {
   extractPlanFeedback,
   buildCaptureInstruction,
 } = require("./lib/plan-feedback-detector.cjs");
+const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 
 const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
 const stateDir = path.join(projectDir, ".claude", "hooks", ".state");
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
-
-/**
- * Sanitize text for safe embedding in query strings and display
- * Removes quotes, normalizes whitespace
- */
-function sanitizeForDisplay(text) {
-  return text
-    .replace(/[\r\n]+/g, " ") // Replace newlines with space
-    .replace(/["'`]/g, "") // Remove quotes
-    .replace(/\s+/g, " ") // Normalize whitespace
-    .trim();
-}
 
 // Read JSON input from stdin (parse once per GUTT lesson)
 let input = "";

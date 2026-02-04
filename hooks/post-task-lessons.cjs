@@ -7,18 +7,7 @@
  */
 
 const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
-
-/**
- * Sanitize text for safe embedding in query strings and display
- * Removes quotes, normalizes whitespace
- */
-function sanitizeForDisplay(text) {
-  return text
-    .replace(/[\r\n]+/g, " ") // Replace newlines with space
-    .replace(/["'`]/g, "") // Remove quotes
-    .replace(/\s+/g, " ") // Normalize whitespace
-    .trim();
-}
+const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 
 // Read JSON input from stdin
 let input = "";

@@ -1,5 +1,6 @@
 // hooks/subagent-plan-review.cjs
 const fs = require("fs");
+const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 
 // Shared plan detection patterns - used by both hasPlanContent and countPlanPatterns
 const PLAN_PATTERNS = [
@@ -162,18 +163,6 @@ function extractPlanFromTranscript(transcriptPath) {
   } catch {
     return emptyResult;
   }
-}
-
-/**
- * Sanitize text for safe embedding in query strings and display
- * Removes quotes, normalizes whitespace
- */
-function sanitizeForDisplay(text) {
-  return text
-    .replace(/[\r\n]+/g, " ") // Replace newlines with space
-    .replace(/["'`]/g, "") // Remove quotes
-    .replace(/\s+/g, " ") // Normalize whitespace
-    .trim();
 }
 
 function createSearchQuery(summary) {

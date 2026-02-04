@@ -7,18 +7,7 @@
  */
 
 const { debugLog } = require("./debug.cjs");
-
-/**
- * Sanitize text for safe embedding in query strings and display
- * Removes quotes, normalizes whitespace
- */
-function sanitizeForDisplay(text) {
-  return text
-    .replace(/[\r\n]+/g, " ") // Replace newlines with space
-    .replace(/["'`]/g, "") // Remove quotes
-    .replace(/\s+/g, " ") // Normalize whitespace
-    .trim();
-}
+const { sanitizeForDisplay } = require("./text-utils.cjs");
 
 const rejectionPatterns = [
   /no,?\s*(that's\s+)?wrong/i,
