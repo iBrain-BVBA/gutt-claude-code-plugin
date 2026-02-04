@@ -10,7 +10,7 @@
     "hooks",
     "skills",
     ".claude-plugin",
-    "config.json",
+    "config.json.example",
     "README.md",
     "LICENSE"
   ],
