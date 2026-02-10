@@ -20,6 +20,15 @@ process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input || "{}");
 
+    // Guard: skip memory-related agents to prevent re-entrant loop
+    // (SubagentStop fires for ALL agents, including ones this hook spawns)
+    const agentType = data.agent_type || "";
+    const skipAgents = ["memory-keeper", "gutt-pro-memory", "config-discovery", "memory"];
+    if (skipAgents.some((a) => agentType.toLowerCase().includes(a))) {
+      process.exitCode = 0;
+      return;
+    }
+
     // Read transcript content from any subagent
     const transcriptPath = data.agent_transcript_path;
     const { fullText, summary } = extractPlanFromTranscript(transcriptPath);
