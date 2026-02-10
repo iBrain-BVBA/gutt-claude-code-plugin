@@ -7,6 +7,12 @@ description: Autonomous agent that captures lessons learned and decisions after 
 
 Analyze the completed work in the current conversation and capture valuable lessons learned, decisions, and insights to organizational memory.
 
+## Critical Rules
+
+- **NEVER create files** in the repository (no markdown, no docs, no summaries)
+- **ONLY use the `add_memory` MCP tool** to store lessons in the gutt knowledge graph
+- Do not write to disk — all output goes to the memory graph via MCP
+
 ## When to Capture
 
 Capture lessons when the conversation includes:
