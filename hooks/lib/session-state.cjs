@@ -20,6 +20,8 @@ const DEFAULT_STATE = {
   connectionStatus: "unknown",
   memoryQueries: 0,
   lessonsCaptured: 0,
+  significantOps: 0, // GP-530: tracks Edit/Write/Task ops for periodic capture
+  lastCapturePromptAt: null, // GP-530: ISO timestamp of last capture prompt injection
   lastUpdated: new Date().toISOString(),
   ticker: {
     items: [], // FIFO queue, max 5 items with createdAt timestamps
@@ -115,8 +117,33 @@ function resetCounters() {
   return updateState((state) => {
     state.memoryQueries = 0;
     state.lessonsCaptured = 0;
+    state.significantOps = 0;
+    state.lastCapturePromptAt = null;
     state.connectionStatus = "unknown";
     state.lastReset = new Date().toISOString();
+    return state;
+  });
+}
+
+/**
+ * GP-530: Increment significant operations counter for periodic capture
+ * Tracks Edit, Write, and Task tool uses to determine when to prompt for lesson capture
+ */
+function incrementSignificantOps() {
+  return updateState((state) => {
+    state.significantOps = (state.significantOps || 0) + 1;
+    return state;
+  });
+}
+
+/**
+ * GP-530: Reset significant ops counter and record capture prompt timestamp
+ * Called after a periodic capture prompt is injected
+ */
+function recordCapturePrompt() {
+  return updateState((state) => {
+    state.significantOps = 0;
+    state.lastCapturePromptAt = new Date().toISOString();
     return state;
   });
 }
@@ -126,6 +153,8 @@ module.exports = {
   updateState,
   incrementMemoryQueries,
   incrementLessonsCaptured,
+  incrementSignificantOps,
+  recordCapturePrompt,
   setConnectionStatus,
   addTickerItem,
   resetCounters,

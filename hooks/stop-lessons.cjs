@@ -2,12 +2,17 @@
 /**
  * Stop hook script for capturing lessons learned (Node.js - cross-platform)
  * Auto-extracts session context and prompts for GUTT memory capture
+ *
+ * GP-530: Added Cowork non-blocking path. In Cowork, decision:block is not
+ * supported, so we output a best-effort reason. Most lessons should already
+ * be captured by cowork-periodic-capture.cjs during the session.
  */
 
 const fs = require("fs");
 const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { getState } = require("./lib/session-state.cjs");
+const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
 const {
   parseTranscript,
   parseTranscriptRaw,
@@ -80,20 +85,38 @@ process.stdin.on("end", () => {
         process.exit(0);
       }
 
-      // Block stop and prompt for plan feedback capture
+      // Block stop (CLI) or best-effort output (Cowork) for plan feedback capture
       fs.writeFileSync(planFeedbackStateFile, "");
-      fs.appendFileSync(
-        logFile,
-        `[${timestamp}] Stop hook: Blocking stop for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
-      );
 
-      console.log(
-        JSON.stringify({
-          decision: "block",
-          reason: buildCaptureInstruction(planFeedback),
-        })
-      );
-      return; // Exit after blocking
+      const captureInstruction = buildCaptureInstruction(planFeedback);
+
+      if (supportsDecisionBlock()) {
+        // CLI: block stop and force capture
+        fs.appendFileSync(
+          logFile,
+          `[${timestamp}] Stop hook: Blocking stop for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
+        );
+        console.log(
+          JSON.stringify({
+            decision: "block",
+            reason: captureInstruction,
+          })
+        );
+      } else {
+        // GP-530 AC-10: Cowork — best-effort non-blocking output
+        fs.appendFileSync(
+          logFile,
+          `[${timestamp}] Stop hook: Cowork non-blocking plan feedback output (${planFeedback.type}) in session ${sessionId}\n`
+        );
+        console.log(
+          JSON.stringify({
+            hookSpecificOutput: {
+              additionalContext: `[Cowork] Session ending with uncaptured plan feedback. ${captureInstruction}`,
+            },
+          })
+        );
+      }
+      return; // Exit after output
     }
     // If planFeedback.skip = true (approved), continue to regular lesson capture
   }
@@ -136,12 +159,8 @@ process.stdin.on("end", () => {
   // Extract session goal
   const goal = transcriptData.firstUserMessage || "Session work (no goal extracted)";
 
-  // Create state file to track first block
+  // Create state file to track first prompt
   fs.writeFileSync(stateFile, "");
-  fs.appendFileSync(
-    logFile,
-    `[${timestamp}] Stop hook: Blocking stop for session ${sessionId} - significant work detected\n`
-  );
 
   // Build session summary for agent prompt
   const sessionSummary = `## Session Summary
@@ -157,12 +176,7 @@ ${generateSummary(transcriptData)}`;
   const sanitizedGoal = sanitizeForDisplay(goal);
   const sanitizedSummary = sanitizeForDisplay(sessionSummary);
 
-  console.log(
-    JSON.stringify({
-      decision: "block",
-      reason: `🟠 ACTION REQUIRED: Capture session lessons before stopping.
-
-Session Context:
+  const capturePrompt = `Session Context:
 - Duration: ${durationMinutes} minutes
 - Files modified: ${transcriptData.filesModified}
 - Memory queries: ${memoryQueries}
@@ -174,9 +188,40 @@ Task(subagent_type="memory-keeper", model="haiku", prompt="Capture session lesso
 
 ${sanitizedSummary}
 
-Create a memory with name 'Session: ${sanitizedGoal}' containing the key lessons and findings from this session.")
+Create a memory with name 'Session: ${sanitizedGoal}' containing the key lessons and findings from this session.")`;
+
+  if (supportsDecisionBlock()) {
+    // CLI: block stop and force capture
+    fs.appendFileSync(
+      logFile,
+      `[${timestamp}] Stop hook: Blocking stop for session ${sessionId} - significant work detected\n`
+    );
+    console.log(
+      JSON.stringify({
+        decision: "block",
+        reason: `\ud83d\udfe0 ACTION REQUIRED: Capture session lessons before stopping.
+
+${capturePrompt}
 
 Or describe what you learned and I'll format it properly.`,
-    })
-  );
+      })
+    );
+  } else {
+    // GP-530 AC-10: Cowork — best-effort non-blocking output
+    fs.appendFileSync(
+      logFile,
+      `[${timestamp}] Stop hook: Cowork non-blocking lesson capture output for session ${sessionId}\n`
+    );
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          additionalContext: `[Cowork] Session ending. ${lessonsCaptured} lessons captured during session.${
+            lessonsCaptured === 0
+              ? " WARNING: No lessons captured this session. " + capturePrompt
+              : " Periodic capture handled lesson collection."
+          }`,
+        },
+      })
+    );
+  }
 });

@@ -1,6 +1,8 @@
 // hooks/subagent-plan-review.cjs
+// GP-530: Added Cowork non-blocking path (uses additionalContext instead of decision:block)
 const fs = require("fs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
+const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
 
 // Shared plan detection patterns - used by both hasPlanContent and countPlanPatterns
 const PLAN_PATTERNS = [
@@ -46,10 +48,8 @@ process.stdin.on("end", () => {
     const sanitizedQuery = sanitizeForDisplay(searchQuery);
     const sanitizedSummary = sanitizeForDisplay(summary.substring(0, 200));
 
-    // Output using blocking format for SubagentStop
-    const output = {
-      decision: "block",
-      reason: `[GUTT Plan Review]
+    // Build the plan review message (shared between both paths)
+    const reviewMessage = `[GUTT Plan Review]
 
 A plan has been created. Before proceeding with implementation:
 
@@ -62,8 +62,24 @@ Delegate to memory-keeper agent:
 
 Task(subagent_type="memory-keeper", model="haiku", prompt="Search for lessons and context about: ${sanitizedQuery}")
 
-Plan summary: "${sanitizedSummary}${summary.length > 200 ? "..." : ""}"`,
-    };
+Plan summary: "${sanitizedSummary}${summary.length > 200 ? "..." : ""}"`;
+
+    // GP-530: Dual-path output based on platform
+    let output;
+    if (supportsDecisionBlock()) {
+      // AC-3: CLI \u2014 keep existing blocking behavior
+      output = {
+        decision: "block",
+        reason: reviewMessage,
+      };
+    } else {
+      // AC-2: Cowork \u2014 non-blocking context injection
+      output = {
+        hookSpecificOutput: {
+          additionalContext: reviewMessage,
+        },
+      };
+    }
 
     console.log(JSON.stringify(output));
     process.exitCode = 0;
