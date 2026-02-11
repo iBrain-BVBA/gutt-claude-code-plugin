@@ -35,6 +35,24 @@ function assert(condition, description) {
 const originalProjectDir = process.env.CLAUDE_PROJECT_DIR;
 const originalPlatform = process.env.CLAUDE_PLATFORM;
 
+/**
+ * Restore environment variables to their original state.
+ * Handles the case where a variable was originally undefined (deletes it)
+ * vs originally set to a value (restores it).
+ */
+function restoreEnv() {
+  if (originalProjectDir === undefined) {
+    delete process.env.CLAUDE_PROJECT_DIR;
+  } else {
+    process.env.CLAUDE_PROJECT_DIR = originalProjectDir;
+  }
+  if (originalPlatform === undefined) {
+    delete process.env.CLAUDE_PLATFORM;
+  } else {
+    process.env.CLAUDE_PLATFORM = originalPlatform;
+  }
+}
+
 // ============================================================================
 // TEST SUITE 1: Platform Detection
 // ============================================================================
@@ -57,9 +75,8 @@ process.env.CLAUDE_PLATFORM = "cowork";
 process.env.CLAUDE_PROJECT_DIR = "/home/user/my-project";
 assert(supportsDecisionBlock() === false, "CLAUDE_PLATFORM=cowork overrides CLI-like path");
 
-// Restore env
-delete process.env.CLAUDE_PLATFORM;
-process.env.CLAUDE_PROJECT_DIR = originalProjectDir;
+// Restore env after platform detection tests
+restoreEnv();
 
 // ============================================================================
 // TEST SUITE 2: subagent-plan-review.cjs Output Format (Comment 3)

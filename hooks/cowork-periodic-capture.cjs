@@ -20,7 +20,6 @@
 
 const { isCowork } = require("./lib/platform-detect.cjs");
 const {
-  getState,
   incrementSignificantOps,
   recordCapturePrompt,
 } = require("./lib/session-state.cjs");
@@ -45,7 +44,7 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input || "{}");
-    const toolName = data.tool_name || "";
+    const toolName = data.tool_name || data.tool || "";
 
     // Only count significant tools (Edit, Write, Task)
     // Skip memory tools to avoid self-triggering loops
@@ -70,11 +69,8 @@ process.stdin.on("end", () => {
       }
     }
 
-    // Increment the significant ops counter
-    incrementSignificantOps();
-
-    // Check if we should trigger a capture prompt
-    const state = getState();
+    // Increment the significant ops counter and get current state in one read
+    const state = incrementSignificantOps();
     const ops = state.significantOps || 0;
     const lessonsCaptured = state.lessonsCaptured || 0;
     const lastCapturePromptAt = state.lastCapturePromptAt;
