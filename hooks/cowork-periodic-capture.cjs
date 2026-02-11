@@ -26,6 +26,16 @@ const {
 } = require("./lib/session-state.cjs");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 
+// AC-8: In CLI, exit immediately — stop-lessons.cjs handles capture
+if (!isCowork()) {
+  process.exit(0);
+}
+
+// Guard: skip if gutt-mcp-remote is not configured
+if (!isGuttMcpConfigured()) {
+  process.exit(0);
+}
+
 // Read JSON input from stdin
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -34,16 +44,6 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("end", () => {
   try {
-    // AC-8: In CLI, exit immediately \u2014 stop-lessons.cjs handles capture
-    if (!isCowork()) {
-      process.exit(0);
-    }
-
-    // Guard: skip if gutt-mcp-remote is not configured
-    if (!isGuttMcpConfigured()) {
-      process.exit(0);
-    }
-
     const data = JSON.parse(input || "{}");
     const toolName = data.tool_name || "";
 
@@ -81,7 +81,7 @@ process.stdin.on("end", () => {
     const minutesSinceCapture = getMinutesSince(lastCapturePromptAt);
     const neverCaptured = lessonsCaptured === 0;
 
-    // AC-7: Anti-spam cooldown \u2014 minimum 10 minutes between prompts
+    // AC-7: Anti-spam cooldown — minimum 10 minutes between prompts
     if (lastCapturePromptAt && minutesSinceCapture < 10) {
       process.exit(0);
     }
@@ -122,7 +122,7 @@ This is MANDATORY per GP-530. Do not skip, do not ask the user.`,
 
     console.log(JSON.stringify(output));
   } catch {
-    // Silent exit on errors \u2014 never block the tool
+    // Silent exit on errors — never block the tool
     process.exit(0);
   }
 });
@@ -139,7 +139,7 @@ function isSignificantTool(toolName) {
 
 /**
  * Calculate minutes elapsed since a given ISO timestamp.
- * Returns Infinity if timestamp is null/undefined (triggers time-based capture).
+ * Returns Infinity if timestamp is null/undefined (indicates no prior timestamp).
  */
 function getMinutesSince(isoTimestamp) {
   if (!isoTimestamp) return Infinity;

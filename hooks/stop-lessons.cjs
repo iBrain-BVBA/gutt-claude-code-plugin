@@ -103,14 +103,16 @@ process.stdin.on("end", () => {
           })
         );
       } else {
-        // GP-530 AC-10: Cowork \u2014 best-effort non-blocking output
+        // GP-530 AC-10: Cowork — best-effort non-blocking output
         fs.appendFileSync(
           logFile,
           `[${timestamp}] Stop hook: Cowork non-blocking plan feedback output (${planFeedback.type}) in session ${sessionId}\n`
         );
         console.log(
           JSON.stringify({
-            reason: `[Cowork] Session ending with uncaptured plan feedback. ${captureInstruction}`,
+            hookSpecificOutput: {
+              additionalContext: `[Cowork] Session ending with uncaptured plan feedback. ${captureInstruction}`,
+            },
           })
         );
       }
@@ -205,18 +207,20 @@ Or describe what you learned and I'll format it properly.`,
       })
     );
   } else {
-    // GP-530 AC-10: Cowork \u2014 best-effort non-blocking output
+    // GP-530 AC-10: Cowork — best-effort non-blocking output
     fs.appendFileSync(
       logFile,
       `[${timestamp}] Stop hook: Cowork non-blocking lesson capture output for session ${sessionId}\n`
     );
     console.log(
       JSON.stringify({
-        reason: `[Cowork] Session ending. ${lessonsCaptured} lessons captured during session.${
-          lessonsCaptured === 0
-            ? " WARNING: No lessons captured this session. " + capturePrompt
-            : " Periodic capture handled lesson collection."
-        }`,
+        hookSpecificOutput: {
+          additionalContext: `[Cowork] Session ending. ${lessonsCaptured} lessons captured during session.${
+            lessonsCaptured === 0
+              ? " WARNING: No lessons captured this session. " + capturePrompt
+              : " Periodic capture handled lesson collection."
+          }`,
+        },
       })
     );
   }
