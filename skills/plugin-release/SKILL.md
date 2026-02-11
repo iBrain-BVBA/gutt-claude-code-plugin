@@ -65,10 +65,10 @@ Use semantic versioning (semver):
 }
 ```
 
-Use `push_files` to update all 3 in a single commit to master:
+Use `mcp__github__push_files` to update all 3 in a single commit to master:
 
 ```
-push_files(
+mcp__github__push_files(
   owner="iBrain-BVBA",
   repo="gutt-claude-code-plugin",
   branch="master",
@@ -76,6 +76,8 @@ push_files(
   files=[...all 3 files with updated version...]
 )
 ```
+
+**NOTE:** Version bump commits go directly to master. This is an intentional exception to the PR workflow — version bumps are mechanical (no code logic changes) and happen after all feature PRs are already merged and reviewed. The github-workflow skill's "no direct pushes to master" rule does not apply to version bump commits.
 
 ## Step 3: Create Git Tag and GitHub Release
 
@@ -96,7 +98,7 @@ gh release create vX.Y.Z \
   --notes "<release notes>"
 ```
 
-**Option B: GitHub API (if gh not available)**
+**Option B: GitHub UI (manual fallback)**
 
 The GitHub MCP tools do NOT include `create_release` or `create_tag`. If `gh` CLI is not available:
 
@@ -133,7 +135,7 @@ Use this template:
 ## Upgrade
 Users with auto-update enabled will receive this version automatically. Manual install:
 ```
-claude plugin install iBrain-BVBA/gutt-claude-code-plugin
+/plugin install gutt-claude-code-plugin@gutt-plugins
 ```
 ```
 
@@ -148,22 +150,22 @@ After the release is created:
 
 1. **Verify tag exists:**
    ```
-   list_tags(owner="iBrain-BVBA", repo="gutt-claude-code-plugin", perPage=3)
+   mcp__github__list_tags(owner="iBrain-BVBA", repo="gutt-claude-code-plugin", perPage=3)
    ```
 
 2. **Verify release exists:**
    ```
-   get_latest_release(owner="iBrain-BVBA", repo="gutt-claude-code-plugin")
+   mcp__github__get_latest_release(owner="iBrain-BVBA", repo="gutt-claude-code-plugin")
    ```
 
 3. **Test install:**
-   ```bash
-   claude plugin install iBrain-BVBA/gutt-claude-code-plugin
+   ```
+   /plugin install gutt-claude-code-plugin@gutt-plugins
    ```
 
 4. **Capture the release in memory:**
    ```
-   add_memory(
+   mcp__gutt-mcp-remote__add_memory(
      name="Plugin Release vX.Y.Z",
      episode_body="Released gutt-claude-code-plugin vX.Y.Z. Changes: <summary>. Tag: vX.Y.Z.",
      source="text",
@@ -176,7 +178,7 @@ After the release is created:
 
 | Mistake | Prevention |
 |---|---|
-| Forgetting one of the 3 version files | Always use `push_files` with all 3 in one commit |
+| Forgetting one of the 3 version files | Always use `mcp__github__push_files` with all 3 in one commit |
 | Bumping marketplace.json top-level version | That's `1.0.0` (schema version) — don't touch it |
 | Creating branch instead of tag | `create_branch` ≠ `create_tag` — use `gh release create` or GitHub UI |
 | Missing `Co-Authored-By` in version bump commit | Include if Claude authored the bump |
@@ -192,6 +194,8 @@ After the release is created:
 - **Auto-update:** Users with Claude Code auto-update get new versions from git tags
 
 ## Integration with Other Skills
+
+These skills all live in the same repo (`skills/` directory):
 
 - **github-workflow**: Handles pre-merge workflow (PRs, Copilot review). This skill picks up after merge.
 - **memory-capture**: Use to record the release event in organizational memory.
