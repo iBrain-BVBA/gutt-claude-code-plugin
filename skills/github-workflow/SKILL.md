@@ -1,11 +1,11 @@
 ---
 name: github-workflow
-description: "Enforces the GUTT GitHub workflow: commit to feature branches, create PRs, request Copilot review before merge. Use this skill whenever interacting with GitHub repos — creating PRs, pushing code, branching, reviewing, or any git operation via GitHub MCP. Triggers on: push, commit, PR, pull request, merge, github, branch, deploy, release, code review. Even if the user doesn't explicitly mention GitHub, use this skill when the task involves code delivery to a repository."
+description: "Enforces the gutt GitHub workflow: commit to feature branches, create PRs, request Copilot review before merge. Use this skill whenever interacting with GitHub repos — creating PRs, pushing code, branching, reviewing, or any git operation via GitHub MCP. Triggers on: push, commit, PR, pull request, merge, github, branch, deploy, release, code review. Even if the user doesn't explicitly mention GitHub, use this skill when the task involves code delivery to a repository."
 ---
 
 # GitHub Workflow
 
-**Announce:** "Following GUTT GitHub workflow..."
+**Announce:** "Following gutt GitHub workflow..."
 
 ## The Rule
 
@@ -68,6 +68,6 @@ If unsure about a repo name, search with `search_repositories` first.
 
 Follow conventional commits: `type(scope): description`
 
-Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `revert`
 
-Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` when Claude authored the code.
+Include `Co-Authored-By: Claude <model> <noreply@anthropic.com>` (use your actual model name, e.g. `Claude Opus 4.6`) when Claude authored the code.
