@@ -116,7 +116,7 @@ The GitHub MCP tools do NOT include `create_release` or `create_tag`. If `gh` CL
 
 Use this template:
 
-```markdown
+````markdown
 ## What's New
 
 ### <Feature/Fix Title> (GP-XXX)
@@ -137,7 +137,7 @@ Users with auto-update enabled will receive this version automatically. Manual i
 ```
 /plugin install gutt-claude-code-plugin@gutt-plugins
 ```
-```
+````
 
 For the release title, use a concise description of the main feature:
 - `v1.3.0 - Cowork Automatic Lesson Capture`
@@ -180,9 +180,9 @@ After the release is created:
 |---|---|
 | Forgetting one of the 3 version files | Always use `mcp__github__push_files` with all 3 in one commit |
 | Bumping marketplace.json top-level version | That's `1.0.0` (schema version) — don't touch it |
-| Creating branch instead of tag | `create_branch` ≠ `create_tag` — use `gh release create` or GitHub UI |
+| Creating branch instead of tag | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
 | Missing `Co-Authored-By` in version bump commit | Include if Claude authored the bump |
-| Not verifying after release | Always check `list_tags` and `get_latest_release` |
+| Not verifying after release | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release` |
 
 ## Repository Details
 
@@ -195,11 +195,13 @@ After the release is created:
 
 ## Integration with Other Skills
 
-These skills all live in the same repo (`skills/` directory):
+These skills live in the same repo under `skills/`:
 
-- **github-workflow**: Handles pre-merge workflow (PRs, Copilot review). This skill picks up after merge.
-- **memory-capture**: Use to record the release event in organizational memory.
-- **jira-ticket-creation**: Link releases to Jira tickets (e.g., GP-530 for a feature release).
+- **github-workflow** (`skills/github-workflow/`): Handles pre-merge workflow (PRs, Copilot review). This skill picks up after merge.
+- **memory-capture** (`skills/memory-capture/`): Use to record the release event in organizational memory.
+- **memory-retrieval** (`skills/memory-retrieval/`): Search past release context before starting.
+
+The **jira-ticket-creation** skill lives in the user's Cowork skills directory and can be used to link releases to Jira tickets (e.g., GP-530).
 
 ## Version
 
