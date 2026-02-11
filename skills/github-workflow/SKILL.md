@@ -11,7 +11,7 @@ description: "Enforces the gutt GitHub workflow: commit to feature branches, cre
 
 All code changes go through PRs with Copilot review. This is the quality gate — Copilot reviews every PR and does one last iteration before the code lands.
 
-Committing to feature branches is fine and expected. What's not allowed is pushing directly to `master` or merging without Copilot review.
+Committing to feature branches is fine and expected. What's not allowed is pushing directly to the default branch or merging without Copilot review.
 
 ## What You Can and Can't Do
 
@@ -36,13 +36,13 @@ Committing to feature branches is fine and expected. What's not allowed is pushi
 
 When delivering code to GitHub, follow this sequence:
 
-1. **Create a feature branch** from the base branch (usually `master`)
+1. **Create a feature branch** from the repo's default branch (e.g., `master` or `main`)
 2. **Push your code** to the feature branch via `push_files` (preferred for multiple files) or `create_or_update_file`
 3. **Create a PR** with a clear title referencing any Jira ticket, and a body describing what changed and why
 4. **Request Copilot review** immediately after PR creation
 5. **Stop** — let Copilot review and the user decide when to merge
 
-The reason for this workflow is that Copilot catches issues that local testing misses — style inconsistencies, edge cases, potential regressions. Having every change reviewed before it lands in master keeps the codebase healthy.
+The reason for this workflow is that Copilot catches issues that local testing misses — style inconsistencies, edge cases, potential regressions. Having every change reviewed before it lands in the default branch keeps the codebase healthy.
 
 ## PR Format
 
