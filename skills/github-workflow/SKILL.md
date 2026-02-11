@@ -16,17 +16,17 @@ Committing to feature branches is fine and expected. What's not allowed is pushi
 ## What You Can and Can't Do
 
 **Go ahead:**
-- Create branches (`create_branch`)
-- Commit files to feature branches (`push_files`, `create_or_update_file`)
-- Create PRs (`create_pull_request`)
-- Request Copilot review (`request_copilot_review`)
+- Create branches (`mcp__github__create_branch`)
+- Commit files to feature branches (`mcp__github__push_files`, `mcp__github__create_or_update_file`)
+- Create PRs (`mcp__github__create_pull_request`)
+- Request Copilot review (`mcp__github__request_copilot_review`)
 - Read anything — files, commits, diffs, PRs, issues
 - Search code, issues, PRs
 - Create/update issues
 - Update PR metadata
 
 **Always ask the user first:**
-- Merging PRs (`merge_pull_request`) — the user or Copilot workflow handles this
+- Merging PRs (`mcp__github__merge_pull_request`) — the user or Copilot workflow handles this
 
 **Never do:**
 - Push directly to `master` or `main`
@@ -37,9 +37,9 @@ Committing to feature branches is fine and expected. What's not allowed is pushi
 When delivering code to GitHub, follow this sequence:
 
 1. **Create a feature branch** from the repo's default branch (e.g., `master` or `main`)
-2. **Push your code** to the feature branch via `push_files` (preferred for multiple files) or `create_or_update_file`
+2. **Push your code** to the feature branch via `mcp__github__push_files` (preferred for multiple files) or `mcp__github__create_or_update_file`
 3. **Create a PR** with a clear title referencing any Jira ticket, and a body describing what changed and why
-4. **Request Copilot review** immediately after PR creation
+4. **Request Copilot review** immediately after PR creation via `mcp__github__request_copilot_review`
 5. **Stop** — let Copilot review and the user decide when to merge
 
 The reason for this workflow is that Copilot catches issues that local testing misses — style inconsistencies, edge cases, potential regressions. Having every change reviewed before it lands in the default branch keeps the codebase healthy.
@@ -62,7 +62,7 @@ The organization is **iBrain-BVBA**. Always use `iBrain-BVBA` as the owner for G
 Key repos:
 - `gutt-claude-code-plugin` — Claude Code/Cowork plugin (hooks, skills, MCP)
 
-If unsure about a repo name, search with `search_repositories` first.
+If unsure about a repo name, search with `mcp__github__search_repositories` first.
 
 ## Commit Messages
 
