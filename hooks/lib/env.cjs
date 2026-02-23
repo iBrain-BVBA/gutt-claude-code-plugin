@@ -20,7 +20,7 @@ const PROJECT_DIR =
 const IDE =
   process.env.CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PROJECT_DIR
     ? "claude"
-    : process.env.CURSOR_PLUGIN_ROOT || process.env.CURSOR_PROJECT_DIR
+    : process.env.CURSOR_PLUGIN_ROOT || process.env.CURSOR_PROJECT_DIR || process.env.CURSOR_VERSION
       ? "cursor"
       : "claude";
 

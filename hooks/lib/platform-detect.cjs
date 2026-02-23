@@ -22,11 +22,7 @@
  */
 function supportsDecisionBlock() {
   // 1. Cursor IDE detection — Cursor uses followup_message, not decision:block
-  if (
-    process.env.CURSOR_PLUGIN_ROOT ||
-    process.env.CURSOR_PROJECT_DIR ||
-    process.env.CURSOR_VERSION
-  ) {
+  if (isCursor()) {
     return false;
   }
 

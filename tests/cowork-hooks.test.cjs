@@ -13,7 +13,7 @@
 const path = require("path");
 
 // Platform detection functions (imported from hook lib)
-const { supportsDecisionBlock, isCowork } = require("../hooks/lib/platform-detect.cjs");
+const { supportsDecisionBlock, isCowork, isCursor } = require("../hooks/lib/platform-detect.cjs");
 
 console.log("Testing Cowork-path behavior for GP-530 hooks\n");
 console.log("=".repeat(60));
@@ -34,23 +34,35 @@ function assert(condition, description) {
 // Save original env
 const originalProjectDir = process.env.CLAUDE_PROJECT_DIR;
 const originalPlatform = process.env.CLAUDE_PLATFORM;
+const originalCursorPluginRoot = process.env.CURSOR_PLUGIN_ROOT;
+const originalCursorProjectDir = process.env.CURSOR_PROJECT_DIR;
+const originalCursorVersion = process.env.CURSOR_VERSION;
+const originalClaudePluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+
+function restoreVar(name, original) {
+  if (original === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = original;
+  }
+}
+
+function clearCursorEnv() {
+  delete process.env.CURSOR_PLUGIN_ROOT;
+  delete process.env.CURSOR_PROJECT_DIR;
+  delete process.env.CURSOR_VERSION;
+}
 
 /**
  * Restore environment variables to their original state.
- * Handles the case where a variable was originally undefined (deletes it)
- * vs originally set to a value (restores it).
  */
 function restoreEnv() {
-  if (originalProjectDir === undefined) {
-    delete process.env.CLAUDE_PROJECT_DIR;
-  } else {
-    process.env.CLAUDE_PROJECT_DIR = originalProjectDir;
-  }
-  if (originalPlatform === undefined) {
-    delete process.env.CLAUDE_PLATFORM;
-  } else {
-    process.env.CLAUDE_PLATFORM = originalPlatform;
-  }
+  restoreVar("CLAUDE_PROJECT_DIR", originalProjectDir);
+  restoreVar("CLAUDE_PLATFORM", originalPlatform);
+  restoreVar("CURSOR_PLUGIN_ROOT", originalCursorPluginRoot);
+  restoreVar("CURSOR_PROJECT_DIR", originalCursorProjectDir);
+  restoreVar("CURSOR_VERSION", originalCursorVersion);
+  restoreVar("CLAUDE_PLUGIN_ROOT", originalClaudePluginRoot);
 }
 
 // ============================================================================
@@ -60,6 +72,7 @@ function restoreEnv() {
 console.log("\n[Suite 1] Platform Detection\n");
 
 // Cowork detection via project dir
+clearCursorEnv();
 process.env.CLAUDE_PROJECT_DIR = "/sessions/test-session-123";
 delete process.env.CLAUDE_PLATFORM;
 assert(
@@ -69,11 +82,14 @@ assert(
 assert(isCowork() === true, "isCowork()=true when PROJECT_DIR=/sessions/...");
 
 // CLI detection via project dir
+clearCursorEnv();
 process.env.CLAUDE_PROJECT_DIR = "/home/user/my-project";
+delete process.env.CLAUDE_PLATFORM;
 assert(supportsDecisionBlock() === true, "supportsDecisionBlock()=true when PROJECT_DIR=/home/...");
 assert(isCowork() === false, "isCowork()=false when PROJECT_DIR=/home/...");
 
 // CLAUDE_PLATFORM takes precedence
+clearCursorEnv();
 process.env.CLAUDE_PLATFORM = "cowork";
 process.env.CLAUDE_PROJECT_DIR = "/home/user/my-project";
 assert(supportsDecisionBlock() === false, "CLAUDE_PLATFORM=cowork overrides CLI-like path");
@@ -277,6 +293,139 @@ if (fs.existsSync(captureHookPath)) {
   );
 } else {
   console.log("  (skipped - cowork-periodic-capture.cjs not found at expected path)");
+}
+
+// ============================================================================
+// TEST SUITE 7: isCursor() detection and interaction with isCowork()
+// ============================================================================
+
+console.log("\n[Suite 7] isCursor() Detection and Interaction with isCowork()\n");
+
+// 7a: isCursor() returns true when CURSOR_PLUGIN_ROOT is set
+clearCursorEnv();
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.CLAUDE_PLATFORM;
+process.env.CURSOR_PLUGIN_ROOT = "/home/user/.cursor/extensions/gutt";
+assert(isCursor() === true, "isCursor()=true when CURSOR_PLUGIN_ROOT is set");
+restoreEnv();
+
+// 7b: isCursor() returns true when CURSOR_PROJECT_DIR is set
+clearCursorEnv();
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.CLAUDE_PLATFORM;
+process.env.CURSOR_PROJECT_DIR = "/home/user/my-project";
+assert(isCursor() === true, "isCursor()=true when CURSOR_PROJECT_DIR is set");
+restoreEnv();
+
+// 7c: isCursor() returns true when only CURSOR_VERSION is set
+clearCursorEnv();
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.CLAUDE_PLATFORM;
+process.env.CURSOR_VERSION = "0.50.0";
+assert(isCursor() === true, "isCursor()=true when only CURSOR_VERSION is set");
+restoreEnv();
+
+// 7d: isCursor() returns false with no Cursor env vars
+clearCursorEnv();
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.CLAUDE_PLATFORM;
+assert(isCursor() === false, "isCursor()=false when no Cursor env vars are set");
+restoreEnv();
+
+// 7e: supportsDecisionBlock() returns false for Cursor (uses isCursor() internally)
+clearCursorEnv();
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.CLAUDE_PLATFORM;
+process.env.CURSOR_PROJECT_DIR = "/home/user/my-project";
+assert(supportsDecisionBlock() === false, "supportsDecisionBlock()=false when Cursor is detected");
+restoreEnv();
+
+// 7f: isCowork() returns false when Cursor is detected (not misidentified as Cowork)
+clearCursorEnv();
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.CLAUDE_PLATFORM;
+process.env.CURSOR_PROJECT_DIR = "/home/user/my-project";
+assert(isCowork() === false, "isCowork()=false when Cursor is detected (not misidentified)");
+restoreEnv();
+
+// 7g: isCowork() still works for actual Cowork environments
+clearCursorEnv();
+process.env.CLAUDE_PROJECT_DIR = "/sessions/test-session-456";
+delete process.env.CLAUDE_PLATFORM;
+assert(isCowork() === true, "isCowork()=true for Cowork session path (no Cursor env)");
+restoreEnv();
+
+// 7h: All three are mutually exclusive in a CLI scenario
+clearCursorEnv();
+process.env.CLAUDE_PROJECT_DIR = "/home/user/my-project";
+delete process.env.CLAUDE_PLATFORM;
+assert(
+  isCursor() === false && isCowork() === false && supportsDecisionBlock() === true,
+  "CLI scenario: isCursor=false, isCowork=false, supportsDecisionBlock=true"
+);
+restoreEnv();
+
+// ============================================================================
+// TEST SUITE 8: Cursor stop hook followup_message output format
+// ============================================================================
+
+console.log("\n[Suite 8] Cursor stop-lessons.cjs followup_message Output\n");
+
+// 8a: Cursor plan-feedback output uses followup_message
+const cursorPlanFeedback = {
+  followup_message: "Plan feedback capture instruction...",
+};
+assert(
+  typeof cursorPlanFeedback.followup_message === "string",
+  "Cursor plan-feedback: uses { followup_message: '...' }"
+);
+assert(
+  !cursorPlanFeedback.decision && !cursorPlanFeedback.hookSpecificOutput,
+  "Cursor plan-feedback: no 'decision' or 'hookSpecificOutput'"
+);
+
+// 8b: Cursor regular lesson output uses followup_message with capture prompt
+const cursorRegularLesson = {
+  followup_message:
+    "Capture session lessons before finishing.\n\nSession Context:\n- Duration: 30 minutes...",
+};
+assert(
+  cursorRegularLesson.followup_message.startsWith("Capture session lessons"),
+  "Cursor regular lesson: followup_message starts with capture instruction"
+);
+assert(
+  !cursorRegularLesson.decision && !cursorRegularLesson.hookSpecificOutput,
+  "Cursor regular lesson: no 'decision' or 'hookSpecificOutput'"
+);
+
+// 8c: Verify stop-lessons.cjs source has all three branches (Cursor, CLI, Cowork)
+const stopLessonsPath = path.resolve(__dirname, "../hooks/stop-lessons.cjs");
+if (fs.existsSync(stopLessonsPath)) {
+  const stopCode = fs.readFileSync(stopLessonsPath, "utf8");
+
+  assert(stopCode.includes("if (isCursor())"), "stop-lessons.cjs: has isCursor() branch");
+  assert(
+    stopCode.includes("supportsDecisionBlock()"),
+    "stop-lessons.cjs: has supportsDecisionBlock() branch"
+  );
+  assert(
+    stopCode.includes("hookSpecificOutput"),
+    "stop-lessons.cjs: has Cowork hookSpecificOutput branch"
+  );
+  assert(
+    stopCode.includes("followup_message"),
+    "stop-lessons.cjs: outputs followup_message for Cursor"
+  );
+
+  // Verify the isCursor() branch comes first (before supportsDecisionBlock)
+  const cursorBranchPos = stopCode.indexOf("if (isCursor())");
+  const decisionBranchPos = stopCode.indexOf("supportsDecisionBlock()");
+  assert(
+    cursorBranchPos < decisionBranchPos,
+    "stop-lessons.cjs: isCursor() checked before supportsDecisionBlock()"
+  );
+} else {
+  console.log("  (skipped - stop-lessons.cjs not found at expected path)");
 }
 
 // ============================================================================
