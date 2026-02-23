@@ -9,7 +9,8 @@ const path = require("path");
 
 // Check plugin directory first (for org-wide config), then project directory
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, "../..");
-const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+const PROJECT_ROOT =
+  process.env.CLAUDE_PROJECT_DIR || process.env.CURSOR_PROJECT_DIR || process.cwd();
 
 // Config search paths in priority order
 const CONFIG_PATHS = [
