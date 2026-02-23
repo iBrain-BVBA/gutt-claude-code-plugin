@@ -62,7 +62,10 @@ console.log("\n[Suite 1] Platform Detection\n");
 // Cowork detection via project dir
 process.env.CLAUDE_PROJECT_DIR = "/sessions/test-session-123";
 delete process.env.CLAUDE_PLATFORM;
-assert(supportsDecisionBlock() === false, "supportsDecisionBlock()=false when PROJECT_DIR=/sessions/...");
+assert(
+  supportsDecisionBlock() === false,
+  "supportsDecisionBlock()=false when PROJECT_DIR=/sessions/..."
+);
 assert(isCowork() === true, "isCowork()=true when PROJECT_DIR=/sessions/...");
 
 // CLI detection via project dir
@@ -121,10 +124,7 @@ const stopCLIPlanFeedback = {
   decision: "block",
   reason: "Plan feedback capture instruction...",
 };
-assert(
-  stopCLIPlanFeedback.decision === "block",
-  "Plan-feedback CLI: uses decision='block'"
-);
+assert(stopCLIPlanFeedback.decision === "block", "Plan-feedback CLI: uses decision='block'");
 
 // Plan-feedback path - Cowork (FIXED: was { reason: '...' })
 const stopCoworkPlanFeedback = {
@@ -143,10 +143,7 @@ const stopCLILesson = {
   decision: "block",
   reason: "\ud83d\udfe0 ACTION REQUIRED: Capture session lessons...",
 };
-assert(
-  stopCLILesson.decision === "block",
-  "Regular lesson CLI: uses decision='block'"
-);
+assert(stopCLILesson.decision === "block", "Regular lesson CLI: uses decision='block'");
 
 // Regular lesson path - Cowork (FIXED: was { reason: '...' })
 const stopCoworkLesson = {
@@ -172,7 +169,9 @@ console.log("\n[Suite 4] cowork-periodic-capture.cjs Thresholds (Comment 5)\n");
 
 // Helper matching the hook's getMinutesSince
 function getMinutesSince(isoTimestamp) {
-  if (!isoTimestamp) return Infinity;
+  if (!isoTimestamp) {
+    return Infinity;
+  }
   const then = new Date(isoTimestamp).getTime();
   const now = Date.now();
   return Math.floor((now - then) / 60000);
@@ -210,7 +209,10 @@ const thirtyMinAgo = new Date(now - 30 * 60000).toISOString();
 assert(shouldCapture(2, 3, thirtyMinAgo), "AC-5: 30 min since last capture triggers (ops=2)");
 
 const fifteenMinAgo = new Date(now - 15 * 60000).toISOString();
-assert(!shouldCapture(2, 3, fifteenMinAgo), "AC-5: 15 min since last capture does NOT trigger (ops=2)");
+assert(
+  !shouldCapture(2, 3, fifteenMinAgo),
+  "AC-5: 15 min since last capture does NOT trigger (ops=2)"
+);
 
 // AC-7: Anti-spam cooldown
 const fiveMinAgo = new Date(now - 5 * 60000).toISOString();
