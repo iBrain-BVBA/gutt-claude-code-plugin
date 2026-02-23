@@ -7,11 +7,11 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { PROJECT_STATE_DIR } = require("./env.cjs");
 
-// Store session state in the project's .claude directory (not plugin install path)
+// Store session state in the project's IDE directory (not plugin install path)
 // This ensures state is per-project and survives plugin updates
-const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const STATE_DIR = path.join(PROJECT_ROOT, ".claude", "hooks", ".state");
+const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
 const STATE_PATH = path.join(STATE_DIR, "gutt-session.json");
 
 const DEFAULT_STATE = {

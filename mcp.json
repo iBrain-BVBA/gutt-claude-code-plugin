@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "gutt-mcp-remote": {
+      "url": "${GUTT_MCP_URL}"
+    }
+  }
+}

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * Shared debug logging utility for hooks
- * Writes errors to .claude/hooks/.state/hook-errors.log
+ * Writes errors to <project>/<.claude|.cursor>/hooks/.state/hook-errors.log
  */
 
 const fs = require("fs");
 const path = require("path");
+const { PROJECT_STATE_DIR } = require("./env.cjs");
 
-const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const LOG_FILE = path.join(PROJECT_ROOT, ".claude", "hooks", ".state", "hook-errors.log");
+const LOG_FILE = path.join(PROJECT_STATE_DIR, "hooks", ".state", "hook-errors.log");
 
 /**
  * Log an error for debugging (non-blocking)

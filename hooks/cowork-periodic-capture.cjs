@@ -19,10 +19,7 @@
  */
 
 const { isCowork } = require("./lib/platform-detect.cjs");
-const {
-  incrementSignificantOps,
-  recordCapturePrompt,
-} = require("./lib/session-state.cjs");
+const { incrementSignificantOps, recordCapturePrompt } = require("./lib/session-state.cjs");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 
 // AC-8: In CLI, exit immediately — stop-lessons.cjs handles capture
@@ -128,7 +125,9 @@ This is MANDATORY per GP-530. Do not skip, do not ask the user.`,
  * Edit, Write, and Task represent meaningful work being done.
  */
 function isSignificantTool(toolName) {
-  if (!toolName) return false;
+  if (!toolName) {
+    return false;
+  }
   const significant = ["Edit", "Write", "Task"];
   return significant.some((t) => toolName === t);
 }
@@ -138,7 +137,9 @@ function isSignificantTool(toolName) {
  * Returns Infinity if timestamp is null/undefined (indicates no prior timestamp).
  */
 function getMinutesSince(isoTimestamp) {
-  if (!isoTimestamp) return Infinity;
+  if (!isoTimestamp) {
+    return Infinity;
+  }
   const then = new Date(isoTimestamp).getTime();
   const now = Date.now();
   return Math.floor((now - then) / 60000);

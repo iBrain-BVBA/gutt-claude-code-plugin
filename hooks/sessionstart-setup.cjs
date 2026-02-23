@@ -17,12 +17,10 @@
 
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
+const { USER_CONFIG_DIR } = require("./lib/env.cjs");
 
-// Respect HOME env var for testing (process.env.HOME || process.env.USERPROFILE for Windows || os.homedir())
-const HOME_DIR = process.env.HOME || process.env.USERPROFILE || os.homedir();
-const MARKER_FILE = path.join(HOME_DIR, ".claude", ".gutt-statusline-configured");
-const SETTINGS_FILE = path.join(HOME_DIR, ".claude", "settings.json");
+const MARKER_FILE = path.join(USER_CONFIG_DIR, ".gutt-statusline-configured");
+const SETTINGS_FILE = path.join(USER_CONFIG_DIR, "settings.json");
 
 /**
  * Atomic write for Windows compatibility

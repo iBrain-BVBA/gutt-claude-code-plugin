@@ -5,48 +5,52 @@
 
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
+const { PROJECT_DIR, HOME_DIR } = require("./env.cjs");
 
 /**
  * Check if gutt-mcp-remote MCP server is configured in settings
- * Checks both user scope (~/.claude/settings.json, ~/.mcp.json) and project scope
- * (.claude/settings.json, .mcp.json in CLAUDE_PROJECT_DIR).
+ * Checks both user scope and project scope for both Claude Code and Cursor.
  * @returns {boolean} true if gutt-mcp-remote is configured
  */
 function isGuttMcpConfigured() {
-  // Check user scope (~/.claude/settings.json)
-  const userSettingsPath = path.join(os.homedir(), ".claude", "settings.json");
-  if (checkSettingsFile(userSettingsPath)) {
+  // Check Claude Code user scope (~/.claude/settings.json)
+  const claudeUserSettingsPath = path.join(HOME_DIR, ".claude", "settings.json");
+  if (checkSettingsFile(claudeUserSettingsPath)) {
     return true;
   }
 
   // Check user scope (~/.mcp.json)
-  const userMcpPath = path.join(os.homedir(), ".mcp.json");
+  const userMcpPath = path.join(HOME_DIR, ".mcp.json");
   if (checkMcpFile(userMcpPath)) {
     return true;
   }
 
+  // Check Cursor user scope (~/.cursor/mcp.json)
+  const cursorUserMcpPath = path.join(HOME_DIR, ".cursor", "mcp.json");
+  if (checkMcpFile(cursorUserMcpPath)) {
+    return true;
+  }
+
   // Check project scope (.claude/settings.json in project dir)
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const projectSettingsPath = path.join(projectDir, ".claude", "settings.json");
+  const projectSettingsPath = path.join(PROJECT_DIR, ".claude", "settings.json");
   if (checkSettingsFile(projectSettingsPath)) {
     return true;
   }
 
   // Check project scope (.mcp.json in project dir)
-  const projectMcpPath = path.join(projectDir, ".mcp.json");
+  const projectMcpPath = path.join(PROJECT_DIR, ".mcp.json");
   if (checkMcpFile(projectMcpPath)) {
     return true;
   }
 
   // Check if gutt plugin is installed (plugin provides MCP at runtime)
-  const pluginPath = path.join(os.homedir(), ".claude", "plugins", "marketplaces", "gutt-plugins");
+  const pluginPath = path.join(HOME_DIR, ".claude", "plugins", "marketplaces", "gutt-plugins");
   if (fs.existsSync(pluginPath)) {
     return true;
   }
 
   // Check plugin cache directories for gutt-claude-code-plugin
-  const pluginCachePath = path.join(os.homedir(), ".claude", "plugins", "cache");
+  const pluginCachePath = path.join(HOME_DIR, ".claude", "plugins", "cache");
   if (fs.existsSync(pluginCachePath)) {
     try {
       const cacheEntries = fs.readdirSync(pluginCachePath);
