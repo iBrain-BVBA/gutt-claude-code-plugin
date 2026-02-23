@@ -27,9 +27,9 @@ Configure gutt MCP server connection for Claude Code or Cursor.
 
 Before starting, detect which IDE is running:
 
-- If environment variable `CLAUDE_PLUGIN_ROOT` is set → **Claude Code**
-- If environment variable `CURSOR_PLUGIN_ROOT` is set → **Cursor**
-- If neither is set → ask the user which IDE they are using
+- If environment variable `CLAUDE_PLUGIN_ROOT` or `CLAUDE_PROJECT_DIR` is set → **Claude Code**
+- If environment variable `CURSOR_PLUGIN_ROOT` or `CURSOR_PROJECT_DIR` is set → **Cursor**
+- If neither is set → default to **Claude Code** (backward compatible)
 
 ## Setup Flow
 

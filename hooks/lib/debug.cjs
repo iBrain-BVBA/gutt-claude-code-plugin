@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Shared debug logging utility for hooks
- * Writes errors to .claude/hooks/.state/hook-errors.log
+ * Writes errors to <project>/<.claude|.cursor>/hooks/.state/hook-errors.log
  */
 
 const fs = require("fs");

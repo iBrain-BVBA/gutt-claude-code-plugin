@@ -17,7 +17,12 @@ const PROJECT_DIR =
   process.env.CLAUDE_PROJECT_DIR || process.env.CURSOR_PROJECT_DIR || process.cwd();
 
 /** Which IDE is running this hook: 'claude' or 'cursor' */
-const IDE = process.env.CLAUDE_PLUGIN_ROOT ? "claude" : "cursor";
+const IDE =
+  process.env.CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PROJECT_DIR
+    ? "claude"
+    : process.env.CURSOR_PLUGIN_ROOT || process.env.CURSOR_PROJECT_DIR
+      ? "cursor"
+      : "claude";
 
 /** IDE-specific dot-directory name (.claude or .cursor) */
 const STATE_DIR_NAME = IDE === "claude" ? ".claude" : ".cursor";
