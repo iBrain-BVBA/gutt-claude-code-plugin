@@ -1,0 +1,14 @@
+---
+description: Search gutt organizational memory before starting tasks
+---
+
+Before starting any non-trivial task, search organizational memory using gutt-mcp-remote
+MCP tools (search_memory_facts, search_memory_nodes, fetch_lessons_learned) to find:
+
+- Previous decisions and their rationale
+- Lessons learned from similar work
+- Known issues and workarounds
+- Established patterns and conventions
+
+After completing significant work, capture lessons and decisions using add_memory so
+future sessions can build on what was learned.

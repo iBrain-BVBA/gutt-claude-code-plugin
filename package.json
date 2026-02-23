@@ -9,7 +9,11 @@
     "commands",
     "hooks",
     "skills",
+    "rules",
+    "docs",
     ".claude-plugin",
+    ".cursor-plugin",
+    "mcp.json",
     "config.json.example",
     "README.md",
     "LICENSE"

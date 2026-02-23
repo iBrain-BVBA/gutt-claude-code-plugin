@@ -1,0 +1,14 @@
+{
+  "name": "gutt-cursor-plugin",
+  "displayName": "GUTT Memory",
+  "version": "1.2.6",
+  "author": {
+    "name": "iBRAIN BV",
+    "email": "support@gutt.pro"
+  },
+  "description": "Persistent organizational memory for Cursor via GUTT",
+  "homepage": "https://gutt.pro",
+  "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
+  "license": "MIT",
+  "keywords": ["memory", "organizational-memory", "knowledge-graph"]
+}
