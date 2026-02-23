@@ -2,9 +2,9 @@
   <img src="docs/banner.jpg" alt="gutt × Claude Code" width="600">
 </p>
 
-# gutt Claude Code Plugin
+# gutt Plugin for Claude Code & Cursor
 
-Persistent organizational memory for Claude Code via [gutt](https://gutt.pro).
+Persistent organizational memory for [Claude Code](https://claude.ai/claude-code) and [Cursor](https://cursor.com) via [gutt](https://gutt.pro).
 
 ## What is gutt?
 
@@ -35,7 +35,7 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ## Quick Start
 
-### Installation
+### Claude Code
 
 #### Via Marketplace (Recommended)
 
@@ -67,7 +67,7 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 3. Restart Claude Code to activate the plugin
 
-### Setup
+#### Setup
 
 After installing the plugin, run the setup wizard:
 
@@ -87,6 +87,20 @@ After the wizard completes:
 3. Choose **"Authenticate"** to complete OAuth login
 
 Memory features will be active after authentication.
+
+### Cursor
+
+#### Via Cursor Marketplace
+
+1. Search for **"GUTT Memory"** in the Cursor Marketplace and install
+2. Run the setup command to configure the MCP connection
+3. Enter your organization's gutt MCP endpoint URL when prompted
+4. Restart Cursor → **Settings → Tools & MCP Servers** → Connect `gutt-mcp-remote`
+5. Complete OAuth login
+
+Cursor doesn't support all Claude Code hooks. 4 of 11 hooks are portable (prompt submit, file edit lint, pre-task memory, stop lessons). Missing automation is compensated by Cursor rules (`.mdc`) that guide memory-first workflows.
+
+See [docs/team-onboarding.md](docs/team-onboarding.md) for detailed installation instructions for both IDEs.
 
 ## Features
 
@@ -191,10 +205,20 @@ This plugin works seamlessly alongside oh-my-claudecode:
 ```
 gutt-claude-code-plugin/
 ├── .claude-plugin/
-│   └── plugin.json          # Plugin manifest
+│   ├── plugin.json            # Claude Code plugin manifest
+│   └── marketplace.json       # Claude Code marketplace metadata
+├── .cursor-plugin/
+│   ├── plugin.json            # Cursor plugin manifest
+│   └── hooks.json             # Cursor hooks config (4 portable hooks)
 ├── docs/
-│   └── statusline-hud.png   # HUD screenshot
+│   ├── statusline-hud.png     # HUD screenshot
+│   └── team-onboarding.md     # Installation guide for both IDEs
 ├── hooks/
+│   ├── lib/
+│   │   ├── env.cjs            # IDE detection (Claude Code vs Cursor)
+│   │   ├── session-state.cjs  # Shared state management
+│   │   ├── debug.cjs          # Debug logging
+│   │   └── mcp-config.cjs     # MCP config detection
 │   ├── session-start.cjs       # Setup reminder
 │   ├── sessionstart-setup.cjs  # Auto-enable HUD
 │   ├── user-prompt-submit.cjs  # Memory reminder
@@ -214,15 +238,17 @@ gutt-claude-code-plugin/
 │   ├── memory-keeper.md
 │   └── config-discovery.md
 ├── commands/
-│   ├── setup.md               # Setup wizard
+│   ├── setup.md               # IDE-aware setup wizard
 │   └── start.md               # Alias for setup
-├── .mcp.json.template        # Reference template (setup uses `claude mcp add`)
+├── rules/
+│   └── gutt-memory.mdc        # Cursor rule for memory-first workflow
+├── mcp.json                   # Cursor MCP config template
 └── README.md
 ```
 
 ## Requirements
 
-- Claude Code CLI
+- Claude Code CLI or Cursor 2.5+
 - Node.js 18+
 - gutt MCP server access (contact your organization admin)
 
