@@ -192,14 +192,6 @@ Capture learnings using one of 4 patterns:
 - **Decision**: "We decided X because Y"
 - **Lesson**: "Learned that X when Y"
 
-## Integration with oh-my-claudecode
-
-This plugin works seamlessly alongside oh-my-claudecode:
-
-1. gutt hooks fire **before** OMC hooks
-2. Memory context is available when OMC orchestration starts
-3. OMC sub-agents can call gutt MCP tools
-
 ## File Structure
 
 ```
