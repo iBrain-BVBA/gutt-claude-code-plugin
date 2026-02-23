@@ -90,9 +90,9 @@ Memory features will be active after authentication.
 
 ### Cursor
 
-#### Via Cursor Marketplace
+#### Installation
 
-1. Search for **"GUTT Memory"** in the Cursor Marketplace and install
+1. In Cursor, run `/add-plugin` and enter the repo URL: `https://github.com/iBrain-BVBA/gutt-claude-code-plugin`
 2. Run the setup command to configure the MCP connection
 3. Enter your organization's gutt MCP endpoint URL when prompted
 4. Restart Cursor → **Settings → Tools & MCP Servers** → Connect `gutt-mcp-remote`

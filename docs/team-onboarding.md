@@ -21,7 +21,7 @@ For team-wide deployment, admins can pre-configure via managed settings:
 
 Steps:
 
-1. Install from Cursor Marketplace (search "GUTT Memory") or use `/add-plugin` with the repo URL
+1. In Cursor, run `/add-plugin` and enter: `https://github.com/iBrain-BVBA/gutt-claude-code-plugin`
 2. Run the setup command to configure the MCP connection
 3. Enter your organization's gutt MCP endpoint URL when prompted
 4. Restart Cursor → Settings → Tools & MCP Servers → Connect `gutt-mcp-remote`
