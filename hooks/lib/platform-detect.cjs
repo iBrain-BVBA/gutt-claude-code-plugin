@@ -21,7 +21,12 @@
  * @returns {boolean} true if decision:block is supported (CLI), false if not (Cowork)
  */
 function supportsDecisionBlock() {
-  // 1. Explicit platform env var
+  // 1. Cursor IDE detection — Cursor uses followup_message, not decision:block
+  if (isCursor()) {
+    return false;
+  }
+
+  // 2. Explicit platform env var
   const platform = (process.env.CLAUDE_PLATFORM || "").toLowerCase();
   if (platform.includes("cowork") || platform.includes("desktop")) {
     return false;
@@ -30,25 +35,40 @@ function supportsDecisionBlock() {
     return true;
   }
 
-  // 2. Cowork session path detection
+  // 3. Cowork session path detection
   // Cowork uses paths like /sessions/<session-id>/ as project dirs
   const projectDir = process.env.CLAUDE_PROJECT_DIR || "";
   if (/^\/sessions\/[^/]+/.test(projectDir)) {
     return false;
   }
 
-  // 3. Default to CLI behavior (safer - existing hooks work unchanged)
+  // 4. Default to CLI behavior (safer - existing hooks work unchanged)
   return true;
 }
 
 /**
  * Check if running in Cowork (Claude Desktop) environment.
- * Convenience inverse of supportsDecisionBlock().
  *
  * @returns {boolean} true if running in Cowork
  */
 function isCowork() {
+  if (isCursor()) {
+    return false;
+  }
   return !supportsDecisionBlock();
 }
 
-module.exports = { supportsDecisionBlock, isCowork };
+/**
+ * Check if running in Cursor IDE environment.
+ *
+ * @returns {boolean} true if running in Cursor
+ */
+function isCursor() {
+  return !!(
+    process.env.CURSOR_PLUGIN_ROOT ||
+    process.env.CURSOR_PROJECT_DIR ||
+    process.env.CURSOR_VERSION
+  );
+}
+
+module.exports = { supportsDecisionBlock, isCowork, isCursor };

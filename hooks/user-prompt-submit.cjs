@@ -8,8 +8,8 @@ const fs = require("fs");
 const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 
-const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
+const { PROJECT_DIR, STATE_DIR_NAME } = require("./lib/env.cjs");
+const logFile = path.join(PROJECT_DIR, STATE_DIR_NAME, "hooks", "hook-invocations.log");
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
 
 // Read JSON input from stdin

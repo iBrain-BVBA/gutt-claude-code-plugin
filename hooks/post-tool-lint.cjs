@@ -37,14 +37,16 @@ process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input);
 
-    // Only process Edit and Write tool results
+    // In Claude Code: only process Edit and Write tool results
+    // In Cursor: afterFileEdit fires only for file edits, no tool_name filtering needed
     const toolName = data.tool_name || data.tool || "";
-    if (!["Edit", "Write"].includes(toolName)) {
+    const isCursorHook = !toolName && data.file_path;
+    if (!isCursorHook && !["Edit", "Write"].includes(toolName)) {
       process.exit(0);
     }
 
-    // Extract file path from tool input
-    const filePath = data.tool_input?.file_path || data.input?.file_path || "";
+    // Extract file path: Cursor sends top-level file_path, Claude Code nests it
+    const filePath = data.file_path || data.tool_input?.file_path || data.input?.file_path || "";
     if (!filePath) {
       process.exit(0);
     }

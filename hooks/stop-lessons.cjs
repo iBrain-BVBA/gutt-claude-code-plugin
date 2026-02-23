@@ -12,7 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { getState } = require("./lib/session-state.cjs");
-const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
+const { supportsDecisionBlock, isCursor } = require("./lib/platform-detect.cjs");
 const {
   parseTranscript,
   parseTranscriptRaw,
@@ -26,9 +26,9 @@ const {
 } = require("./lib/plan-feedback-detector.cjs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 
-const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const logFile = path.join(projectDir, ".claude", "hooks", "hook-invocations.log");
-const stateDir = path.join(projectDir, ".claude", "hooks", ".state");
+const { PROJECT_DIR, STATE_DIR_NAME } = require("./lib/env.cjs");
+const logFile = path.join(PROJECT_DIR, STATE_DIR_NAME, "hooks", "hook-invocations.log");
+const stateDir = path.join(PROJECT_DIR, STATE_DIR_NAME, "hooks", ".state");
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
 
 // Read JSON input from stdin (parse once per GUTT lesson)
@@ -90,7 +90,18 @@ process.stdin.on("end", () => {
 
       const captureInstruction = buildCaptureInstruction(planFeedback);
 
-      if (supportsDecisionBlock()) {
+      if (isCursor()) {
+        // Cursor: use followup_message to auto-continue with lesson capture
+        fs.appendFileSync(
+          logFile,
+          `[${timestamp}] Stop hook: Cursor followup for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
+        );
+        console.log(
+          JSON.stringify({
+            followup_message: captureInstruction,
+          })
+        );
+      } else if (supportsDecisionBlock()) {
         // CLI: block stop and force capture
         fs.appendFileSync(
           logFile,
@@ -190,7 +201,18 @@ ${sanitizedSummary}
 
 Create a memory with name 'Session: ${sanitizedGoal}' containing the key lessons and findings from this session.")`;
 
-  if (supportsDecisionBlock()) {
+  if (isCursor()) {
+    // Cursor: use followup_message to auto-continue with lesson capture
+    fs.appendFileSync(
+      logFile,
+      `[${timestamp}] Stop hook: Cursor followup for session ${sessionId} - significant work detected\n`
+    );
+    console.log(
+      JSON.stringify({
+        followup_message: `Capture session lessons before finishing.\n\n${capturePrompt}`,
+      })
+    );
+  } else if (supportsDecisionBlock()) {
     // CLI: block stop and force capture
     fs.appendFileSync(
       logFile,

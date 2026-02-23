@@ -13,9 +13,8 @@ const fs = require("fs");
 const path = require("path");
 const { debugLog } = require("./debug.cjs");
 
-// Store cache in the project's .claude directory (same location as session-state.cjs)
-const PROJECT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const STATE_DIR = path.join(PROJECT_ROOT, ".claude", "hooks", ".state");
+const { PROJECT_STATE_DIR } = require("./env.cjs");
+const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
 const CACHE_PATH = path.join(STATE_DIR, "gutt-memory-cache.json");
 
 const DEFAULT_CACHE = {
