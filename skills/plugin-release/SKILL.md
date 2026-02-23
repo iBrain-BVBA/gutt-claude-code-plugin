@@ -29,11 +29,11 @@ git log v<last_version>..HEAD --oneline
 
 Use semantic versioning (semver):
 
-| Change Type | Bump | Example |
-|---|---|---|
-| Bug fix, typo, small tweak | PATCH | 1.2.6 → 1.2.7 |
+| Change Type                      | Bump  | Example       |
+| -------------------------------- | ----- | ------------- |
+| Bug fix, typo, small tweak       | PATCH | 1.2.6 → 1.2.7 |
 | New feature, new skill, new hook | MINOR | 1.2.6 → 1.3.0 |
-| Breaking change, restructure | MAJOR | 1.2.6 → 2.0.0 |
+| Breaking change, restructure     | MAJOR | 1.2.6 → 2.0.0 |
 
 **Ask the user** if the version isn't obvious from the changes. When in doubt, MINOR for features, PATCH for fixes.
 
@@ -90,6 +90,7 @@ Examples: `v1.3.0`, `v1.2.7`, `v2.0.0`
 ### Creating the release:
 
 **Option A: gh CLI (if available)**
+
 ```bash
 gh release create vX.Y.Z \
   --repo iBrain-BVBA/gutt-claude-code-plugin \
@@ -124,22 +125,28 @@ Use this template:
 <2-3 sentence summary of the change>
 
 #### New Files
+
 - **`path/to/file`** — brief description
 
 #### Modified Files
+
 - **`path/to/file`** — what changed
 
 ### Other Changes
+
 - <bullet points for minor changes>
 
 ## Upgrade
+
 Users with auto-update enabled will receive this version automatically. Manual install:
+
 ```
 /plugin install gutt-claude-code-plugin@gutt-plugins
 ```
 ````
 
 For the release title, use a concise description of the main feature:
+
 - `v1.3.0 - Cowork Automatic Lesson Capture`
 - `v1.2.7 - Fix hook output format`
 - `v2.0.0 - Breaking: New hook architecture`
@@ -149,16 +156,19 @@ For the release title, use a concise description of the main feature:
 After the release is created:
 
 1. **Verify tag exists:**
+
    ```
    mcp__github__list_tags(owner="iBrain-BVBA", repo="gutt-claude-code-plugin", perPage=3)
    ```
 
 2. **Verify release exists:**
+
    ```
    mcp__github__get_latest_release(owner="iBrain-BVBA", repo="gutt-claude-code-plugin")
    ```
 
 3. **Test install:**
+
    ```
    /plugin install gutt-claude-code-plugin@gutt-plugins
    ```
@@ -176,13 +186,13 @@ After the release is created:
 
 ## Common Mistakes
 
-| Mistake | Prevention |
-|---|---|
-| Forgetting one of the 3 version files | Always use `mcp__github__push_files` with all 3 in one commit |
-| Bumping marketplace.json top-level version | That's `1.0.0` (schema version) — don't touch it |
-| Creating branch instead of tag | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
-| Missing `Co-Authored-By` in version bump commit | Include if Claude authored the bump |
-| Not verifying after release | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release` |
+| Mistake                                         | Prevention                                                                         |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Forgetting one of the 3 version files           | Always use `mcp__github__push_files` with all 3 in one commit                      |
+| Bumping marketplace.json top-level version      | That's `1.0.0` (schema version) — don't touch it                                   |
+| Creating branch instead of tag                  | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
+| Missing `Co-Authored-By` in version bump commit | Include if Claude authored the bump                                                |
+| Not verifying after release                     | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release`        |
 
 ## Repository Details
 

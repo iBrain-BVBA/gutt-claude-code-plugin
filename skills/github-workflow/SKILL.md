@@ -16,6 +16,7 @@ Committing to feature branches is fine and expected. What's not allowed is pushi
 ## What You Can and Can't Do
 
 **Go ahead:**
+
 - Create branches (`mcp__github__create_branch`)
 - Commit files to feature branches (`mcp__github__push_files`, `mcp__github__create_or_update_file`)
 - Create PRs (`mcp__github__create_pull_request`)
@@ -26,9 +27,11 @@ Committing to feature branches is fine and expected. What's not allowed is pushi
 - Update PR metadata
 
 **Always ask the user first:**
+
 - Merging PRs (`mcp__github__merge_pull_request`) — the user or Copilot workflow handles this
 
 **Never do:**
+
 - Push directly to `master` or `main`
 - Merge without Copilot having reviewed
 
@@ -49,6 +52,7 @@ The reason for this workflow is that Copilot catches issues that local testing m
 Title: `type(TICKET-ID): short description` — e.g., `feat(GP-530): Cowork automatic lesson capture`
 
 Body should include:
+
 - Summary of what changed (bullet points are fine)
 - Files changed with brief descriptions
 - Link to Jira ticket if applicable
@@ -60,6 +64,7 @@ Body should include:
 The organization is **iBrain-BVBA**. Always use `iBrain-BVBA` as the owner for GitHub MCP calls.
 
 Key repos:
+
 - `gutt-claude-code-plugin` — Claude Code/Cowork plugin (hooks, skills, MCP)
 
 If unsure about a repo name, search with `mcp__github__search_repositories` first.
