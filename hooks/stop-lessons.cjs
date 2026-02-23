@@ -46,8 +46,8 @@ process.stdin.on("end", () => {
   let hookInput;
   let sessionId = "unknown";
   try {
-    hookInput = JSON.parse(input);
-    sessionId = hookInput.session_id || "unknown";
+    hookInput = JSON.parse(input.replace(/^\uFEFF/, "").trim());
+    sessionId = hookInput.session_id || hookInput.conversation_id || "unknown";
   } catch {
     // Parse error - allow stop
     process.exit(0);
@@ -64,8 +64,8 @@ process.stdin.on("end", () => {
     fs.mkdirSync(stateDir, { recursive: true });
   }
 
-  // Parse transcript if provided
-  const transcriptPath = hookInput.transcript_path;
+  // Parse transcript if provided (Cursor sends transcript_path in stdin or env var)
+  const transcriptPath = hookInput.transcript_path || process.env.CURSOR_TRANSCRIPT_PATH;
 
   // STEP 1: Check for plan feedback FIRST (before regular lesson capture)
   const transcriptEntries = parseTranscriptRaw(transcriptPath);

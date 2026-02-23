@@ -64,11 +64,7 @@ function isCowork() {
  * @returns {boolean} true if running in Cursor
  */
 function isCursor() {
-  return !!(
-    process.env.CURSOR_PLUGIN_ROOT ||
-    process.env.CURSOR_PROJECT_DIR ||
-    process.env.CURSOR_VERSION
-  );
+  return !!(process.env.CURSOR_PROJECT_DIR || process.env.CURSOR_VERSION);
 }
 
 module.exports = { supportsDecisionBlock, isCowork, isCursor };

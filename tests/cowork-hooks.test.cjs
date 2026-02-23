@@ -301,12 +301,15 @@ if (fs.existsSync(captureHookPath)) {
 
 console.log("\n[Suite 7] isCursor() Detection and Interaction with isCowork()\n");
 
-// 7a: isCursor() returns true when CURSOR_PLUGIN_ROOT is set
+// 7a: isCursor() does NOT trigger on CURSOR_PLUGIN_ROOT alone (env var doesn't exist in Cursor)
 clearCursorEnv();
 delete process.env.CLAUDE_PROJECT_DIR;
 delete process.env.CLAUDE_PLATFORM;
 process.env.CURSOR_PLUGIN_ROOT = "/home/user/.cursor/extensions/gutt";
-assert(isCursor() === true, "isCursor()=true when CURSOR_PLUGIN_ROOT is set");
+assert(
+  isCursor() === false,
+  "isCursor()=false when only CURSOR_PLUGIN_ROOT is set (not a real Cursor var)"
+);
 restoreEnv();
 
 // 7b: isCursor() returns true when CURSOR_PROJECT_DIR is set
@@ -427,6 +430,80 @@ if (fs.existsSync(stopLessonsPath)) {
 } else {
   console.log("  (skipped - stop-lessons.cjs not found at expected path)");
 }
+
+// ============================================================================
+// TEST SUITE 9: BOM stripping and env.cjs priority (Cursor v2.5 diagnostic)
+// ============================================================================
+
+console.log("\n[Suite 9] BOM Stripping and env.cjs Priority\n");
+
+// 9a: BOM stripping — JSON.parse fails without it
+const bomInput = "\uFEFF" + '{"conversation_id":"abc-123","status":"completed"}';
+let bomParsed;
+try {
+  bomParsed = JSON.parse(bomInput.replace(/^\uFEFF/, "").trim());
+} catch {
+  bomParsed = null;
+}
+assert(bomParsed !== null, "BOM stripping: JSON.parse succeeds after BOM removal");
+assert(
+  bomParsed && bomParsed.conversation_id === "abc-123",
+  "BOM stripping: conversation_id field accessible after parse"
+);
+
+// 9b: BOM stripping — raw JSON.parse fails WITH BOM (confirming the bug)
+let bomFailed = false;
+try {
+  JSON.parse(bomInput);
+} catch {
+  bomFailed = true;
+}
+assert(bomFailed === true, "BOM stripping: raw JSON.parse FAILS with BOM (confirms bug)");
+
+// 9c: conversation_id fallback for session_id
+const cursorStopInput = { conversation_id: "conv-456", status: "completed" };
+const sessionId = cursorStopInput.session_id || cursorStopInput.conversation_id || "unknown";
+assert(sessionId === "conv-456", "conversation_id used as session_id fallback");
+
+// 9d: session_id takes priority when present (Claude Code)
+const claudeStopInput = { session_id: "sess-789", conversation_id: "conv-456" };
+const claudeSessionId = claudeStopInput.session_id || claudeStopInput.conversation_id || "unknown";
+assert(claudeSessionId === "sess-789", "session_id takes priority over conversation_id");
+
+// 9e: env.cjs — Cursor vars take priority when both CLAUDE_ and CURSOR_ are set
+// (This is the actual scenario: Cursor sets BOTH CLAUDE_PROJECT_DIR and CURSOR_PROJECT_DIR)
+clearCursorEnv();
+process.env.CLAUDE_PROJECT_DIR = "/some/claude/path";
+process.env.CURSOR_PROJECT_DIR = "/some/cursor/path";
+delete process.env.CLAUDE_PLATFORM;
+delete process.env.CLAUDE_PLUGIN_ROOT;
+
+// Re-require env.cjs to test with fresh module cache
+delete require.cache[require.resolve("../hooks/lib/env.cjs")];
+const freshEnv = require("../hooks/lib/env.cjs");
+assert(freshEnv.IDE === "cursor", "env.cjs: IDE='cursor' when both CLAUDE_ and CURSOR_ vars set");
+assert(
+  freshEnv.STATE_DIR_NAME === ".cursor",
+  "env.cjs: STATE_DIR_NAME='.cursor' when Cursor detected"
+);
+assert(
+  freshEnv.PROJECT_DIR === "/some/cursor/path",
+  "env.cjs: PROJECT_DIR uses CURSOR_PROJECT_DIR (not CLAUDE_PROJECT_DIR)"
+);
+restoreEnv();
+delete require.cache[require.resolve("../hooks/lib/env.cjs")];
+
+// 9f: env.cjs — falls back to claude when no Cursor vars
+clearCursorEnv();
+process.env.CLAUDE_PROJECT_DIR = "/some/claude/path";
+delete process.env.CLAUDE_PLATFORM;
+delete process.env.CLAUDE_PLUGIN_ROOT;
+delete require.cache[require.resolve("../hooks/lib/env.cjs")];
+const claudeEnv = require("../hooks/lib/env.cjs");
+assert(claudeEnv.IDE === "claude", "env.cjs: IDE='claude' when only CLAUDE_ vars set");
+assert(claudeEnv.STATE_DIR_NAME === ".claude", "env.cjs: STATE_DIR_NAME='.claude' for Claude Code");
+restoreEnv();
+delete require.cache[require.resolve("../hooks/lib/env.cjs")];
 
 // ============================================================================
 // SUMMARY

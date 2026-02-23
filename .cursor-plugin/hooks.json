@@ -1,24 +1,13 @@
 {
-  "version": 1,
   "hooks": {
-    "beforeSubmitPrompt": [
+    "stop": [
       {
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/user-prompt-submit.cjs\""
+        "command": "node hooks/stop-lessons.cjs"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/post-tool-lint.cjs\""
-      }
-    ],
-    "beforeMCPExecution": [
-      {
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/pre-task-memory.cjs\""
-      }
-    ],
-    "stop": [
-      {
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/hooks/stop-lessons.cjs\""
+        "command": "node hooks/post-tool-lint.cjs"
       }
     ]
   }
