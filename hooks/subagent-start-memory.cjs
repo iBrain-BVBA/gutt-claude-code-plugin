@@ -37,14 +37,14 @@ function formatSeedGrounding(seed, groupId) {
   parts.push(`\nYou are operating as **${seed.name}** (type: ${seed.type}).`);
   parts.push("\nMANDATORY: Execute these grounding queries BEFORE responding:\n");
 
-  const groupParam = groupId ? `, group_ids=["${groupId}"]` : "";
+  const groupParam = groupId ? `, group_id="${groupId}"` : "";
 
   seed.groundingQueries.forEach((gq, i) => {
     if (gq.query) {
       parts.push(`${i + 1}. ${gq.tool}(query="${gq.query}"${groupParam})`);
     } else {
       // fetch_lessons_learned has no query param
-      parts.push(`${i + 1}. ${gq.tool}(${groupId ? `group_ids=["${groupId}"]` : ""})`);
+      parts.push(`${i + 1}. ${gq.tool}(${groupId ? `group_id="${groupId}"` : ""})`);
     }
   });
 

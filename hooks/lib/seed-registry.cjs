@@ -185,7 +185,12 @@ function scanSeeds() {
 
         const filePath = path.join(dir, file);
         const seed = parseSeedFile(filePath);
-        if (seed && seed.groundingQueries.length > 0) {
+        if (
+          seed &&
+          (seed.groundingQueries.length > 0 ||
+            seed.learningProtocol.outcomeName ||
+            seed.learningProtocol.surpriseName)
+        ) {
           // Index by name (lowercase for case-insensitive matching)
           registry[seed.name.toLowerCase()] = seed;
         }

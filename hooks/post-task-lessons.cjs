@@ -41,7 +41,7 @@ process.stdin.on("end", () => {
     }
 
     // Skip memory-related agents (they handle their own capture)
-    if (LESSON_SKIP_AGENTS.some((agent) => subagentType.includes(agent))) {
+    if (LESSON_SKIP_AGENTS.some((agent) => subagentType.toLowerCase().includes(agent))) {
       process.exit(0);
     }
 

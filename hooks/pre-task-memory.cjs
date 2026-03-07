@@ -41,7 +41,7 @@ process.stdin.on("end", async () => {
     const subagentType = toolInput.subagent_type || "";
 
     // Skip memory injection for memory-related agents (they do their own queries)
-    if (MEMORY_AGENTS.some((agent) => subagentType.includes(agent))) {
+    if (MEMORY_AGENTS.some((agent) => subagentType.toLowerCase().includes(agent))) {
       process.exit(0);
     }
 
