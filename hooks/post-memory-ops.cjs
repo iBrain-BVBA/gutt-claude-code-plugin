@@ -21,7 +21,7 @@ process.stdin.on("data", (chunk) => {
 
 process.stdin.on("end", () => {
   try {
-    const data = JSON.parse(input);
+    const data = JSON.parse(input || "{}");
     const toolName = data.tool_name || "";
     const toolInput = data.tool_input || {};
     const toolResult = data.tool_response || data.tool_result || {};

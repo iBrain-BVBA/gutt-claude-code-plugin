@@ -7,6 +7,7 @@
 
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
+const { clearSeedCache } = require("./lib/seed-registry.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
 // Read JSON input from stdin (required for hooks)
@@ -15,9 +16,10 @@ process.stdin.on("data", () => {
   // Consume stdin data (required for hook protocol)
 });
 process.stdin.on("end", () => {
-  // Clear memory cache for fresh state each session
+  // Clear caches for fresh state each session
   try {
     clearMemoryCache();
+    clearSeedCache();
   } catch (err) {
     debugLog("SessionStart", err);
   }
