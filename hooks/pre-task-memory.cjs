@@ -11,7 +11,13 @@
  */
 
 const { incrementMemoryQueries } = require("./lib/session-state.cjs");
-const { setLastSearchQuery } = require("./lib/memory-cache.cjs");
+const {
+  setLastSearchQuery,
+  setLastAgentName,
+  setResolvedGroupId,
+} = require("./lib/memory-cache.cjs");
+const { getGroupId } = require("./lib/config.cjs");
+const { MEMORY_AGENTS } = require("./lib/constants.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -21,11 +27,11 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("end", async () => {
   try {
-    const data = JSON.parse(input);
+    const data = JSON.parse(input || "{}");
 
-    // Only process Task tool calls
+    // Only process Task/Agent tool calls
     const toolName = data.tool_name || "";
-    if (toolName !== "Task") {
+    if (toolName !== "Task" && toolName !== "Agent") {
       process.exit(0);
     }
 
@@ -35,9 +41,21 @@ process.stdin.on("end", async () => {
     const subagentType = toolInput.subagent_type || "";
 
     // Skip memory injection for memory-related agents (they do their own queries)
-    const memoryAgents = ["gutt-pro-memory", "memory-keeper"];
-    if (memoryAgents.some((agent) => subagentType.includes(agent))) {
+    if (MEMORY_AGENTS.some((agent) => subagentType.includes(agent))) {
       process.exit(0);
+    }
+
+    // Store agent name for SubagentStart seed lookup
+    const agentName = toolInput.name || "";
+    if (agentName) {
+      setLastAgentName(agentName);
+    }
+
+    // Store resolved group_id so SubagentStart can use it
+    // (orchestrator process has access to config.json; subagent may not)
+    const groupId = getGroupId();
+    if (groupId) {
+      setResolvedGroupId(groupId);
     }
 
     // Extract key terms from the prompt for memory search

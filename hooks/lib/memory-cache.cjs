@@ -23,6 +23,8 @@ const DEFAULT_CACHE = {
   facts: [], // Array of { fact, name }
   queries: [], // Recent search queries
   lastSearchQuery: null, // Query set by PreToolUse for SubagentStart to use
+  lastAgentName: null, // Agent name set by PreToolUse for SubagentStart seed lookup
+  resolvedGroupId: null, // group_id resolved by orchestrator process for SubagentStart to use
 };
 
 const MAX_LESSONS = 10;
@@ -119,6 +121,60 @@ function setLastSearchQuery(query) {
 function getLastSearchQuery() {
   const cache = getMemoryCache();
   return cache.lastSearchQuery;
+}
+
+/**
+ * Set the last agent name (for SubagentStart seed lookup)
+ * PreToolUse[Task] stores this from tool_input.name
+ *
+ * KNOWN LIMITATION: This is a global singleton. When multiple subagents are
+ * dispatched in parallel, later PreToolUse calls overwrite earlier values.
+ * This is acceptable because:
+ * 1. The PRIMARY lookup path is agent_type (from SubagentStart payload), which is race-free
+ * 2. lastAgentName is a FALLBACK for when agent_type doesn't match a seed
+ * 3. In practice, parallel dispatches are rare for seed-aware agents
+ *
+ * @param {string} name - The agent name from Task tool input
+ */
+function setLastAgentName(name) {
+  ensureDir();
+  const cache = getMemoryCache();
+  cache.lastAgentName = name;
+  cache.updatedAt = new Date().toISOString();
+  writeCache(cache);
+  return cache;
+}
+
+/**
+ * Get the last agent name
+ * @returns {string|null} The agent name set by PreToolUse
+ */
+function getLastAgentName() {
+  const cache = getMemoryCache();
+  return cache.lastAgentName;
+}
+
+/**
+ * Store the resolved group_id so SubagentStart can use it
+ * Called by PreToolUse where the orchestrator has access to config.json
+ * @param {string} groupId - The resolved group_id
+ */
+function setResolvedGroupId(groupId) {
+  ensureDir();
+  const cache = getMemoryCache();
+  cache.resolvedGroupId = groupId;
+  cache.updatedAt = new Date().toISOString();
+  writeCache(cache);
+  return cache;
+}
+
+/**
+ * Get the resolved group_id from cache
+ * @returns {string|null} The group_id stored by PreToolUse
+ */
+function getResolvedGroupId() {
+  const cache = getMemoryCache();
+  return cache.resolvedGroupId;
 }
 
 /**
@@ -226,6 +282,10 @@ module.exports = {
   addQueryToCache,
   setLastSearchQuery,
   getLastSearchQuery,
+  setLastAgentName,
+  getLastAgentName,
+  setResolvedGroupId,
+  getResolvedGroupId,
   clearMemoryCache,
   getCacheAge,
   hasCachedContent,

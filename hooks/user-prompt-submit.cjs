@@ -26,7 +26,7 @@ process.stdin.on("end", () => {
 
   let prompt = "unknown";
   try {
-    const data = JSON.parse(input);
+    const data = JSON.parse(input || "{}");
     prompt = (data.prompt || data.message || "unknown").substring(0, 200);
   } catch {
     // Ignore parse errors

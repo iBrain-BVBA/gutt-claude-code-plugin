@@ -8,6 +8,10 @@
 
 const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
+const { getAgentSeed } = require("./lib/seed-registry.cjs");
+const { getGroupId } = require("./lib/config.cjs");
+const { getResolvedGroupId } = require("./lib/memory-cache.cjs");
+const { LESSON_SKIP_AGENTS, PLAN_AGENT_TYPES } = require("./lib/constants.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -17,11 +21,11 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("end", () => {
   try {
-    const data = JSON.parse(input);
+    const data = JSON.parse(input || "{}");
 
-    // Only process Task tool completions
+    // Only process Task/Agent tool completions
     const toolName = data.tool_name || "";
-    if (toolName !== "Task") {
+    if (toolName !== "Task" && toolName !== "Agent") {
       process.exit(0);
     }
 
@@ -37,15 +41,13 @@ process.stdin.on("end", () => {
     }
 
     // Skip memory-related agents (they handle their own capture)
-    const skipAgents = ["gutt-pro-memory", "memory-keeper", "memory-capture"];
-    if (skipAgents.some((agent) => subagentType.includes(agent))) {
+    if (LESSON_SKIP_AGENTS.some((agent) => subagentType.includes(agent))) {
       process.exit(0);
     }
 
     // Plan agents are handled by SubagentStop hook (subagent-plan-review.cjs)
     // to avoid duplicate prompts. Skip them here.
-    const planAgentTypes = new Set(["plan", "oh-my-claudecode:plan", "oh-my-claudecode:planner"]);
-    if (planAgentTypes.has(subagentType.toLowerCase())) {
+    if (PLAN_AGENT_TYPES.has(subagentType.toLowerCase())) {
       process.exit(0);
     }
 
@@ -63,9 +65,52 @@ process.stdin.on("end", () => {
     // Sanitize user-derived content for embedding
     const sanitizedPrompt = sanitizeForDisplay(prompt.substring(0, 100));
 
-    // Format the lesson as a proper episode body
-    const episodeName = `Lesson: ${subagentType} - ${lessonIndicators[0] || "insight"}`;
-    const episodeBody = formatLessonEpisode(subagentType, prompt, toolResult, lessonIndicators);
+    // Check for agent seed (Hybrid D: seed-aware formatting)
+    // Try subagent_type first, then fall back to agent name from tool input
+    let seed = getAgentSeed(subagentType);
+    if (!seed) {
+      const agentName = toolInput.name || "";
+      if (agentName) {
+        seed = getAgentSeed(agentName);
+      }
+    }
+    const groupId = getResolvedGroupId() || getGroupId();
+    const groupParam = groupId ? `,\n  group_id: "${groupId}"` : "";
+
+    // Determine if this is a surprise (reality != expectation) or outcome
+    const surpriseIndicators = [
+      "error-encountered",
+      "alternative-found",
+      "workaround",
+      "discovery",
+    ];
+    const isSurprise = lessonIndicators.some((ind) => surpriseIndicators.includes(ind));
+
+    // Format episode name and body based on seed awareness
+    let episodeName;
+    let episodeBody;
+
+    if (seed) {
+      // Seed-aware Hybrid D formatting
+      if (isSurprise && seed.learningProtocol.surpriseName) {
+        episodeName = seed.learningProtocol.surpriseName.replace(
+          /\[.*?\]/,
+          sanitizedPrompt.substring(0, 60)
+        );
+      } else if (seed.learningProtocol.outcomeName) {
+        episodeName = seed.learningProtocol.outcomeName.replace(
+          /\[.*?\]/,
+          sanitizedPrompt.substring(0, 60)
+        );
+      } else {
+        episodeName = `${seed.name}: ${sanitizedPrompt.substring(0, 60)}`;
+      }
+      episodeBody = formatLessonEpisode(subagentType, prompt, toolResult, lessonIndicators, seed);
+    } else {
+      // Generic formatting (no seed)
+      episodeName = `Lesson: ${subagentType} - ${lessonIndicators[0] || "insight"}`;
+      episodeBody = formatLessonEpisode(subagentType, prompt, toolResult, lessonIndicators, null);
+    }
 
     // Output DIRECTIVE (not suggestion) using hookSpecificOutput format
     // Claude MUST execute this - it's not optional
@@ -76,7 +121,8 @@ process.stdin.on("end", () => {
 A lesson-worthy subagent result was detected. You MUST capture this to organizational memory NOW.
 
 **Detected patterns:** ${lessonIndicators.join(", ")}
-**Subagent:** ${subagentType}
+**Subagent:** ${subagentType}${seed ? ` (seed: ${seed.name}, type: ${seed.type})` : ""}
+**Category:** ${isSurprise ? "SURPRISE (reality != expectation)" : "OUTCOME (task completion)"}
 **Task:** ${sanitizedPrompt}
 
 EXECUTE THIS IMMEDIATELY (do not ask, do not skip):
@@ -85,7 +131,7 @@ mcp__gutt-mcp-remote__add_memory(
   name: "${episodeName}",
   episode_body: "${escapeForJson(episodeBody)}",
   source: "text",
-  source_description: "Auto-captured from ${subagentType} subagent",
+  source_description: "Auto-captured from ${subagentType} subagent"${groupParam},
   last_n_episodes: 0
 )
 
@@ -114,8 +160,13 @@ function escapeForJson(str) {
 
 /**
  * Format lesson content as a proper episode body for GUTT memory
+ * @param {string} subagentType - The subagent type
+ * @param {string} prompt - The task prompt
+ * @param {string} result - The task result
+ * @param {string[]} indicators - Detected lesson indicators
+ * @param {Object|null} seed - Parsed agent seed data (null for generic)
  */
-function formatLessonEpisode(subagentType, prompt, result, indicators) {
+function formatLessonEpisode(subagentType, prompt, result, indicators, seed) {
   const summary = result.substring(0, 300).trim();
   const outcomeType =
     indicators.includes("problem-solved") || indicators.includes("improvement")
@@ -124,7 +175,11 @@ function formatLessonEpisode(subagentType, prompt, result, indicators) {
         ? "negative"
         : "neutral";
 
-  return `**Trigger:** Subagent ${subagentType} completed task
+  const agentLine = seed
+    ? `**Agent:** ${seed.name} (${seed.type})`
+    : `**Trigger:** Subagent ${subagentType} completed task`;
+
+  return `${agentLine}
 **Task:** ${sanitizeForDisplay(prompt.substring(0, 150))}
 **Patterns:** ${indicators.join(", ")}
 **Outcome:** ${outcomeType}
