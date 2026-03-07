@@ -272,6 +272,15 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input || "{}");
+
+    // ── Subagent bypass ─────────────────────────────────────────────────
+    // Subagents ARE the delegates — they need full tool access.
+    // The guard only restricts the main orchestrator (no agent_id).
+    if (data.agent_id) {
+      debugLog(HOOK_NAME, `Subagent ${data.agent_type || data.agent_id} — bypassing guard`);
+      process.exit(0);
+    }
+
     const toolName = data.tool_name || "";
     const toolInput = data.tool_input || {};
 
