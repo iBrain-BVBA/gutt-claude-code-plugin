@@ -274,6 +274,31 @@ testHook(
   { shouldContain: null } // bypasses guard silently
 );
 
+// Test 15: PreToolUse - Delegation Guard (gh api POST blocked without agent_id)
+testHook(
+  "15. DelegationGuard (gh api POST blocked, no agent_id)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    tool_name: "Bash",
+    tool_input: {
+      command:
+        "gh api repos/test/test/pulls/1/requested_reviewers --method POST -f reviewers[]=copilot",
+    },
+  },
+  { shouldContain: "block" }
+);
+
+// Test 16: PreToolUse - Delegation Guard (unknown command warning/allow without agent_id)
+testHook(
+  "16. DelegationGuard (unknown command, no agent_id)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    tool_name: "Bash",
+    tool_input: { command: "some-unknown-command --flag" },
+  },
+  { shouldContain: null } // unknown commands get warning or allow
+);
+
 // Report results
 const totalTests = results.passed.length + results.failed.length;
 console.log("\n═══════════════════════════════════════════════════════════");
