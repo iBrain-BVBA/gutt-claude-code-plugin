@@ -228,11 +228,83 @@ testHook(
   { shouldContain: null } // Should show gutt status
 );
 
+// Test 11: PreToolUse - Delegation Guard (Edit blocked without agent_id)
+testHook(
+  "11. DelegationGuard (Edit blocked, no agent_id)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    tool_name: "Edit",
+    tool_input: { file_path: "/tmp/foo.ts", old_string: "a", new_string: "b" },
+  },
+  { shouldContain: "block" }
+);
+
+// Test 12: PreToolUse - Delegation Guard (read-only bash allowed without agent_id)
+testHook(
+  "12. DelegationGuard (read-only bash allowed, no agent_id)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    tool_name: "Bash",
+    tool_input: { command: "git status" },
+  },
+  { shouldContain: null } // silent pass-through, no output
+);
+
+// Test 13: PreToolUse - Delegation Guard (state-changing bash blocked without agent_id)
+testHook(
+  "13. DelegationGuard (state-changing bash blocked, no agent_id)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    tool_name: "Bash",
+    tool_input: { command: "git commit -m 'test'" },
+  },
+  { shouldContain: "block" }
+);
+
+// Test 14: PreToolUse - Delegation Guard (subagent bypass with agent_id)
+testHook(
+  "14. DelegationGuard (subagent bypass, agent_id present)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    agent_id: "test-agent-123",
+    agent_type: "oh-my-claudecode:executor",
+    tool_name: "Edit",
+    tool_input: { file_path: "/tmp/foo.ts", old_string: "a", new_string: "b" },
+  },
+  { shouldContain: null } // bypasses guard silently
+);
+
+// Test 15: PreToolUse - Delegation Guard (gh api POST blocked without agent_id)
+testHook(
+  "15. DelegationGuard (gh api POST blocked, no agent_id)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    tool_name: "Bash",
+    tool_input: {
+      command:
+        "gh api repos/test/test/pulls/1/requested_reviewers --method POST -f reviewers[]=copilot",
+    },
+  },
+  { shouldContain: "block" }
+);
+
+// Test 16: PreToolUse - Delegation Guard (unknown command warning/allow without agent_id)
+testHook(
+  "16. DelegationGuard (unknown command, no agent_id)",
+  "pre-tool-delegation-guard.cjs",
+  {
+    tool_name: "Bash",
+    tool_input: { command: "some-unknown-command --flag" },
+  },
+  { shouldContain: null } // unknown commands get warning or allow
+);
+
 // Report results
+const totalTests = results.passed.length + results.failed.length;
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log("📊 Test Results");
 console.log("═══════════════════════════════════════════════════════════");
-console.log(`\n✅ Passed: ${results.passed.length}/10`);
+console.log(`\n✅ Passed: ${results.passed.length}/${totalTests}`);
 console.log(`❌ Failed: ${results.failed.length}`);
 console.log(`⚠️  Warnings: ${results.warnings.length}`);
 
