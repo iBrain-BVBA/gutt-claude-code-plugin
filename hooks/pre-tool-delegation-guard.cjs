@@ -205,7 +205,8 @@ const AGENT_SUGGESTIONS = {
 
 /**
  * Normalize a command string for prefix matching.
- * Strips leading whitespace, env var assignments, and common wrappers.
+ * Trims whitespace, collapses runs of whitespace, and strips leading
+ * env-var assignments (e.g. "FOO=bar cmd" → "cmd").
  */
 function normalizeCommand(cmd) {
   if (!cmd) {
