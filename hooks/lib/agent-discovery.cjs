@@ -13,6 +13,27 @@ const { scanSeeds } = require("./seed-registry.cjs");
 const { debugLog } = require("./debug.cjs");
 const { getGroupId } = require("./config.cjs");
 
+/**
+ * Parse raw SSE or plain JSON response body into a JSON string.
+ * For SSE streams with multiple events, returns only the LAST event's data.
+ * @param {string} data - Raw response body
+ * @returns {string} JSON string ready for JSON.parse
+ */
+function parseSseResponse(data) {
+  if (data.startsWith("data:")) {
+    const events = data
+      .split("\n")
+      .filter((l) => l.startsWith("data:"))
+      .map((l) => l.slice(5).trim())
+      .filter(Boolean);
+    if (events.length === 0) {
+      throw new Error("SSE response contained no parseable data");
+    }
+    return events[events.length - 1];
+  }
+  return data;
+}
+
 const MCP_TIMEOUT_MS = 2000;
 const DEFAULT_MAX_NODES = 5;
 const FALLBACK_SCORE = 0.5;
@@ -104,16 +125,7 @@ function callMcpTool(mcpUrl, method, params) {
       });
       res.on("end", () => {
         try {
-          // StreamableHTTP may return SSE or plain JSON
-          // Strip SSE framing if present ("data: {...}\n\n")
-          const jsonStr = data.startsWith("data:")
-            ? data
-                .split("\n")
-                .filter((l) => l.startsWith("data:"))
-                .map((l) => l.slice(5).trim())
-                .join("")
-            : data;
-
+          const jsonStr = parseSseResponse(data);
           const parsed = JSON.parse(jsonStr);
 
           if (parsed.error) {
@@ -253,4 +265,4 @@ async function discoverAgents(intent) {
   }
 }
 
-module.exports = { discoverAgents };
+module.exports = { discoverAgents, parseSseResponse };

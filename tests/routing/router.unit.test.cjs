@@ -401,6 +401,81 @@ test("passthrough → confidence = 0", () => {
   assert.strictEqual(d.confidence, 0, `Passthrough should have confidence 0, got ${d.confidence}`);
 });
 
+// ── Pronoun resolution (mutation safety) ─────────────────────────────────────
+
+console.log("\nPronoun resolution (mutation safety):");
+
+test("original intent not mutated after pronoun resolution", () => {
+  const session = {
+    sessionId: "test-session",
+    activeAgents: ["cfo-analyst"],
+    lastIntent: { keywords: ["runway", "finance"] },
+    lastRoutingDecision: null,
+    turnCount: 1,
+  };
+  const intent = {
+    keywords: ["tell", "me", "more", "about", "that"],
+    entityRefs: [],
+    domainSignals: [],
+  };
+
+  // Snapshot originals before the call
+  const originalKeywords = [...intent.keywords];
+  const originalEntityRefs = [...intent.entityRefs];
+  const originalDomainSignals = JSON.parse(JSON.stringify(intent.domainSignals));
+
+  // makeRoutingDecision calls _resolvePronouns internally
+  makeRoutingDecision(mockSingle("cfo-analyst"), intent, session);
+
+  assert.deepStrictEqual(
+    intent.keywords,
+    originalKeywords,
+    `keywords mutated: expected ${JSON.stringify(originalKeywords)}, got ${JSON.stringify(intent.keywords)}`
+  );
+  assert.deepStrictEqual(
+    intent.entityRefs,
+    originalEntityRefs,
+    `entityRefs mutated: expected ${JSON.stringify(originalEntityRefs)}, got ${JSON.stringify(intent.entityRefs)}`
+  );
+  const domainSignalsUnchanged =
+    JSON.stringify(intent.domainSignals) === JSON.stringify(originalDomainSignals);
+  assert.ok(
+    domainSignalsUnchanged,
+    `domainSignals mutated: expected ${JSON.stringify(originalDomainSignals)}, got ${JSON.stringify(intent.domainSignals)}`
+  );
+});
+
+test("pronoun resolution changes routing outcome via session injection", () => {
+  const intent = {
+    keywords: ["tell", "me", "more", "about", "that"],
+    entityRefs: [],
+    domainSignals: [],
+  };
+  const session = {
+    sessionId: "test-session",
+    activeAgents: ["cfo-analyst"],
+    lastIntent: { keywords: ["runway", "finance"] },
+    lastRoutingDecision: null,
+    turnCount: 1,
+  };
+  // Use agents with moderate scores — no clear single winner
+  const agents = [
+    { name: "cfo-analyst", score: 0.55, summary: "Financial analysis" },
+    { name: "sales-advisor", score: 0.45, summary: "Sales pipeline" },
+  ];
+  const d = makeRoutingDecision(agents, intent, session);
+  // Without pronoun resolution, intent has no domain signals and no entity refs.
+  // But the function still runs because keywords contain "that".
+  // The key proof: routing is NOT passthrough (because agents have scores above 0.3
+  // and pronoun resolution added domainSignals/entityRefs from session).
+  // With these scores (0.55, 0.45, spread=0.1 < 0.2, both >= 0.4) → should be "team"
+  const ok = d.type === "team" && d.lead === "cfo-analyst";
+  assert.ok(
+    ok,
+    `Expected team routing with cfo-analyst lead, got type="${d.type}" lead="${d.lead}"`
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------

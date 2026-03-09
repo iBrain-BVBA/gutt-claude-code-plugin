@@ -121,12 +121,13 @@ function _uuid() {
 
 /**
  * Resolve pronoun references in the intent using session state.
- * Mutates intent in place — replaces generic references ("that", "it", "them")
- * with the last active agents / last intent from session.
+ * Returns a new intent object with generic references ("that", "it", "them")
+ * replaced by the last active agents / last intent from session.
+ * Does NOT mutate the original intent.
  *
  * @param {object} intent - IntentResult from intent-extractor
  * @param {object} session - Current session state
- * @returns {object} Resolved intent (may be mutated)
+ * @returns {object} New resolved intent (original is not modified)
  */
 function _resolvePronouns(intent, session) {
   const PRONOUNS = /\b(that|it|them|this|those|the same|the previous)\b/i;
@@ -136,25 +137,34 @@ function _resolvePronouns(intent, session) {
     return intent;
   }
 
+  // Deep-copy arrays before mutating so the original intent (used in logs)
+  // is not corrupted by pronoun resolution side-effects.
+  const resolved = {
+    ...intent,
+    keywords: [...(intent.keywords || [])],
+    entityRefs: [...(intent.entityRefs || [])],
+    domainSignals: [...(intent.domainSignals || [])],
+  };
+
   // Inject last active agents as entity refs
   if (session.activeAgents && session.activeAgents.length > 0) {
-    const existing = new Set(intent.entityRefs || []);
+    const existing = new Set(resolved.entityRefs);
     for (const agent of session.activeAgents) {
       existing.add(agent);
     }
-    intent.entityRefs = Array.from(existing);
+    resolved.entityRefs = Array.from(existing);
   }
 
   // Augment keywords with last intent keywords to carry topic forward
   if (session.lastIntent && session.lastIntent.keywords) {
-    const existing = new Set(intent.keywords || []);
+    const existing = new Set(resolved.keywords);
     for (const kw of session.lastIntent.keywords) {
       existing.add(kw);
     }
-    intent.keywords = Array.from(existing);
+    resolved.keywords = Array.from(existing);
   }
 
-  return intent;
+  return resolved;
 }
 
 // ---------------------------------------------------------------------------
