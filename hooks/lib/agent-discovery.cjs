@@ -12,6 +12,7 @@ const http = require("http");
 const { scanSeeds } = require("./seed-registry.cjs");
 const { debugLog } = require("./debug.cjs");
 const { getGroupId } = require("./config.cjs");
+const { getGuttMcpUrl } = require("./mcp-config.cjs");
 
 /**
  * Parse raw SSE or plain JSON response body into a JSON string.
@@ -57,11 +58,26 @@ const FALLBACK_SCORE = 0.5;
 // ---------------------------------------------------------------------------
 
 /**
- * Get the gutt MCP base URL from environment.
+ * Get the gutt MCP base URL.
+ * Prefers explicit GUTT_MCP_URL env var, falls back to extracting from Claude Code settings.
  * @returns {string|null}
  */
 function getMcpUrl() {
-  return process.env.GUTT_MCP_URL || null;
+  if (process.env.GUTT_MCP_URL) {
+    return process.env.GUTT_MCP_URL;
+  }
+  // Fall back to extracting from Claude Code settings files
+  const settingsUrl = getGuttMcpUrl();
+  if (!settingsUrl) {
+    return null;
+  }
+  // Claude Code stores the full MCP endpoint URL (e.g. "https://host/mcp").
+  // callMcpTool() appends "/mcp" via new URL("/mcp", mcpUrl), so we need the
+  // base origin. If the stored URL ends with /mcp, strip it to get the base.
+  if (settingsUrl.endsWith("/mcp")) {
+    return settingsUrl.slice(0, -4);
+  }
+  return settingsUrl;
 }
 
 /**
@@ -230,7 +246,10 @@ async function discoverAgents(intent) {
   const mcpUrl = getMcpUrl();
 
   if (!mcpUrl) {
-    debugLog("agent-discovery", "GUTT_MCP_URL not set — using seed registry fallback");
+    debugLog(
+      "agent-discovery",
+      "No MCP URL found (env var or settings) — using seed registry fallback"
+    );
     return buildFallbackAgents().sort((a, b) => b.score - a.score);
   }
 
