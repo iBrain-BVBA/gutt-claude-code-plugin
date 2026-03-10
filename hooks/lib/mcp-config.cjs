@@ -25,13 +25,6 @@ function findGuttServerConfig(mcpServers) {
       return { name, config: mcpServers[name] };
     }
   }
-  // Fallback: check keys containing "gutt" and "mcp"
-  for (const key of Object.keys(mcpServers)) {
-    const lower = key.toLowerCase();
-    if (lower.includes("gutt") && lower.includes("mcp")) {
-      return { name: key, config: mcpServers[key] };
-    }
-  }
   return null;
 }
 
@@ -42,9 +35,14 @@ function findGuttServerConfig(mcpServers) {
  * @returns {string}
  */
 function resolveEnvVars(url) {
-  return url.replace(/\$\{([^}]+)\}/g, (_, varName) => {
-    return process.env[varName] || "";
-  });
+  const resolved = url
+    .replace(/\$\{([^}]+)\}/g, (_, varName) => process.env[varName] || "")
+    .replace(/\$([A-Z_][A-Z0-9_]*)/g, (_, varName) => process.env[varName] || "");
+  // If resolution produced an empty or clearly invalid URL, return empty
+  if (!resolved || (resolved === url && url.includes("$"))) {
+    return "";
+  }
+  return resolved;
 }
 
 /**
@@ -127,35 +125,19 @@ function getGuttMcpUrl() {
  * @returns {boolean} true if gutt-mcp-remote is configured
  */
 function isGuttMcpConfigured() {
-  // If we can extract a URL, it's configured
-  if (getGuttMcpUrl()) {
-    return true;
-  }
+  const filesToCheck = [
+    { path: path.join(HOME_DIR, ".claude", "settings.json"), type: "settings" },
+    { path: path.join(HOME_DIR, ".mcp.json"), type: "mcp" },
+    { path: path.join(HOME_DIR, ".cursor", "mcp.json"), type: "mcp" },
+    { path: path.join(PROJECT_DIR, ".claude", "settings.json"), type: "settings" },
+    { path: path.join(PROJECT_DIR, ".mcp.json"), type: "mcp" },
+  ];
 
-  // Also check for stdio-based configs (command/args) which don't yield a URL
-  const claudeUserSettingsPath = path.join(HOME_DIR, ".claude", "settings.json");
-  if (checkSettingsFile(claudeUserSettingsPath)) {
-    return true;
-  }
-
-  const userMcpPath = path.join(HOME_DIR, ".mcp.json");
-  if (checkMcpFile(userMcpPath)) {
-    return true;
-  }
-
-  const cursorUserMcpPath = path.join(HOME_DIR, ".cursor", "mcp.json");
-  if (checkMcpFile(cursorUserMcpPath)) {
-    return true;
-  }
-
-  const projectSettingsPath = path.join(PROJECT_DIR, ".claude", "settings.json");
-  if (checkSettingsFile(projectSettingsPath)) {
-    return true;
-  }
-
-  const projectMcpPath = path.join(PROJECT_DIR, ".mcp.json");
-  if (checkMcpFile(projectMcpPath)) {
-    return true;
+  for (const file of filesToCheck) {
+    const found = file.type === "settings" ? checkSettingsFile(file.path) : checkMcpFile(file.path);
+    if (found) {
+      return true;
+    }
   }
 
   // Check if gutt plugin is installed (plugin provides MCP at runtime)
@@ -168,10 +150,8 @@ function isGuttMcpConfigured() {
   const pluginCachePath = path.join(HOME_DIR, ".claude", "plugins", "cache");
   if (fs.existsSync(pluginCachePath)) {
     try {
-      const cacheEntries = fs.readdirSync(pluginCachePath);
-      for (const entry of cacheEntries) {
-        const mcpPath = path.join(pluginCachePath, entry, ".mcp.json");
-        if (checkMcpFile(mcpPath)) {
+      for (const entry of fs.readdirSync(pluginCachePath)) {
+        if (checkMcpFile(path.join(pluginCachePath, entry, ".mcp.json"))) {
           return true;
         }
       }
@@ -261,4 +241,11 @@ function checkMcpFile(mcpPath) {
   return false;
 }
 
-module.exports = { isGuttMcpConfigured, getGuttMcpUrl };
+module.exports = {
+  isGuttMcpConfigured,
+  getGuttMcpUrl,
+  // Exported for unit testing
+  findGuttServerConfig,
+  resolveEnvVars,
+  extractUrlFromConfig,
+};

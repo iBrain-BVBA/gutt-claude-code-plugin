@@ -72,10 +72,14 @@ function getMcpUrl() {
     return null;
   }
   // Claude Code stores the full MCP endpoint URL (e.g. "https://host/mcp").
-  // callMcpTool() appends "/mcp" via new URL("/mcp", mcpUrl), so we need the
-  // base origin. If the stored URL ends with /mcp, strip it to get the base.
-  if (settingsUrl.endsWith("/mcp")) {
-    return settingsUrl.slice(0, -4);
+  // callMcpTool() appends "/mcp" via new URL("/mcp", mcpUrl), so strip pathname.
+  try {
+    const parsed = new URL(settingsUrl);
+    if (parsed.pathname === "/mcp" || parsed.pathname === "/mcp/") {
+      return parsed.origin;
+    }
+  } catch {
+    /* not a valid URL, return as-is */
   }
   return settingsUrl;
 }
@@ -284,4 +288,4 @@ async function discoverAgents(intent) {
   }
 }
 
-module.exports = { discoverAgents, parseSseResponse };
+module.exports = { discoverAgents, parseSseResponse, getMcpUrl };
