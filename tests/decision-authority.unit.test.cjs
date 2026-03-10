@@ -218,6 +218,36 @@ test("REAL: analysis mentioning agent retirement → gated", () => {
   assert.strictEqual(c.tier, TIER_GATED, `Expected gated but got ${c.tier}: ${c.reason}`);
 });
 
+console.log("\nBypass Prevention:");
+test("'modify agent preferences' does NOT trigger gated (false positive fix)", () => {
+  const c = classifyWrite({
+    content: "The user can modify agent preferences in the settings panel",
+    claim_type: "observation",
+  });
+  assert.strictEqual(c.tier, TIER_AUTO, `Expected auto but got ${c.tier}: ${c.reason}`);
+});
+test("'modify agent seed' DOES trigger gated", () => {
+  const c = classifyWrite({
+    content: "Propose to modify agent seed for cfo-analyst to add legal domain",
+  });
+  assert.strictEqual(c.tier, TIER_GATED, `Expected gated but got ${c.tier}: ${c.reason}`);
+});
+test("'The decision: whether to...' does NOT trigger gated (false positive fix)", () => {
+  const c = classifyWrite({
+    content: "The decision: whether to use REST or GraphQL was discussed in the meeting",
+    claim_type: "observation",
+  });
+  assert.strictEqual(c.tier, TIER_AUTO, `Expected auto but got ${c.tier}: ${c.reason}`);
+});
+test("decision content in episode_body still triggers gated", () => {
+  const c = classifyWrite({
+    name: "Meeting Notes",
+    content: "Discussed runtime options",
+    episode_body: "Architecture Decision: use Google ADK as runtime",
+  });
+  assert.strictEqual(c.tier, TIER_GATED, `Expected gated but got ${c.tier}: ${c.reason}`);
+});
+
 console.log(`\n${"─".repeat(50)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
 if (failed > 0) {

@@ -25,13 +25,12 @@ const GATED_SIGNALS = [
   "architecture decision",
   "architectural decision",
   "strategic decision",
-  "decision:",
   "we decided",
   "agent creation",
   "create agent",
   "created new",
   "retire agent",
-  "modify agent",
+  "modify agent seed",
   "routing change",
   "routing keyword",
 ];
@@ -55,7 +54,8 @@ const CROSS_DOMAIN_SIGNALS = [
 function classifyWrite(params) {
   const content = (params.content || "").toLowerCase();
   const name = (params.name || "").toLowerCase();
-  const combined = `${name} ${content}`;
+  const episodeBody = (params.episode_body || "").toLowerCase();
+  const combined = `${name} ${content} ${episodeBody}`;
 
   // Check for gated signals first (highest priority)
   for (const signal of GATED_SIGNALS) {
