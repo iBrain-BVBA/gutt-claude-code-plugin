@@ -92,6 +92,15 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-delegation-guard.cjs\""
           }
         ]
+      },
+      {
+        "matcher": "mcp__gutt-mcp-remote__add_memory|mcp__claude_ai_gutt_mcp__add_memory|mcp__claude_ai_gutt_MCP__add_memory",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use-add-memory.cjs\""
+          }
+        ]
       }
     ],
     "SubagentStart": [
