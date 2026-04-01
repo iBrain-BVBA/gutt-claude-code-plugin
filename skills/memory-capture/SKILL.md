@@ -53,6 +53,11 @@ Common rationalizations the skill rejects:
 - "I'll remember this"
 - "Not worth documenting"
 
+### Exception: Duplicates
+
+The one valid reason NOT to capture is if the lesson already exists in memory.
+This is not rationalization — this is data hygiene. Always search first.
+
 ## Usage
 
 ### Automatic Invocation
@@ -76,10 +81,24 @@ The skill activates automatically when users say:
 1. **Detect Pattern**: Analyze user input to identify which of the 4 patterns applies
 2. **Extract Components**: Parse the "what" and "why" from the input
 3. **Classify Entity**: Map pattern to entity type (Lesson, Decision, Insight)
-4. **Structure Content**: Format episode body with clear structure
-5. **Enrich Context**: Add source description, timestamp, group_id
-6. **Call add_memory**: Invoke MCP tool with proper parameters
-7. **Confirm Capture**: Return success message with UUID and classified type
+4. **SEARCH FOR DUPLICATES (MANDATORY)**: Before capturing, you MUST search memory for similar existing entries:
+
+   ```
+   mcp__claude_ai_gutt-pro-memory__fetch_lessons_learned(query="[key terms from the lesson]", max_results=5)
+   mcp__claude_ai_gutt-pro-memory__search_memory_nodes(query="[key terms]", entity="[Lesson|Decision|Insight]", max_nodes=5)
+   ```
+
+   **If a similar entry exists (same topic, same insight):**
+   - DO NOT call add_memory
+   - Tell the user: "This is already captured in memory: [existing entry name] (uuid: [id]). Skipping duplicate."
+   - If the new version has additional context, suggest updating the existing entry instead
+
+   **If no similar entry exists:** Proceed to step 5.
+
+5. **Structure Content**: Format episode body with clear structure
+6. **Enrich Context**: Add source description, timestamp
+7. **Call add_memory**: Invoke MCP tool with proper parameters
+8. **Confirm Capture**: Return success message with UUID and classified type
 
 ## Implementation
 
@@ -124,14 +143,13 @@ LESSON → Lesson or Insight
 ### add_memory Call Structure
 
 ```javascript
-mcp__gutt -
-  mcp -
-  remote__add_memory({
+mcp__claude_ai_gutt -
+  pro -
+  memory__add_memory({
     name: "<Pattern Type>: <Brief Summary>",
     episode_body: "<Structured content with what/why/context>",
     source: "text",
     source_description: "memory-capture skill - <pattern> pattern",
-    group_id: "gutt-claude-code-plugin",
     last_n_episodes: 0, // Self-sufficient episodes
   });
 ```
@@ -178,7 +196,6 @@ Alternative: Consider Zustand, Jotai, or component composition patterns
   episode_body: "[structured content above]",
   source: "text",
   source_description: "memory-capture skill - negation pattern",
-  group_id: "gutt-claude-code-plugin",
   last_n_episodes: 0
 }
 ```
@@ -210,7 +227,6 @@ Example: Array.map + Promise.all instead of for-of loop with await
   episode_body: "[structured content above]",
   source: "text",
   source_description: "memory-capture skill - replacement pattern",
-  group_id: "gutt-claude-code-plugin",
   last_n_episodes: 0
 }
 ```
@@ -245,7 +261,6 @@ Date: [timestamp]
   episode_body: "[structured content above]",
   source: "text",
   source_description: "memory-capture skill - decision pattern",
-  group_id: "gutt-claude-code-plugin",
   last_n_episodes: 0
 }
 ```
@@ -278,7 +293,6 @@ Real-world trigger: Production bug from changed API response structure
   episode_body: "[structured content above]",
   source: "text",
   source_description: "memory-capture skill - lesson pattern",
-  group_id: "gutt-claude-code-plugin",
   last_n_episodes: 0
 }
 ```
@@ -291,7 +305,6 @@ The skill automatically enriches captured memories with:
 
 - **Timestamp**: When the lesson was captured
 - **Source**: Identifies this as a memory-capture skill capture
-- **Group ID**: Associates with the correct project/context
 - **Pattern Type**: Tags with the detected pattern for retrieval
 
 ### UUID Return
@@ -339,18 +352,6 @@ Works seamlessly with:
 
 ## Configuration
 
-### Group ID
-
-Default: `gutt-claude-code-plugin`
-
-To use a different group ID, set in the prompt:
-
-```
-"Capture this for project X: ..."
-```
-
-The skill will detect and use the appropriate group_id.
-
 ### Source Description Format
 
 Always includes:
@@ -373,6 +374,6 @@ Compatible with: gutt MCP v1.0+
 
 ## Related
 
-- MCP Tool: `mcp__gutt-mcp-remote__add_memory`
+- MCP Tool: `mcp__claude_ai_gutt-pro-memory__add_memory`
 - Related Skill: `memory-retrieval`
 - Parent Ticket: GP-428
