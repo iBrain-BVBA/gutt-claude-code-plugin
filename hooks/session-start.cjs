@@ -8,6 +8,8 @@
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
+const { getState } = require("./lib/session-state.cjs");
+const { recordSessionMetrics } = require("./lib/cross-session-learner.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
 // Read JSON input from stdin (required for hooks)
@@ -16,6 +18,16 @@ process.stdin.on("data", () => {
   // Consume stdin data (required for hook protocol)
 });
 process.stdin.on("end", () => {
+  // Flush previous session metrics into cross-session analytics before clearing
+  try {
+    const prevState = getState();
+    if (prevState.memoryQueries > 0 || prevState.lessonsCaptured > 0) {
+      recordSessionMetrics(prevState);
+    }
+  } catch (err) {
+    debugLog("SessionStart", `cross-session flush: ${err.message || err}`);
+  }
+
   // Clear caches for fresh state each session
   try {
     clearMemoryCache();

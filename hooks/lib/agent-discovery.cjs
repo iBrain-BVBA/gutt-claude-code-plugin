@@ -13,6 +13,8 @@ const { scanSeeds } = require("./seed-registry.cjs");
 const { debugLog } = require("./debug.cjs");
 const { getGroupId } = require("./config.cjs");
 const { getGuttMcpUrl } = require("./mcp-config.cjs");
+const { getMemoryCache } = require("./memory-cache.cjs");
+const { adjustScoresFromMemory } = require("./memory-routing.cjs");
 
 /**
  * Parse raw SSE or plain JSON response body into a JSON string.
@@ -249,13 +251,15 @@ function parseSearchResult(result) {
  */
 async function discoverAgents(intent) {
   const mcpUrl = getMcpUrl();
+  const memoryCache = getMemoryCache();
 
   if (!mcpUrl) {
     debugLog(
       "agent-discovery",
       "No MCP URL found (env var or settings) — using seed registry fallback"
     );
-    return buildFallbackAgents().sort((a, b) => b.score - a.score);
+    const fallback = buildFallbackAgents().sort((a, b) => b.score - a.score);
+    return adjustScoresFromMemory(fallback, memoryCache);
   }
 
   // Build query from intent signals
@@ -279,13 +283,16 @@ async function discoverAgents(intent) {
 
     if (agents.length === 0) {
       debugLog("agent-discovery", "MCP returned no agents — using seed registry fallback");
-      return buildFallbackAgents().sort((a, b) => b.score - a.score);
+      const fallback = buildFallbackAgents().sort((a, b) => b.score - a.score);
+      return adjustScoresFromMemory(fallback, memoryCache);
     }
 
-    return agents.sort((a, b) => b.score - a.score);
+    const sorted = agents.sort((a, b) => b.score - a.score);
+    return adjustScoresFromMemory(sorted, memoryCache);
   } catch (err) {
     debugLog("agent-discovery", `MCP call failed (${err.message}) — using seed registry fallback`);
-    return buildFallbackAgents().sort((a, b) => b.score - a.score);
+    const fallback = buildFallbackAgents().sort((a, b) => b.score - a.score);
+    return adjustScoresFromMemory(fallback, memoryCache);
   }
 }
 
