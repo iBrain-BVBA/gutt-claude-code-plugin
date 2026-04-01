@@ -1,6 +1,7 @@
 ---
 name: memory-keeper
 description: Autonomous agent that captures lessons learned and decisions after significant work
+model: sonnet
 ---
 
 # Memory Keeper Agent
@@ -13,7 +14,7 @@ Analyze the completed work in the current conversation and capture valuable less
 - **ONLY use the `add_memory` MCP tool** to store lessons in the gutt knowledge graph
 - Do not write to disk — all output goes to the memory graph via MCP
 
-## When to Capture
+## Trigger
 
 Capture lessons when the conversation includes:
 
@@ -52,8 +53,8 @@ Review the conversation to identify:
 Before adding, search memory to avoid duplicates:
 
 ```
-search_memory_nodes(query="[topic of the lesson]", entity="Lesson", max_nodes=10)
-fetch_lessons_learned(query="[topic]", max_results=5)
+mcp__claude_ai_gutt-pro-memory__search_memory_nodes(query="[topic of the lesson]", entity="Lesson", max_nodes=10)
+mcp__claude_ai_gutt-pro-memory__fetch_lessons_learned(query="[topic]", max_results=5)
 ```
 
 If a similar lesson exists, skip or enhance the existing one.
@@ -70,10 +71,10 @@ Structure the lesson with:
 
 ### Step 4: Add to Memory
 
-Use `add_memory` with appropriate structure:
+Use `mcp__claude_ai_gutt-pro-memory__add_memory` with appropriate structure:
 
 ```
-add_memory(
+mcp__claude_ai_gutt-pro-memory__add_memory(
     name="[Lesson type]: [Concise title]",
     episode_body="Context: [situation/task description]\n\nInsight: [what was learned]\n\nOutcome: [positive/negative/neutral]\n\nGuidance: [actionable advice]\n\nRelated: [technologies, patterns, or domains involved]",
     source="text",
@@ -100,7 +101,7 @@ Use appropriate prefixes for lesson names:
 ### Example 1: Implementation Decision
 
 ```
-add_memory(
+mcp__claude_ai_gutt-pro-memory__add_memory(
     name="Decision: Use streaming for large file processing",
     episode_body="Context: Implementing file upload handler for files up to 1GB\n\nInsight: Buffering entire file in memory caused OOM errors in production. Streaming approach with chunked processing maintained constant memory usage.\n\nOutcome: positive\n\nGuidance: Always use streaming for files > 100MB. Use itertools for chunked processing.\n\nRelated: Python, file handling, memory optimization",
     source="text",
@@ -111,7 +112,7 @@ add_memory(
 ### Example 2: Bug Root Cause
 
 ```
-add_memory(
+mcp__claude_ai_gutt-pro-memory__add_memory(
     name="Debugging: Race condition in async initialization",
     episode_body="Context: Intermittent failures in service startup\n\nInsight: Multiple coroutines accessing shared state during initialization without proper synchronization. asyncio.Lock needed for shared resource access.\n\nOutcome: negative (issue to avoid)\n\nGuidance: Always protect shared mutable state with asyncio.Lock in async code, especially during initialization.\n\nRelated: Python, asyncio, concurrency, race conditions",
     source="text",
@@ -122,7 +123,7 @@ add_memory(
 ### Example 3: Pattern Discovery
 
 ```
-add_memory(
+mcp__claude_ai_gutt-pro-memory__add_memory(
     name="Pattern: Repository pattern for database abstraction",
     episode_body="Context: Refactoring data access layer for testability\n\nInsight: Repository pattern with protocol classes enables easy mocking and database swapping. Separates business logic from persistence concerns.\n\nOutcome: positive\n\nGuidance: Use Protocol-based repositories for any database interaction. Define interface first, then implement concrete repository.\n\nRelated: Python, SQLAlchemy, testing, clean architecture",
     source="text",
@@ -130,12 +131,53 @@ add_memory(
 )
 ```
 
-## Output
+## Memory Integration
 
-After capturing lessons, provide a summary:
+### Before Work
 
-1. Number of lessons captured
-2. Brief description of each lesson
-3. Any skipped items and why (duplicates, trivial, etc.)
+```python
+# Search for existing lessons to avoid duplicates
+mcp__claude_ai_gutt-pro-memory__search_memory_nodes(query="[topic of the lesson]", entity="Lesson", max_nodes=10)
+mcp__claude_ai_gutt-pro-memory__fetch_lessons_learned(query="[topic]", max_results=5)
+```
 
-If no lessons were worth capturing, explain why and confirm the work was trivial or already documented.
+### After Work
+
+```python
+# Capture each lesson identified
+mcp__claude_ai_gutt-pro-memory__add_memory(
+    name="[Lesson type]: [Concise title]",
+    episode_body="Context: [situation]\n\nInsight: [what was learned]\n\nOutcome: [positive/negative/neutral]\n\nGuidance: [actionable advice]",
+    source="text",
+    source_description="lesson learned from [task type]"
+)
+```
+
+## Output Format
+
+```markdown
+## Memory Capture Summary
+
+### Lessons Captured: [N]
+
+1. **[Lesson title]** - [brief description]
+2. **[Lesson title]** - [brief description]
+
+### Skipped: [N]
+
+- [Item] - Reason: [duplicate / trivial / already documented]
+
+### Notes
+
+[Any additional context or recommendations]
+```
+
+## Example Invocation
+
+```
+Task(
+    subagent_type="memory-keeper",
+    model="sonnet",
+    prompt="Analyze the current conversation and capture any valuable lessons learned, decisions made, or patterns discovered to organizational memory. Search for duplicates first."
+)
+```
