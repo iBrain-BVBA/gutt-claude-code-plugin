@@ -241,9 +241,38 @@ function checkMcpFile(mcpPath) {
   return false;
 }
 
+/**
+ * Diagnose gutt MCP configuration status.
+ * Returns a structured result with config status and URL.
+ * Note: Cannot test reachability from a hook (no async HTTP).
+ * @returns {{ configured: boolean, url: string|null, error: string|null }}
+ */
+function diagnoseGuttMcp() {
+  const configured = isGuttMcpConfigured();
+  if (!configured) {
+    return {
+      configured: false,
+      url: null,
+      error: "gutt MCP server not found in any settings file",
+    };
+  }
+
+  const url = getGuttMcpUrl();
+  if (!url) {
+    return {
+      configured: true,
+      url: null,
+      error: "gutt MCP configured but no HTTP URL found (may be stdio transport)",
+    };
+  }
+
+  return { configured: true, url, error: null };
+}
+
 module.exports = {
   isGuttMcpConfigured,
   getGuttMcpUrl,
+  diagnoseGuttMcp,
   // Exported for unit testing
   findGuttServerConfig,
   resolveEnvVars,

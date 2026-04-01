@@ -5,7 +5,7 @@
  * Clears memory cache for fresh state each session
  */
 
-const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
+const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
 const { debugLog } = require("./lib/debug.cjs");
@@ -24,11 +24,15 @@ process.stdin.on("end", () => {
     debugLog("SessionStart", err);
   }
 
-  // Check if gutt-mcp-remote is configured
-  if (!isGuttMcpConfigured()) {
-    console.log(`💡 gutt memory features are available but not configured.
-
-Run /gutt-claude-code-plugin:setup to enable organizational memory integration.`);
+  // Check gutt MCP configuration status
+  const diag = diagnoseGuttMcp();
+  if (!diag.configured) {
+    console.log(
+      `💡 gutt memory not configured. Run /gutt-claude-code-plugin:setup or /gutt-claude-code-plugin:onboard to get started.`
+    );
+  } else if (diag.url) {
+    const display = diag.url.length > 50 ? diag.url.slice(0, 47) + "..." : diag.url;
+    console.log(`✅ gutt memory connected (${display})`);
   }
 
   // Use exitCode instead of process.exit() to allow stdout to flush
