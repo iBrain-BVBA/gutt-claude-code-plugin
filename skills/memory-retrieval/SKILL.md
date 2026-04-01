@@ -1,3 +1,8 @@
+---
+name: memory-retrieval
+description: "Search organizational memory for context before starting tasks. Triggers on: previous, before, last time, decision, why did we, what do we know about."
+---
+
 # Memory Retrieval Skill
 
 ## When to Use This Skill

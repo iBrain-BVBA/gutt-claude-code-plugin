@@ -1,3 +1,8 @@
+---
+name: memory-capture
+description: "Capture lessons, decisions, and patterns into gutt memory graph. Triggers on: actually, no that's wrong, we decided, lesson learned, next time, remember that."
+---
+
 # Memory Capture Skill
 
 ## Overview

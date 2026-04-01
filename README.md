@@ -18,7 +18,7 @@ This plugin connects Claude Code to your gutt memory, automatically:
 
 - 📥 **Retrieves** relevant context before every task
 - 📤 **Captures** lessons after every task
-- 🔄 **Works with OMC** — All agents get memory, automatically
+- 🔄 **Works with subagents** — All agents get memory, automatically
 
 [**Sign up for gutt →**](https://gutt.pro)
 
@@ -35,58 +35,17 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ## Quick Start
 
-### Claude Code
+### Via Marketplace (Recommended)
 
-#### Via Marketplace (Recommended)
+1. **Install:** `claude plugin add gutt-claude-code-plugin`
+2. **Setup:** Run `/gutt-claude-code-plugin:onboard`
+3. **Done** — memory integration is active
 
-```bash
-# Step 1: Add the marketplace
-/plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
+### Manual Install (Developers)
 
-# Step 2: Install the plugin
-/plugin install gutt-claude-code-plugin@gutt-plugins
-```
-
-#### Manual Installation
-
-1. Clone this repository to your Claude Code plugins directory:
-
-   ```bash
-   git clone https://github.com/iBrain-BVBA/gutt-claude-code-plugin ~/.claude-plugins/gutt-claude-code-plugin
-   ```
-
-2. Add to your Claude Code settings (`~/.claude/settings.json` or project `.claude/settings.json`):
-
-   ```json
-   {
-     "plugins": {
-       "gutt-claude-code-plugin": "~/.claude-plugins/gutt-claude-code-plugin"
-     }
-   }
-   ```
-
-3. Restart Claude Code to activate the plugin
-
-#### Setup
-
-After installing the plugin, run the setup wizard:
-
-```
-/gutt-claude-code-plugin:setup
-```
-
-The wizard will:
-
-1. Ask for your organization's gutt MCP endpoint URL
-2. Register the MCP server with Claude Code
-
-After the wizard completes:
-
-1. **Restart Claude Code** (Ctrl+C, then run `claude` again)
-2. Run `/mcp` and select `gutt-mcp-remote`
-3. Choose **"Authenticate"** to complete OAuth login
-
-Memory features will be active after authentication.
+1. **Clone:** `git clone https://github.com/iBrain-BVBA/gutt-claude-code-plugin ~/.claude-plugins/gutt-claude-code-plugin`
+2. **Enable:** Add to `.claude/settings.json` under `"plugins"`
+3. **Setup:** Run `/gutt-claude-code-plugin:onboard`
 
 ### Cursor
 
@@ -144,7 +103,7 @@ The statusline is auto-enabled on first session. Optional settings in `~/.claude
 | `subagent-start-memory.cjs` | SubagentStart    | Injects cached memory context into subagents |
 | `subagent-plan-review.cjs`  | SubagentStop     | Suggests GUTT memory search after plans      |
 
-**Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents (including OMC's 32 agents) get organizational context and contribute lessons back.
+**Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents get organizational context and contribute lessons back.
 
 ### Skills
 
