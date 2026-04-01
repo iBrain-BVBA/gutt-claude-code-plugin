@@ -1,6 +1,6 @@
 {
   "name": "gutt-claude-code-plugin",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "description": "GUTT Plugin for Claude Code - Memory integration and enhanced tooling",
   "private": true,
   "type": "module",
