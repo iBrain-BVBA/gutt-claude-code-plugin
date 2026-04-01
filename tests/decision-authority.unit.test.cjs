@@ -48,6 +48,26 @@ test("explicit conclusion claim_type \u2192 review", () => {
   const c = classifyWrite({ content: "analysis summary", claim_type: "conclusion" });
   assert.strictEqual(c.tier, TIER_REVIEW);
 });
+test("capitalized 'Conclusion' claim_type \u2192 review (case-insensitive)", () => {
+  const c = classifyWrite({ content: "analysis summary", claim_type: "Conclusion" });
+  assert.strictEqual(c.tier, TIER_REVIEW);
+  assert.strictEqual(c.claim_type, "conclusion");
+});
+test("uppercase 'OBSERVATION' claim_type \u2192 auto (case-insensitive)", () => {
+  const c = classifyWrite({ content: "task done", claim_type: "OBSERVATION" });
+  assert.strictEqual(c.tier, TIER_AUTO);
+  assert.strictEqual(c.claim_type, "observation");
+});
+test("mixed case 'Projection' claim_type \u2192 review (case-insensitive)", () => {
+  const c = classifyWrite({ content: "forecast", claim_type: "Projection" });
+  assert.strictEqual(c.tier, TIER_REVIEW);
+  assert.strictEqual(c.claim_type, "projection");
+});
+test("mixed case 'Current_State' claim_type \u2192 auto (case-insensitive)", () => {
+  const c = classifyWrite({ content: "status", claim_type: "Current_State" });
+  assert.strictEqual(c.tier, TIER_AUTO);
+  assert.strictEqual(c.claim_type, "current_state");
+});
 test("content with 'architecture decision' \u2192 gated regardless of claim_type", () => {
   const c = classifyWrite({
     content: "Architecture Decision: use Google ADK",
