@@ -126,7 +126,7 @@ console.log("Test 1: Plan rejection (negative outcome)...");
       type: "tool_use",
       name: "Task",
       input: {
-        subagent_type: "oh-my-claudecode:planner",
+        subagent_type: "Plan",
         model: "opus",
         prompt: "Create plan for authentication system",
       },
@@ -193,7 +193,7 @@ console.log("\nTest 2: Plan modification (positive outcome)...");
       type: "tool_use",
       name: "Task",
       input: {
-        subagent_type: "oh-my-claudecode:planner",
+        subagent_type: "Plan",
         model: "opus",
         prompt: "Plan database schema",
       },
@@ -259,7 +259,7 @@ console.log("\nTest 3: No plan context (regular behavior)...");
       type: "tool_use",
       name: "Task",
       input: {
-        subagent_type: "oh-my-claudecode:executor",
+        subagent_type: "general-purpose",
         model: "sonnet",
         prompt: "Implement feature",
       },
@@ -310,7 +310,7 @@ console.log("\nTest 4: Plan approved (skip capture)...");
       type: "tool_use",
       name: "Task",
       input: {
-        subagent_type: "oh-my-claudecode:planner",
+        subagent_type: "Plan",
         model: "opus",
         prompt: "Plan API endpoints",
       },
@@ -373,7 +373,7 @@ console.log("\nTest 5: State file prevents duplicate prompts...");
       type: "tool_use",
       name: "Task",
       input: {
-        subagent_type: "oh-my-claudecode:planner",
+        subagent_type: "Plan",
         model: "opus",
         prompt: "Plan",
       },

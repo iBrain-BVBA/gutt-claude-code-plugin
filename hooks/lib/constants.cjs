@@ -19,7 +19,7 @@ const LESSON_SKIP_AGENTS = ["gutt-pro-memory", "memory-keeper", "memory-capture"
  * Plan agent types handled by SubagentStop hook (subagent-plan-review.cjs).
  * Skipped in post-task-lessons.cjs to avoid duplicate prompts.
  */
-const PLAN_AGENT_TYPES = new Set(["plan", "oh-my-claudecode:plan", "oh-my-claudecode:planner"]);
+const PLAN_AGENT_TYPES = new Set(["plan", "Plan"]);
 
 module.exports = {
   MEMORY_AGENTS,

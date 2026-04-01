@@ -84,7 +84,7 @@ process.stdin.on("end", () => {
 
     if (seed && seed.groundingQueries.length > 0) {
       // Seed found — inject agent-specific grounding with dynamic group_id
-      // Prefer cached group_id from orchestrator (PreToolUse), fall back to local resolution
+      // Prefer cached group_id from main process (PreToolUse), fall back to local resolution
       const groupId = getResolvedGroupId() || getGroupId();
       const groundingContext = formatSeedGrounding(seed, groupId);
 

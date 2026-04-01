@@ -54,8 +54,11 @@ process.stdin.on("end", () => {
     fs.mkdirSync(path.dirname(logFile), { recursive: true });
   }
 
+  // Sanitize sessionId for safe use in filenames
+  const safeSessionId = (sessionId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
+
   // Deduplicate: check if we already prompted this session
-  const stateFile = path.join(stateDir, `${sessionId}.session-summary-prompted`);
+  const stateFile = path.join(stateDir, `${safeSessionId}.session-summary-prompted`);
   if (fs.existsSync(stateFile)) {
     debugLog("post-session-summary", `Already prompted for session ${sessionId}`);
     process.exit(0);
@@ -88,9 +91,8 @@ process.stdin.on("end", () => {
   // Build action summary
   const summaryText = generateSummary(transcriptData);
 
-  // Build structured episode body
+  // Build structured episode body (summaryText from generateSummary already includes goal context)
   const episodeBody = [
-    `Goal: ${sanitizedGoal}`,
     `Actions: ${summaryText}`,
     `Files: ${fileList}`,
     `Outcome: Session completed with ${significantOps} significant operations`,

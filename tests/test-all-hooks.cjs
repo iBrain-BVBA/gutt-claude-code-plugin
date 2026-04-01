@@ -163,7 +163,7 @@ testHook(
   {
     tool_name: "Task",
     tool_input: {
-      subagent_type: "oh-my-claudecode:executor",
+      subagent_type: "general-purpose",
       prompt: "Fix authentication bug",
     },
     tool_response:
@@ -191,7 +191,7 @@ testHook(
   {
     tool_name: "Task",
     tool_input: {
-      subagent_type: "oh-my-claudecode:architect",
+      subagent_type: "general-purpose",
       prompt: "Design the authentication system",
     },
   },
@@ -202,7 +202,7 @@ testHook(
 testHook(
   "8. SubagentStart (Memory Injection)",
   "subagent-start-memory.cjs",
-  { agent_type: "oh-my-claudecode:executor", agent_id: "test-123" },
+  { agent_type: "general-purpose", agent_id: "test-123" },
   { shouldContain: null } // May inject memory or provide fallback
 );
 
@@ -212,7 +212,7 @@ testHook(
   "subagent-plan-review.cjs",
   {
     agent_transcript_path: path.join(projectDir, ".claude", "transcript.jsonl"),
-    agent_type: "oh-my-claudecode:planner",
+    agent_type: "general-purpose",
   },
   { allowNonZero: true } // May block if plan detected
 );
@@ -267,7 +267,7 @@ testHook(
   "pre-tool-delegation-guard.cjs",
   {
     agent_id: "test-agent-123",
-    agent_type: "oh-my-claudecode:executor",
+    agent_type: "general-purpose",
     tool_name: "Edit",
     tool_input: { file_path: "/tmp/foo.ts", old_string: "a", new_string: "b" },
   },

@@ -35,9 +35,6 @@ coverage/
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
 
-# OMC state files
-.omc/
-
 # Temp files
 *.tmp
 *.temp

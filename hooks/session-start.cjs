@@ -8,7 +8,7 @@
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
-const { getState } = require("./lib/session-state.cjs");
+const { getState, resetCounters } = require("./lib/session-state.cjs");
 const { recordSessionMetrics } = require("./lib/cross-session-learner.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
@@ -23,6 +23,7 @@ process.stdin.on("end", () => {
     const prevState = getState();
     if (prevState.memoryQueries > 0 || prevState.lessonsCaptured > 0) {
       recordSessionMetrics(prevState);
+      resetCounters();
     }
   } catch (err) {
     debugLog("SessionStart", `cross-session flush: ${err.message || err}`);

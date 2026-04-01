@@ -365,7 +365,7 @@ Linted test_file.py with Python (black + ruff)
    {
      "tool_name": "Task",
      "tool_input": {
-       "subagent_type": "oh-my-claudecode:executor",
+       "subagent_type": "general-purpose",
        "prompt": "Fix authentication bug in login component"
      },
      "tool_response": "Fixed the authentication issue. The problem was that the JWT token validation was checking the wrong expiry field. After fixing the field name to 'exp' instead of 'expires', the login flow now works correctly. This is an important lesson: always verify field names match the JWT spec when integrating auth libraries."
@@ -392,7 +392,7 @@ Linted test_file.py with Python (black + ruff)
 ```json
 {
   "hookSpecificOutput": {
-    "additionalContext": "[GUTT Lesson Capture Opportunity]\nSubagent \"oh-my-claudecode:executor\" completed with potential lessons:\n\nDetected patterns: problem-solved, insight\n\nConsider capturing lessons using memory-keeper agent..."
+    "additionalContext": "[GUTT Lesson Capture Opportunity]\nSubagent \"general-purpose\" completed with potential lessons:\n\nDetected patterns: problem-solved, insight\n\nConsider capturing lessons using memory-keeper agent..."
   }
 }
 ```
@@ -505,7 +505,7 @@ Linted test_file.py with Python (black + ruff)
    {
      "tool_name": "Task",
      "tool_input": {
-       "subagent_type": "oh-my-claudecode:architect",
+       "subagent_type": "Explore",
        "prompt": "Analyze the database schema for performance issues"
      }
    }
@@ -597,7 +597,7 @@ Linted test_file.py with Python (black + ruff)
    ```bash
    cat > subagent_start.json << 'EOF'
    {
-     "agent_type": "oh-my-claudecode:architect",
+     "agent_type": "Explore",
      "agent_id": "123"
    }
    EOF
@@ -642,7 +642,7 @@ Linted test_file.py with Python (black + ruff)
 2. **Execute:** Simulate SubagentStart hook
 
    ```bash
-   echo '{"agent_type":"oh-my-claudecode:architect"}' | node hooks/subagent-start-memory.cjs
+   echo '{"agent_type":"Explore"}' | node hooks/subagent-start-memory.cjs
    ```
 
 3. **Verify Fallback:** Output should include MCP tool instructions
@@ -982,7 +982,7 @@ testHook(
   {
     tool_name: "Task",
     tool_input: {
-      subagent_type: "oh-my-claudecode:executor",
+      subagent_type: "general-purpose",
       prompt: "Fix authentication bug",
     },
     tool_response:
@@ -1010,7 +1010,7 @@ testHook(
   {
     tool_name: "Task",
     tool_input: {
-      subagent_type: "oh-my-claudecode:architect",
+      subagent_type: "Explore",
       prompt: "Design the authentication system",
     },
   },
@@ -1021,7 +1021,7 @@ testHook(
 testHook(
   "SubagentStart (Memory Injection)",
   "subagent-start-memory.cjs",
-  { agent_type: "oh-my-claudecode:executor", agent_id: "123" },
+  { agent_type: "general-purpose", agent_id: "123" },
   "GUTT Memory"
 );
 

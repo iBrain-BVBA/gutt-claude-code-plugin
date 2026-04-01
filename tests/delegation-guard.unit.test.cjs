@@ -84,6 +84,27 @@ test("npm install express → block", () => {
 test("sed -i 's/foo/bar/' file.js → block", () => {
   assert.strictEqual(classifyBashCommand("sed -i 's/foo/bar/' file.js").verdict, "block");
 });
+test("git rm file.txt → block", () => {
+  assert.strictEqual(classifyBashCommand("git rm file.txt").verdict, "block");
+});
+test("git mv old.js new.js → block", () => {
+  assert.strictEqual(classifyBashCommand("git mv old.js new.js").verdict, "block");
+});
+test("git branch -D feature → block", () => {
+  assert.strictEqual(classifyBashCommand("git branch -D feature").verdict, "block");
+});
+test("git tag -d v1.0 → block", () => {
+  assert.strictEqual(classifyBashCommand("git tag -d v1.0").verdict, "block");
+});
+test("git stash drop → block", () => {
+  assert.strictEqual(classifyBashCommand("git stash drop").verdict, "block");
+});
+test("git stash pop → block", () => {
+  assert.strictEqual(classifyBashCommand("git stash pop").verdict, "block");
+});
+test("gh release delete v1.0 → block", () => {
+  assert.strictEqual(classifyBashCommand("gh release delete v1.0").verdict, "block");
+});
 
 console.log("\nREADONLY_PREFIXES (should ALLOW):");
 test("git status → allow", () => {

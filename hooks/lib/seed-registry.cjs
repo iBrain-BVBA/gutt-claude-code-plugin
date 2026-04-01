@@ -263,6 +263,10 @@ function loadFromCache() {
     }
 
     const cacheTime = new Date(data.scannedAt).getTime();
+    if (!Number.isFinite(cacheTime)) {
+      // Invalid timestamp — treat as stale
+      return null;
+    }
     const age = Date.now() - cacheTime;
     if (age > CACHE_TTL_MS) {
       return null;

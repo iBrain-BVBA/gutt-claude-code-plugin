@@ -15,6 +15,7 @@ const { getGroupId } = require("./config.cjs");
 const { getGuttMcpUrl } = require("./mcp-config.cjs");
 const { getMemoryCache } = require("./memory-cache.cjs");
 const { adjustScoresFromMemory } = require("./memory-routing.cjs");
+const { PASSTHROUGH_MAX_SCORE } = require("./router.cjs");
 
 /**
  * Parse raw SSE or plain JSON response body into a JSON string.
@@ -39,8 +40,8 @@ function parseSseResponse(data) {
 
 const MCP_TIMEOUT_MS = 2000;
 const DEFAULT_MAX_NODES = 5;
-// Must be below PASSTHROUGH_MAX_SCORE (0.3 in router.cjs) to prevent false-positive routing when MCP is down
-const FALLBACK_SCORE = 0.25;
+// Derived: must stay below passthrough threshold to avoid false-positive routing when MCP is down
+const FALLBACK_SCORE = PASSTHROUGH_MAX_SCORE - 0.05;
 
 /**
  * @typedef {Object} AgentMatch

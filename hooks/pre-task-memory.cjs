@@ -52,7 +52,7 @@ process.stdin.on("end", async () => {
     }
 
     // Store resolved group_id so SubagentStart can use it
-    // (orchestrator process has access to config.json; subagent may not)
+    // (main process has access to config.json; subagent may not)
     const groupId = getGroupId();
     if (groupId) {
       setResolvedGroupId(groupId);

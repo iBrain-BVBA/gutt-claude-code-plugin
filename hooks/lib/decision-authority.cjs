@@ -69,7 +69,7 @@ function classifyWrite(params) {
   }
 
   // Use explicit claim_type if provided (case-insensitive lookup)
-  if (params.claim_type) {
+  if (typeof params.claim_type === "string" && params.claim_type) {
     const normalizedType = params.claim_type.toLowerCase();
     if (CLAIM_TYPE_TIERS[normalizedType]) {
       return {

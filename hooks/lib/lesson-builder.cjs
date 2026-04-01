@@ -17,7 +17,6 @@
  * @param {string} opts.context.capturePrompt - The capture instruction text
  * @param {string} [opts.context.blockReason] - Extra text for CLI block reason
  * @param {string} [opts.context.coworkPrefix] - Prefix for cowork output (e.g. "[Cowork] Session ending.")
- * @param {string} [opts.context.coworkFallback] - Fallback text when no lessons captured
  * @param {number} [opts.context.lessonsCaptured] - Number of lessons already captured
  * @returns {object} JSON-serializable output for console.log
  */

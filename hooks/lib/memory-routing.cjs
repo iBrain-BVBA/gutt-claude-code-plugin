@@ -5,8 +5,9 @@
  * Adjusts agent scores based on historical performance data from the
  * gutt memory cache. Called after agent discovery, before routing decision.
  *
- * Pure function — no async MCP calls. Uses whatever is already cached
- * in gutt-memory-cache.json by earlier hooks.
+ * Stateless scoring function (has debugLog side effect for observability) —
+ * no async MCP calls. Uses whatever is already cached in gutt-memory-cache.json
+ * by earlier hooks.
  *
  * @module memory-routing
  */
@@ -82,12 +83,12 @@ function adjustScoresFromMemory(agents, memoryCache) {
     return agents || [];
   }
 
-  if (!memoryCache || (!Array.isArray(memoryCache.lessons) && !Array.isArray(memoryCache.facts))) {
+  if (!memoryCache) {
     return agents;
   }
 
-  const lessons = memoryCache.lessons || [];
-  const facts = memoryCache.facts || [];
+  const lessons = Array.isArray(memoryCache.lessons) ? memoryCache.lessons : [];
+  const facts = Array.isArray(memoryCache.facts) ? memoryCache.facts : [];
 
   // If cache is empty, nothing to adjust
   if (lessons.length === 0 && facts.length === 0) {
@@ -123,7 +124,7 @@ function adjustScoresFromMemory(agents, memoryCache) {
     }
   }
 
-  // Scan facts for agent-related mentions (e.g. "[cfo-analyst] handles budget queries")
+  // Scan facts for agent-related mentions — mild positive signal (agent is known to the org)
   for (const fact of facts) {
     const factText = [fact.fact, fact.name].filter(Boolean).join(" ").toLowerCase();
 

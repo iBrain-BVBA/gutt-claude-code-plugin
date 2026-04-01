@@ -105,17 +105,10 @@ const WORKFLOW_PREFIXES = [
   "git commit",
   "git push",
   "git add",
-  "git rm",
-  "git mv",
   "git merge",
   "git fetch",
   "git pull",
-  "git stash drop",
-  "git stash pop",
   "git stash apply",
-  "git tag -d",
-  "git branch -d",
-  "git branch -D",
   // GitHub CLI write commands
   "gh pr create",
   "gh pr merge",
@@ -128,12 +121,18 @@ const WORKFLOW_PREFIXES = [
   "gh issue edit",
   "gh issue comment",
   "gh release create",
-  "gh release delete",
 ];
 
 // ── Bash: state-changing command prefixes that must be blocked ───────────────
 const WRITE_PREFIXES = [
   // Git destructive commands
+  "git rm",
+  "git mv",
+  "git tag -d",
+  "git branch -d",
+  "git branch -D",
+  "git stash drop",
+  "git stash pop",
   "git rebase",
   "git cherry-pick",
   "git reset",
@@ -182,6 +181,8 @@ const WRITE_PREFIXES = [
   "cmake",
   "docker ",
   "kubectl ",
+  // GitHub CLI destructive commands
+  "gh release delete",
 ];
 
 // Exceptions to WRITE_PREFIXES — these look like writes but are actually reads

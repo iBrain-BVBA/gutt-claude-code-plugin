@@ -51,18 +51,15 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
-    // Classify signal for memory capture type
-    const classification = classifySignal(toolResult);
-    if (!classification.shouldCapture) {
-      // No capture-worthy signals detected - silent exit
-      process.exit(0);
-    }
-
     // Detect if result contains lesson-worthy content
     const lessonIndicators = detectLessonIndicators(toolResult);
 
-    if (lessonIndicators.length === 0) {
-      // No lessons detected - silent exit
+    // Classify signal for memory capture labeling (type/trust/priority)
+    const classification = classifySignal(toolResult);
+
+    // Only skip if NEITHER detector finds anything
+    if (!classification.shouldCapture && lessonIndicators.length === 0) {
+      // No capture-worthy signals detected - silent exit
       process.exit(0);
     }
 
