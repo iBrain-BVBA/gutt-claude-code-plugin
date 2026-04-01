@@ -8,18 +8,7 @@ model: sonnet
 
 Scans repositories for Claude Code configurations to create a unified view of organizational tooling and identify standardization opportunities.
 
-## First Step (MANDATORY)
-
-Before scanning repositories, search organizational memory for previous discovery findings:
-
-1. Call `mcp__gutt-mcp-remote__search_memory_facts` with "Claude Code configuration audit"
-2. Call `mcp__gutt-mcp-remote__fetch_lessons_learned` for config standardization lessons
-3. Use findings to:
-   - Compare against previous audits
-   - Identify known drift patterns
-   - Apply established standardization recommendations
-
-## When to Use This Agent
+## Trigger
 
 - Auditing Claude Code setup across multiple repositories
 - Identifying configuration drift between projects
@@ -108,6 +97,37 @@ Output markdown with:
 
 1. Install gutt-claude-code-plugin in all repos
 2. Update outdated components
+```
+
+## Memory Integration
+
+### Before Work
+
+Before scanning repositories, search organizational memory for previous discovery findings:
+
+```python
+# Search for previous config audit results
+mcp__claude_ai_gutt-pro-memory__search_memory_facts(query="Claude Code configuration audit", max_facts=10)
+
+# Fetch lessons about config standardization
+mcp__claude_ai_gutt-pro-memory__fetch_lessons_learned(query="config standardization drift", max_results=5)
+
+# Search for known configuration patterns
+mcp__claude_ai_gutt-pro-memory__search_memory_nodes(query="Claude Code plugin configuration", max_nodes=10)
+```
+
+Use findings to compare against previous audits, identify known drift patterns, and apply established standardization recommendations.
+
+### After Work
+
+```python
+# Capture discovery report findings
+mcp__claude_ai_gutt-pro-memory__add_memory(
+    name="Config Discovery Report: [date]",
+    episode_body="Scanned [N] repositories. Found [X] inconsistencies, [Y] gaps, [Z] outdated configs. Key findings: [summary]. Recommendations: [list].",
+    source="text",
+    source_description="config discovery audit"
+)
 ```
 
 ## MCP Tools Used

@@ -8,6 +8,18 @@ model: sonnet
 
 Specialized agent for deep exploration of the gutt (Graph-based Unified Thinking Tool) knowledge graph. Provides multi-hop traversal strategies and intelligent search patterns for organizational memory.
 
+## Trigger
+
+Invoke this agent when:
+
+- Deep exploration of the knowledge graph is needed
+- Multi-hop relationship traversal is required to answer a question
+- Synthesizing information from multiple memory sources
+- Finding connections between entities across the organization
+- Answering "what do we know about X?" questions that require graph traversal
+
+> **Note**: This agent is **read-only by design**. It searches and retrieves from the knowledge graph but does not use `add_memory` to write. Memory capture is handled by the `memory-keeper` agent or by the orchestrator after work completes.
+
 ## Role & Capabilities
 
 This agent excels at:
