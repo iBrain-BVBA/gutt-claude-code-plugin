@@ -37,7 +37,8 @@ function parseSseResponse(data) {
 
 const MCP_TIMEOUT_MS = 2000;
 const DEFAULT_MAX_NODES = 5;
-const FALLBACK_SCORE = 0.5;
+// Must be below PASSTHROUGH_MAX_SCORE (0.3 in router.cjs) to prevent false-positive routing when MCP is down
+const FALLBACK_SCORE = 0.25;
 
 /**
  * @typedef {Object} AgentMatch
@@ -177,7 +178,7 @@ function callMcpTool(mcpUrl, method, params) {
 // ---------------------------------------------------------------------------
 
 /**
- * Build fallback agent list from the seed registry with uniform 0.5 score.
+ * Build fallback agent list from the seed registry with uniform FALLBACK_SCORE.
  * @returns {AgentMatch[]}
  */
 function buildFallbackAgents() {

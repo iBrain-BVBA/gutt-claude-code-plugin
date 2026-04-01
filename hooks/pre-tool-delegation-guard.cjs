@@ -99,29 +99,23 @@ const READONLY_PREFIXES = [
   "python3 -c ",
 ];
 
-// ── Bash: state-changing command prefixes that must be blocked ───────────────
-const WRITE_PREFIXES = [
-  // Git write commands
+// ── Bash: git workflow + gh CLI commands (allowed for orchestrator) ─────────
+const WORKFLOW_PREFIXES = [
+  // Git workflow commands (non-destructive)
   "git commit",
   "git push",
   "git add",
   "git rm",
   "git mv",
   "git merge",
-  "git rebase",
-  "git cherry-pick",
-  "git reset",
-  "git checkout --",
-  "git restore",
-  "git clean",
+  "git fetch",
+  "git pull",
   "git stash drop",
   "git stash pop",
   "git stash apply",
   "git tag -d",
   "git branch -d",
   "git branch -D",
-  "git fetch",
-  "git pull",
   // GitHub CLI write commands
   "gh pr create",
   "gh pr merge",
@@ -135,6 +129,17 @@ const WRITE_PREFIXES = [
   "gh issue comment",
   "gh release create",
   "gh release delete",
+];
+
+// ── Bash: state-changing command prefixes that must be blocked ───────────────
+const WRITE_PREFIXES = [
+  // Git destructive commands
+  "git rebase",
+  "git cherry-pick",
+  "git reset",
+  "git checkout --",
+  "git restore",
+  "git clean",
   // Package managers (install/modify)
   "npm install",
   "npm i ",
@@ -193,12 +198,10 @@ const WRITE_EXCEPTIONS = [
 
 // ── Agent routing suggestions ───────────────────────────────────────────────
 const AGENT_SUGGESTIONS = {
-  Edit: "Delegate to an executor agent (e.g., oh-my-claudecode:executor) for file edits.",
-  Write:
-    "Delegate to an executor agent (e.g., oh-my-claudecode:executor) for creating/writing files.",
-  NotebookEdit:
-    "Delegate to an executor agent (e.g., oh-my-claudecode:executor) for notebook edits.",
-  Bash: "Delegate to an executor agent for build/install commands, or a devops agent for infrastructure commands.",
+  Edit: "Delegate to a general-purpose executor agent for file edits.",
+  Write: "Delegate to a general-purpose executor agent for creating/writing files.",
+  NotebookEdit: "Delegate to a general-purpose executor agent for notebook edits.",
+  Bash: "Delegate to a general-purpose executor agent for build/install commands, or a devops agent for infrastructure commands.",
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -241,6 +244,11 @@ function classifyBashCommand(rawCommand) {
     return { verdict: "allow" };
   }
 
+  // Git workflow + gh CLI commands → allow (non-destructive workflow commands)
+  if (matchesAny(cmd, WORKFLOW_PREFIXES)) {
+    return { verdict: "allow" };
+  }
+
   // gh api with write HTTP methods → block
   if (/^gh\s+api\b/i.test(cmd)) {
     if (/(?:--method|-X)\s+(POST|PUT|PATCH|DELETE)\b/i.test(cmd)) {
@@ -265,51 +273,44 @@ function classifyBashCommand(rawCommand) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-let input = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  input += chunk;
-});
-process.stdin.on("end", () => {
-  try {
-    const data = JSON.parse(input || "{}");
+// Only run stdin handler when executed directly (not when required for testing)
+if (require.main === module) {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    input += chunk;
+  });
+  process.stdin.on("end", () => {
+    try {
+      const data = JSON.parse(input || "{}");
 
-    // ── Subagent bypass ─────────────────────────────────────────────────
-    // Subagents ARE the delegates — they need full tool access.
-    // The guard only restricts the main orchestrator (no agent_id).
-    if (data.agent_id) {
-      debugLog(HOOK_NAME, `Subagent ${data.agent_type || data.agent_id} — bypassing guard`);
-      process.exit(0);
-    }
+      // ── Subagent bypass ─────────────────────────────────────────────────
+      // Subagents ARE the delegates — they need full tool access.
+      // The guard only restricts the main orchestrator (no agent_id).
+      if (data.agent_id) {
+        debugLog(HOOK_NAME, `Subagent ${data.agent_type || data.agent_id} — bypassing guard`);
+        process.exit(0);
+      }
 
-    const toolName = data.tool_name || "";
-    const toolInput = data.tool_input || {};
+      const toolName = data.tool_name || "";
+      const toolInput = data.tool_input || {};
 
-    // ── Non-Bash blocked tools ──────────────────────────────────────────
-    if (ALWAYS_BLOCKED.has(toolName)) {
-      const suggestion = AGENT_SUGGESTIONS[toolName] || "Delegate to a subagent.";
-      const result = {
-        decision: "block",
-        reason:
-          `Orchestrator must not use ${toolName} directly. ` +
-          `${suggestion} ` +
-          `Use the Task tool to delegate this work to the appropriate agent.`,
-      };
-      process.stdout.write(JSON.stringify(result));
-      process.exit(0);
-    }
+      // ── Plan file exception ──────────────────────────────────────────────
+      // Allow Write/Edit for Claude plan files (used by planning workflows)
+      if (ALWAYS_BLOCKED.has(toolName)) {
+        const filePath = toolInput.file_path || toolInput.path || "";
+        if (filePath && /[/\\]\.claude[/\\]plans[/\\]/.test(filePath)) {
+          process.exit(0);
+        }
+      }
 
-    // ── Bash tool — classify the command ────────────────────────────────
-    if (toolName === "Bash") {
-      const command = toolInput.command || "";
-      const { verdict, detail } = classifyBashCommand(command);
-
-      if (verdict === "block") {
-        const suggestion = AGENT_SUGGESTIONS.Bash;
+      // ── Non-Bash blocked tools ──────────────────────────────────────────
+      if (ALWAYS_BLOCKED.has(toolName)) {
+        const suggestion = AGENT_SUGGESTIONS[toolName] || "Delegate to a subagent.";
         const result = {
           decision: "block",
           reason:
-            `Orchestrator must not run state-changing Bash commands directly (detected: ${detail}). ` +
+            `Orchestrator must not use ${toolName} directly. ` +
             `${suggestion} ` +
             `Use the Task tool to delegate this work to the appropriate agent.`,
         };
@@ -317,27 +318,60 @@ process.stdin.on("end", () => {
         process.exit(0);
       }
 
-      if (verdict === "warn") {
-        // Allow but add context warning
-        const result = {
-          decision: "allow",
-          additionalContext:
-            `[delegation-guard] Unrecognized command (${detail || "unknown"}). ` +
-            `If this command changes state, consider delegating to a subagent instead.`,
-        };
-        process.stdout.write(JSON.stringify(result));
+      // ── Bash tool — classify the command ────────────────────────────────
+      if (toolName === "Bash") {
+        const command = toolInput.command || "";
+        const { verdict, detail } = classifyBashCommand(command);
+
+        if (verdict === "block") {
+          const suggestion = AGENT_SUGGESTIONS.Bash;
+          const result = {
+            decision: "block",
+            reason:
+              `Orchestrator must not run state-changing Bash commands directly (detected: ${detail}). ` +
+              `${suggestion} ` +
+              `Use the Task tool to delegate this work to the appropriate agent.`,
+          };
+          process.stdout.write(JSON.stringify(result));
+          process.exit(0);
+        }
+
+        if (verdict === "warn") {
+          // Allow but add context warning
+          const result = {
+            decision: "allow",
+            additionalContext:
+              `[delegation-guard] Unrecognized command (${detail || "unknown"}). ` +
+              `If this command changes state, consider delegating to a subagent instead.`,
+          };
+          process.stdout.write(JSON.stringify(result));
+          process.exit(0);
+        }
+
+        // verdict === "allow" — silent pass-through
         process.exit(0);
       }
 
-      // verdict === "allow" — silent pass-through
+      // ── All other tools — allow silently ────────────────────────────────
+      process.exit(0);
+    } catch (err) {
+      debugLog(HOOK_NAME, err);
+      // On error, don't block — fail open
       process.exit(0);
     }
+  });
+} // end require.main === module
 
-    // ── All other tools — allow silently ────────────────────────────────
-    process.exit(0);
-  } catch (err) {
-    debugLog(HOOK_NAME, err);
-    // On error, don't block — fail open
-    process.exit(0);
-  }
-});
+// ── Exports for testing ─────────────────────────────────────────────────────
+if (typeof module !== "undefined") {
+  module.exports = {
+    classifyBashCommand,
+    normalizeCommand,
+    matchesAny,
+    WORKFLOW_PREFIXES,
+    WRITE_PREFIXES,
+    READONLY_PREFIXES,
+    WRITE_EXCEPTIONS,
+    ALWAYS_BLOCKED,
+  };
+}

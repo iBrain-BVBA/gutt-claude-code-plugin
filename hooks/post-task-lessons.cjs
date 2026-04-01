@@ -2,7 +2,6 @@
 /**
  * PostToolUse hook for Task tool - captures lessons from subagent results
  *
- * Closes the loop: Every subagent (OMC or otherwise) contributes lessons back.
  * Analyzes task results for learnings, decisions, patterns worth capturing.
  */
 
@@ -58,9 +57,6 @@ process.stdin.on("end", () => {
       // No lessons detected - silent exit
       process.exit(0);
     }
-
-    // Increment lessons captured counter
-    incrementLessonsCaptured();
 
     // Sanitize user-derived content for embedding
     const sanitizedPrompt = sanitizeForDisplay(prompt.substring(0, 100));
@@ -140,6 +136,9 @@ This is MANDATORY per GP-437. Lessons from subagent work must be captured automa
     };
 
     console.log(JSON.stringify(output));
+
+    // Increment counter AFTER successful output
+    incrementLessonsCaptured();
   } catch {
     // Silent exit on errors - don't block the tool
     process.exit(0);
