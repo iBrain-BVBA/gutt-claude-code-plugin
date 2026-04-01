@@ -25,6 +25,8 @@ const {
   buildCaptureInstruction,
 } = require("./lib/plan-feedback-detector.cjs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
+const { classifySignal } = require("./lib/memory-classifier.cjs");
+const { buildLessonOutput, buildPlanFeedbackOutput } = require("./lib/lesson-builder.cjs");
 
 const { PROJECT_DIR, STATE_DIR_NAME } = require("./lib/env.cjs");
 const logFile = path.join(PROJECT_DIR, STATE_DIR_NAME, "hooks", "hook-invocations.log");
@@ -90,43 +92,26 @@ process.stdin.on("end", () => {
 
       const captureInstruction = buildCaptureInstruction(planFeedback);
 
-      if (isCursor()) {
-        // Cursor: use followup_message to auto-continue with lesson capture
-        fs.appendFileSync(
-          logFile,
-          `[${timestamp}] Stop hook: Cursor followup for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
-        );
-        console.log(
-          JSON.stringify({
-            followup_message: captureInstruction,
+      const platform = isCursor() ? "cursor" : supportsDecisionBlock() ? "cli" : "cowork";
+      const platformLabel =
+        platform === "cursor"
+          ? "Cursor followup"
+          : platform === "cli"
+            ? "Blocking stop"
+            : "Cowork non-blocking plan feedback output";
+      fs.appendFileSync(
+        logFile,
+        `[${timestamp}] Stop hook: ${platformLabel} for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
+      );
+      console.log(
+        JSON.stringify(
+          buildPlanFeedbackOutput({
+            platform,
+            supportsBlock: supportsDecisionBlock(),
+            captureInstruction,
           })
-        );
-      } else if (supportsDecisionBlock()) {
-        // CLI: block stop and force capture
-        fs.appendFileSync(
-          logFile,
-          `[${timestamp}] Stop hook: Blocking stop for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
-        );
-        console.log(
-          JSON.stringify({
-            decision: "block",
-            reason: captureInstruction,
-          })
-        );
-      } else {
-        // GP-530 AC-10: Cowork — best-effort non-blocking output
-        fs.appendFileSync(
-          logFile,
-          `[${timestamp}] Stop hook: Cowork non-blocking plan feedback output (${planFeedback.type}) in session ${sessionId}\n`
-        );
-        console.log(
-          JSON.stringify({
-            hookSpecificOutput: {
-              additionalContext: `[Cowork] Session ending with uncaptured plan feedback. ${captureInstruction}`,
-            },
-          })
-        );
-      }
+        )
+      );
       return; // Exit after output
     }
     // If planFeedback.skip = true (approved), continue to regular lesson capture
@@ -170,6 +155,9 @@ process.stdin.on("end", () => {
   // Extract session goal
   const goal = transcriptData.firstUserMessage || "Session work (no goal extracted)";
 
+  // Classify session goal for capture type hints
+  const classification = classifySignal(goal);
+
   // Create state file to track first prompt
   fs.writeFileSync(stateFile, "");
 
@@ -187,11 +175,15 @@ ${generateSummary(transcriptData)}`;
   const sanitizedGoal = sanitizeForDisplay(goal);
   const sanitizedSummary = sanitizeForDisplay(sessionSummary);
 
+  const classificationHint = classification.shouldCapture
+    ? `\n- Capture type: ${classification.type} (trust: ${classification.trust}, priority: ${classification.priority})`
+    : "";
+
   const capturePrompt = `Session Context:
 - Duration: ${durationMinutes} minutes
 - Files modified: ${transcriptData.filesModified}
 - Memory queries: ${memoryQueries}
-- Lessons captured: ${lessonsCaptured}
+- Lessons captured: ${lessonsCaptured}${classificationHint}
 
 Delegate to memory-keeper agent to capture lessons:
 
@@ -201,49 +193,30 @@ ${sanitizedSummary}
 
 Create a memory with name 'Session: ${sanitizedGoal}' containing the key lessons and findings from this session.")`;
 
-  if (isCursor()) {
-    // Cursor: use followup_message to auto-continue with lesson capture
-    fs.appendFileSync(
-      logFile,
-      `[${timestamp}] Stop hook: Cursor followup for session ${sessionId} - significant work detected\n`
-    );
-    console.log(
-      JSON.stringify({
-        followup_message: `Capture session lessons before finishing.\n\n${capturePrompt}`,
-      })
-    );
-  } else if (supportsDecisionBlock()) {
-    // CLI: block stop and force capture
-    fs.appendFileSync(
-      logFile,
-      `[${timestamp}] Stop hook: Blocking stop for session ${sessionId} - significant work detected\n`
-    );
-    console.log(
-      JSON.stringify({
-        decision: "block",
-        reason: `\ud83d\udfe0 ACTION REQUIRED: Capture session lessons before stopping.
-
-${capturePrompt}
-
-Or describe what you learned and I'll format it properly.`,
-      })
-    );
-  } else {
-    // GP-530 AC-10: Cowork — best-effort non-blocking output
-    fs.appendFileSync(
-      logFile,
-      `[${timestamp}] Stop hook: Cowork non-blocking lesson capture output for session ${sessionId}\n`
-    );
-    console.log(
-      JSON.stringify({
-        hookSpecificOutput: {
-          additionalContext: `[Cowork] Session ending. ${lessonsCaptured} lessons captured during session.${
-            lessonsCaptured === 0
-              ? " WARNING: No lessons captured this session. " + capturePrompt
-              : " Periodic capture handled lesson collection."
-          }`,
+  const platform = isCursor() ? "cursor" : supportsDecisionBlock() ? "cli" : "cowork";
+  const platformLabel =
+    platform === "cursor"
+      ? "Cursor followup"
+      : platform === "cli"
+        ? "Blocking stop"
+        : "Cowork non-blocking lesson capture output";
+  fs.appendFileSync(
+    logFile,
+    `[${timestamp}] Stop hook: ${platformLabel} for session ${sessionId} - significant work detected\n`
+  );
+  console.log(
+    JSON.stringify(
+      buildLessonOutput({
+        platform,
+        supportsBlock: supportsDecisionBlock(),
+        classifierResult: classification,
+        context: {
+          capturePrompt,
+          blockReason: `\ud83d\udfe0 ACTION REQUIRED: Capture session lessons before stopping.\n\n${capturePrompt}\n\nOr describe what you learned and I'll format it properly.`,
+          coworkPrefix: "[Cowork] Session ending.",
+          lessonsCaptured,
         },
       })
-    );
-  }
+    )
+  );
 });

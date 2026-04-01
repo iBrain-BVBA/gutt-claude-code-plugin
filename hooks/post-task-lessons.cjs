@@ -11,6 +11,7 @@ const { getAgentSeed } = require("./lib/seed-registry.cjs");
 const { getGroupId } = require("./lib/config.cjs");
 const { getResolvedGroupId } = require("./lib/memory-cache.cjs");
 const { LESSON_SKIP_AGENTS, PLAN_AGENT_TYPES } = require("./lib/constants.cjs");
+const { classifySignal } = require("./lib/memory-classifier.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -47,6 +48,13 @@ process.stdin.on("end", () => {
     // Plan agents are handled by SubagentStop hook (subagent-plan-review.cjs)
     // to avoid duplicate prompts. Skip them here.
     if (PLAN_AGENT_TYPES.has(subagentType.toLowerCase())) {
+      process.exit(0);
+    }
+
+    // Classify signal for memory capture type
+    const classification = classifySignal(toolResult);
+    if (!classification.shouldCapture) {
+      // No capture-worthy signals detected - silent exit
       process.exit(0);
     }
 
@@ -117,6 +125,7 @@ process.stdin.on("end", () => {
 A lesson-worthy subagent result was detected. You MUST capture this to organizational memory NOW.
 
 **Detected patterns:** ${lessonIndicators.join(", ")}
+**Capture type:** ${classification.type} (trust: ${classification.trust}, priority: ${classification.priority})
 **Subagent:** ${subagentType}${seed ? ` (seed: ${seed.name}, type: ${seed.type})` : ""}
 **Category:** ${isSurprise ? "SURPRISE (reality != expectation)" : "OUTCOME (task completion)"}
 **Task:** ${sanitizedPrompt}

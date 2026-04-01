@@ -68,13 +68,16 @@ function classifyWrite(params) {
     }
   }
 
-  // Use explicit claim_type if provided
-  if (params.claim_type && CLAIM_TYPE_TIERS[params.claim_type]) {
-    return {
-      tier: CLAIM_TYPE_TIERS[params.claim_type],
-      reason: `Claim type: ${params.claim_type}`,
-      claim_type: params.claim_type,
-    };
+  // Use explicit claim_type if provided (case-insensitive lookup)
+  if (params.claim_type) {
+    const normalizedType = params.claim_type.toLowerCase();
+    if (CLAIM_TYPE_TIERS[normalizedType]) {
+      return {
+        tier: CLAIM_TYPE_TIERS[normalizedType],
+        reason: `Claim type: ${params.claim_type}`,
+        claim_type: normalizedType,
+      };
+    }
   }
 
   // Infer claim type from content
@@ -152,5 +155,6 @@ module.exports = {
   TIER_AUTO,
   TIER_REVIEW,
   TIER_GATED,
+  CLAIM_TYPE_TIERS,
   GATED_SIGNALS,
 };

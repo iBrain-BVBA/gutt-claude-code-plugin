@@ -219,6 +219,35 @@ function scanSeeds() {
 }
 
 /**
+ * Check if any agent .md file in the scan directories was modified
+ * after the given timestamp.
+ * @param {number} cacheTime - Cache timestamp in milliseconds
+ * @returns {boolean} True if any file is newer than the cache
+ */
+function agentFilesModifiedSince(cacheTime) {
+  const scanPaths = getScanPaths();
+  for (const dir of scanPaths) {
+    if (!fs.existsSync(dir)) {
+      continue;
+    }
+    try {
+      const files = fs.readdirSync(dir).filter((f) => f.endsWith(".md"));
+      for (const file of files) {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        if (stat.mtimeMs > cacheTime) {
+          return true;
+        }
+      }
+    } catch {
+      // If we can't read the directory, invalidate to be safe
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Load registry from cache if fresh
  * @returns {Object|null} Cached registry or null if stale/missing
  */
@@ -233,8 +262,14 @@ function loadFromCache() {
       return null;
     }
 
-    const age = Date.now() - new Date(data.scannedAt).getTime();
+    const cacheTime = new Date(data.scannedAt).getTime();
+    const age = Date.now() - cacheTime;
     if (age > CACHE_TTL_MS) {
+      return null;
+    }
+
+    // Invalidate if any agent file was modified after cache was written
+    if (agentFilesModifiedSince(cacheTime)) {
       return null;
     }
 
@@ -313,5 +348,6 @@ module.exports = {
   getAgentSeed,
   scanSeeds,
   clearSeedCache,
+  agentFilesModifiedSince,
   REGISTRY_PATH,
 };
