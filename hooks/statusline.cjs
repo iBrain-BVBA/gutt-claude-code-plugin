@@ -171,7 +171,8 @@ process.stdin.on("end", async () => {
   // Add warning indicator (!) if not configured
   const configWarning = !configured ? "!" : "";
 
-  const guttSegment = `[gutt${statusIcon}${configWarning} ${displayGroupId || "(no group_id)"} mem:${state.memoryQueries || 0} lessons:${state.lessonsCaptured || 0}]`;
+  const groupPart = displayGroupId ? ` ${displayGroupId}` : "";
+  const guttSegment = `[gutt${statusIcon}${configWarning}${groupPart} mem:${state.memoryQueries || 0} lessons:${state.lessonsCaptured || 0}]`;
 
   // Extract Claude Code data if available
   let claudeSegment = "";
