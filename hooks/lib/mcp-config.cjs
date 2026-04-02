@@ -20,8 +20,15 @@ function findGuttServerConfig(mcpServers) {
   if (!mcpServers || typeof mcpServers !== "object") {
     return null;
   }
+  // Exact match first
   for (const name of GUTT_SERVER_NAMES) {
     if (mcpServers[name]) {
+      return { name, config: mcpServers[name] };
+    }
+  }
+  // Fallback: any server name containing "gutt" (case-insensitive)
+  for (const name of Object.keys(mcpServers)) {
+    if (name.toLowerCase().includes("gutt")) {
       return { name, config: mcpServers[name] };
     }
   }
