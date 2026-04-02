@@ -76,6 +76,13 @@ test("finds 'claude_ai_gutt_mcp' server", () => {
   assert.strictEqual(result.name, "claude_ai_gutt_mcp");
 });
 
+test("finds 'gutt-pro-memory' server", () => {
+  const servers = { "gutt-pro-memory": { url: "https://mcp.gutt.ai" } };
+  const result = findGuttServerConfig(servers);
+  assert.ok(result);
+  assert.strictEqual(result.name, "gutt-pro-memory");
+});
+
 test("returns null for non-gutt servers", () => {
   const servers = { "some-other-mcp": { url: "https://other.ai" } };
   const result = findGuttServerConfig(servers);
@@ -94,10 +101,11 @@ test("returns null for empty object", () => {
   assert.strictEqual(findGuttServerConfig({}), null);
 });
 
-test("does not fuzzy-match arbitrary keys containing gutt and mcp", () => {
+test("fuzzy-matches any server name containing gutt", () => {
   const servers = { "my-gutt-mcp-fork": { url: "https://fork.ai" } };
   const result = findGuttServerConfig(servers);
-  assert.strictEqual(result, null, "Should not fuzzy-match unknown server names");
+  assert.ok(result, "Should fuzzy-match server names containing gutt");
+  assert.strictEqual(result.name, "my-gutt-mcp-fork");
 });
 
 test("prefers first matching known name in order", () => {
