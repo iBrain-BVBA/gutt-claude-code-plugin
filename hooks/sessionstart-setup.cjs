@@ -120,13 +120,30 @@ function writeMarker() {
 }
 
 /**
+ * Read marker file and return parsed content, or null if missing/invalid
+ * @returns {Object|null} Marker content or null
+ */
+function readMarker() {
+  try {
+    if (!fs.existsSync(MARKER_FILE)) {
+      return null;
+    }
+    return JSON.parse(fs.readFileSync(MARKER_FILE, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Main setup logic
  */
 function setup() {
   try {
-    // Check if already configured
-    if (fs.existsSync(MARKER_FILE)) {
-      // Already configured, exit silently
+    // Check if already configured with current version
+    const marker = readMarker();
+    const currentVersion = getPluginVersion();
+    if (marker && marker.version === currentVersion) {
+      // Same version, no update needed
       process.exit(0);
     }
 

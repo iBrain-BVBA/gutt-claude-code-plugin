@@ -12,6 +12,9 @@ import { createTestEnv, runScript } from "./fixtures/setup.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HOOK_PATH = path.join(__dirname, "..", "hooks", "sessionstart-setup.cjs");
+const PLUGIN_VERSION = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
+).version;
 
 test("Fresh install - no settings.json", async () => {
   const env = createTestEnv();
@@ -139,7 +142,7 @@ test("Marker already exists - skip setup", async () => {
     // Create marker file to indicate already configured
     env.writeMarker({
       configuredAt: "2024-01-01T00:00:00.000Z",
-      version: "1.0.0",
+      version: PLUGIN_VERSION,
     });
 
     // Create settings with existing statusline
@@ -168,6 +171,43 @@ test("Marker already exists - skip setup", async () => {
       undefined,
       "No passthrough should be added"
     );
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("Marker exists with old version - re-run setup on upgrade", async () => {
+  const env = createTestEnv();
+  try {
+    // Create marker with an old version to simulate upgrade
+    env.writeMarker({
+      configuredAt: "2024-01-01T00:00:00.000Z",
+      version: "1.0.0",
+    });
+
+    // Create settings with a stale statusline path
+    env.writeSettings({
+      statusLine: {
+        type: "command",
+        command: "node /old/path/hooks/statusline.cjs",
+      },
+    });
+
+    const pluginRoot = path.join(__dirname, "..");
+    const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
+
+    assert.equal(result.exitCode, 0, "Hook should exit 0");
+
+    // Statusline should be updated to new path
+    const settings = env.readSettings();
+    assert.ok(
+      settings.statusLine.command.includes(pluginRoot),
+      "Statusline should point to current plugin root"
+    );
+
+    // Marker should be updated with current version
+    const marker = env.readMarker();
+    assert.equal(marker.version, PLUGIN_VERSION, "Marker version should match current version");
   } finally {
     env.cleanup();
   }
