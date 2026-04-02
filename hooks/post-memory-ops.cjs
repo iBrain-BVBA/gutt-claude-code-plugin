@@ -26,7 +26,11 @@ process.stdin.on("end", () => {
     const toolInput = data.tool_input || {};
     const toolResult = data.tool_response || data.tool_result || {};
 
-    if (toolName === "mcp__gutt-mcp-remote__add_memory") {
+    // Extract the tool action name after the last "__" delimiter
+    // e.g. "mcp__gutt-pro-memory__add_memory" → "add_memory"
+    const action = toolName.split("__").pop() || "";
+
+    if (action === "add_memory") {
       setConnectionStatus("ok");
       incrementLessonsCaptured();
       const name = toolInput.name || "memory";
@@ -34,7 +38,7 @@ process.stdin.on("end", () => {
         icon: "📤",
         text: `Created "${truncate(name, 25)}"`,
       });
-    } else if (toolName === "mcp__gutt-mcp-remote__search_memory_facts") {
+    } else if (action === "search_memory_facts") {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const query = toolInput.query || "query";
@@ -50,7 +54,7 @@ process.stdin.on("end", () => {
         updateMemoryCache("facts", facts);
         addQueryToCache(query);
       }
-    } else if (toolName === "mcp__gutt-mcp-remote__fetch_lessons_learned") {
+    } else if (action === "fetch_lessons_learned") {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const query = toolInput.query || "lessons";
@@ -66,7 +70,7 @@ process.stdin.on("end", () => {
         updateMemoryCache("lessons", lessons);
         addQueryToCache(query);
       }
-    } else if (toolName === "mcp__gutt-mcp-remote__search_memory_nodes") {
+    } else if (action === "search_memory_nodes") {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const query = toolInput.query || "nodes";
@@ -75,7 +79,7 @@ process.stdin.on("end", () => {
         icon: "📥",
         text: `Fetched "${truncate(query, 15)}" → "${truncate(result, 15)}"`,
       });
-    } else if (toolName === "mcp__gutt-mcp-remote__get_user_preferences") {
+    } else if (action === "get_user_preferences") {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const contextType = toolInput.context_type || "general";
@@ -83,7 +87,7 @@ process.stdin.on("end", () => {
         icon: "⚙️",
         text: `Fetched preferences (${truncate(contextType, 15)})`,
       });
-    } else if (toolName === "mcp__gutt-mcp-remote__get_episodes") {
+    } else if (action === "get_episodes") {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const lastN = toolInput.last_n || 10;
@@ -91,7 +95,7 @@ process.stdin.on("end", () => {
         icon: "📜",
         text: `Fetched last ${lastN} episodes`,
       });
-    } else if (toolName === "mcp__gutt-mcp-remote__get_episode") {
+    } else if (action === "get_episode") {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const uuid = toolInput.episode_uuid || "unknown";
@@ -99,7 +103,7 @@ process.stdin.on("end", () => {
         icon: "📜",
         text: `Fetched episode ${truncate(uuid, 12)}`,
       });
-    } else if (toolName === "mcp__gutt-mcp-remote__get_entity_edge") {
+    } else if (action === "get_entity_edge") {
       setConnectionStatus("ok");
       incrementMemoryQueries();
       const uuid = toolInput.uuid || "unknown";

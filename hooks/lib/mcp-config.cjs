@@ -8,7 +8,14 @@ const path = require("path");
 const { PROJECT_DIR, HOME_DIR } = require("./env.cjs");
 
 /** Server name patterns to match for gutt MCP */
-const GUTT_SERVER_NAMES = ["gutt-mcp-remote", "gutt_mcp", "gutt-mcp", "claude_ai_gutt_mcp"];
+const GUTT_SERVER_NAMES = [
+  "gutt-mcp-remote",
+  "gutt-pro-memory",
+  "gutt_mcp",
+  "gutt-mcp",
+  "claude_ai_gutt_mcp",
+  "claude_ai_gutt-pro-memory",
+];
 
 /**
  * Find gutt MCP server config object within an mcpServers map.
