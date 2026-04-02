@@ -37,7 +37,7 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ### Via Marketplace (Recommended)
 
-1. **Install:** `claude plugin add gutt-claude-code-plugin`
+1. **Install:** `claude plugin add gutt-claude-code-plugin@gutt-plugins`
 2. **Setup:** Run `/gutt-claude-code-plugin:onboard`
 3. **Done** — memory integration is active
 
