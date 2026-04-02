@@ -125,7 +125,9 @@ function writeMarker() {
  */
 function readMarker() {
   try {
-    if (!fs.existsSync(MARKER_FILE)) return null;
+    if (!fs.existsSync(MARKER_FILE)) {
+      return null;
+    }
     return JSON.parse(fs.readFileSync(MARKER_FILE, "utf8"));
   } catch {
     return null;
