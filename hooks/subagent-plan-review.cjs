@@ -3,6 +3,7 @@
 const fs = require("fs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 // Shared plan detection patterns - used by both hasPlanContent and countPlanPatterns
 const PLAN_PATTERNS = [
@@ -21,6 +22,7 @@ process.stdin.on("data", (chunk) => (input += chunk));
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input || "{}");
+    debugLog("subagent-plan-review", "Invoked for agent_type: " + (data.agent_type || "unknown"));
 
     // Guard: skip memory-related agents to prevent re-entrant loop
     // (SubagentStop fires for ALL agents, including ones this hook spawns)

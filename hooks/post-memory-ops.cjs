@@ -12,6 +12,7 @@ const {
   setConnectionStatus,
 } = require("./lib/session-state.cjs");
 const { updateMemoryCache, addQueryToCache } = require("./lib/memory-cache.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -27,6 +28,7 @@ process.stdin.on("end", () => {
     const toolResult = data.tool_response || data.tool_result || {};
 
     // Extract the tool action name after the last "__" delimiter
+    debugLog("post-memory-ops", "Invoked for tool: " + toolName);
     // e.g. "mcp__gutt-pro-memory__add_memory" → "add_memory"
     const action = toolName.split("__").pop() || "";
 
@@ -112,8 +114,8 @@ process.stdin.on("end", () => {
         text: `Fetched edge ${truncate(uuid, 12)}`,
       });
     }
-  } catch {
-    // Silent exit
+  } catch (err) {
+    debugLog("post-memory-ops", err);
   }
   process.exit(0);
 });

@@ -247,8 +247,11 @@ async function runRoutingPipeline(prompt) {
   // Step 6: Log every decision for threshold tuning
   logDecision(prompt, intent, decision);
 
-  // Step 7: Passthrough — output nothing, exit cleanly
+  // Step 7: Passthrough — still remind Claude to search memory, then exit
   if (decision.type === "passthrough") {
+    console.log(
+      'REMINDER: ALWAYS use the gutt-pro-memory MCP tools (search_memory_facts, fetch_lessons_learned, search_memory_nodes) to search organizational memory for relevant context, lessons learned, and decisions before starting work.'
+    );
     process.exit(0);
   }
 

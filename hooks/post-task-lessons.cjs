@@ -12,6 +12,7 @@ const { getGroupId } = require("./lib/config.cjs");
 const { getResolvedGroupId } = require("./lib/memory-cache.cjs");
 const { LESSON_SKIP_AGENTS, PLAN_AGENT_TYPES } = require("./lib/constants.cjs");
 const { classifySignal } = require("./lib/memory-classifier.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -22,6 +23,7 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input || "{}");
+    debugLog("post-task-lessons", "Invoked for tool: " + (data.tool_name || "unknown"));
 
     // Only process Task/Agent tool completions
     const toolName = data.tool_name || "";
@@ -145,7 +147,8 @@ This is MANDATORY per GP-437. Lessons from subagent work must be captured automa
 
     // Increment counter AFTER successful output
     incrementLessonsCaptured();
-  } catch {
+  } catch (err) {
+    debugLog("post-task-lessons", err);
     // Silent exit on errors - don't block the tool
     process.exit(0);
   }

@@ -12,6 +12,7 @@ const { execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const { isCursor } = require("./lib/platform-detect.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 /**
  * Validate file path to prevent command injection
@@ -37,6 +38,7 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim());
+    debugLog("post-tool-lint", "Invoked for tool: " + (data.tool_name || data.tool || "unknown"));
 
     // In Claude Code: only process Edit and Write tool results
     // In Cursor: afterFileEdit fires only for file edits, no tool_name filtering needed

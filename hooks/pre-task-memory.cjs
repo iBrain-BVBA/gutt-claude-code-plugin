@@ -18,6 +18,7 @@ const {
 } = require("./lib/memory-cache.cjs");
 const { getGroupId } = require("./lib/config.cjs");
 const { MEMORY_AGENTS } = require("./lib/constants.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 // Read JSON input from stdin
 let input = "";
@@ -28,6 +29,7 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", async () => {
   try {
     const data = JSON.parse(input || "{}");
+    debugLog("pre-task-memory", "Invoked for tool: " + (data.tool_name || "unknown"));
 
     // Only process Task/Agent tool calls
     const toolName = data.tool_name || "";
@@ -69,7 +71,8 @@ process.stdin.on("end", async () => {
 
     // Silent exit - SubagentStart will handle the actual injection
     process.exit(0);
-  } catch {
+  } catch (err) {
+    debugLog("pre-task-memory", err);
     // Silent exit on errors - don't block the tool
     process.exit(0);
   }

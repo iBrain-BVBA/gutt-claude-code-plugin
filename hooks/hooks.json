@@ -69,7 +69,7 @@
         ]
       },
       {
-        "matcher": "mcp__*gutt*__*",
+        "matcher": "mcp__*[Gg]utt*__*",
         "hooks": [
           {
             "type": "command",
@@ -89,7 +89,7 @@
         ]
       },
       {
-        "matcher": "mcp__*gutt*__add_memory*",
+        "matcher": "mcp__*[Gg]utt*__add_memory*",
         "hooks": [
           {
             "type": "command",
