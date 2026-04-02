@@ -29,10 +29,10 @@ process.stdin.on("end", () => {
 
     // Extract the tool action name after the last "__" delimiter
     debugLog("post-memory-ops", "Invoked for tool: " + toolName);
-    // e.g. "mcp__gutt-pro-memory__add_memory" → "add_memory"
+    // e.g. "mcp__gutt-pro-memory__add_memory_to_gutt_pro_v1" → "add_memory_to_gutt_pro_v1"
     const action = toolName.split("__").pop() || "";
 
-    if (action === "add_memory") {
+    if (action.startsWith("add_memory")) {
       setConnectionStatus("ok");
       incrementLessonsCaptured();
       const name = toolInput.name || "memory";

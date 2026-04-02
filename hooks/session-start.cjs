@@ -8,9 +8,15 @@
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
-const { getState, resetCounters, setConnectionStatus } = require("./lib/session-state.cjs");
+const {
+  getState,
+  updateState,
+  resetCounters,
+  setConnectionStatus,
+} = require("./lib/session-state.cjs");
 const { recordSessionMetrics } = require("./lib/cross-session-learner.cjs");
 const { debugLog } = require("./lib/debug.cjs");
+const crypto = require("crypto");
 
 // Read JSON input from stdin (required for hooks)
 process.stdin.setEncoding("utf8");
@@ -27,6 +33,17 @@ process.stdin.on("end", () => {
     }
   } catch (err) {
     debugLog("SessionStart", `cross-session flush: ${err.message || err}`);
+  }
+
+  // Always reinitialize session identity on new session start
+  try {
+    updateState((state) => {
+      state.sessionId = crypto.randomUUID();
+      state.startedAt = new Date().toISOString();
+      return state;
+    });
+  } catch (err) {
+    debugLog("SessionStart", `session identity reset: ${err.message || err}`);
   }
 
   // Clear caches for fresh state each session

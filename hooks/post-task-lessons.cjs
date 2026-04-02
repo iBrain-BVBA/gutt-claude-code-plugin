@@ -5,7 +5,6 @@
  * Analyzes task results for learnings, decisions, patterns worth capturing.
  */
 
-const { incrementLessonsCaptured } = require("./lib/session-state.cjs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 const { getAgentSeed } = require("./lib/seed-registry.cjs");
 const { getGroupId } = require("./lib/config.cjs");
@@ -131,13 +130,12 @@ A lesson-worthy subagent result was detected. You MUST capture this to organizat
 
 EXECUTE THIS IMMEDIATELY (do not ask, do not skip):
 
-mcp__gutt-mcp-remote__add_memory(
+Use the gutt MCP add_memory tool (the tool name starts with "add_memory") with these parameters:
   name: "${episodeName}",
   episode_body: "${escapeForJson(episodeBody)}",
   source: "text",
   source_description: "Auto-captured from ${subagentType} subagent"${groupParam},
   last_n_episodes: 0
-)
 
 This is MANDATORY per GP-437. Lessons from subagent work must be captured automatically.`,
       },
@@ -145,8 +143,8 @@ This is MANDATORY per GP-437. Lessons from subagent work must be captured automa
 
     console.log(JSON.stringify(output));
 
-    // Increment counter AFTER successful output
-    incrementLessonsCaptured();
+    // Counter is incremented by post-memory-ops.cjs when the actual MCP
+    // add_memory call succeeds — no increment here to avoid double counting.
   } catch (err) {
     debugLog("post-task-lessons", err);
     // Silent exit on errors - don't block the tool
