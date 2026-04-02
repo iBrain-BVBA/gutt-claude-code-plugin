@@ -87,15 +87,6 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-task-memory.cjs\""
           }
         ]
-      },
-      {
-        "matcher": "Edit|Write|Bash|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-delegation-guard.cjs\""
-          }
-        ]
       }
     ],
     "SubagentStart": [
