@@ -8,7 +8,7 @@
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
-const { getState, resetCounters } = require("./lib/session-state.cjs");
+const { getState, resetCounters, setConnectionStatus } = require("./lib/session-state.cjs");
 const { recordSessionMetrics } = require("./lib/cross-session-learner.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
@@ -45,6 +45,7 @@ process.stdin.on("end", () => {
     );
   } else if (diag.url) {
     const display = diag.url.length > 50 ? diag.url.slice(0, 47) + "..." : diag.url;
+    setConnectionStatus("ok");
     console.log(`✅ gutt memory connected (${display})`);
   }
 
