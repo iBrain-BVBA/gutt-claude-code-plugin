@@ -89,15 +89,6 @@
         ]
       },
       {
-        "matcher": "mcp__.*gutt.*__add_memory.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use-add-memory.cjs\""
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write|Bash|NotebookEdit",
         "hooks": [
           {
