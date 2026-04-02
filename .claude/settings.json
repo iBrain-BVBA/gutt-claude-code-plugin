@@ -11,7 +11,8 @@
       "Bash(bash *)",
       "mcp__atlassian__*",
       "mcp__github__*",
-      "mcp__*[Gg]utt*__*"
+      "mcp__*gutt*__*",
+      "mcp__*Gutt*__*"
     ],
     "deny": []
   },
@@ -41,7 +42,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "mcp__*[Gg]utt*__*",
+        "matcher": "mcp__*gutt*__*",
         "hooks": [
           {
             "type": "command",
