@@ -11,7 +11,7 @@
     {
       "name": "gutt-claude-code-plugin",
       "description": "Persistent organizational memory for Claude Code via GUTT",
-      "version": "2.2.1",
+      "version": "2.2.2",
       "author": {
         "name": "iBRAIN BV",
         "email": "support@gutt.pro"
