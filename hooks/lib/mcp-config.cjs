@@ -7,14 +7,13 @@ const fs = require("fs");
 const path = require("path");
 const { PROJECT_DIR, HOME_DIR } = require("./env.cjs");
 
-/** Server name patterns to match for gutt MCP */
+/** Known short server names for gutt MCP (case-insensitive match) */
 const GUTT_SERVER_NAMES = [
   "gutt-mcp-remote",
   "gutt-pro-memory",
   "gutt_mcp",
   "gutt-mcp",
-  "claude_ai_gutt_mcp",
-  "claude_ai_gutt-pro-memory",
+  "gutt-interactive",
 ];
 
 /**
@@ -27,13 +26,15 @@ function findGuttServerConfig(mcpServers) {
   if (!mcpServers || typeof mcpServers !== "object") {
     return null;
   }
-  // Exact match first
-  for (const name of GUTT_SERVER_NAMES) {
-    if (mcpServers[name]) {
-      return { name, config: mcpServers[name] };
+  // Known-name match first (case-insensitive)
+  for (const key of Object.keys(mcpServers)) {
+    const lower = key.toLowerCase();
+    if (GUTT_SERVER_NAMES.includes(lower)) {
+      return { name: key, config: mcpServers[key] };
     }
   }
-  // Fallback: any server name containing "gutt" (case-insensitive)
+  // Catch-all: any server name containing "gutt" (case-insensitive)
+  // Handles claude_ai_gutt*, Gutt-interactive, and any future variants
   for (const name of Object.keys(mcpServers)) {
     if (name.toLowerCase().includes("gutt")) {
       return { name, config: mcpServers[name] };

@@ -21,8 +21,10 @@
 const { isCowork } = require("./lib/platform-detect.cjs");
 const { incrementSignificantOps, recordCapturePrompt } = require("./lib/session-state.cjs");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 // AC-8: In CLI, exit immediately — stop-lessons.cjs handles capture
+debugLog("cowork-periodic-capture", "Invoked, isCowork=" + isCowork());
 if (!isCowork()) {
   process.exit(0);
 }

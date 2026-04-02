@@ -69,10 +69,10 @@ test("finds 'gutt-mcp' server", () => {
   assert.strictEqual(result.name, "gutt-mcp");
 });
 
-test("finds 'claude_ai_gutt_mcp' server", () => {
+test("finds 'claude_ai_gutt_mcp' via catch-all fallback", () => {
   const servers = { claude_ai_gutt_mcp: { url: "https://mcp.gutt.ai" } };
   const result = findGuttServerConfig(servers);
-  assert.ok(result);
+  assert.ok(result, "Should match via catch-all (name contains 'gutt')");
   assert.strictEqual(result.name, "claude_ai_gutt_mcp");
 });
 
@@ -108,14 +108,29 @@ test("fuzzy-matches any server name containing gutt", () => {
   assert.strictEqual(result.name, "my-gutt-mcp-fork");
 });
 
-test("prefers first matching known name in order", () => {
+test("returns first matching known name by object key order", () => {
   const servers = {
     "gutt-mcp": { url: "https://first.ai" },
     "gutt-mcp-remote": { url: "https://second.ai" },
   };
   const result = findGuttServerConfig(servers);
-  // gutt-mcp-remote is first in the GUTT_SERVER_NAMES list
-  assert.strictEqual(result.name, "gutt-mcp-remote");
+  // Iterates Object.keys(mcpServers) — first key that matches wins
+  assert.strictEqual(result.name, "gutt-mcp");
+});
+
+test("matches known names case-insensitively", () => {
+  const servers = { "Gutt-Interactive": { url: "https://ci.ai" } };
+  const result = findGuttServerConfig(servers);
+  assert.ok(result, "Should match 'Gutt-Interactive' against lowercase 'gutt-interactive'");
+  assert.strictEqual(result.name, "Gutt-Interactive");
+  assert.strictEqual(result.config.url, "https://ci.ai");
+});
+
+test("matches known names with all-uppercase casing", () => {
+  const servers = { "GUTT-MCP-REMOTE": { url: "https://upper.ai" } };
+  const result = findGuttServerConfig(servers);
+  assert.ok(result, "Should match 'GUTT-MCP-REMOTE' against lowercase 'gutt-mcp-remote'");
+  assert.strictEqual(result.name, "GUTT-MCP-REMOTE");
 });
 
 // ---------------------------------------------------------------------------
