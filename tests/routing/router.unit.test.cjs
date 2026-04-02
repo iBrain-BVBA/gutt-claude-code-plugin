@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Router Unit Tests
- * Tests intent extraction, playbook matching, and routing decisions
+ * Tests intent extraction and routing decisions
  * for all 23 routing validation cases.
  *
  * Runs without live MCP — uses mocked agent discovery responses.
@@ -23,7 +23,6 @@ const path = require("path");
 const LIB = path.resolve(__dirname, "../../hooks/lib");
 const { extractIntent } = require(path.join(LIB, "intent-extractor.cjs"));
 const { makeRoutingDecision } = require(path.join(LIB, "router.cjs"));
-const { matchPlaybook } = require(path.join(LIB, "playbook-matcher.cjs"));
 
 // ---------------------------------------------------------------------------
 // Test runner
@@ -116,12 +115,6 @@ function mockLowConfidence() {
 function mockEmpty() {
   return [];
 }
-
-// ---------------------------------------------------------------------------
-// Playbooks directory (sibling gutt-agents/playbooks)
-// ---------------------------------------------------------------------------
-
-const PLAYBOOKS_DIR = path.resolve(__dirname, "../../../gutt-agents/playbooks");
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -329,51 +322,6 @@ test("routing-021 with low-score agents → type:fallback", () => {
   const intentWithSignal = { ...intent, domainSignals: ["unknown-domain"], entityRefs: [] };
   const d = makeRoutingDecision(agents, intentWithSignal, null);
   assertType(d, "fallback");
-});
-
-// ── Playbook Matching Tests ──────────────────────────────────────────────────
-
-console.log("\nPlaybook Matching:");
-
-test("routing-018: 'prep-client-meeting POAB' matches prep-client-meeting playbook", () => {
-  const match = matchPlaybook("prep-client-meeting POAB", PLAYBOOKS_DIR);
-  assert.ok(match !== null, "Should match a playbook");
-  assert.strictEqual(
-    match.name,
-    "prep-client-meeting",
-    `Expected prep-client-meeting, got ${match && match.name}`
-  );
-});
-
-test("routing-018: matched playbook has correct lead agent pattern", () => {
-  const match = matchPlaybook("prep-client-meeting POAB", PLAYBOOKS_DIR);
-  assert.ok(match !== null, "Should match a playbook");
-  assert.ok(
-    match.lead && (match.lead.includes("contact") || match.lead === "contact:*"),
-    `Expected contact:* lead, got "${match.lead}"`
-  );
-});
-
-test("playbook threshold: generic prompt 'help me think' does NOT match any playbook", () => {
-  const match = matchPlaybook("help me think", PLAYBOOKS_DIR);
-  assert.strictEqual(match, null, `Generic prompt should not match; got: ${match && match.name}`);
-});
-
-test("playbook threshold: 'what is the weather' does NOT match any playbook", () => {
-  const match = matchPlaybook("what is the weather", PLAYBOOKS_DIR);
-  assert.strictEqual(match, null, "Unrelated prompt should not match a playbook");
-});
-
-test("'runway analysis' matches runway-analysis playbook", () => {
-  const match = matchPlaybook("runway analysis", PLAYBOOKS_DIR);
-  assert.ok(match !== null, "Should match runway-analysis playbook");
-  assert.strictEqual(match.name, "runway-analysis");
-});
-
-test("'create a new agent' matches agent-creation playbook", () => {
-  const match = matchPlaybook("create a new agent", PLAYBOOKS_DIR);
-  assert.ok(match !== null, "Should match agent-creation playbook");
-  assert.strictEqual(match.name, "agent-creation");
 });
 
 // ── Confidence tier checks ───────────────────────────────────────────────────

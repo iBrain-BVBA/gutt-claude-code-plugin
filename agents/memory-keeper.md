@@ -26,15 +26,43 @@ Capture lessons when the conversation includes:
 - **Architectural decisions** and their rationale
 - **Process improvements** or workflow insights
 
-## What NOT to Capture
+## Quality Gate — Validate Before Capturing
 
-Skip capturing for:
+Before calling `add_memory`, evaluate each candidate lesson against these criteria. **Skip** if any apply:
 
-- Trivial tasks (typo fixes, simple formatting)
-- Tasks with no meaningful learning
-- Information already in memory (search first to avoid duplicates)
-- Sensitive information (credentials, PII, security vulnerabilities)
+### Not Worth Capturing
+
+- Trivial tasks (typo fixes, simple formatting, version bumps with no insight)
+- Tasks with no meaningful learning beyond "it worked"
+- Session summaries that just restate what was done without extractable insight
 - Incomplete work or abandoned approaches without resolution
+- Sensitive information (credentials, PII, security vulnerabilities)
+
+### Duplicate Check (Required)
+
+Always search memory first — if a similar lesson already exists, skip or enhance it:
+
+```
+search_memory_nodes(query="[topic]", max_nodes=5)
+fetch_lessons_learned(query="[topic]", max_results=3)
+```
+
+### Self-Test
+
+For each lesson, ask yourself:
+
+1. **Would a future agent find this useful?** If not, skip it.
+2. **Is this derivable from the code or git history?** If yes, skip it — don't duplicate what `git log` or reading the file would reveal.
+3. **Is there a concrete, actionable insight?** "We fixed a bug" is not a lesson. "The marker file stored version but never compared it — infrastructure without consumption logic" is.
+4. **Is the scope appropriate?** One focused lesson per insight. Don't bundle unrelated findings into one memory.
+
+### Claim Classification
+
+When formulating the `add_memory` call, set `source_description` to indicate the lesson type:
+
+- Use "observation" for factual records of what happened
+- Use "lesson learned" for actionable insights from completed work
+- Avoid phrases like "architecture decision", "strategic decision", "we decided" in the memory name — these are reserved for human-approved decisions
 
 ## Capture Process
 
