@@ -1,6 +1,6 @@
 ---
 name: plugin-release
-description: "Handles the gutt-claude-code-plugin release process: version bump, tag creation, GitHub release, and marketplace update. Use when releasing a new plugin version. Triggers on: release, bump version, publish, tag, new version, ship it, cut a release, marketplace update."
+description: "Handles the gutt-claude-code-plugin release process: version bump, tag creation, GitHub release, and marketplace update. Also use for diagnosing version sync issues. Triggers on: release, bump version, publish, tag, new version, ship it, cut a release, marketplace update, version mismatch, can't update, up to date but wrong version, plugin won't update, version out of sync, wrong version."
 ---
 
 # Plugin Release
@@ -193,6 +193,17 @@ After the release is created:
 | Creating branch instead of tag                  | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
 | Missing `Co-Authored-By` in version bump commit | Include if Claude authored the bump                                                |
 | Not verifying after release                     | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release`        |
+
+## Troubleshooting: Version Sync Issues
+
+If the plugin reports "up to date" but the version is wrong:
+
+1. **Check all 3 version files match:**
+   ```bash
+   grep '"version"' package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
+   ```
+2. **Most likely cause:** `marketplace.json` was missed during the last version bump — this is the file the plugin installer checks
+3. **Fix:** Update the out-of-sync file, commit, push, and create a new tag if needed
 
 ## Repository Details
 
