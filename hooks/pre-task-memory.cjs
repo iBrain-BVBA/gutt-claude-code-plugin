@@ -10,7 +10,7 @@
  * 2. SubagentStart hook reads the query and injects cached memory results
  */
 
-const { incrementMemoryQueries } = require("./lib/session-state.cjs");
+const { incrementMemoryQueries, init } = require("./lib/session-state.cjs");
 const {
   setLastSearchQuery,
   setLastAgentName,
@@ -29,6 +29,8 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", async () => {
   try {
     const data = JSON.parse(input || "{}");
+    const sessionId = data.session_id || "unknown";
+    init(sessionId);
     debugLog("pre-task-memory", "Invoked for tool: " + (data.tool_name || "unknown"));
 
     // Only process Task/Agent tool calls

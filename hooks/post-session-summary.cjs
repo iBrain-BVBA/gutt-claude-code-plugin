@@ -13,7 +13,7 @@
 const fs = require("fs");
 const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
-const { getState } = require("./lib/session-state.cjs");
+const { getState, init } = require("./lib/session-state.cjs");
 const { parseTranscript, generateSummary } = require("./lib/transcript-parser.cjs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 const { supportsDecisionBlock, isCursor } = require("./lib/platform-detect.cjs");
@@ -45,6 +45,7 @@ process.stdin.on("end", () => {
   } catch {
     process.exit(0);
   }
+  init(sessionId);
 
   // Ensure directories exist
   if (!fs.existsSync(stateDir)) {

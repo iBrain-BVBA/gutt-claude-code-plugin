@@ -19,7 +19,7 @@
  */
 
 const { isCowork } = require("./lib/platform-detect.cjs");
-const { incrementSignificantOps, recordCapturePrompt } = require("./lib/session-state.cjs");
+const { incrementSignificantOps, recordCapturePrompt, init } = require("./lib/session-state.cjs");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
@@ -43,6 +43,8 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => {
   try {
     const data = JSON.parse(input || "{}");
+    const sessionId = data.session_id || "unknown";
+    init(sessionId);
     const toolName = data.tool_name || data.tool || "";
 
     // Only count significant tools (Edit, Write, Task)

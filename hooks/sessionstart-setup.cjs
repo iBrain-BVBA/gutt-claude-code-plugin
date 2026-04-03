@@ -150,18 +150,21 @@ function setup() {
     // Load existing settings
     const settings = loadSettings();
 
-    // Store existing statusLine as passthrough (if present)
+    // Store existing statusLine as passthrough (if present and not our own)
     // Note: Claude Code uses "statusLine" (camelCase) in settings.json
     if (settings.statusLine) {
-      if (!settings.gutt) {
-        settings.gutt = {};
+      const existingCmd = settings.statusLine.command || settings.statusLine;
+      // Guard: don't store our own statusline as passthrough (causes infinite recursion)
+      const isSelf = typeof existingCmd === "string" && existingCmd.includes("statusline.cjs");
+      if (!isSelf) {
+        if (!settings.gutt) {
+          settings.gutt = {};
+        }
+        if (!settings.gutt.statusline) {
+          settings.gutt.statusline = {};
+        }
+        settings.gutt.statusline.passthroughCommand = existingCmd;
       }
-      if (!settings.gutt.statusline) {
-        settings.gutt.statusline = {};
-      }
-      // Store the existing statusLine command for passthrough
-      settings.gutt.statusline.passthroughCommand =
-        settings.statusLine.command || settings.statusLine;
     }
 
     // Configure GUTT statusline using dynamic path

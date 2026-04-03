@@ -45,6 +45,27 @@ const CONTEXT_EXCERPT_COUNT = 5;
 const SESSION_STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
 const SESSION_STATE_PATH = path.join(SESSION_STATE_DIR, "gutt-routing-session.json");
 
+// Per-session routing state: when initRouter(sessionId) is called, the file
+// name includes the session ID so concurrent sessions don't corrupt each other.
+let _routerSessionId = null;
+
+function getRouterStatePath() {
+  if (_routerSessionId) {
+    return path.join(SESSION_STATE_DIR, `gutt-routing-session-${_routerSessionId}.json`);
+  }
+  return SESSION_STATE_PATH; // fallback to legacy shared file
+}
+
+/**
+ * Initialise per-session routing state path.
+ * @param {string} sessionId - The session_id from Claude Code hook input
+ */
+function initRouter(sessionId) {
+  if (sessionId && sessionId !== "unknown") {
+    _routerSessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Session management
 // ---------------------------------------------------------------------------
@@ -57,8 +78,9 @@ const SESSION_STATE_PATH = path.join(SESSION_STATE_DIR, "gutt-routing-session.js
  */
 function loadSession() {
   try {
-    if (fs.existsSync(SESSION_STATE_PATH)) {
-      const raw = fs.readFileSync(SESSION_STATE_PATH, "utf8");
+    const statePath = getRouterStatePath();
+    if (fs.existsSync(statePath)) {
+      const raw = fs.readFileSync(statePath, "utf8");
       return JSON.parse(raw);
     }
   } catch (err) {
@@ -78,18 +100,20 @@ function saveSession(session) {
     if (!fs.existsSync(SESSION_STATE_DIR)) {
       fs.mkdirSync(SESSION_STATE_DIR, { recursive: true });
     }
+    const statePath = getRouterStatePath();
     const serialized = JSON.stringify(session, null, 2);
-    const tempPath = SESSION_STATE_PATH + ".tmp";
+    const tempPath = statePath + ".tmp";
     fs.writeFileSync(tempPath, serialized);
     // Windows: rename cannot overwrite existing file
-    if (fs.existsSync(SESSION_STATE_PATH)) {
-      fs.unlinkSync(SESSION_STATE_PATH);
+    if (fs.existsSync(statePath)) {
+      fs.unlinkSync(statePath);
     }
-    fs.renameSync(tempPath, SESSION_STATE_PATH);
+    fs.renameSync(tempPath, statePath);
   } catch {
     // Fallback: direct write
     try {
-      fs.writeFileSync(SESSION_STATE_PATH, JSON.stringify(session, null, 2));
+      const statePath = getRouterStatePath();
+      fs.writeFileSync(statePath, JSON.stringify(session, null, 2));
     } catch (fallbackErr) {
       debugLog("router", `Failed to save session: ${fallbackErr.message}`);
     }
@@ -318,6 +342,7 @@ function makeRoutingDecision(agents, intent, session) {
 // ---------------------------------------------------------------------------
 
 module.exports = {
+  initRouter,
   makeRoutingDecision,
   loadSession,
   saveSession,

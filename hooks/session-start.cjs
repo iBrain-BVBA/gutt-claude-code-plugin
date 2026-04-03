@@ -8,22 +8,81 @@
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
+const fs = require("fs");
+const path = require("path");
 const {
+  init,
   getState,
   updateState,
   resetCounters,
   setConnectionStatus,
 } = require("./lib/session-state.cjs");
 const { recordSessionMetrics } = require("./lib/cross-session-learner.cjs");
+const { PROJECT_STATE_DIR } = require("./lib/env.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 const crypto = require("crypto");
 
+const HOOK_STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
+
+/**
+ * Remove stale per-session state files older than 24 hours.
+ * These accumulate as sessions start and stop; cleaning on session start
+ * keeps the .state directory tidy without needing a separate cron job.
+ */
+function cleanupStaleSessionFiles() {
+  if (!fs.existsSync(HOOK_STATE_DIR)) {
+    return;
+  }
+  const now = Date.now();
+  const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const files = fs.readdirSync(HOOK_STATE_DIR);
+  for (const file of files) {
+    // Only clean up session-scoped files (contain a session ID segment)
+    if (
+      !file.startsWith("gutt-session-") &&
+      !file.startsWith("gutt-routing-session-") &&
+      !file.includes(".lessons-prompted") &&
+      !file.includes(".plan-feedback-prompted") &&
+      !file.includes(".session-summary-prompted")
+    ) {
+      continue;
+    }
+    const filePath = path.join(HOOK_STATE_DIR, file);
+    try {
+      const stat = fs.statSync(filePath);
+      if (now - stat.mtimeMs > MAX_AGE_MS) {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      // Skip files we can't stat/delete
+    }
+  }
+}
+
 // Read JSON input from stdin (required for hooks)
+let input = "";
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  // Consume stdin data (required for hook protocol)
+process.stdin.on("data", (chunk) => {
+  input += chunk;
 });
 process.stdin.on("end", () => {
+  // Parse session_id from hook input and initialise per-session state path
+  let sessionId = "unknown";
+  try {
+    const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
+    sessionId = data.session_id || "unknown";
+  } catch {
+    // Parse error - continue with defaults
+  }
+  init(sessionId);
+
+  // Clean up stale session state files older than 24 hours
+  try {
+    cleanupStaleSessionFiles();
+  } catch (err) {
+    debugLog("SessionStart", `stale file cleanup: ${err.message || err}`);
+  }
+
   // Flush previous session metrics into cross-session analytics before clearing
   try {
     const prevState = getState();

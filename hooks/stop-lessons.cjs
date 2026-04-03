@@ -11,7 +11,7 @@
 const fs = require("fs");
 const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
-const { getState } = require("./lib/session-state.cjs");
+const { getState, init } = require("./lib/session-state.cjs");
 const { supportsDecisionBlock, isCursor } = require("./lib/platform-detect.cjs");
 const {
   parseTranscript,
@@ -54,6 +54,7 @@ process.stdin.on("end", () => {
     // Parse error - allow stop
     process.exit(0);
   }
+  init(sessionId);
 
   const stateFile = path.join(stateDir, `${sessionId}.lessons-prompted`);
   const planFeedbackStateFile = path.join(stateDir, `${sessionId}.plan-feedback-prompted`);
