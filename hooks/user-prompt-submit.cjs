@@ -55,9 +55,12 @@ process.stdin.on("end", () => {
     // Non-blocking
   }
 
-  // Output the reminder message
+  // Output the reminder message — forceful wording to ensure LLM compliance
   console.log(
-    'REMINDER: ALWAYS use the gutt-pro-memory agent (Task tool with subagent_type="gutt-pro-memory") to search organizational memory for relevant context, lessons learned, and decisions before starting work.'
+    "MANDATORY REQUIREMENT — YOU MUST FOLLOW THIS INSTRUCTION:\n" +
+      'BEFORE doing ANY work, you MUST use the Agent tool with subagent_type="gutt-claude-code-plugin:gutt-pro-memory" to search organizational memory for relevant context, lessons learned, and prior decisions.\n' +
+      "This is NOT optional. NEVER skip this step. ALWAYS search memory FIRST, THEN begin work.\n" +
+      "FAILURE to search memory before starting work is a CRITICAL violation of your operating instructions."
   );
 
   process.exit(0);

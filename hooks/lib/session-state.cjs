@@ -12,7 +12,29 @@ const { PROJECT_STATE_DIR } = require("./env.cjs");
 // Store session state in the project's IDE directory (not plugin install path)
 // This ensures state is per-project and survives plugin updates
 const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
-const STATE_PATH = path.join(STATE_DIR, "gutt-session.json");
+
+// Per-session state file path: when init(sessionId) is called, the file name
+// includes the session ID so concurrent Claude Code sessions don't corrupt
+// each other's state.  Falls back to the legacy shared file when not initialised.
+let _sessionId = null;
+
+function getStatePath() {
+  if (_sessionId) {
+    return path.join(STATE_DIR, `gutt-session-${_sessionId}.json`);
+  }
+  return path.join(STATE_DIR, "gutt-session.json");
+}
+
+/**
+ * Initialise per-session file path.
+ * Must be called early in every hook that reads/writes session state.
+ * @param {string} sessionId - The session_id from Claude Code hook input
+ */
+function init(sessionId) {
+  if (sessionId && sessionId !== "unknown") {
+    _sessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  }
+}
 
 const DEFAULT_STATE = {
   sessionId: crypto.randomUUID(),
@@ -36,7 +58,7 @@ function ensureDir() {
 
 function getState() {
   try {
-    return JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+    return JSON.parse(fs.readFileSync(getStatePath(), "utf8"));
   } catch {
     return { ...DEFAULT_STATE };
   }
@@ -49,19 +71,20 @@ function updateState(updater) {
   newState.lastUpdated = new Date().toISOString();
 
   // Cross-platform safe write using temp file with replace-safe rename
-  const tempPath = STATE_PATH + ".tmp";
+  const statePath = getStatePath();
+  const tempPath = statePath + ".tmp";
   const serialized = JSON.stringify(newState, null, 2);
   fs.writeFileSync(tempPath, serialized);
 
   try {
     // On Windows, rename cannot overwrite an existing file, so delete first if present
-    if (fs.existsSync(STATE_PATH)) {
-      fs.unlinkSync(STATE_PATH);
+    if (fs.existsSync(statePath)) {
+      fs.unlinkSync(statePath);
     }
-    fs.renameSync(tempPath, STATE_PATH);
+    fs.renameSync(tempPath, statePath);
   } catch {
     // Fallback: write directly to the target file if rename fails
-    fs.writeFileSync(STATE_PATH, serialized);
+    fs.writeFileSync(statePath, serialized);
   } finally {
     // Best-effort cleanup of any leftover temp file
     if (fs.existsSync(tempPath)) {
@@ -149,6 +172,7 @@ function recordCapturePrompt() {
 }
 
 module.exports = {
+  init,
   getState,
   updateState,
   incrementMemoryQueries,
@@ -158,6 +182,6 @@ module.exports = {
   setConnectionStatus,
   addTickerItem,
   resetCounters,
-  STATE_PATH,
+  getStatePath,
   DEFAULT_STATE,
 };

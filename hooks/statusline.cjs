@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
-const { getState } = require("./lib/session-state.cjs");
+const { getState, init } = require("./lib/session-state.cjs");
 const { getGroupId, isConfigured, getConfig } = require("./lib/config.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
@@ -93,6 +93,9 @@ function loadUserSettings() {
   }
 }
 
+// Recursion depth: prevent infinite spawn if passthrough points back to us
+const STATUSLINE_DEPTH = parseInt(process.env.GUTT_STATUSLINE_DEPTH || "0", 10);
+
 /**
  * Execute passthrough statusline with timeout
  * Returns empty string on failure (graceful fallback)
@@ -104,7 +107,10 @@ function loadUserSettings() {
 function execPassthrough(command, inputData, timeoutMs = 500) {
   return new Promise((resolve) => {
     try {
-      const child = spawn(command, { shell: true });
+      const child = spawn(command, {
+        shell: true,
+        env: { ...process.env, GUTT_STATUSLINE_DEPTH: String(STATUSLINE_DEPTH + 1) },
+      });
       let output = "";
 
       const timer = setTimeout(() => {
@@ -142,9 +148,6 @@ process.stdin.on("data", (chunk) => {
 });
 
 process.stdin.on("end", async () => {
-  const state = getState();
-  const config = getConfig();
-
   let data = {};
   try {
     const trimmed = input.trim();
@@ -156,6 +159,12 @@ process.stdin.on("end", async () => {
     // show GUTT session metrics in the statusline.
     data = {};
   }
+
+  const sessionId = data.session_id || "unknown";
+  init(sessionId);
+
+  const state = getState();
+  const config = getConfig();
 
   // Get group_id and configuration status
   const groupId = getGroupId();
@@ -202,7 +211,7 @@ process.stdin.on("end", async () => {
     tickerLine = formatTicker(tickerItems);
   }
 
-  if (passthroughCmd && isValidPassthroughCommand(passthroughCmd)) {
+  if (passthroughCmd && isValidPassthroughCommand(passthroughCmd) && STATUSLINE_DEPTH === 0) {
     debugLog("statusline", `Executing passthrough command: ${passthroughCmd}`);
     const passthroughOutput = await execPassthrough(passthroughCmd, data, 500);
     if (passthroughOutput) {
