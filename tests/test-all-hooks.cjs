@@ -49,31 +49,25 @@ function testHook(hookName, hookFile, inputJson, options = {}) {
     // Use spawn for cross-platform compatibility
     const inputStr = JSON.stringify(inputJson);
 
-    // On Windows, use different approach
+    // Write input to temp file then pipe — avoids shell quoting issues on all platforms
     let output;
-    if (os.platform() === "win32") {
-      // Write input to temp file, then pipe it
-      const tempFile = path.join(os.tmpdir(), `hook-test-${Date.now()}.json`);
-      fs.writeFileSync(tempFile, inputStr);
-      try {
-        output = execSync(`type "${tempFile}" | node "${hookPath}"`, {
-          encoding: "utf8",
-          cwd: projectDir,
-          env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
-          shell: true,
-          timeout: 10000,
-        });
-      } finally {
-        fs.unlinkSync(tempFile);
-      }
-    } else {
-      output = execSync(`echo '${inputStr.replace(/'/g, "\\'")}' | node "${hookPath}"`, {
+    const tempFile = path.join(os.tmpdir(), `hook-test-${Date.now()}-${process.pid}.json`);
+    fs.writeFileSync(tempFile, inputStr);
+    try {
+      const catCmd = os.platform() === "win32" ? "type" : "cat";
+      output = execSync(`${catCmd} "${tempFile}" | node "${hookPath}"`, {
         encoding: "utf8",
         cwd: projectDir,
         env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
         shell: true,
         timeout: 10000,
       });
+    } finally {
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {
+        /* ignore */
+      }
     }
 
     // Check expected output
