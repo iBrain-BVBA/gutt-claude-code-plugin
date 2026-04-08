@@ -37,7 +37,8 @@ function atomicWrite(filePath, content) {
   }
 
   // Windows-safe atomic write: delete before rename
-  const tempPath = filePath + ".tmp";
+  // Use PID + random suffix for unique temp file to avoid concurrent write races
+  const tempPath = filePath + `.tmp.${process.pid}.${Date.now()}`;
 
   try {
     fs.writeFileSync(tempPath, content, "utf8");

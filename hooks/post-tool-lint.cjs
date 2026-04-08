@@ -72,11 +72,10 @@ process.stdin.on("end", () => {
     // Using array format to prevent command injection (no shell interpolation)
     switch (ext) {
       case ".py":
-        linterName = "Python (black + ruff)";
-        // Run black and ruff separately with array arguments
+        linterName = "Python (ruff)";
         linters = [
-          { cmd: "black", args: [filePath] },
-          { cmd: "ruff", args: ["check", filePath, "--fix"] },
+          { cmd: "ruff", args: ["format", filePath] },
+          { cmd: "ruff", args: ["check", filePath, "--fix", "--unfixable", "F401"] },
         ];
         break;
       case ".js":
