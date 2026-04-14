@@ -101,22 +101,20 @@ List all hooks that are active and what they do:
 ```markdown
 ## Active Hooks
 
-| Hook                      | Event                               | What It Does                                              |
-| ------------------------- | ----------------------------------- | --------------------------------------------------------- |
-| session-start             | SessionStart                        | Loads seed registry and primes memory cache on startup    |
-| sessionstart-setup        | SessionStart                        | Validates MCP configuration and plugin state              |
-| user-prompt-submit        | UserPromptSubmit                    | Injects relevant memory context before each prompt        |
-| stop-lessons              | Stop                                | Captures lessons learned when a conversation ends         |
-| post-tool-lint            | PostToolUse (Edit/Write)            | Runs lint checks after file edits                         |
-| cowork-periodic-capture   | PostToolUse (Edit/Write/Task/Agent) | Periodically captures progress to memory during work      |
-| post-task-lessons         | PostToolUse (Task/Agent)            | Extracts lessons from completed agent tasks               |
-| post-memory-ops           | PostToolUse (MCP memory tools)      | Tracks memory operation metrics for the HUD               |
-| pre-task-memory           | PreToolUse (Task/Agent)             | Injects relevant memory context before agent delegation   |
-| pre-tool-use-add-memory   | PreToolUse (add_memory)             | Validates and enriches memory writes before storage       |
-| pre-tool-delegation-guard | PreToolUse (Edit/Write/Bash)        | Guards against direct code edits (delegation enforcement) |
-| subagent-start-memory     | SubagentStart                       | Injects organizational memory into subagent context       |
-| subagent-plan-review      | SubagentStop                        | Reviews subagent output for lessons to capture            |
-| statusline                | StatusLine                          | Renders the HUD with memory operation counters            |
+| Hook                    | Event                               | What It Does                                            |
+| ----------------------- | ----------------------------------- | ------------------------------------------------------- |
+| session-start           | SessionStart                        | Loads seed registry and primes memory cache on startup  |
+| sessionstart-setup      | SessionStart                        | Validates MCP configuration and plugin state            |
+| user-prompt-submit      | UserPromptSubmit                    | Injects relevant memory context before each prompt      |
+| stop-lessons            | Stop                                | Captures lessons learned when a conversation ends       |
+| post-tool-lint          | PostToolUse (Edit/Write)            | Runs lint checks after file edits                       |
+| cowork-periodic-capture | PostToolUse (Edit/Write/Task/Agent) | Periodically captures progress to memory during work    |
+| post-task-lessons       | PostToolUse (Task/Agent)            | Extracts lessons from completed agent tasks             |
+| post-memory-ops         | PostToolUse (MCP memory tools)      | Tracks memory operation metrics for the HUD             |
+| pre-task-memory         | PreToolUse (Task/Agent)             | Injects relevant memory context before agent delegation |
+| subagent-start-memory   | SubagentStart                       | Injects organizational memory into subagent context     |
+| subagent-plan-review    | SubagentStop                        | Reviews subagent output for lessons to capture          |
+| statusline              | StatusLine                          | Renders the HUD with memory operation counters          |
 ```
 
 ### Step 7: Next Steps
