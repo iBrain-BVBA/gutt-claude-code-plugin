@@ -33,8 +33,10 @@ fs.mkdirSync(hooksDir, { recursive: true });
 
 // Test helper function
 function testHook(hookName, hookFile, inputJson, options = {}) {
-  const { shouldContain, allowNonZero } = options;
-  const hookPath = path.join(projectDir, "hooks", hookFile);
+  const { shouldContain, allowNonZero, pluginDir } = options;
+  const hookPath = pluginDir
+    ? path.join(projectDir, "plugins", pluginDir, "hooks", hookFile)
+    : path.join(projectDir, "hooks", hookFile);
 
   console.log(`\n🧪 Testing: ${hookName}`);
   console.log(`   File: ${hookFile}`);
@@ -139,7 +141,7 @@ testHook(
   { allowNonZero: true } // May block, which is OK
 );
 
-// Test 4: PostToolUse - Linting
+// Test 4: PostToolUse - Linting (auto-lint-plugin)
 testHook(
   "4. PostToolUse (Linting)",
   "post-tool-lint.cjs",
@@ -147,10 +149,10 @@ testHook(
     tool_name: "Edit",
     tool_input: { file_path: path.join(os.tmpdir(), "nonexistent.py") },
   },
-  { shouldContain: null } // Silent if file doesn't exist
+  { shouldContain: null, pluginDir: "auto-lint-plugin" } // Silent if file doesn't exist
 );
 
-// Test 5: PostToolUse - Task Lessons
+// Test 5: PostToolUse - Task Lessons (gutt-subagent-hooks-plugin)
 testHook(
   "5. PostToolUse (Task Lessons)",
   "post-task-lessons.cjs",
@@ -163,7 +165,7 @@ testHook(
     tool_response:
       "Fixed the JWT validation issue. The problem was that token expiry was checked incorrectly. This is an important lesson about proper token handling that we should remember for future implementations.",
   },
-  { shouldContain: null } // May or may not suggest lesson
+  { shouldContain: null, pluginDir: "gutt-subagent-hooks-plugin" } // May or may not suggest lesson
 );
 
 // Test 6: PostToolUse - Memory Operations
@@ -178,7 +180,7 @@ testHook(
   { shouldContain: null } // Updates state, not stdout
 );
 
-// Test 7: PreToolUse - Task Memory
+// Test 7: PreToolUse - Task Memory (gutt-subagent-hooks-plugin)
 testHook(
   "7. PreToolUse (Task Memory)",
   "pre-task-memory.cjs",
@@ -189,18 +191,18 @@ testHook(
       prompt: "Design the authentication system",
     },
   },
-  { shouldContain: null } // Silent, updates state
+  { shouldContain: null, pluginDir: "gutt-subagent-hooks-plugin" } // Silent, updates state
 );
 
-// Test 8: SubagentStart - Memory Injection
+// Test 8: SubagentStart - Memory Injection (gutt-subagent-hooks-plugin)
 testHook(
   "8. SubagentStart (Memory Injection)",
   "subagent-start-memory.cjs",
   { agent_type: "general-purpose", agent_id: "test-123" },
-  { shouldContain: null } // May inject memory or provide fallback
+  { shouldContain: null, pluginDir: "gutt-subagent-hooks-plugin" } // May inject memory or provide fallback
 );
 
-// Test 9: SubagentStop - Plan Review
+// Test 9: SubagentStop - Plan Review (gutt-subagent-hooks-plugin)
 testHook(
   "9. SubagentStop (Plan Review)",
   "subagent-plan-review.cjs",
@@ -208,7 +210,7 @@ testHook(
     agent_transcript_path: path.join(projectDir, ".claude", "transcript.jsonl"),
     agent_type: "general-purpose",
   },
-  { allowNonZero: true } // May block if plan detected
+  { allowNonZero: true, pluginDir: "gutt-subagent-hooks-plugin" } // May block if plan detected
 );
 
 // Test 10: StatusLine

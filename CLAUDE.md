@@ -14,6 +14,9 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 gutt-claude-code-plugin/
 ├── hooks/                  # Claude Code hooks (.cjs scripts)
 │   └── lib/                # Shared utilities for hooks
+├── plugins/                # Extracted standalone plugins
+│   ├── auto-lint-plugin/   # Auto-lint on Edit/Write (no gutt dependency)
+│   └── gutt-subagent-hooks-plugin/  # Subagent memory injection & orchestration
 ├── skills/                 # Skill definitions (markdown)
 ├── agents/                 # Agent definitions (markdown)
 ├── commands/               # Command definitions (markdown)
@@ -23,6 +26,25 @@ gutt-claude-code-plugin/
 ├── docs/                   # Documentation and test plans
 └── package.json
 ```
+
+## Shared Lib File Propagation
+
+Hook lib files (`hooks/lib/*.cjs`) are copied into each extracted plugin under `plugins/*/hooks/lib/`. Each plugin must be self-contained for independent installation.
+
+**When modifying a lib file, changes MUST be propagated to all plugins that contain a copy:**
+
+| Lib file                | auto-lint-plugin | gutt-subagent-hooks-plugin |
+| ----------------------- | ---------------- | -------------------------- |
+| `env.cjs`               | YES              | YES                        |
+| `debug.cjs`             | YES              | YES                        |
+| `platform-detect.cjs`   | YES              | YES                        |
+| `session-state.cjs`     | —                | YES                        |
+| `memory-cache.cjs`      | —                | YES                        |
+| `config.cjs`            | —                | YES                        |
+| `constants.cjs`         | —                | YES                        |
+| `text-utils.cjs`        | —                | YES                        |
+| `seed-registry.cjs`     | —                | YES                        |
+| `memory-classifier.cjs` | —                | YES                        |
 
 ## Development Guidelines
 

@@ -38,10 +38,6 @@
         "command": "node hooks/post-session-summary.cjs"
       }
     ],
-    "afterFileEdit": [
-      {
-        "command": "node hooks/post-tool-lint.cjs"
-      }
-    ]
+    "afterFileEdit": []
   }
 }
