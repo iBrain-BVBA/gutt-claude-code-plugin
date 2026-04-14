@@ -369,69 +369,31 @@ assert(
 restoreEnv();
 
 // ============================================================================
-// TEST SUITE 8: Cursor stop hook followup_message output format
+// TEST SUITE 8: stop-lessons.cjs platform branching
 // ============================================================================
 
-console.log("\n[Suite 8] Cursor stop-lessons.cjs followup_message Output\n");
+console.log("\n[Suite 8] stop-lessons.cjs Platform Branching\n");
 
-// 8a: Cursor plan-feedback output uses followup_message
-const cursorPlanFeedback = {
-  followup_message: "Plan feedback capture instruction...",
-};
-assert(
-  typeof cursorPlanFeedback.followup_message === "string",
-  "Cursor plan-feedback: uses { followup_message: '...' }"
-);
-assert(
-  !cursorPlanFeedback.decision && !cursorPlanFeedback.hookSpecificOutput,
-  "Cursor plan-feedback: no 'decision' or 'hookSpecificOutput'"
-);
-
-// 8b: Cursor regular lesson output uses followup_message with capture prompt
-const cursorRegularLesson = {
-  followup_message:
-    "Capture session lessons before finishing.\n\nSession Context:\n- Duration: 30 minutes...",
-};
-assert(
-  cursorRegularLesson.followup_message.startsWith("Capture session lessons"),
-  "Cursor regular lesson: followup_message starts with capture instruction"
-);
-assert(
-  !cursorRegularLesson.decision && !cursorRegularLesson.hookSpecificOutput,
-  "Cursor regular lesson: no 'decision' or 'hookSpecificOutput'"
-);
-
-// 8c: Verify stop-lessons.cjs and lesson-builder.cjs have platform branching
+// 8a: Verify stop-lessons.cjs has CLI and Cowork output paths
 const stopLessonsPath = path.resolve(__dirname, "../hooks/stop-lessons.cjs");
-const lessonBuilderPath = path.resolve(__dirname, "../hooks/lib/lesson-builder.cjs");
 if (fs.existsSync(stopLessonsPath)) {
   const stopCode = fs.readFileSync(stopLessonsPath, "utf8");
 
-  assert(stopCode.includes("isCursor()"), "stop-lessons.cjs: has isCursor() branch");
   assert(
     stopCode.includes("supportsDecisionBlock()"),
     "stop-lessons.cjs: has supportsDecisionBlock() branch"
   );
-
-  // Platform output logic is delegated to lesson-builder.cjs
-  const builderCode = fs.existsSync(lessonBuilderPath)
-    ? fs.readFileSync(lessonBuilderPath, "utf8")
-    : stopCode;
   assert(
-    builderCode.includes("hookSpecificOutput"),
-    "lesson-builder.cjs: has Cowork hookSpecificOutput branch"
+    stopCode.includes("hookSpecificOutput"),
+    "stop-lessons.cjs: has Cowork hookSpecificOutput branch"
   );
   assert(
-    builderCode.includes("followup_message"),
-    "lesson-builder.cjs: outputs followup_message for Cursor"
+    !stopCode.includes("isCursor()"),
+    "stop-lessons.cjs: no isCursor() branch (Cursor support removed)"
   );
-
-  // Verify the isCursor() branch comes first (before supportsDecisionBlock)
-  const cursorBranchPos = stopCode.indexOf("isCursor()");
-  const decisionBranchPos = stopCode.indexOf("supportsDecisionBlock()");
   assert(
-    cursorBranchPos < decisionBranchPos,
-    "stop-lessons.cjs: isCursor() checked before supportsDecisionBlock()"
+    !stopCode.includes("followup_message"),
+    "stop-lessons.cjs: no followup_message output (Cursor support removed)"
   );
 } else {
   console.log("  (skipped - stop-lessons.cjs not found at expected path)");
