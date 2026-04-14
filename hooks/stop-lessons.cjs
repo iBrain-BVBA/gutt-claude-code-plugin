@@ -9,7 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
-const { getState, init } = require("./lib/session-state.cjs");
+const { getState, init, sanitizeSessionId } = require("./lib/session-state.cjs");
 const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
 const { PROJECT_DIR, STATE_DIR_NAME } = require("./lib/env.cjs");
 const { debugLog } = require("./lib/debug.cjs");
@@ -32,6 +32,12 @@ process.stdin.on("end", () => {
   try {
     const hookInput = JSON.parse(input.replace(/^\uFEFF/, "").trim());
     sessionId = hookInput.session_id || hookInput.conversation_id || "unknown";
+
+    // Subagent completions have agent_id — only block the main session
+    if (hookInput.agent_id) {
+      debugLog("stop-lessons", `Skipping subagent stop: ${hookInput.agent_id}`);
+      process.exit(0);
+    }
   } catch (err) {
     debugLog("stop-lessons", `Failed to parse hook input: ${err.message}`);
     process.exit(0);
@@ -48,8 +54,7 @@ process.stdin.on("end", () => {
       fs.mkdirSync(stateDir, { recursive: true });
     }
 
-    const safeSessionId = (sessionId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const stateFile = path.join(stateDir, `${safeSessionId}.lessons-prompted`);
+    const stateFile = path.join(stateDir, `${sanitizeSessionId(sessionId)}.lessons-prompted`);
 
     // Already prompted this session — allow stop
     if (fs.existsSync(stateFile)) {

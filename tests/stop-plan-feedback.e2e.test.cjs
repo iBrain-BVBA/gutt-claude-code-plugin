@@ -58,9 +58,9 @@ function writeSessionState(stateDir, sessionId, state) {
 }
 
 // Helper: Run hook and parse output
-function runHook(tmpDir, sessionId) {
+function runHook(tmpDir, sessionId, extraInput = {}) {
   const hookPath = path.join(__dirname, "..", "hooks", "stop-lessons.cjs");
-  const inputJson = JSON.stringify({ session_id: sessionId });
+  const inputJson = JSON.stringify({ session_id: sessionId, ...extraInput });
 
   try {
     const output = execSync(`node "${hookPath}"`, {
@@ -213,6 +213,45 @@ console.log("\nTest 4: Session state stats in reason...");
     }
   } else {
     fail(`Expected block, got ${result.decision}`);
+  }
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+}
+
+// Test 5: Subagent stop is always allowed (agent_id present)
+console.log("\nTest 5: Subagent stop is always allowed...");
+{
+  const { tmpDir, stateDir } = createTempEnv();
+  const sessionId = "test-subagent";
+
+  writeSessionState(stateDir, sessionId, {
+    startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    memoryQueries: 10,
+    lessonsCaptured: 0,
+    significantOps: 20,
+  });
+
+  const result = runHook(tmpDir, sessionId, { agent_id: "agent-abc123" });
+  if (result.decision === "allow") {
+    pass("Subagent stop is allowed (not blocked)");
+  } else {
+    fail(`Subagent stop should allow, got ${result.decision}`);
+  }
+
+  // Verify marker was NOT created — subagent should not consume the block
+  const markerFile = path.join(stateDir, `${sessionId}.lessons-prompted`);
+  if (!fs.existsSync(markerFile)) {
+    pass("Subagent did not create marker file");
+  } else {
+    fail("Subagent created marker file — would consume main session block");
+  }
+
+  // Main session stop should still block after subagent stop
+  const mainResult = runHook(tmpDir, sessionId);
+  if (mainResult.decision === "block") {
+    pass("Main session still blocks after subagent stop");
+  } else {
+    fail(`Main session should block, got ${mainResult.decision}`);
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });

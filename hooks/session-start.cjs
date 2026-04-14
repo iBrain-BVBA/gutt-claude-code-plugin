@@ -20,7 +20,6 @@ const {
 const { recordSessionMetrics } = require("./lib/cross-session-learner.cjs");
 const { PROJECT_STATE_DIR } = require("./lib/env.cjs");
 const { debugLog } = require("./lib/debug.cjs");
-const crypto = require("crypto");
 
 const HOOK_STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
 
@@ -97,7 +96,7 @@ process.stdin.on("end", () => {
   // Always reinitialize session identity on new session start
   try {
     updateState((state) => {
-      state.sessionId = crypto.randomUUID();
+      state.sessionId = sessionId;
       state.startedAt = new Date().toISOString();
       return state;
     });

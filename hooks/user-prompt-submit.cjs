@@ -6,6 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const { PROJECT_STATE_DIR } = require("./lib/env.cjs");
+const { sanitizeSessionId } = require("./lib/session-state.cjs");
 
 const LOG_FILE = path.join(PROJECT_STATE_DIR, "hooks", "hook-invocations.log");
 const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
@@ -42,7 +43,7 @@ process.stdin.on("end", () => {
   }
 
   // Clear lessons-prompted state for this session
-  const stateFile = path.join(STATE_DIR, `${sessionId}.lessons-prompted`);
+  const stateFile = path.join(STATE_DIR, `${sanitizeSessionId(sessionId)}.lessons-prompted`);
   try {
     if (fs.existsSync(stateFile)) {
       fs.unlinkSync(stateFile);

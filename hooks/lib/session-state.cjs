@@ -27,13 +27,23 @@ function getStatePath() {
 }
 
 /**
+ * Sanitize a session ID for safe use in file paths.
+ * Strips anything that isn't alphanumeric, underscore, or hyphen.
+ * @param {string} sessionId
+ * @returns {string}
+ */
+function sanitizeSessionId(sessionId) {
+  return (sessionId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/**
  * Initialise per-session file path.
  * Must be called early in every hook that reads/writes session state.
  * @param {string} sessionId - The session_id from Claude Code hook input
  */
 function init(sessionId) {
   if (sessionId && sessionId !== "unknown") {
-    _sessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+    _sessionId = sanitizeSessionId(sessionId);
   }
 }
 
@@ -177,6 +187,7 @@ function recordCapturePrompt() {
 
 module.exports = {
   init,
+  sanitizeSessionId,
   getState,
   updateState,
   incrementMemoryQueries,
