@@ -42,7 +42,8 @@ process.stdin.on("end", () => {
   }
 
   // Clear lessons-prompted state for this session
-  const stateFile = path.join(STATE_DIR, `${sessionId}.lessons-prompted`);
+  const safeSessionId = (sessionId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const stateFile = path.join(STATE_DIR, `${safeSessionId}.lessons-prompted`);
   try {
     if (fs.existsSync(stateFile)) {
       fs.unlinkSync(stateFile);

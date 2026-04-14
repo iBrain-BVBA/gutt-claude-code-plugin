@@ -32,6 +32,11 @@ process.stdin.on("end", () => {
   try {
     const hookInput = JSON.parse(input.replace(/^\uFEFF/, "").trim());
     sessionId = hookInput.session_id || hookInput.conversation_id || "unknown";
+
+    // Subagent completions have agent_id — only block the main session
+    if (hookInput.agent_id) {
+      process.exit(0);
+    }
   } catch (err) {
     debugLog("stop-lessons", `Failed to parse hook input: ${err.message}`);
     process.exit(0);
