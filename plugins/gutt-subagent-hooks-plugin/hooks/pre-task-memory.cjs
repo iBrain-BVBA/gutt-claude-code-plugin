@@ -182,7 +182,7 @@ function extractSearchTerms(prompt, subagentType) {
     "change",
   ];
 
-  // Get first 100 chars of prompt for search
+  // Get first 200 chars of prompt for search
   const snippet = prompt.substring(0, 200).toLowerCase();
 
   // Extract words, filter stop words, take top terms

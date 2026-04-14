@@ -8,6 +8,7 @@
     "agents",
     "commands",
     "hooks",
+    "plugins",
     "skills",
     "rules",
     "docs",

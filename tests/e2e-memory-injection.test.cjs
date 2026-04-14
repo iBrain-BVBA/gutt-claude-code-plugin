@@ -34,9 +34,12 @@ try {
 // Test 2: SubagentStart hook loads correctly
 console.log("\nTest 2: SubagentStart hook loads...");
 try {
-  require("child_process").execSync("node --check hooks/subagent-start-memory.cjs", {
-    stdio: "pipe",
-  });
+  require("child_process").execSync(
+    "node --check plugins/gutt-subagent-hooks-plugin/hooks/subagent-start-memory.cjs",
+    {
+      stdio: "pipe",
+    }
+  );
   pass("subagent-start-memory.cjs syntax OK");
 } catch (e) {
   fail(`Syntax error: ${e.message}`);
@@ -109,7 +112,7 @@ console.log("\nTest 6: SubagentStart hook output simulation...");
 const { execSync } = require("child_process");
 try {
   const output = execSync(
-    'echo {"agent_type": "test-agent"} | node hooks/subagent-start-memory.cjs',
+    'echo {"agent_type": "test-agent"} | node plugins/gutt-subagent-hooks-plugin/hooks/subagent-start-memory.cjs',
     {
       encoding: "utf8",
       cwd: process.cwd(),

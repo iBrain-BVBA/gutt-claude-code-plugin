@@ -4,7 +4,7 @@
  * Auto-runs linter after Edit/Write operations on source files
  *
  * Supports:
- * - Python (.py): black + ruff
+ * - Python (.py): ruff format + ruff check --fix
  * - JavaScript/TypeScript (.js, .ts, .jsx, .tsx): eslint
  */
 

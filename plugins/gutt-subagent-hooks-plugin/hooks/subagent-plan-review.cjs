@@ -85,8 +85,8 @@ Plan summary: "${sanitizedSummary}${summary.length > 200 ? "..." : ""}"`;
 
     console.log(JSON.stringify(output));
     process.exitCode = 0;
-  } catch {
-    // Silent failure - don't block workflow
+  } catch (err) {
+    debugLog("subagent-plan-review", err);
     process.exitCode = 0;
   }
 });

@@ -14,9 +14,10 @@
  * Returns true for CLI, false for Cowork.
  *
  * Detection strategy (ordered by reliability):
- * 1. Explicit CLAUDE_PLATFORM env var (most reliable when available)
- * 2. CLAUDE_PROJECT_DIR pattern matching (Cowork uses /sessions/ paths)
- * 3. Default to true (CLI behavior - safer fallback, existing hooks work)
+ * 1. Cursor IDE detection (Cursor uses followup_message, not decision:block)
+ * 2. Explicit CLAUDE_PLATFORM env var (most reliable when available)
+ * 3. CLAUDE_PROJECT_DIR pattern matching (Cowork uses /sessions/ paths)
+ * 4. Default to true (CLI behavior - safer fallback, existing hooks work)
  *
  * @returns {boolean} true if decision:block is supported (CLI), false if not (Cowork)
  */
