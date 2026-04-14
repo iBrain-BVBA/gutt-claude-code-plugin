@@ -8,6 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { PROJECT_STATE_DIR } = require("./env.cjs");
+const { debugLog } = require("./debug.cjs");
 
 // Store session state in the project's IDE directory (not plugin install path)
 // This ensures state is per-project and survives plugin updates
@@ -59,7 +60,10 @@ function ensureDir() {
 function getState() {
   try {
     return JSON.parse(fs.readFileSync(getStatePath(), "utf8"));
-  } catch {
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      debugLog("session-state", `Failed to read state: ${err.message}`);
+    }
     return { ...DEFAULT_STATE };
   }
 }
@@ -82,8 +86,8 @@ function updateState(updater) {
       fs.unlinkSync(statePath);
     }
     fs.renameSync(tempPath, statePath);
-  } catch {
-    // Fallback: write directly to the target file if rename fails
+  } catch (renameErr) {
+    debugLog("session-state", `Atomic write failed, falling back: ${renameErr.message}`);
     fs.writeFileSync(statePath, serialized);
   } finally {
     // Best-effort cleanup of any leftover temp file

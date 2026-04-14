@@ -1,4 +1,3 @@
-// hooks/subagent-plan-review.cjs
 // GP-530: Added Cowork non-blocking path (uses additionalContext instead of decision:block)
 const fs = require("fs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
@@ -187,7 +186,8 @@ function extractPlanFromTranscript(transcriptPath) {
 
     // Return both full text (for pattern matching) and summary (for display)
     return { fullText: bestMessage, summary };
-  } catch {
+  } catch (err) {
+    debugLog("subagent-plan-review", `Failed to extract plan from transcript: ${err.message}`);
     return emptyResult;
   }
 }

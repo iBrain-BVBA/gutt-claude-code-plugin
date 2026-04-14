@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { debugLog } = require("./debug.cjs");
 
 // Check plugin directory first (for org-wide config), then project directory
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, "../..");
@@ -34,7 +35,7 @@ function loadConfigFile() {
         return JSON.parse(content);
       }
     } catch (err) {
-      console.error(`[WARN] Failed to load ${configPath}: ${err.message}`, "\n");
+      debugLog("config", `Failed to load ${configPath}: ${err.message}`);
     }
   }
   return null;
@@ -82,7 +83,7 @@ function isConfigured() {
 
 /**
  * Get the source of the current configuration
- * @returns {string} One of: 'environment', 'config.json', 'fallback'
+ * @returns {string} One of: 'environment', 'config.json', 'mcp-auth'
  */
 function getConfigSource() {
   getGroupId(); // Ensure cache is populated

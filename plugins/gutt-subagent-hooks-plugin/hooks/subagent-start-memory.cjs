@@ -8,7 +8,7 @@
  * cached memory injection for unknown agents.
  *
  * Data flow:
- * 1. PostToolUse caches memory results from MCP calls
+ * 1. PostToolUse[mcp__gutt] caches memory results from MCP calls (via post-memory-ops.cjs in main plugin)
  * 2. PreToolUse on Task extracts search query and stores it
  * 3. THIS HOOK checks seed registry for agent-specific grounding
  * 4. If seed found: inject seed-specific grounding + any cached content

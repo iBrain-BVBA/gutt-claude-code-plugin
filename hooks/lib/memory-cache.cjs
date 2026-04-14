@@ -4,7 +4,7 @@
  * Session-scoped cache for memory results to enable deterministic injection into subagents
  *
  * Flow:
- * 1. PostToolUse caches memory results from MCP calls
+ * 1. PostToolUse[mcp__gutt] caches memory results from MCP calls (via post-memory-ops.cjs in main plugin)
  * 2. PreToolUse on Task stores search query
  * 3. SubagentStart injects cached results directly into subagent context
  */
@@ -48,7 +48,10 @@ function getMemoryCache() {
   try {
     const data = fs.readFileSync(CACHE_PATH, "utf8");
     return JSON.parse(data);
-  } catch {
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      debugLog("memory-cache", `Failed to read cache: ${err.message}`);
+    }
     return { ...DEFAULT_CACHE };
   }
 }

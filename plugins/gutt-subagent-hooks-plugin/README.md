@@ -12,6 +12,7 @@ Subagent memory injection and orchestration hooks for gutt.
 ## Requirements
 
 - gutt memory MCP server must be configured and accessible
+- For full cached memory injection, the main gutt-claude-code-plugin must also be installed (it provides the PostToolUse[mcp__gutt] hook that populates the memory cache)
 - Works with Claude Code only (not Cursor — these hook events are Claude Code-specific)
 
 ## Installation

@@ -239,8 +239,8 @@ function agentFilesModifiedSince(cacheTime) {
           return true;
         }
       }
-    } catch {
-      // If we can't read the directory, invalidate to be safe
+    } catch (err) {
+      debugLog("seed-registry", `Cannot read agent dir ${dir}, invalidating cache: ${err.message}`);
       return true;
     }
   }
@@ -278,7 +278,8 @@ function loadFromCache() {
     }
 
     return data.registry || null;
-  } catch {
+  } catch (err) {
+    debugLog("seed-registry", `Cache load failed (will rescan): ${err.message}`);
     return null;
   }
 }

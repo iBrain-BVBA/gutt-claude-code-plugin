@@ -56,6 +56,7 @@ process.stdin.on("end", () => {
 
     // Validate file path to prevent command injection
     if (!isValidFilePath(filePath)) {
+      debugLog("post-tool-lint", `Skipping file with invalid path characters: ${filePath}`);
       process.exit(0);
     }
 
@@ -100,10 +101,12 @@ process.stdin.on("end", () => {
           });
           linted = true;
         } catch (lintError) {
-          // Linter may exit non-zero for unfixable errors or not be installed - that's okay
-          // Only log if there's actual output indicating warnings
-          if (lintError.stdout?.toString().trim() || lintError.stderr?.toString().trim()) {
-            linted = true; // Still consider it "linted" if it ran
+          if (lintError.code === "ENOENT") {
+            debugLog("post-tool-lint", `Linter '${cmd}' not found on PATH — skipping`);
+          } else if (lintError.killed) {
+            debugLog("post-tool-lint", `Linter '${cmd}' timed out after 30s`);
+          } else if (lintError.stdout?.toString().trim() || lintError.stderr?.toString().trim()) {
+            linted = true; // Linter ran but exited non-zero for unfixable errors
           }
         }
       }
@@ -111,8 +114,8 @@ process.stdin.on("end", () => {
         console.log(`Linted ${path.basename(filePath)} with ${linterName}`);
       }
     }
-  } catch {
-    // Silently exit on parse errors - don't block the tool
+  } catch (err) {
+    debugLog("post-tool-lint", err);
     process.exit(0);
   }
 });

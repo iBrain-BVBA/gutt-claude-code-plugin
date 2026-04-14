@@ -21,7 +21,7 @@ function debugLog(hook, error) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const entry = `${new Date().toISOString()} [${hook}] ${error?.message || error}\n`;
+    const entry = `${new Date().toISOString()} [${hook}] ${error?.message || error}${error?.stack ? "\n" + error.stack : ""}\n`;
     fs.appendFileSync(LOG_FILE, entry);
   } catch {
     /* ignore logging errors */

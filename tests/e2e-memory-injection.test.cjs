@@ -112,7 +112,7 @@ console.log("\nTest 6: SubagentStart hook output simulation...");
 const { execSync } = require("child_process");
 try {
   const output = execSync(
-    'echo {"agent_type": "test-agent"} | node plugins/gutt-subagent-hooks-plugin/hooks/subagent-start-memory.cjs',
+    'echo \'{"agent_type": "test-agent"}\' | node plugins/gutt-subagent-hooks-plugin/hooks/subagent-start-memory.cjs',
     {
       encoding: "utf8",
       cwd: process.cwd(),
