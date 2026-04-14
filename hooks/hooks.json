@@ -33,10 +33,6 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-lessons.cjs\""
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-session-summary.cjs\""
           }
         ]
       }

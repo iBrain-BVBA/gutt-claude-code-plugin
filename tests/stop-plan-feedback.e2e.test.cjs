@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * E2E Test: Plan Feedback Detection (GP-455)
+ * E2E Test: stop-lessons.cjs — block-once lesson capture
  *
- * Tests the plan feedback detection feature in stop-lessons.cjs hook.
+ * Tests the simplified stop hook: blocks first stop, allows subsequent stops.
  *
  * Usage: node tests/stop-plan-feedback.e2e.test.cjs
  */
@@ -23,7 +23,7 @@ function pass(msg) {
   console.log(`  ✓ ${msg}`);
 }
 
-console.log("=== GP-455 E2E Test: Plan Feedback Detection ===\n");
+console.log("=== E2E Test: stop-lessons.cjs block-once ===\n");
 
 // Helper: Create temp directory with mock Claude setup
 function createTempEnv() {
@@ -51,28 +51,16 @@ function createTempEnv() {
   return { tmpDir, claudeDir, hooksDir, stateDir };
 }
 
-// Helper: Write mock transcript
-function writeTranscript(tmpDir, entries) {
-  const transcriptPath = path.join(tmpDir, "transcript.jsonl");
-  const lines = entries.map((e) => JSON.stringify(e)).join("\n");
-  fs.writeFileSync(transcriptPath, lines + "\n");
-  return transcriptPath;
-}
-
 // Helper: Write mock session state
 function writeSessionState(stateDir, sessionId, state) {
-  // getState() reads from hardcoded "gutt-session.json" path
-  const statePath = path.join(stateDir, "gutt-session.json");
+  const statePath = path.join(stateDir, `gutt-session-${sessionId}.json`);
   fs.writeFileSync(statePath, JSON.stringify(state));
 }
 
 // Helper: Run hook and parse output
-function runHook(tmpDir, sessionId, transcriptPath) {
+function runHook(tmpDir, sessionId) {
   const hookPath = path.join(__dirname, "..", "hooks", "stop-lessons.cjs");
-  const inputJson = JSON.stringify({
-    session_id: sessionId,
-    transcript_path: transcriptPath,
-  });
+  const inputJson = JSON.stringify({ session_id: sessionId });
 
   try {
     const output = execSync(`node "${hookPath}"`, {
@@ -86,150 +74,48 @@ function runHook(tmpDir, sessionId, transcriptPath) {
     }
     return JSON.parse(output.trim());
   } catch (e) {
-    // Distinguish between clean exit with no output vs actual failure
-    // execSync throws on non-zero exit OR if command fails
     if (e.status === 0 || e.status === null) {
-      // Hook exited cleanly with no JSON output - treat as allow
       return { decision: "allow" };
     }
-    // Hook crashed or had runtime error - fail the test
-    fail(
-      `Hook execution failed for session "${sessionId}":\n` +
-        `  Exit status: ${e.status}\n` +
-        `  STDOUT: ${e.stdout || "(empty)"}\n` +
-        `  STDERR: ${e.stderr || "(empty)"}`
-    );
-    return { decision: "error", reason: "hook_crashed" };
+    fail(`Hook execution failed: ${e.stderr || e.message}`);
+    return { decision: "error" };
   }
 }
 
-// Test 1: Plan rejection
-console.log("Test 1: Plan rejection (negative outcome)...");
+// Test 1: First stop blocks
+console.log("Test 1: First stop blocks with lesson capture prompt...");
 {
   const { tmpDir, stateDir } = createTempEnv();
-  const sessionId = "test-reject";
-
-  // Write session state
-  writeSessionState(stateDir, sessionId, {
-    startedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    memoryQueries: 1,
-    lessonsCaptured: 0,
-  });
-
-  // Write transcript with plan + rejection
-  const transcript = [
-    {
-      type: "user_message",
-      content: "plan a new authentication system",
-    },
-    {
-      type: "tool_use",
-      name: "Task",
-      input: {
-        subagent_type: "Plan",
-        model: "opus",
-        prompt: "Create plan for authentication system",
-      },
-    },
-    {
-      type: "tool_result",
-      content: "Plan: Use JWT tokens with Redis...",
-    },
-    {
-      type: "user_message",
-      content: "no, wrong approach. we need OAuth2 instead",
-    },
-  ];
-  const transcriptPath = writeTranscript(tmpDir, transcript);
-
-  const result = runHook(tmpDir, sessionId, transcriptPath);
-
-  if (result.decision === "block") {
-    pass("Hook blocks stop (plan rejection detected)");
-
-    if (result.reason.includes("🟠")) {
-      pass("Reason includes orange warning emoji");
-    } else {
-      fail("Reason missing orange emoji");
-    }
-
-    if (result.reason.includes("memory-keeper")) {
-      pass("Reason includes memory-keeper agent");
-    } else {
-      fail("Reason missing memory-keeper agent");
-    }
-
-    if (result.reason.toLowerCase().includes("negative")) {
-      pass("Outcome marked as negative");
-    } else {
-      fail("Outcome not marked as negative");
-    }
-  } else {
-    fail(`Expected block, got ${result.decision}`);
-  }
-
-  // Cleanup
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-}
-
-// Test 2: Plan modification
-console.log("\nTest 2: Plan modification (positive outcome)...");
-{
-  const { tmpDir, stateDir } = createTempEnv();
-  const sessionId = "test-modify";
+  const sessionId = "test-first-stop";
 
   writeSessionState(stateDir, sessionId, {
     startedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    memoryQueries: 1,
+    memoryQueries: 5,
     lessonsCaptured: 0,
+    significantOps: 8,
   });
 
-  const transcript = [
-    {
-      type: "user_message",
-      content: "plan the database schema",
-    },
-    {
-      type: "tool_use",
-      name: "Task",
-      input: {
-        subagent_type: "Plan",
-        model: "opus",
-        prompt: "Plan database schema",
-      },
-    },
-    {
-      type: "tool_result",
-      content: "Plan: Use PostgreSQL with...",
-    },
-    {
-      type: "user_message",
-      content: "good but change the users table to include email_verified",
-    },
-  ];
-  const transcriptPath = writeTranscript(tmpDir, transcript);
-
-  const result = runHook(tmpDir, sessionId, transcriptPath);
+  const result = runHook(tmpDir, sessionId);
 
   if (result.decision === "block") {
-    pass("Hook blocks stop (plan modification detected)");
-
-    if (result.reason.includes("🟠")) {
-      pass("Reason includes orange warning emoji");
-    } else {
-      fail("Reason missing orange emoji");
-    }
+    pass("First stop is blocked");
 
     if (result.reason.includes("memory-keeper")) {
-      pass("Reason includes memory-keeper agent");
+      pass("Reason mentions memory-keeper agent");
     } else {
-      fail("Reason missing memory-keeper agent");
+      fail("Reason missing memory-keeper reference");
     }
 
-    if (result.reason.toLowerCase().includes("positive")) {
-      pass("Outcome marked as positive");
+    if (result.reason.includes("5 memory queries")) {
+      pass("Reason includes memory query count from session state");
     } else {
-      fail("Outcome not marked as positive");
+      fail("Reason missing session state stats");
+    }
+
+    if (result.reason.includes("you will not be blocked again")) {
+      pass("Reason tells user they won't be blocked again");
+    } else {
+      fail("Missing 'not blocked again' message");
     }
   } else {
     fail(`Expected block, got ${result.decision}`);
@@ -238,11 +124,11 @@ console.log("\nTest 2: Plan modification (positive outcome)...");
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
-// Test 3: No plan context
-console.log("\nTest 3: No plan context (regular behavior)...");
+// Test 2: Second stop allows through
+console.log("\nTest 2: Second stop allows through...");
 {
   const { tmpDir, stateDir } = createTempEnv();
-  const sessionId = "test-noplan";
+  const sessionId = "test-second-stop";
 
   writeSessionState(stateDir, sessionId, {
     startedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
@@ -250,152 +136,83 @@ console.log("\nTest 3: No plan context (regular behavior)...");
     lessonsCaptured: 0,
   });
 
-  const transcript = [
-    {
-      type: "user_message",
-      content: "implement a feature",
-    },
-    {
-      type: "tool_use",
-      name: "Task",
-      input: {
-        subagent_type: "general-purpose",
-        model: "sonnet",
-        prompt: "Implement feature",
-      },
-    },
-    {
-      type: "tool_result",
-      content: "Feature implemented",
-    },
-  ];
-  const transcriptPath = writeTranscript(tmpDir, transcript);
+  // First stop
+  const result1 = runHook(tmpDir, sessionId);
+  if (result1.decision !== "block") {
+    fail("First stop should block");
+  }
 
-  const result = runHook(tmpDir, sessionId, transcriptPath);
-
-  if (result.decision === "block") {
-    pass("Hook blocks for regular session capture");
-
-    // Should NOT have plan-specific prompt
-    if (!result.reason.toLowerCase().includes("plan")) {
-      pass("Reason does not mention plan (uses regular session capture)");
-    } else {
-      fail("Reason incorrectly mentions plan");
-    }
+  // Second stop
+  const result2 = runHook(tmpDir, sessionId);
+  if (result2.decision === "allow") {
+    pass("Second stop is allowed through");
   } else {
-    fail(`Expected block for significant session, got ${result.decision}`);
+    fail(`Second stop should allow, got ${result2.decision}`);
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
-// Test 4: Plan approved
-console.log("\nTest 4: Plan approved (skip capture)...");
+// Test 3: No MCP configured — allows stop immediately
+// NOTE: This test is best-effort. If the gutt plugin is installed globally
+// (e.g. in ~/.claude/plugins/), isGuttMcpConfigured() returns true even
+// without a project-level settings.json. We accept either outcome.
+console.log("\nTest 3: No MCP configured — allows stop (best-effort)...");
 {
-  const { tmpDir, stateDir } = createTempEnv();
-  const sessionId = "test-approved";
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-test-"));
+  const claudeDir = path.join(tmpDir, ".claude");
+  const stateDir = path.join(claudeDir, "hooks", ".state");
+  fs.mkdirSync(stateDir, { recursive: true });
 
-  writeSessionState(stateDir, sessionId, {
-    startedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    memoryQueries: 1,
-    lessonsCaptured: 0,
-  });
+  const sessionId = "test-no-mcp";
 
-  const transcript = [
-    {
-      type: "user_message",
-      content: "plan the API endpoints",
-    },
-    {
-      type: "tool_use",
-      name: "Task",
-      input: {
-        subagent_type: "Plan",
-        model: "opus",
-        prompt: "Plan API endpoints",
-      },
-    },
-    {
-      type: "tool_result",
-      content: "Plan: RESTful endpoints...",
-    },
-    {
-      type: "user_message",
-      content: "looks good, proceed",
-    },
-  ];
-  const transcriptPath = writeTranscript(tmpDir, transcript);
-
-  const result = runHook(tmpDir, sessionId, transcriptPath);
-
-  // Should still block for regular session capture, but NOT for plan feedback
-  // Check for plan-specific phrases (not just the word "plan" which may appear in goal)
-  const isPlanSpecificPrompt =
-    result.reason?.includes("Plan was REJECTED") ||
-    result.reason?.includes("Plan was MODIFIED") ||
-    result.reason?.includes("Plan Lesson:");
-
-  if (result.decision === "block") {
-    if (!isPlanSpecificPrompt) {
-      pass("Plan approval skipped, falls through to regular session capture");
-    } else {
-      fail("Plan approval should not trigger plan-specific prompt");
-    }
+  const result = runHook(tmpDir, sessionId);
+  if (result.decision === "allow") {
+    pass("Stop allowed when MCP not configured");
+  } else if (result.decision === "block") {
+    pass("MCP detected via global plugin install — block is correct");
   } else {
-    pass("Plan approval allows continuation to regular logic");
+    fail(`Unexpected decision: ${result.decision}`);
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
-// Test 5: State prevents duplicates
-console.log("\nTest 5: State file prevents duplicate prompts...");
+// Test 4: Session state stats appear in reason
+console.log("\nTest 4: Session state stats in reason...");
 {
   const { tmpDir, stateDir } = createTempEnv();
-  const sessionId = "test-duplicate";
+  const sessionId = "test-stats";
 
   writeSessionState(stateDir, sessionId, {
-    startedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    memoryQueries: 1,
-    lessonsCaptured: 0,
+    startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    memoryQueries: 13,
+    lessonsCaptured: 2,
+    significantOps: 15,
   });
 
-  // Create plan feedback state file (simulating already prompted)
-  const planStateFile = path.join(stateDir, `${sessionId}.plan-feedback-prompted`);
-  fs.writeFileSync(planStateFile, "");
+  const result = runHook(tmpDir, sessionId);
 
-  const transcript = [
-    {
-      type: "user_message",
-      content: "plan something",
-    },
-    {
-      type: "tool_use",
-      name: "Task",
-      input: {
-        subagent_type: "Plan",
-        model: "opus",
-        prompt: "Plan",
-      },
-    },
-    {
-      type: "user_message",
-      content: "no, wrong approach",
-    },
-  ];
-  const transcriptPath = writeTranscript(tmpDir, transcript);
-
-  const result = runHook(tmpDir, sessionId, transcriptPath);
-
-  // Should skip plan feedback prompt due to state file
   if (result.decision === "block") {
-    if (!result.reason.toLowerCase().includes("plan feedback")) {
-      pass("State file prevents duplicate plan feedback prompt");
+    if (result.reason.includes("13 memory queries")) {
+      pass("Memory queries count shown");
     } else {
-      fail("Duplicate prompt despite state file");
+      fail("Missing memory queries count");
+    }
+
+    if (result.reason.includes("15 significant ops")) {
+      pass("Significant ops count shown");
+    } else {
+      fail("Missing significant ops count");
+    }
+
+    if (result.reason.includes("2 lessons captured")) {
+      pass("Lessons captured count shown");
+    } else {
+      fail("Missing lessons captured count");
     }
   } else {
-    pass("State file correctly prevents duplicate blocking");
+    fail(`Expected block, got ${result.decision}`);
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -409,9 +226,3 @@ if (failures > 0) {
 } else {
   console.log("\n✅ All tests passed");
 }
-
-console.log("\nNote: This test verifies plan feedback detection logic.");
-console.log("For full integration testing:");
-console.log("1. Restart Claude Code");
-console.log("2. Run /plan skill and reject with 'no, wrong approach'");
-console.log("3. Verify 🟠 prompt appears with memory-keeper agent reference");

@@ -33,9 +33,6 @@
     "stop": [
       {
         "command": "node hooks/stop-lessons.cjs"
-      },
-      {
-        "command": "node hooks/post-session-summary.cjs"
       }
     ],
     "afterFileEdit": []
