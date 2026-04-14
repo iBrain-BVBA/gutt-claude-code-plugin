@@ -15,18 +15,12 @@ const { getState, init } = require("./lib/session-state.cjs");
 const { supportsDecisionBlock, isCursor } = require("./lib/platform-detect.cjs");
 const {
   parseTranscript,
-  parseTranscriptRaw,
   getSessionDuration,
   generateSummary,
 } = require("./lib/transcript-parser.cjs");
-const {
-  detectPlanContext,
-  extractPlanFeedback,
-  buildCaptureInstruction,
-} = require("./lib/plan-feedback-detector.cjs");
 const { sanitizeForDisplay } = require("./lib/text-utils.cjs");
 const { classifySignal } = require("./lib/memory-classifier.cjs");
-const { buildLessonOutput, buildPlanFeedbackOutput } = require("./lib/lesson-builder.cjs");
+const { buildLessonOutput } = require("./lib/lesson-builder.cjs");
 
 const { PROJECT_DIR, STATE_DIR_NAME } = require("./lib/env.cjs");
 const logFile = path.join(PROJECT_DIR, STATE_DIR_NAME, "hooks", "hook-invocations.log");
@@ -57,7 +51,6 @@ process.stdin.on("end", () => {
   init(sessionId);
 
   const stateFile = path.join(stateDir, `${sessionId}.lessons-prompted`);
-  const planFeedbackStateFile = path.join(stateDir, `${sessionId}.plan-feedback-prompted`);
 
   // Ensure directories exist
   if (!fs.existsSync(path.dirname(logFile))) {
@@ -70,55 +63,6 @@ process.stdin.on("end", () => {
   // Parse transcript if provided (Cursor sends transcript_path in stdin or env var)
   const transcriptPath = hookInput.transcript_path || process.env.CURSOR_TRANSCRIPT_PATH;
 
-  // STEP 1: Check for plan feedback FIRST (before regular lesson capture)
-  const transcriptEntries = parseTranscriptRaw(transcriptPath);
-  const planContext = detectPlanContext(transcriptEntries);
-
-  if (planContext) {
-    // Plan detected - check for user feedback
-    const planFeedback = extractPlanFeedback(transcriptEntries, planContext);
-
-    if (planFeedback && !planFeedback.skip) {
-      // Rejected or modified plan - check if already prompted
-      if (fs.existsSync(planFeedbackStateFile)) {
-        fs.appendFileSync(
-          logFile,
-          `[${timestamp}] Stop hook: Plan feedback already prompted for session ${sessionId}, allowing stop\n`
-        );
-        process.exit(0);
-      }
-
-      // Block stop (CLI) or best-effort output (Cowork) for plan feedback capture
-      fs.writeFileSync(planFeedbackStateFile, "");
-
-      const captureInstruction = buildCaptureInstruction(planFeedback);
-
-      const platform = isCursor() ? "cursor" : supportsDecisionBlock() ? "cli" : "cowork";
-      const platformLabel =
-        platform === "cursor"
-          ? "Cursor followup"
-          : platform === "cli"
-            ? "Blocking stop"
-            : "Cowork non-blocking plan feedback output";
-      fs.appendFileSync(
-        logFile,
-        `[${timestamp}] Stop hook: ${platformLabel} for plan feedback (${planFeedback.type}) in session ${sessionId}\n`
-      );
-      console.log(
-        JSON.stringify(
-          buildPlanFeedbackOutput({
-            platform,
-            supportsBlock: supportsDecisionBlock(),
-            captureInstruction,
-          })
-        )
-      );
-      return; // Exit after output
-    }
-    // If planFeedback.skip = true (approved), continue to regular lesson capture
-  }
-
-  // STEP 2: Regular lesson capture (existing logic)
   // Check if we've already prompted this session
   if (fs.existsSync(stateFile)) {
     // Already prompted - allow stop
@@ -135,6 +79,15 @@ process.stdin.on("end", () => {
   const lessonsCaptured = sessionState.lessonsCaptured || 0;
   const startedAt = sessionState.startedAt;
   const durationMinutes = getSessionDuration(startedAt);
+
+  // Guard: skip if session is less than 5 minutes old (prevents noise from subagent stops)
+  if (durationMinutes < 5) {
+    fs.appendFileSync(
+      logFile,
+      `[${timestamp}] Stop hook: Session too young (${durationMinutes}m < 5m), allowing stop\n`
+    );
+    process.exit(0);
+  }
 
   // Parse transcript metadata
   const transcriptData = parseTranscript(transcriptPath);

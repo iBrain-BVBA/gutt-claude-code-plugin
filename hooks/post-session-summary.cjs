@@ -69,6 +69,16 @@ process.stdin.on("end", () => {
   const sessionState = getState();
   const significantOps = sessionState.significantOps || 0;
 
+  // Guard: skip if session is less than 5 minutes old (prevents noise from subagent stops)
+  const startedAt = sessionState.startedAt;
+  const durationMinutes = startedAt
+    ? Math.round((Date.now() - new Date(startedAt).getTime()) / 60000)
+    : 0;
+  if (durationMinutes < 5) {
+    debugLog("post-session-summary", `Session too young (${durationMinutes}m < 5m), skipping`);
+    process.exit(0);
+  }
+
   if (significantOps < MIN_SIGNIFICANT_OPS) {
     debugLog(
       "post-session-summary",
