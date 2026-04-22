@@ -23,6 +23,22 @@
       "license": "MIT",
       "keywords": ["memory", "organizational-memory", "knowledge-graph", "gutt", "productivity"],
       "tags": ["memory", "knowledge-graph", "organizational-memory", "ai-agents"]
+    },
+    {
+      "name": "gutt-agent-intelligence-plugin",
+      "description": "Agent experience distillation — binds lessons to agent identities and grounds sessions with accumulated wisdom",
+      "version": "0.1.0",
+      "author": {
+        "name": "iBRAIN BV",
+        "email": "support@gutt.pro"
+      },
+      "source": "./plugins/gutt-agent-intelligence-plugin",
+      "category": "productivity",
+      "homepage": "https://gutt.pro",
+      "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
+      "license": "MIT",
+      "keywords": ["memory", "agent", "experience", "learning", "gutt"],
+      "tags": ["memory", "agent-scoping", "experience-distillation", "ai-agents"]
     }
   ]
 }

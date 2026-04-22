@@ -33,18 +33,19 @@ Hook lib files (`hooks/lib/*.cjs`) are copied into each extracted plugin under `
 
 **When modifying a lib file, changes MUST be propagated to all plugins that contain a copy:**
 
-| Lib file                | auto-lint-plugin | gutt-subagent-hooks-plugin |
-| ----------------------- | ---------------- | -------------------------- |
-| `env.cjs`               | YES              | YES                        |
-| `debug.cjs`             | YES              | YES                        |
-| `platform-detect.cjs`   | YES              | YES                        |
-| `session-state.cjs`     | —                | YES                        |
-| `memory-cache.cjs`      | —                | YES                        |
-| `config.cjs`            | —                | YES                        |
-| `constants.cjs`         | —                | YES                        |
-| `text-utils.cjs`        | —                | YES                        |
-| `seed-registry.cjs`     | —                | YES                        |
-| `memory-classifier.cjs` | —                | YES                        |
+| Lib file                | auto-lint-plugin | gutt-subagent-hooks-plugin | gutt-agent-intelligence-plugin |
+| ----------------------- | ---------------- | -------------------------- | ------------------------------ |
+| `env.cjs`               | YES              | YES                        | YES                            |
+| `debug.cjs`             | YES              | YES                        | YES                            |
+| `platform-detect.cjs`   | YES              | YES                        | YES                            |
+| `session-state.cjs`     | —                | YES                        | YES                            |
+| `memory-cache.cjs`      | —                | YES                        | —                              |
+| `config.cjs`            | —                | YES                        | —                              |
+| `constants.cjs`         | —                | YES                        | YES                            |
+| `text-utils.cjs`        | —                | YES                        | —                              |
+| `seed-registry.cjs`     | —                | YES                        | —                              |
+| `memory-classifier.cjs` | —                | YES                        | —                              |
+| `mcp-config.cjs`        | —                | —                          | YES                            |
 
 ## Development Guidelines
 
