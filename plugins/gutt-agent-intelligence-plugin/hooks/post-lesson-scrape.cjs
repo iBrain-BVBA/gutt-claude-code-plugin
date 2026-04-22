@@ -31,8 +31,12 @@
  *   - Never overwrite the on-disk cache with `[]` when the response is
  *     malformed or missing. `parseLessonsOrNull` returns null in those
  *     cases; this hook short-circuits on null.
- *   - Every early return passes through debugLog so silent-failure is not
- *     a debugging hazard.
+ *   - Within a targeted-action branch (fetch_lessons_learned,
+ *     register_agent) every early return passes through debugLog so
+ *     silent-failure is not a debugging hazard. Non-target tool actions
+ *     (search_memory_nodes, add_memory, …) are deliberately silent — the
+ *     matcher `mcp__.*gutt.*__.*` fires for every gutt MCP call and
+ *     logging each one would spam hook-errors.log.
  *   - Never fail the tool call. Exit code is always 0; the hook's only
  *     side effects are cache + marker writes.
  */
@@ -96,11 +100,34 @@ function handleRegisterAgent(toolInput, toolResponse, cacheDir) {
   // PostToolUse fires on both success and failure tool_responses. Without this
   // gate a failed register call (5xx, validation error) still writes the
   // marker, permanently flipping needsRegister to false until the user deletes
-  // the marker by hand. Treat a missing or error-shaped response as failure.
-  if (!toolResponse || toolResponse.error || toolResponse.isError) {
+  // the marker by hand. Claude Code serializes tool_response as either an
+  // object or a JSON string depending on the tool/version (see lesson-result
+  // .cjs for the same duality on fetch_lessons_learned), so normalize strings
+  // via JSON.parse before applying the object gate. Unparseable strings,
+  // arrays, nulls, and objects carrying an error field are all treated as
+  // failure so the marker only lands on a clean success.
+  let response = toolResponse;
+  if (typeof response === "string") {
+    try {
+      response = JSON.parse(response);
+    } catch (err) {
+      debugLog(
+        LOG_SCOPE,
+        `register_agent: unparseable string tool_response for ${name}: ${err.message}; skipping marker`
+      );
+      return;
+    }
+  }
+  if (
+    !response ||
+    typeof response !== "object" ||
+    Array.isArray(response) ||
+    response.error ||
+    response.isError
+  ) {
     debugLog(
       LOG_SCOPE,
-      `register_agent: error-shaped or missing tool_response for ${name}; skipping marker`
+      `register_agent: error-shaped or invalid tool_response for ${name}; skipping marker`
     );
     return;
   }

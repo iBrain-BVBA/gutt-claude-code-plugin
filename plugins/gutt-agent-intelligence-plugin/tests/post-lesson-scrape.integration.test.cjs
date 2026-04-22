@@ -292,6 +292,77 @@ test("register_agent with missing tool_response writes no marker", () => {
   }
 });
 
+test("register_agent with stringified error tool_response writes no marker", () => {
+  // Claude Code sometimes serializes tool_response as a JSON string (see
+  // lesson-result.cjs for the same duality). A naive object-shape gate would
+  // let a stringified error through because string.isError/.error are
+  // undefined. This locks the parse-then-check invariant.
+  const dir = makeCacheDir();
+  try {
+    const res = runHook(
+      {
+        tool_name: "mcp__gutt-pro-memory__register_agent",
+        tool_input: { name: "gutt-agent-strerr" },
+        tool_response: JSON.stringify({
+          isError: true,
+          content: [{ type: "text", text: "validation failed" }],
+        }),
+      },
+      { CLAUDE_PLUGIN_DATA: dir }
+    );
+    assert.equal(res.status, 0);
+    const subdir = path.join(dir, "agent-intelligence");
+    if (fs.existsSync(subdir)) {
+      const markers = fs.readdirSync(subdir).filter((f) => f.startsWith(".registered-"));
+      assert.equal(markers.length, 0, "no marker on stringified error tool_response");
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("register_agent with stringified success tool_response writes marker", () => {
+  // Symmetric coverage for the happy path of the string branch.
+  const dir = makeCacheDir();
+  try {
+    const res = runHook(
+      {
+        tool_name: "mcp__gutt-pro-memory__register_agent",
+        tool_input: { name: "gutt-agent-strok" },
+        tool_response: JSON.stringify({ id: "abc", name: "gutt-agent-strok" }),
+      },
+      { CLAUDE_PLUGIN_DATA: dir }
+    );
+    assert.equal(res.status, 0);
+    const marker = path.join(dir, "agent-intelligence", ".registered-gutt-agent-strok.marker");
+    assert.ok(fs.existsSync(marker), "marker should be written on stringified success");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("register_agent with unparseable string tool_response writes no marker", () => {
+  const dir = makeCacheDir();
+  try {
+    const res = runHook(
+      {
+        tool_name: "mcp__gutt-pro-memory__register_agent",
+        tool_input: { name: "gutt-agent-garbage" },
+        tool_response: "not json {{{",
+      },
+      { CLAUDE_PLUGIN_DATA: dir }
+    );
+    assert.equal(res.status, 0);
+    const subdir = path.join(dir, "agent-intelligence");
+    if (fs.existsSync(subdir)) {
+      const markers = fs.readdirSync(subdir).filter((f) => f.startsWith(".registered-"));
+      assert.equal(markers.length, 0, "no marker on unparseable string tool_response");
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Matcher variants + non-matching actions
 // ---------------------------------------------------------------------------

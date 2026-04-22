@@ -2,10 +2,13 @@
 /**
  * mcp-config — unit tests.
  *
- * Covers the three exported utilities that mcp-config.cjs uses to detect
- * a gutt MCP server in Claude Code / Cursor settings. File-reading paths
- * (extractUrlFromSettingsFile, checkMcpFile) are exercised implicitly by
- * the hook integration tests.
+ * Covers the exported utilities that mcp-config.cjs uses to detect a gutt
+ * MCP server in Claude Code / Cursor settings (findGuttServerConfig,
+ * resolveEnvVars, extractUrlFromConfig) plus the public entry points
+ * (isGuttMcpConfigured, getGuttMcpServerName, getGuttMcpUrl). The
+ * file-reading helpers (extractUrlFromMcpFile, readServerNameFromMcp, and
+ * their settings-file variants) are internal and get exercised implicitly
+ * by the hook integration tests.
  *
  * Run: node --test plugins/gutt-agent-intelligence-plugin/tests/mcp-config.unit.test.cjs
  */
