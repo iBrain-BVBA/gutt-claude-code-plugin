@@ -234,6 +234,7 @@ test("register_agent with name containing path separators sanitizes before writi
       {
         tool_name: "mcp__gutt-pro-memory__register_agent",
         tool_input: { name: "evil/../escape" },
+        tool_response: {},
       },
       { CLAUDE_PLUGIN_DATA: dir }
     );
@@ -243,6 +244,49 @@ test("register_agent with name containing path separators sanitizes before writi
     assert.equal(markers.length, 1);
     assert.ok(!markers[0].includes("/"), "sanitized marker name must not contain /");
     assert.ok(!markers[0].includes(".."), "sanitized marker name must not contain ..");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("register_agent with error-shaped tool_response writes no marker", () => {
+  const dir = makeCacheDir();
+  try {
+    const res = runHook(
+      {
+        tool_name: "mcp__gutt-pro-memory__register_agent",
+        tool_input: { name: "gutt-agent-fail" },
+        tool_response: { isError: true, content: [{ type: "text", text: "boom" }] },
+      },
+      { CLAUDE_PLUGIN_DATA: dir }
+    );
+    assert.equal(res.status, 0);
+    const subdir = path.join(dir, "agent-intelligence");
+    if (fs.existsSync(subdir)) {
+      const markers = fs.readdirSync(subdir).filter((f) => f.startsWith(".registered-"));
+      assert.equal(markers.length, 0, "no marker on error tool_response");
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("register_agent with missing tool_response writes no marker", () => {
+  const dir = makeCacheDir();
+  try {
+    const res = runHook(
+      {
+        tool_name: "mcp__gutt-pro-memory__register_agent",
+        tool_input: { name: "gutt-agent-noresp" },
+      },
+      { CLAUDE_PLUGIN_DATA: dir }
+    );
+    assert.equal(res.status, 0);
+    const subdir = path.join(dir, "agent-intelligence");
+    if (fs.existsSync(subdir)) {
+      const markers = fs.readdirSync(subdir).filter((f) => f.startsWith(".registered-"));
+      assert.equal(markers.length, 0, "no marker when tool_response is absent");
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

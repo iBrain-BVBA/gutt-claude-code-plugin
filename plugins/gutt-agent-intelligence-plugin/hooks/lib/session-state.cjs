@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 /**
  * GUTT Session State Utility
- * Shared state management for statusline and hooks
+ * Shared state management for statusline and hooks.
+ *
+ * Verbatim copy from gutt-subagent-hooks-plugin per CLAUDE.md's Shared Lib
+ * File Propagation table. The GP-530 fields (significantOps,
+ * lastCapturePromptAt) and their helpers (incrementSignificantOps,
+ * recordCapturePrompt) are unused in this plugin.
  */
 
 const fs = require("fs");

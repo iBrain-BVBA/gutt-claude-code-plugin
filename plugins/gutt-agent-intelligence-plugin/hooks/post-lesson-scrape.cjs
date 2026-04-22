@@ -12,10 +12,9 @@
  * deployments those env vars are absent, and every callMcpTool invocation
  * hit the OAuth-gated endpoint without credentials.
  *
- * The accepted workaround (decision `Scope-limited-to-GUTT-usage`,
- * 2026-01-21) is to have Claude itself invoke the MCP tools through
- * Claude Code's OAuth-aware MCP client, and have this PostToolUse hook
- * "piggyback" on those calls: we observe the `tool_response` after each
+ * The accepted workaround is to have Claude itself invoke the MCP tools
+ * through Claude Code's OAuth-aware MCP client, and have this PostToolUse
+ * hook "piggyback" on those calls: we observe the `tool_response` after each
  * gutt MCP tool call and persist the relevant bits to disk for the next
  * session's UserPromptSubmit to consume.
  *
@@ -88,10 +87,21 @@ function handleFetchLessons(toolInput, toolResponse, cacheDir) {
   }
 }
 
-function handleRegisterAgent(toolInput, cacheDir) {
+function handleRegisterAgent(toolInput, toolResponse, cacheDir) {
   const name = typeof toolInput.name === "string" ? toolInput.name.trim() : "";
   if (!name) {
     debugLog(LOG_SCOPE, "register_agent: tool_input.name missing; skipping marker");
+    return;
+  }
+  // PostToolUse fires on both success and failure tool_responses. Without this
+  // gate a failed register call (5xx, validation error) still writes the
+  // marker, permanently flipping needsRegister to false until the user deletes
+  // the marker by hand. Treat a missing or error-shaped response as failure.
+  if (!toolResponse || toolResponse.error || toolResponse.isError) {
+    debugLog(
+      LOG_SCOPE,
+      `register_agent: error-shaped or missing tool_response for ${name}; skipping marker`
+    );
     return;
   }
   writeRegistrationMarker(cacheDir, name);
@@ -125,7 +135,7 @@ function run(payload) {
   if (action === "fetch_lessons_learned") {
     handleFetchLessons(toolInput, toolResponse, cacheDir);
   } else if (action === "register_agent") {
-    handleRegisterAgent(toolInput, cacheDir);
+    handleRegisterAgent(toolInput, toolResponse, cacheDir);
   }
 }
 

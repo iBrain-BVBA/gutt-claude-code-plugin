@@ -23,7 +23,7 @@ Spawned subagents are handled too. Memory operations are role-aware:
 
 ### Why the LLM has to make the MCP call
 
-The gutt MCP server uses OAuth for end-user authentication, and Claude Code's OAuth session token is only reachable by Claude Code's own MCP client — not by hook subprocesses. So the plugin cannot fetch lessons directly from a hook. Instead it nudges Claude (which already has the OAuth-authenticated MCP client) to make the call, and scrapes the result via `PostToolUse`. See memory decision `Scope-limited-to-GUTT-usage` (2026-01-21).
+The gutt MCP server uses OAuth for end-user authentication, and Claude Code's OAuth session token is only reachable by Claude Code's own MCP client — not by hook subprocesses. So the plugin cannot fetch lessons directly from a hook. Instead it nudges Claude (which already has the OAuth-authenticated MCP client) to make the call, and scrapes the result via `PostToolUse`.
 
 This is a best-effort mechanism. LLM compliance with `ACTION REQUIRED` directives is high but not guaranteed. When Claude skips the call, the session proceeds with whatever lessons were cached by the previous session, or with none if this is the first session. No error path breaks the session.
 
@@ -46,7 +46,7 @@ If Claude skips the directive — observed in some sessions — the cache stays 
 
 Scoping is **client-side by contract**: the plugin injects an `additionalContext` block at `UserPromptSubmit` and `SubagentStart` that instructs the session to pass `agent_id` on `add_memory` and `fetch_lessons_learned` calls. The MCP server hard-filters on `agent_id` at query time, but there is **no `PreToolUse` validator** and **no write-path enforcement** — if the model omits `agent_id`, memory captures and fetches silently revert to un-scoped (pre-plugin) behavior.
 
-This is deliberate (decision `Agent-Memory-Isolation`, 2026-04-17): client-side scoping keeps the plugin self-contained and the MCP server unchanged. Adding a write-path validator is explicitly **out of scope for this plugin** and would be a separate ticket.
+This is deliberate: client-side scoping keeps the plugin self-contained and the MCP server unchanged. Adding a write-path validator is explicitly **out of scope for this plugin** and would be a separate ticket.
 
 Practical consequence for debugging: when lessons appear cross-project or a project sees unrelated lessons, the first check is whether the injected `agent_id` instruction survived to the tool call — not whether the scraper fired.
 

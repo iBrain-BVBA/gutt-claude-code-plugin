@@ -120,7 +120,10 @@ function runUserPromptSubmit(sessionId) {
     // Inject even if flag write fails — slight risk of duplicate
     // injection on rapid prompts, but better than dropping the lesson
     // grounding on the first prompt.
-    debugLog("agent-intel/user-prompt-submit", `flag write: ${err.message}`);
+    debugLog(
+      "agent-intel/user-prompt-submit",
+      `flag write for session ${sessionId}: ${err.message}`
+    );
   }
 
   return block;

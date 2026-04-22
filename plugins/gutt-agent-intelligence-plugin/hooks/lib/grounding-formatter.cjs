@@ -19,9 +19,8 @@
  *
  * Why the procedural phrasing:
  *   OAuth-authenticated MCP servers are unreachable from hook subprocesses,
- *   so warming the cache requires Claude itself to make the MCP call. Memory
- *   decision `Scope-limited-to-GUTT-usage` (2026-01-21) accepts this trade-off:
- *   procedural ACTION REQUIRED directives with exact tool names have better
+ *   so warming the cache requires Claude itself to make the MCP call.
+ *   Procedural ACTION REQUIRED directives with exact tool names have better
  *   LLM compliance than generic reminders, but are not 100% reliable. On a
  *   skip, the cache stays stale; the session does not break.
  */
@@ -32,8 +31,6 @@ const { MEMORY_KEEPER_AGENT, GUTT_PRO_MEMORY_AGENT } = require("./constants.cjs"
 const { debugLog } = require("./debug.cjs");
 
 const DEFAULT_MCP_TOOL_PREFIX = "mcp__gutt-pro-memory__";
-// Back-compat alias — external callers imported this constant directly.
-const GUTT_MCP_TOOL_PREFIX = DEFAULT_MCP_TOOL_PREFIX;
 // Deliberately verbose: fetch_lessons_learned requires `query` (semantic
 // search term). A bare agent_id scope is not enough — the MCP server
 // returns a 422 without it. This default asks the server to surface the
@@ -253,5 +250,4 @@ module.exports = {
   preview,
   MEMORY_KEEPER_AGENT,
   GUTT_PRO_MEMORY_AGENT,
-  GUTT_MCP_TOOL_PREFIX,
 };

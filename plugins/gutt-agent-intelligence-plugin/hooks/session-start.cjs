@@ -10,8 +10,7 @@
  * fetch both happen inside Claude's own OAuth-authenticated MCP client —
  * nudged by the ACTION REQUIRED directives that UserPromptSubmit injects
  * on the first prompt of the session — and land on disk via the
- * post-lesson-scrape PostToolUse hook. See that file's docstring and
- * memory decision `Scope-limited-to-GUTT-usage` (2026-01-21) for the
+ * post-lesson-scrape PostToolUse hook. See that file's docstring for the
  * underlying OAuth-inaccessibility constraint.
  *
  * Silent on success. Failures are logged to hook-errors.log and never

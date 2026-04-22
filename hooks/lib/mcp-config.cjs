@@ -6,6 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const { PROJECT_DIR, HOME_DIR } = require("./env.cjs");
+const { debugLog } = require("./debug.cjs");
 
 /** Known short server names for gutt MCP (case-insensitive match) */
 const GUTT_SERVER_NAMES = [
@@ -192,6 +193,10 @@ function getGuttMcpServerName() {
   // key. Return the canonical default so callers can build a best-effort prefix.
   const pluginPath = path.join(HOME_DIR, ".claude", "plugins", "marketplaces", "gutt-plugins");
   if (fs.existsSync(pluginPath)) {
+    debugLog(
+      "mcp-config",
+      "marketplace dir present but no readable .mcp.json/settings.json; using canonical 'gutt-pro-memory' prefix as best-effort"
+    );
     return "gutt-pro-memory";
   }
 

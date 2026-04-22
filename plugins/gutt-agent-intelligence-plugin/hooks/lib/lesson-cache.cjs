@@ -2,11 +2,12 @@
 /**
  * On-disk cache for the lessons we ground each session with.
  *
- * The SessionStart hook writes this cache after a (possibly slow) MCP
- * lesson fetch; the UserPromptSubmit hook reads it and injects the
- * rendered lessons as `additionalContext`. Keeping the cache separate
- * from the hook that consumes it means prompt latency never pays for
- * a remote fetch.
+ * Writer: `post-lesson-scrape.cjs` (PostToolUse). It piggybacks on the
+ * fetch_lessons_learned MCP call that Claude itself makes in response to
+ * the ACTION REQUIRED directive, and persists the result here.
+ * Reader: `user-prompt-submit.cjs`. It injects the rendered lessons into
+ * the session's additionalContext on the first prompt, so prompt latency
+ * never pays for a remote fetch.
  *
  * Storage location:
  *   1. $CLAUDE_PLUGIN_DATA/agent-intelligence/       (survives plugin updates)
@@ -43,7 +44,6 @@ function cacheFileFor(agentId, override) {
   return path.join(resolveCacheDir(override), `lessons-${agentId}.json`);
 }
 
-/** Ensure the cache dir exists. Silent on already-exists. */
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }

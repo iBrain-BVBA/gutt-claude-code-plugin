@@ -3,16 +3,10 @@
  * Shared constants for GUTT hooks
  */
 
-/**
- * Agents that handle their own memory queries — skip memory injection for these.
- * Used by: pre-task-memory.cjs, subagent-start-memory.cjs
- */
+/** Agents that handle their own memory queries — skip memory injection for these. */
 const MEMORY_AGENTS = ["gutt-pro-memory", "memory-keeper", "gutt-mcp"];
 
-/**
- * Agents that handle their own lesson capture — skip auto-capture for these.
- * Used by: post-task-lessons.cjs
- */
+/** Agents that handle their own lesson capture — skip auto-capture for these. */
 const LESSON_SKIP_AGENTS = ["gutt-pro-memory", "memory-keeper", "memory-capture"];
 
 /**

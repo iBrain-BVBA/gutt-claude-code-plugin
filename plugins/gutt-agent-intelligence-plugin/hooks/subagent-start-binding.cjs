@@ -119,7 +119,11 @@ process.stdin.on("end", () => {
   let agentType = "";
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
-    agentType = typeof data.agent_type === "string" ? data.agent_type.trim() : "";
+    const raw = typeof data.agent_type === "string" ? data.agent_type.trim() : "";
+    // Sanitize at entry so downstream PROXY_AGENTS matching, marker file
+    // paths, and the ACTION REQUIRED directive text all see the same safe
+    // value. Well-formed types (alphanumeric + dash) pass through unchanged.
+    agentType = sanitizeSubagentType(raw);
   } catch (err) {
     // Malformed payload — fall through to empty-agent-type silent exit,
     // but surface the parse error so contract regressions are visible.
