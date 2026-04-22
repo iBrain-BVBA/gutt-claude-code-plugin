@@ -1,0 +1,32 @@
+{
+  "name": "gutt-agent-intelligence-plugin",
+  "version": "0.1.0",
+  "author": {
+    "name": "iBRAIN BV",
+    "email": "support@gutt.pro"
+  },
+  "description": "Agent experience distillation for gutt. Binds captured lessons to agent identities and grounds each session with the agent's accumulated wisdom.",
+  "homepage": "https://gutt.pro",
+  "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
+  "license": "MIT",
+  "keywords": ["gutt", "memory", "agent", "experience", "learning", "intelligence"],
+  "userConfig": {
+    "agent_id": {
+      "type": "string",
+      "title": "Agent ID override",
+      "description": "Override the auto-resolved project agent_id. Leave empty to use git-remote slug → git-root basename → cwd basename fallback."
+    },
+    "lesson_max_results": {
+      "type": "number",
+      "title": "Lesson max results",
+      "default": 10,
+      "description": "Maximum number of lessons to retrieve for session grounding."
+    },
+    "lesson_time_range": {
+      "type": "string",
+      "title": "Lesson time range",
+      "default": "30d",
+      "description": "Time range passed to fetch_lessons_learned for session grounding (e.g. 30d, 7d, all)."
+    }
+  }
+}

@@ -41,6 +41,8 @@ coverage/
 
 # MCP configuration (contains org-specific URLs)
 .mcp.json
+# Exception: plugins ship their own .mcp.json using env-var indirection, no org secrets.
+!plugins/*/.mcp.json
 
 # GUTT plugin configuration (org-specific group_id)
 config.json
