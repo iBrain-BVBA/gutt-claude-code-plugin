@@ -17,7 +17,6 @@ const {
   resetCounters,
   setConnectionStatus,
 } = require("./lib/session-state.cjs");
-const { recordSessionMetrics } = require("./lib/cross-session-learner.cjs");
 const { PROJECT_STATE_DIR } = require("./lib/env.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
@@ -82,15 +81,14 @@ process.stdin.on("end", () => {
     debugLog("SessionStart", `stale file cleanup: ${err.message || err}`);
   }
 
-  // Flush previous session metrics into cross-session analytics before clearing
+  // Reset carried-over counters if this session id already had activity
   try {
     const prevState = getState();
     if (prevState.memoryQueries > 0 || prevState.lessonsCaptured > 0) {
-      recordSessionMetrics(prevState);
       resetCounters();
     }
   } catch (err) {
-    debugLog("SessionStart", `cross-session flush: ${err.message || err}`);
+    debugLog("SessionStart", `counter reset: ${err.message || err}`);
   }
 
   // Always reinitialize session identity on new session start
