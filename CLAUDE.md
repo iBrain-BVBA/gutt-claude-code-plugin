@@ -11,25 +11,25 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 ## Architecture
 
 ```
-gutt-claude-code-plugin/
-├── hooks/                  # Claude Code hooks (.cjs scripts)
-│   └── lib/                # Shared utilities for hooks
-├── plugins/                # Extracted standalone plugins
-│   ├── auto-lint-plugin/   # Auto-lint on Edit/Write (no gutt dependency)
-│   └── gutt-subagent-hooks-plugin/  # Subagent memory injection & orchestration
-├── skills/                 # Skill definitions (markdown)
-├── agents/                 # Agent definitions (markdown)
-├── commands/               # Command definitions (markdown)
-├── .claude-plugin/         # Plugin manifest (plugin.json, marketplace.json)
-├── .claude/                # Project settings (MCP, permissions)
+gutt-plugins/               # marketplace repo (root is NOT a plugin)
+├── .claude-plugin/         # marketplace.json — lists gutt-core + auto-lint-plugin
+├── gutt-core/              # core plugin (name: gutt-claude-code-plugin, displayName: gutt-core)
+│   ├── .claude-plugin/     # plugin.json
+│   ├── hooks/              # Claude Code hooks (.cjs) + lib/ shared utilities
+│   ├── skills/ agents/ commands/
+│   └── rules/ mcp.json config.json.example
+├── auto-lint-plugin/       # standalone lint-on-edit plugin (no gutt dependency)
+├── plugins/
+│   └── gutt-subagent-hooks-plugin/  # legacy subagent hooks (retired in a later 3.0 story)
+├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
-├── docs/                   # Documentation and test plans
+├── docs/                   # Documentation and assets
 └── package.json
 ```
 
 ## Shared Lib File Propagation
 
-Hook lib files (`hooks/lib/*.cjs`) are copied into each extracted plugin under `plugins/*/hooks/lib/`. Each plugin must be self-contained for independent installation.
+Hook lib files now live in `gutt-core/hooks/lib/*.cjs` and are copied into each other plugin that needs them (`auto-lint-plugin/hooks/lib/`, `plugins/gutt-subagent-hooks-plugin/hooks/lib/`). Each plugin must be self-contained for independent installation. (GP-853 will replace these copies with in-repo symlinks and retire the table below.)
 
 **When modifying a lib file, changes MUST be propagated to all plugins that contain a copy:**
 

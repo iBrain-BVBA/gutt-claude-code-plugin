@@ -3,7 +3,7 @@ const {
   classifySignal,
   CAPTURE_TYPES,
   TRUST_LEVELS,
-} = require("../hooks/lib/memory-classifier.cjs");
+} = require("../gutt-core/hooks/lib/memory-classifier.cjs");
 
 let passed = 0;
 let failed = 0;

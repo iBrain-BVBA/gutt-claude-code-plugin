@@ -35,8 +35,8 @@ fs.mkdirSync(hooksDir, { recursive: true });
 function testHook(hookName, hookFile, inputJson, options = {}) {
   const { shouldContain, allowNonZero, pluginDir } = options;
   const hookPath = pluginDir
-    ? path.join(projectDir, "plugins", pluginDir, "hooks", hookFile)
-    : path.join(projectDir, "hooks", hookFile);
+    ? path.join(projectDir, pluginDir, "hooks", hookFile)
+    : path.join(projectDir, "gutt-core", "hooks", hookFile);
 
   console.log(`\n🧪 Testing: ${hookName}`);
   console.log(`   File: ${hookFile}`);
@@ -165,7 +165,7 @@ testHook(
     tool_response:
       "Fixed the JWT validation issue. The problem was that token expiry was checked incorrectly. This is an important lesson about proper token handling that we should remember for future implementations.",
   },
-  { shouldContain: null, pluginDir: "gutt-subagent-hooks-plugin" } // May or may not suggest lesson
+  { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May or may not suggest lesson
 );
 
 // Test 6: PostToolUse - Memory Operations
@@ -191,7 +191,7 @@ testHook(
       prompt: "Design the authentication system",
     },
   },
-  { shouldContain: null, pluginDir: "gutt-subagent-hooks-plugin" } // Silent, updates state
+  { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // Silent, updates state
 );
 
 // Test 8: SubagentStart - Memory Injection (gutt-subagent-hooks-plugin)
@@ -199,7 +199,7 @@ testHook(
   "8. SubagentStart (Memory Injection)",
   "subagent-start-memory.cjs",
   { agent_type: "general-purpose", agent_id: "test-123" },
-  { shouldContain: null, pluginDir: "gutt-subagent-hooks-plugin" } // May inject memory or provide fallback
+  { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May inject memory or provide fallback
 );
 
 // Test 9: SubagentStop - Plan Review (gutt-subagent-hooks-plugin)
@@ -210,7 +210,7 @@ testHook(
     agent_transcript_path: path.join(projectDir, ".claude", "transcript.jsonl"),
     agent_type: "general-purpose",
   },
-  { allowNonZero: true, pluginDir: "gutt-subagent-hooks-plugin" } // May block if plan detected
+  { allowNonZero: true, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May block if plan detected
 );
 
 // Test 10: StatusLine

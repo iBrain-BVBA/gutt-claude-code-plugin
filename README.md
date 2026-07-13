@@ -154,52 +154,30 @@ Capture learnings using one of 4 patterns:
 ## File Structure
 
 ```
-gutt-claude-code-plugin/
+gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── .claude-plugin/
-│   ├── plugin.json            # Claude Code plugin manifest
-│   └── marketplace.json       # Claude Code marketplace metadata
-├── .cursor-plugin/
-│   ├── plugin.json            # Cursor plugin manifest
-│   └── hooks.json             # Cursor hooks config (4 portable hooks)
-├── docs/
-│   ├── statusline-hud.png     # HUD screenshot
-│   └── team-onboarding.md     # Installation guide for both IDEs
-├── hooks/
-│   ├── lib/
-│   │   ├── env.cjs            # IDE detection (Claude Code vs Cursor)
-│   │   ├── session-state.cjs  # Shared state management
-│   │   ├── debug.cjs          # Debug logging
-│   │   └── mcp-config.cjs     # MCP config detection
-│   ├── session-start.cjs       # Setup reminder
-│   ├── sessionstart-setup.cjs  # Auto-enable HUD
-│   ├── user-prompt-submit.cjs  # Memory reminder
-│   ├── stop-lessons.cjs        # Lesson capture prompt
-│   ├── post-tool-lint.cjs      # Auto-lint
-│   ├── pre-task-memory.cjs     # Subagent context injection
-│   ├── post-task-lessons.cjs   # Subagent lesson capture
-│   ├── post-memory-ops.cjs     # Memory tool tracking
-│   ├── subagent-start-memory.cjs # Subagent context injection
-│   ├── subagent-plan-review.cjs  # Plan review suggestions
-│   └── statusline.cjs          # HUD statusline
-├── skills/
-│   ├── memory-retrieval/SKILL.md
-│   └── memory-capture/SKILL.md
-├── agents/
-│   ├── gutt-pro-memory.md
-│   ├── memory-keeper.md
-│   └── config-discovery.md
-├── commands/
-│   ├── setup.md               # IDE-aware setup wizard
-│   └── start.md               # Alias for setup
-├── rules/
-│   └── gutt-memory.mdc        # Cursor rule for memory-first workflow
-├── mcp.json                   # Cursor MCP config template
+│   └── marketplace.json           # lists gutt-core + auto-lint-plugin
+├── gutt-core/                      # core plugin — name: gutt-claude-code-plugin, displayName: gutt-core
+│   ├── .claude-plugin/plugin.json
+│   ├── hooks/                      # Claude Code hooks (.cjs) + lib/ shared utilities
+│   ├── skills/                     # memory-retrieval, memory-capture, onboard, skills-discovery
+│   ├── agents/                     # gutt-pro-memory, memory-keeper, and other memory agents
+│   ├── commands/                   # setup, start, health, reset-counters
+│   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow
+│   ├── mcp.json                    # MCP config template
+│   └── config.json.example
+├── auto-lint-plugin/               # standalone lint-on-edit plugin (no gutt dependency)
+├── plugins/
+│   └── gutt-subagent-hooks-plugin/ # legacy subagent hooks (retired in a later 3.0 story)
+├── docs/                           # banner, HUD screenshot, team-onboarding guide
+├── tests/
+├── package.json
 └── README.md
 ```
 
 ## Requirements
 
-- Claude Code CLI or Cursor 2.5+
+- Claude Code CLI ≥ 2.1.143 (multi-plugin marketplace with `displayName`) or Cursor 2.5+
 - Node.js 18+
 - gutt MCP server access (contact your organization admin)
 

@@ -11,9 +11,9 @@ import { fileURLToPath } from "url";
 import { createTestEnv, runScript } from "./fixtures/setup.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const HOOK_PATH = path.join(__dirname, "..", "hooks", "sessionstart-setup.cjs");
+const HOOK_PATH = path.join(__dirname, "..", "gutt-core", "hooks", "sessionstart-setup.cjs");
 const PLUGIN_VERSION = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
+  fs.readFileSync(path.join(__dirname, "..", "gutt-core", ".claude-plugin", "plugin.json"), "utf8")
 ).version;
 
 test("Fresh install - no settings.json", async () => {
@@ -25,7 +25,7 @@ test("Fresh install - no settings.json", async () => {
       fs.unlinkSync(settingsFile);
     }
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     // Hook should exit 0
@@ -68,7 +68,7 @@ test("Existing settings.json without statusline", async () => {
       model: "claude-opus-4",
     });
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     assert.equal(result.exitCode, 0, "Hook should exit 0");
@@ -109,7 +109,7 @@ test("Existing settings.json with statusline - passthrough stored", async () => 
       theme: "light",
     });
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     assert.equal(result.exitCode, 0, "Hook should exit 0");
@@ -154,7 +154,7 @@ test("Marker already exists - skip setup", async () => {
       },
     });
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     assert.equal(result.exitCode, 0, "Hook should exit 0");
@@ -193,7 +193,7 @@ test("Marker exists with old version - re-run setup on upgrade", async () => {
       },
     });
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     assert.equal(result.exitCode, 0, "Hook should exit 0");
@@ -220,7 +220,7 @@ test("Invalid JSON in settings.json - handle gracefully", async () => {
     const settingsFile = env.getSettingsFile();
     fs.writeFileSync(settingsFile, "{ invalid json }", "utf8");
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     // Should still exit 0 (fail-safe)
@@ -245,7 +245,7 @@ test("Missing ~/.claude directory - create it", async () => {
     env.deleteClaudeDir();
     assert.ok(!fs.existsSync(env.getClaudeDir()), ".claude dir should not exist");
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     assert.equal(result.exitCode, 0, "Hook should exit 0");
@@ -284,7 +284,7 @@ test("Permission errors - fail-safe, still exit 0", async () => {
       fs.chmodSync(claudeDir, 0o444);
     }
 
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const result = await runScript(HOOK_PATH, env.getHookEnv(pluginRoot));
 
     // Should exit 0 even on permission error (fail-safe)
@@ -313,7 +313,7 @@ test("Permission errors - fail-safe, still exit 0", async () => {
 test("Concurrent execution - atomic writes", async () => {
   const env = createTestEnv();
   try {
-    const pluginRoot = path.join(__dirname, "..");
+    const pluginRoot = path.join(__dirname, "..", "gutt-core");
     const hookEnv = env.getHookEnv(pluginRoot);
 
     // Run hook twice in parallel

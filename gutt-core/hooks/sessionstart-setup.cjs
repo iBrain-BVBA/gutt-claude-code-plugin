@@ -92,15 +92,15 @@ function saveSettings(settings) {
 }
 
 /**
- * Get plugin version from package.json
+ * Get plugin version from the plugin manifest
  * @returns {string} Plugin version or "unknown"
  */
 function getPluginVersion() {
   try {
-    const pkgPath = path.join(__dirname, "..", "package.json");
-    if (fs.existsSync(pkgPath)) {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-      return pkg.version || "unknown";
+    const manifestPath = path.join(__dirname, "..", ".claude-plugin", "plugin.json");
+    if (fs.existsSync(manifestPath)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      return manifest.version || "unknown";
     }
   } catch {
     // ignore

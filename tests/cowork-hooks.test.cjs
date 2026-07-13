@@ -13,7 +13,11 @@
 const path = require("path");
 
 // Platform detection functions (imported from hook lib)
-const { supportsDecisionBlock, isCowork, isCursor } = require("../hooks/lib/platform-detect.cjs");
+const {
+  supportsDecisionBlock,
+  isCowork,
+  isCursor,
+} = require("../gutt-core/hooks/lib/platform-detect.cjs");
 
 console.log("Testing Cowork-path behavior for GP-530 hooks\n");
 console.log("=".repeat(60));
@@ -253,7 +257,7 @@ console.log("\n[Suite 5] Early Exit Optimization (Comment 1)\n");
 // In the FIXED cowork-periodic-capture.cjs, isCowork() and isGuttMcpConfigured()
 // are called BEFORE setting up stdin listeners. Verify the pattern:
 const fs = require("fs");
-const captureHookPath = path.resolve(__dirname, "../hooks/cowork-periodic-capture.cjs");
+const captureHookPath = path.resolve(__dirname, "../gutt-core/hooks/cowork-periodic-capture.cjs");
 if (fs.existsSync(captureHookPath)) {
   const captureCode = fs.readFileSync(captureHookPath, "utf8");
 
@@ -375,7 +379,7 @@ restoreEnv();
 console.log("\n[Suite 8] stop-lessons.cjs Platform Branching\n");
 
 // 8a: Verify stop-lessons.cjs has CLI and Cowork output paths
-const stopLessonsPath = path.resolve(__dirname, "../hooks/stop-lessons.cjs");
+const stopLessonsPath = path.resolve(__dirname, "../gutt-core/hooks/stop-lessons.cjs");
 if (fs.existsSync(stopLessonsPath)) {
   const stopCode = fs.readFileSync(stopLessonsPath, "utf8");
 
@@ -447,8 +451,8 @@ delete process.env.CLAUDE_PLATFORM;
 delete process.env.CLAUDE_PLUGIN_ROOT;
 
 // Re-require env.cjs to test with fresh module cache
-delete require.cache[require.resolve("../hooks/lib/env.cjs")];
-const freshEnv = require("../hooks/lib/env.cjs");
+delete require.cache[require.resolve("../gutt-core/hooks/lib/env.cjs")];
+const freshEnv = require("../gutt-core/hooks/lib/env.cjs");
 assert(freshEnv.IDE === "cursor", "env.cjs: IDE='cursor' when both CLAUDE_ and CURSOR_ vars set");
 assert(
   freshEnv.STATE_DIR_NAME === ".cursor",
@@ -459,19 +463,19 @@ assert(
   "env.cjs: PROJECT_DIR uses CURSOR_PROJECT_DIR (not CLAUDE_PROJECT_DIR)"
 );
 restoreEnv();
-delete require.cache[require.resolve("../hooks/lib/env.cjs")];
+delete require.cache[require.resolve("../gutt-core/hooks/lib/env.cjs")];
 
 // 9f: env.cjs — falls back to claude when no Cursor vars
 clearCursorEnv();
 process.env.CLAUDE_PROJECT_DIR = "/some/claude/path";
 delete process.env.CLAUDE_PLATFORM;
 delete process.env.CLAUDE_PLUGIN_ROOT;
-delete require.cache[require.resolve("../hooks/lib/env.cjs")];
-const claudeEnv = require("../hooks/lib/env.cjs");
+delete require.cache[require.resolve("../gutt-core/hooks/lib/env.cjs")];
+const claudeEnv = require("../gutt-core/hooks/lib/env.cjs");
 assert(claudeEnv.IDE === "claude", "env.cjs: IDE='claude' when only CLAUDE_ vars set");
 assert(claudeEnv.STATE_DIR_NAME === ".claude", "env.cjs: STATE_DIR_NAME='.claude' for Claude Code");
 restoreEnv();
-delete require.cache[require.resolve("../hooks/lib/env.cjs")];
+delete require.cache[require.resolve("../gutt-core/hooks/lib/env.cjs")];
 
 // ============================================================================
 // SUMMARY

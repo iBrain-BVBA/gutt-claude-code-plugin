@@ -59,7 +59,7 @@ function writeSessionState(stateDir, sessionId, state) {
 
 // Helper: Run hook and parse output
 function runHook(tmpDir, sessionId, extraInput = {}) {
-  const hookPath = path.join(__dirname, "..", "hooks", "stop-lessons.cjs");
+  const hookPath = path.join(__dirname, "..", "gutt-core", "hooks", "stop-lessons.cjs");
   const inputJson = JSON.stringify({ session_id: sessionId, ...extraInput });
 
   try {
