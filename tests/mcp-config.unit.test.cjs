@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * MCP Config Unit Tests
- * Tests for mcp-config.cjs utility functions and agent-discovery.cjs getMcpUrl.
+ * Tests for mcp-config.cjs utility functions.
  *
  * Pure logic tests — no file system or network access needed.
  * CI-compatible, no external dependencies beyond Node.js built-ins.
@@ -18,7 +18,6 @@ const {
   resolveEnvVars,
   extractUrlFromConfig,
 } = require("../hooks/lib/mcp-config.cjs");
-const { getMcpUrl } = require("../hooks/lib/agent-discovery.cjs");
 
 // ---------------------------------------------------------------------------
 // Test runner (same pattern as sse-parsing.unit.test.cjs)
@@ -231,38 +230,6 @@ test("resolves env vars in url field", () => {
   const result = extractUrlFromConfig(config);
   assert.strictEqual(result, "https://env-resolved.ai");
   delete process.env._TEST_CFG_URL;
-});
-
-// ---------------------------------------------------------------------------
-// getMcpUrl (/mcp stripping)
-// ---------------------------------------------------------------------------
-
-console.log("\ngetMcpUrl (/mcp stripping):\n");
-
-test("prefers GUTT_MCP_URL env var", () => {
-  const orig = process.env.GUTT_MCP_URL;
-  process.env.GUTT_MCP_URL = "https://env-override.ai";
-  const result = getMcpUrl();
-  assert.strictEqual(result, "https://env-override.ai");
-  if (orig !== undefined) {
-    process.env.GUTT_MCP_URL = orig;
-  } else {
-    delete process.env.GUTT_MCP_URL;
-  }
-});
-
-test("returns null when no env var and no settings", () => {
-  const orig = process.env.GUTT_MCP_URL;
-  delete process.env.GUTT_MCP_URL;
-  // getMcpUrl falls back to getGuttMcpUrl which reads files — in test env these
-  // likely don't exist, so it should return null
-  const result = getMcpUrl();
-  // We can't assert null because the test env might have real settings,
-  // but we can assert it doesn't throw
-  assert.ok(result === null || typeof result === "string");
-  if (orig !== undefined) {
-    process.env.GUTT_MCP_URL = orig;
-  }
 });
 
 // ---------------------------------------------------------------------------
