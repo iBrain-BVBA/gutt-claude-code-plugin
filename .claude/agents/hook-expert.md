@@ -67,25 +67,19 @@ Matchers use `tool_name` field with pipe-separated patterns:
 
 ## Shared Libraries Reference
 
-| File                         | Key Exports                                                                                   | Debugging Relevance                        |
-| ---------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `env.cjs`                    | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `PROJECT_STATE_DIR`, `USER_CONFIG_DIR` | Path resolution failures, IDE misdetection |
-| `constants.cjs`              | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                                     | Agent filtering bugs, missing agent types  |
-| `debug.cjs`                  | `debugLog()`                                                                                  | All errors logged to `hook-errors.log`     |
-| `mcp-config.cjs`             | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `extractUrlFromConfig()`                          | MCP URL extraction failures                |
-| `config.cjs`                 | `getGroupId()`, `getConfig()`, `getStatuslineConfig()`                                        | Config loading issues                      |
-| `memory-cache.cjs`           | `getMemoryCache()`, `setLastSearchQuery()`, `formatMemoryContext()`                           | Stale cache, parallel overwrite            |
-| `session-state.cjs`          | `getState()`, `incrementMemoryQueries()`, `addTickerItem()`                                   | State file corruption                      |
-| `seed-registry.cjs`          | `getAgentSeed()`, `parseGroundingCall()`, `extractSection()`                                  | Seed lookup failures                       |
-| `platform-detect.cjs`        | `isCursor()`, `supportsDecisionBlock()`                                                       | IDE feature detection bugs                 |
-| `intent-extractor.cjs`       | `extractIntent()`                                                                             | Intent parsing failures                    |
-| `agent-discovery.cjs`        | `discoverAgents()`                                                                            | Agent graph search failures                |
-| `playbook-matcher.cjs`       | `matchPlaybook()`                                                                             | Routing rule mismatches                    |
-| `router.cjs`                 | `makeRoutingDecision()`                                                                       | Routing logic bugs                         |
-| `transcript-parser.cjs`      | `parseTranscript()`, `generateSummary()`                                                      | Transcript parse failures                  |
-| `plan-feedback-detector.cjs` | `detectPlanContext()`, `extractPlanFeedback()`                                                | Plan context detection issues              |
-| `decision-authority.cjs`     | Decision blocking rules                                                                       | False blocks or missed blocks              |
-| `text-utils.cjs`             | `sanitizeForDisplay()`                                                                        | Display corruption                         |
+| File                     | Key Exports                                                                                   | Debugging Relevance                        |
+| ------------------------ | --------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `env.cjs`                | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `PROJECT_STATE_DIR`, `USER_CONFIG_DIR` | Path resolution failures, IDE misdetection |
+| `constants.cjs`          | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                                     | Agent filtering bugs, missing agent types  |
+| `debug.cjs`              | `debugLog()`                                                                                  | All errors logged to `hook-errors.log`     |
+| `mcp-config.cjs`         | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `extractUrlFromConfig()`                          | MCP URL extraction failures                |
+| `config.cjs`             | `getGroupId()`, `getConfig()`, `getStatuslineConfig()`                                        | Config loading issues                      |
+| `memory-cache.cjs`       | `getMemoryCache()`, `setLastSearchQuery()`, `formatMemoryContext()`                           | Stale cache, parallel overwrite            |
+| `session-state.cjs`      | `getState()`, `incrementMemoryQueries()`, `addTickerItem()`                                   | State file corruption                      |
+| `seed-registry.cjs`      | `getAgentSeed()`, `parseGroundingCall()`, `extractSection()`                                  | Seed lookup failures                       |
+| `platform-detect.cjs`    | `isCursor()`, `supportsDecisionBlock()`                                                       | IDE feature detection bugs                 |
+| `decision-authority.cjs` | Decision blocking rules                                                                       | False blocks or missed blocks              |
+| `text-utils.cjs`         | `sanitizeForDisplay()`                                                                        | Display corruption                         |
 
 ## State Management
 
@@ -101,7 +95,6 @@ Matchers use `tool_name` field with pipe-separated patterns:
 | `gutt-session.json`       | Session metadata, counters          | `session-state.cjs`        |
 | `gutt-memory-cache.json`  | Cached memory context               | `memory-cache.cjs`         |
 | `gutt-seed-registry.json` | Agent seed prompt registry          | `seed-registry.cjs`        |
-| `gutt-routing.log`        | Routing decision audit trail        | `router.cjs`               |
 | `hook-errors.log`         | Error log for all hooks             | `debug.cjs`                |
 | `.lessons-prompted`       | Marker: lesson prompt already shown | `stop-lessons.cjs`         |
 | `.plan-feedback-prompted` | Marker: plan feedback already shown | `subagent-plan-review.cjs` |

@@ -92,25 +92,19 @@ Hooks must exit with code 0 unless the hook intentionally blocks a tool call (e.
 
 ## Shared Libraries Reference
 
-| File                         | Key Exports                                                                                   | Purpose                              |
-| ---------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `env.cjs`                    | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `PROJECT_STATE_DIR`, `USER_CONFIG_DIR` | IDE and path detection               |
-| `constants.cjs`              | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                                     | Shared constant lists                |
-| `debug.cjs`                  | `debugLog()`                                                                                  | Error logging to hook-errors.log     |
-| `mcp-config.cjs`             | `isGuttMcpConfigured()`, `getGuttMcpUrl()`                                                    | MCP server discovery                 |
-| `config.cjs`                 | `getGroupId()`, `getConfig()`                                                                 | Config loading from config.json      |
-| `memory-cache.cjs`           | `getMemoryCache()`, `setLastSearchQuery()`                                                    | Session-scoped memory cache          |
-| `session-state.cjs`          | `getState()`, `incrementMemoryQueries()`                                                      | Persistent state management          |
-| `seed-registry.cjs`          | `getAgentSeed()`, `parseGroundingCall()`                                                      | Agent seed prompts                   |
-| `platform-detect.cjs`        | `isCursor()`, `supportsDecisionBlock()`                                                       | IDE feature detection                |
-| `intent-extractor.cjs`       | `extractIntent()`                                                                             | NLP intent parsing from user prompts |
-| `agent-discovery.cjs`        | `discoverAgents()`                                                                            | Graph-based agent search             |
-| `playbook-matcher.cjs`       | `matchPlaybook()`                                                                             | Rule engine for routing              |
-| `router.cjs`                 | `makeRoutingDecision()`                                                                       | Central routing logic                |
-| `transcript-parser.cjs`      | `parseTranscript()`                                                                           | Conversation transcript parsing      |
-| `plan-feedback-detector.cjs` | `detectPlanContext()`                                                                         | Plan context analysis                |
-| `decision-authority.cjs`     | Policy checking                                                                               | Decision authority enforcement       |
-| `text-utils.cjs`             | `sanitizeForDisplay()`                                                                        | String sanitization                  |
+| File                     | Key Exports                                                                                   | Purpose                          |
+| ------------------------ | --------------------------------------------------------------------------------------------- | -------------------------------- |
+| `env.cjs`                | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `PROJECT_STATE_DIR`, `USER_CONFIG_DIR` | IDE and path detection           |
+| `constants.cjs`          | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                                     | Shared constant lists            |
+| `debug.cjs`              | `debugLog()`                                                                                  | Error logging to hook-errors.log |
+| `mcp-config.cjs`         | `isGuttMcpConfigured()`, `getGuttMcpUrl()`                                                    | MCP server discovery             |
+| `config.cjs`             | `getGroupId()`, `getConfig()`                                                                 | Config loading from config.json  |
+| `memory-cache.cjs`       | `getMemoryCache()`, `setLastSearchQuery()`                                                    | Session-scoped memory cache      |
+| `session-state.cjs`      | `getState()`, `incrementMemoryQueries()`                                                      | Persistent state management      |
+| `seed-registry.cjs`      | `getAgentSeed()`, `parseGroundingCall()`                                                      | Agent seed prompts               |
+| `platform-detect.cjs`    | `isCursor()`, `supportsDecisionBlock()`                                                       | IDE feature detection            |
+| `decision-authority.cjs` | Policy checking                                                                               | Decision authority enforcement   |
+| `text-utils.cjs`         | `sanitizeForDisplay()`                                                                        | String sanitization              |
 
 ## Hook Lifecycle Events
 
