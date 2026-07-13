@@ -20,7 +20,7 @@ const {
 } = require("../hooks/lib/mcp-config.cjs");
 
 // ---------------------------------------------------------------------------
-// Test runner (same pattern as sse-parsing.unit.test.cjs)
+// Test runner (minimal hand-rolled harness, no framework)
 // ---------------------------------------------------------------------------
 
 let passed = 0;
