@@ -20,34 +20,39 @@ Hard constraints in play: **R36** (never let a background/headless model call si
 ## What the spike tested & found (evidence)
 
 - **Kill-switch — subscription-safe: CONFIRMED.** A `type:"prompt"` UserPromptSubmit hook was driven via nested `claude -p` with `ANTHROPIC_API_KEY` **unset**. It fired and ran its Haiku evaluation via `[API:timing] dispatching to firstParty` — i.e. on the session OAuth, no key, no separate billing path. O1's core assumption holds.
-- **Prompt hook is a GATE, not an injector: CONFIRMED (docs + positive control).** A prompt hook's only output is `{"ok": bool, "reason": str}` (docs) → allow / block. When its model was told to *also* emit `additionalContext`, Claude Code **stripped it** (parsed result was only `{"ok":true,"reason":"allowed"}`; sentinel reached the transcript 0×). Positive control: a `command` hook emitting the same `additionalContext` was accepted (`provided additionalContext (23 chars)`; sentinel in transcript 1×).
+- **Prompt hook is a GATE, not an injector: CONFIRMED (docs + positive control).** A prompt hook's only output is `{"ok": bool, "reason": str}` (docs) → allow / block. When its model was told to _also_ emit `additionalContext`, Claude Code **stripped it** (parsed result was only `{"ok":true,"reason":"allowed"}`; sentinel reached the transcript 0×). Positive control: a `command` hook emitting the same `additionalContext` was accepted (`provided additionalContext (23 chars)`; sentinel in transcript 1×).
 - **They cannot cooperate on one event.** All hooks on an event run in **parallel**; a hook cannot read or gate a sibling. `prompt` hooks **cannot** be `async`; `UserPromptSubmit` has **no matcher** support (always fires). So "prompt hook decides → command hook injects based on that decision" is impossible within one UserPromptSubmit pass.
 - **Latency preview (prompt hook, n=3):** ~1.3–1.5 s warm, ~4 s cold (first call). Over the 2 s budget on cold calls. Since a prompt hook blocks the turn, this would be paid on every prompt.
 
 ## Decisions
 
 ### D1 — Trigger = deterministic COMMAND hook (no per-prompt model call)
-The "search memory" directive is injected by a **deterministic command hook** on `UserPromptSubmit` returning `hookSpecificOutput.additionalContext`, gated by a keyword/trigger matrix. A `type:"prompt"` hook is **not** used as the memory-search decider — it can only block/allow, cannot inject, and cannot chain to a sibling injector. (A prompt hook may later be used strictly as a *block-gate* for a different purpose; out of scope here.)
+
+The "search memory" directive is injected by a **deterministic command hook** on `UserPromptSubmit` returning `hookSpecificOutput.additionalContext`, gated by a keyword/trigger matrix. A `type:"prompt"` hook is **not** used as the memory-search decider — it can only block/allow, cannot inject, and cannot chain to a sibling injector. (A prompt hook may later be used strictly as a _block-gate_ for a different purpose; out of scope here.)
 
 ### D2 — Latency budget follows from D1
-With no model call on the hot path, the ≤2 s fast-model budget is **deprioritized**. The only hot-path cost is process cold-start. Target the **R25 ≤50 ms** guard budget; if a Node `.cjs` hook can't hit it, use a non-Node fast path (shell/compiled). **Fail-silent-open** is retained (never delay the prompt to wait on the trigger logic). *Actual number: to be measured (Open #1).*
+
+With no model call on the hot path, the ≤2 s fast-model budget is **deprioritized**. The only hot-path cost is process cold-start. Target the **R25 ≤50 ms** guard budget; if a Node `.cjs` hook can't hit it, use a non-Node fast path (shell/compiled). **Fail-silent-open** is retained (never delay the prompt to wait on the trigger logic). _Actual number: to be measured (Open #1)._
 
 ### D3 — State contract (R37) — proposed
+
 A single namespaced directory under `${CLAUDE_PLUGIN_DATA}` (= `~/.claude/plugins/data/{id}/`):
+
 - `config.json` — global (group_id, mode, snooze-until). Atomic temp+rename, last-writer-wins.
 - `sessions/<session_id>.json` — per session, **keyed on the stdin `session_id`, not the date**. Eliminates hot-path write contention.
 - `capture-queue.jsonl` — append-only; consumed by memory-keeper at the next SessionStart (see D4).
 - **TTL cleanup at SessionStart**: expired snooze entries, session files > 24 h, stale queue entries (reuse the existing cleanup routine).
-- The statusline **never locks** state files. Migrate today's *global* memory-cache singleton to per-session. Consolidate the two divergent atomic-write idioms into one shared helper. *Proposed — validate during GP-863 (Open #3).*
+- The statusline **never locks** state files. Migrate today's _global_ memory-cache singleton to per-session. Consolidate the two divergent atomic-write idioms into one shared helper. _Proposed — validate during GP-863 (Open #3)._
 
 ### D4 — Subscription-safe capture (R36)
+
 Background capture writes to `capture-queue.jsonl` at **Stop**, processed by memory-keeper at the **next SessionStart** (zero cost at stop, subscription-safe, one-session-deferred). Never default to `claude -p` with an inherited key. (Final mechanism ratified in S4.2.)
 
 ## Consequences
 
 **Positive** — simpler than the O1 always-on-model design; **subscription-safe by construction**; and it **removes the biggest latency risk** (no ~1.3–4 s model round-trip per prompt). Deterministic ⇒ trivially testable for the GP-891 CI gate.
 
-**Trade-off** — we give up per-prompt *model* judgment for the memory-search decision; quality now rests on the trigger-matrix heuristics. The "ambiguous band" is handled by rules, not a model. Accepted; revisit if measured decision quality is insufficient (feeds GP-890).
+**Trade-off** — we give up per-prompt _model_ judgment for the memory-search decision; quality now rests on the trigger-matrix heuristics. The "ambiguous band" is handled by rules, not a model. Accepted; revisit if measured decision quality is insufficient (feeds GP-890).
 
 ## Constraints & traps to honor (from the codebase baseline)
 
