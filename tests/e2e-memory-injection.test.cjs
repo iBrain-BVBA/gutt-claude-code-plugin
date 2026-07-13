@@ -23,7 +23,7 @@ console.log("=== GP-454 E2E Test: Deterministic Memory Injection ===\n");
 // Test 1: Cache module loads correctly
 console.log("Test 1: Cache module loads...");
 try {
-  const cache = require("../hooks/lib/memory-cache.cjs");
+  const cache = require("../gutt-core/hooks/lib/memory-cache.cjs");
   pass("memory-cache.cjs loads successfully");
   pass(`Exports: ${Object.keys(cache).join(", ")}`);
 } catch (e) {
@@ -54,7 +54,7 @@ const {
   clearMemoryCache,
   hasCachedContent,
   formatMemoryContext,
-} = require("../hooks/lib/memory-cache.cjs");
+} = require("../gutt-core/hooks/lib/memory-cache.cjs");
 
 clearMemoryCache();
 pass("Cache cleared");

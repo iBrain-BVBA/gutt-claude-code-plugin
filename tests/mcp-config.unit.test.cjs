@@ -17,7 +17,7 @@ const {
   findGuttServerConfig,
   resolveEnvVars,
   extractUrlFromConfig,
-} = require("../hooks/lib/mcp-config.cjs");
+} = require("../gutt-core/hooks/lib/mcp-config.cjs");
 
 // ---------------------------------------------------------------------------
 // Test runner (minimal hand-rolled harness, no framework)

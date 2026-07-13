@@ -72,7 +72,7 @@ let clearSeedCache;
  * Bust the require cache for all hooks/lib modules so they re-read env vars.
  */
 function bustRequireCache() {
-  const libDir = path.join(__dirname, "..", "hooks", "lib");
+  const libDir = path.join(__dirname, "..", "gutt-core", "hooks", "lib");
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(libDir)) {
       delete require.cache[key];
@@ -98,7 +98,7 @@ before(() => {
   bustRequireCache();
 
   // Now require the module under test
-  const registry = require("../hooks/lib/seed-registry.cjs");
+  const registry = require("../gutt-core/hooks/lib/seed-registry.cjs");
   getAgentSeed = registry.getAgentSeed;
   scanSeeds = registry.scanSeeds;
   clearSeedCache = registry.clearSeedCache;
@@ -243,7 +243,7 @@ describe("constants.cjs exports", () => {
   let constants;
 
   before(() => {
-    constants = require("../hooks/lib/constants.cjs");
+    constants = require("../gutt-core/hooks/lib/constants.cjs");
   });
 
   it("MEMORY_AGENTS is a non-empty array of strings", () => {

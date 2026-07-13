@@ -10,19 +10,15 @@
   "plugins": [
     {
       "name": "gutt-claude-code-plugin",
+      "source": "./gutt-core",
       "description": "Persistent organizational memory for Claude Code via GUTT",
-      "version": "2.7.0",
-      "author": {
-        "name": "iBRAIN BV",
-        "email": "support@gutt.pro"
-      },
-      "source": "./",
-      "category": "productivity",
-      "homepage": "https://gutt.pro",
-      "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
-      "license": "MIT",
-      "keywords": ["memory", "organizational-memory", "knowledge-graph", "gutt", "productivity"],
-      "tags": ["memory", "knowledge-graph", "organizational-memory", "ai-agents"]
+      "category": "productivity"
+    },
+    {
+      "name": "auto-lint-plugin",
+      "source": "./auto-lint-plugin",
+      "description": "Auto-lints files after Edit/Write operations. Supports Python (ruff) and JavaScript/TypeScript (eslint).",
+      "category": "productivity"
     }
   ]
 }
