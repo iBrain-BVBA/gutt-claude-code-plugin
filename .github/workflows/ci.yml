@@ -35,6 +35,9 @@ jobs:
       - name: Check runtime-state location (R37)
         run: npm run check:state
 
+      - name: Check version sync (plugin.json ↔ package.json)
+        run: npm run check:version
+
   commitlint:
     name: Commit Message Lint
     runs-on: ubuntu-latest
