@@ -29,8 +29,11 @@ const ALLOW = {
     "one-time IDE setup: edits the user's ~/.claude/settings.json, not runtime state (R37 exempt)",
 };
 
+// Matches fs.<write> and fs.promises.<write>, sync and async forms. Bare
+// destructured calls (no fs. prefix) aren't matched — the suite's convention is
+// fs.*, and matching bare verb names would false-positive on local functions.
 const WRITE_RE =
-  /\bfs\.(writeFileSync|writeFile|appendFileSync|appendFile|mkdirSync|mkdir|renameSync|rename|unlinkSync|unlink|rmSync|rm|rmdirSync|createWriteStream|cpSync|copyFileSync|truncateSync|writeSync)\b/;
+  /\bfs\.(promises\.)?(writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|rename|renameSync|unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|cp|cpSync|copyFile|copyFileSync|truncate|truncateSync|createWriteStream|write|writeSync|writev|writevSync)\b/;
 
 const errors = [];
 

@@ -13,9 +13,17 @@ const path = require("path");
 
 // R37 (GP-855): runtime state lives under ${CLAUDE_PLUGIN_DATA}. Give the memory
 // cache a real temp home so its disk round-trip works here and in the spawned hook.
+// Restore the original var on exit (node --test isolates files by process, but
+// keep parity with stop-plan-feedback.e2e and stay safe if ever run in-process).
+const ORIGINAL_PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA;
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-e2e-mem-"));
 process.env.CLAUDE_PLUGIN_DATA = DATA_DIR;
 process.on("exit", () => {
+  if (ORIGINAL_PLUGIN_DATA === undefined) {
+    delete process.env.CLAUDE_PLUGIN_DATA;
+  } else {
+    process.env.CLAUDE_PLUGIN_DATA = ORIGINAL_PLUGIN_DATA;
+  }
   try {
     fs.rmSync(DATA_DIR, { recursive: true, force: true });
   } catch {

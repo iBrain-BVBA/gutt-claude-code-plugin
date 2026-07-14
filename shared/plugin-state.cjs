@@ -84,11 +84,17 @@ function readJson(absPath, fallback = null) {
   }
 }
 
+// Monotonic per-process counter so temp names are unique even for two writes in
+// the same millisecond. Writes are synchronous, so same-process calls already
+// serialize and distinct PIDs disambiguate across processes — this is belt-and-
+// suspenders that also survives a future async refactor.
+let writeSeq = 0;
+
 /**
  * Atomically write JSON — the one atomic-write idiom for the suite: unique temp
- * name (PID+timestamp, race-safe under concurrent hooks) then delete-before-rename
- * (Windows can't overwrite on rename). No non-atomic fallback: a failed write
- * returns false rather than risk a torn file. No-op (false) when unavailable.
+ * name (PID + timestamp + counter) then delete-before-rename (Windows can't
+ * overwrite on rename). No non-atomic fallback: a failed write returns false
+ * rather than risk a torn file. No-op (false) when unavailable.
  * @param {string|null} absPath
  * @param {*} data
  * @returns {boolean} true if written
@@ -101,7 +107,7 @@ function writeJson(absPath, data) {
     return false;
   }
   const serialized = JSON.stringify(data, null, 2);
-  const tempPath = `${absPath}.tmp.${process.pid}.${Date.now()}`;
+  const tempPath = `${absPath}.tmp.${process.pid}.${Date.now()}.${writeSeq++}`;
   try {
     fs.writeFileSync(tempPath, serialized);
     if (fs.existsSync(absPath)) {
