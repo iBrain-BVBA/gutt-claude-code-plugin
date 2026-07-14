@@ -9,13 +9,13 @@
  * 3. SubagentStart injects cached results directly into subagent context
  */
 
-const fs = require("fs");
-const path = require("path");
-const { debugLog } = require("./debug.cjs");
+const { statePath, readJson, writeJson } = require("./plugin-state.cjs");
 
-const { PROJECT_STATE_DIR } = require("./env.cjs");
-const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
-const CACHE_PATH = path.join(STATE_DIR, "gutt-memory-cache.json");
+// Global memory cache under ${CLAUDE_PLUGIN_DATA} (R37, GP-855). Still one shared
+// file today; migrating it to per-session is GP-863's job (D3 in the GP-862 ADR).
+function cachePath() {
+  return statePath("memory-cache.json");
+}
 
 const DEFAULT_CACHE = {
   updatedAt: null,
@@ -32,28 +32,11 @@ const MAX_FACTS = 10;
 const MAX_QUERIES = 5;
 
 /**
- * Ensure the state directory exists
- */
-function ensureDir() {
-  if (!fs.existsSync(STATE_DIR)) {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-  }
-}
-
-/**
  * Get the current memory cache
  * @returns {object} The cached memory data
  */
 function getMemoryCache() {
-  try {
-    const data = fs.readFileSync(CACHE_PATH, "utf8");
-    return JSON.parse(data);
-  } catch (err) {
-    if (err.code !== "ENOENT") {
-      debugLog("memory-cache", `Failed to read cache: ${err.message}`);
-    }
-    return { ...DEFAULT_CACHE };
-  }
+  return readJson(cachePath(), { ...DEFAULT_CACHE });
 }
 
 /**
@@ -62,7 +45,6 @@ function getMemoryCache() {
  * @param {Array} results - Array of results to cache
  */
 function updateMemoryCache(type, results) {
-  ensureDir();
   const cache = getMemoryCache();
 
   if (type === "lessons" && Array.isArray(results)) {
@@ -91,7 +73,6 @@ function addQueryToCache(query) {
     return;
   }
 
-  ensureDir();
   const cache = getMemoryCache();
 
   // Add to queries list (avoid duplicates)
@@ -109,7 +90,6 @@ function addQueryToCache(query) {
  * @param {string} query - The search query extracted from task prompt
  */
 function setLastSearchQuery(query) {
-  ensureDir();
   const cache = getMemoryCache();
   cache.lastSearchQuery = query;
   cache.updatedAt = new Date().toISOString();
@@ -140,7 +120,6 @@ function getLastSearchQuery() {
  * @param {string} name - The agent name from Task tool input
  */
 function setLastAgentName(name) {
-  ensureDir();
   const cache = getMemoryCache();
   cache.lastAgentName = name;
   cache.updatedAt = new Date().toISOString();
@@ -163,7 +142,6 @@ function getLastAgentName() {
  * @param {string} groupId - The resolved group_id
  */
 function setResolvedGroupId(groupId) {
-  ensureDir();
   const cache = getMemoryCache();
   cache.resolvedGroupId = groupId;
   cache.updatedAt = new Date().toISOString();
@@ -184,7 +162,6 @@ function getResolvedGroupId() {
  * Clear the memory cache (call on session start)
  */
 function clearMemoryCache() {
-  ensureDir();
   writeCache({ ...DEFAULT_CACHE });
 }
 
@@ -249,34 +226,11 @@ function formatMemoryContext() {
 }
 
 /**
- * Write cache to disk with atomic write pattern
+ * Write cache to disk (atomic, via the shared state helper).
  * @param {object} cache - The cache object to write
  */
 function writeCache(cache) {
-  const tempPath = CACHE_PATH + ".tmp";
-  const serialized = JSON.stringify(cache, null, 2);
-  fs.writeFileSync(tempPath, serialized);
-
-  try {
-    // On Windows, rename cannot overwrite, so delete first
-    if (fs.existsSync(CACHE_PATH)) {
-      fs.unlinkSync(CACHE_PATH);
-    }
-    fs.renameSync(tempPath, CACHE_PATH);
-  } catch (err) {
-    // Fallback: write directly
-    debugLog("writeCache", err);
-    fs.writeFileSync(CACHE_PATH, serialized);
-  } finally {
-    // Cleanup temp file if it exists
-    if (fs.existsSync(tempPath)) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
-  }
+  writeJson(cachePath(), cache);
 }
 
 module.exports = {
@@ -293,6 +247,5 @@ module.exports = {
   getCacheAge,
   hasCachedContent,
   formatMemoryContext,
-  CACHE_PATH,
   DEFAULT_CACHE,
 };

@@ -7,6 +7,22 @@
  * Usage: node tests/e2e-memory-injection.test.cjs
  */
 
+const os = require("os");
+const fs = require("fs");
+const path = require("path");
+
+// R37 (GP-855): runtime state lives under ${CLAUDE_PLUGIN_DATA}. Give the memory
+// cache a real temp home so its disk round-trip works here and in the spawned hook.
+const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-e2e-mem-"));
+process.env.CLAUDE_PLUGIN_DATA = DATA_DIR;
+process.on("exit", () => {
+  try {
+    fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+});
+
 let failures = 0;
 
 function fail(msg) {
@@ -148,5 +164,5 @@ if (failures > 0) {
 console.log("\nTo complete full E2E testing:");
 console.log("1. Restart Claude Code to load new hooks");
 console.log("2. Call: mcp__gutt-mcp-remote__fetch_lessons_learned(query: 'test')");
-console.log("3. Check cache: cat .claude/hooks/.state/gutt-memory-cache.json");
+console.log("3. Check cache: cat $CLAUDE_PLUGIN_DATA/memory-cache.json");
 console.log("4. Spawn subagent and verify it receives GUTT memory context");

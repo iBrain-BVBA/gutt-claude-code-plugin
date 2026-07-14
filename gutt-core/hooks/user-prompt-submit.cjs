@@ -3,13 +3,8 @@
  * UserPromptSubmit hook — logs prompt, resets lesson state, outputs memory reminder.
  */
 
-const fs = require("fs");
-const path = require("path");
-const { PROJECT_STATE_DIR } = require("./lib/env.cjs");
+const { statePath, appendLine, remove } = require("./lib/plugin-state.cjs");
 const { sanitizeSessionId } = require("./lib/session-state.cjs");
-
-const LOG_FILE = path.join(PROJECT_STATE_DIR, "hooks", "hook-invocations.log");
-const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -30,30 +25,17 @@ process.stdin.on("end", () => {
   }
 
   const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
+  const invocationLog = statePath("hook-invocations.log");
 
-  // Ensure log directory exists
-  try {
-    const logDir = path.dirname(LOG_FILE);
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
-    }
-    fs.appendFileSync(LOG_FILE, `[${timestamp}] Prompt: ${prompt}\n`);
-  } catch {
-    // Non-blocking
-  }
+  appendLine(invocationLog, `[${timestamp}] Prompt: ${prompt}`);
 
-  // Clear lessons-prompted state for this session
-  const stateFile = path.join(STATE_DIR, `${sanitizeSessionId(sessionId)}.lessons-prompted`);
-  try {
-    if (fs.existsSync(stateFile)) {
-      fs.unlinkSync(stateFile);
-      fs.appendFileSync(
-        LOG_FILE,
-        `[${timestamp}] Cleared lessons-prompted state for session ${sessionId}\n`
-      );
-    }
-  } catch {
-    // Non-blocking
+  // Clear the lessons-prompted marker for this session so the next Stop re-prompts
+  const marker = statePath(`${sanitizeSessionId(sessionId)}.lessons-prompted`);
+  if (remove(marker)) {
+    appendLine(
+      invocationLog,
+      `[${timestamp}] Cleared lessons-prompted state for session ${sessionId}`
+    );
   }
 
   // Output the reminder message — forceful wording to ensure LLM compliance

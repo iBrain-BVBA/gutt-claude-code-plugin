@@ -36,5 +36,5 @@ Common issues:
 - **"MCP server not found"**: Restart the IDE after installing the plugin
 - **Authentication fails**: Check that your endpoint URL starts with `https://` and ends with `/mcp`
 - **Memory tools not showing**: Ensure the MCP server is connected (green status). In Claude Code: `/mcp`. In Cursor: Settings → Tools & MCP Servers
-- **Hook errors**: Check logs at `<project>/.claude/hooks/.state/hook-errors.log` (Claude Code) or `<project>/.cursor/hooks/.state/hook-errors.log` (Cursor)
+- **Hook errors**: Check logs at `${CLAUDE_PLUGIN_DATA}/hook-errors.log` (the per-plugin data dir; see docs/runtime-state-convention.md)
 - **Plugin not detected**: Make sure the plugin is installed and enabled. In Claude Code: `claude plugin list`. In Cursor: check Extensions panel

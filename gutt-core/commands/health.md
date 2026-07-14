@@ -36,7 +36,7 @@ Also check if `statusLine` is registered.
 
 ### 3. Check Seed Registry
 
-Read the seed registry cache file at `<project>/.claude/hooks/.state/gutt-seed-registry.json` (or `.cursor/hooks/.state/` for Cursor).
+Read the seed registry cache file at `${CLAUDE_PLUGIN_DATA}/seed-registry.json` (the per-plugin data dir, `~/.claude/plugins/data/<id>/`; see docs/runtime-state-convention.md).
 
 Report:
 

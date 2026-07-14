@@ -13,12 +13,16 @@
 
 const fs = require("fs");
 const path = require("path");
-const { PROJECT_DIR, PROJECT_STATE_DIR } = require("./env.cjs");
+const { PROJECT_DIR } = require("./env.cjs");
 const { debugLog } = require("./debug.cjs");
+const { statePath, readJson, writeJson, remove } = require("./plugin-state.cjs");
 
-const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
-const REGISTRY_PATH = path.join(STATE_DIR, "gutt-seed-registry.json");
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Seed-scan cache under ${CLAUDE_PLUGIN_DATA} (R37, GP-855).
+function registryPath() {
+  return statePath("seed-registry.json");
+}
 
 /**
  * Directories to scan for agent seed files, in priority order
@@ -200,20 +204,12 @@ function scanSeeds() {
     }
   }
 
-  // Write cache
-  try {
-    if (!fs.existsSync(STATE_DIR)) {
-      fs.mkdirSync(STATE_DIR, { recursive: true });
-    }
-    const cacheData = {
-      scannedAt: new Date().toISOString(),
-      agentCount: Object.keys(registry).length,
-      registry,
-    };
-    fs.writeFileSync(REGISTRY_PATH, JSON.stringify(cacheData, null, 2));
-  } catch (err) {
-    debugLog("seed-registry", `Failed to write cache: ${err.message}`);
-  }
+  // Write cache (atomic + dir-creation handled by the shared state helper)
+  writeJson(registryPath(), {
+    scannedAt: new Date().toISOString(),
+    agentCount: Object.keys(registry).length,
+    registry,
+  });
 
   return registry;
 }
@@ -252,36 +248,27 @@ function agentFilesModifiedSince(cacheTime) {
  * @returns {Object|null} Cached registry or null if stale/missing
  */
 function loadFromCache() {
-  try {
-    if (!fs.existsSync(REGISTRY_PATH)) {
-      return null;
-    }
-
-    const data = JSON.parse(fs.readFileSync(REGISTRY_PATH, "utf8"));
-    if (!data.scannedAt) {
-      return null;
-    }
-
-    const cacheTime = new Date(data.scannedAt).getTime();
-    if (!Number.isFinite(cacheTime)) {
-      // Invalid timestamp — treat as stale
-      return null;
-    }
-    const age = Date.now() - cacheTime;
-    if (age > CACHE_TTL_MS) {
-      return null;
-    }
-
-    // Invalidate if any agent file was modified after cache was written
-    if (agentFilesModifiedSince(cacheTime)) {
-      return null;
-    }
-
-    return data.registry || null;
-  } catch (err) {
-    debugLog("seed-registry", `Cache load failed (will rescan): ${err.message}`);
+  const data = readJson(registryPath(), null);
+  if (!data || !data.scannedAt) {
     return null;
   }
+
+  const cacheTime = new Date(data.scannedAt).getTime();
+  if (!Number.isFinite(cacheTime)) {
+    // Invalid timestamp — treat as stale
+    return null;
+  }
+  const age = Date.now() - cacheTime;
+  if (age > CACHE_TTL_MS) {
+    return null;
+  }
+
+  // Invalidate if any agent file was modified after cache was written
+  if (agentFilesModifiedSince(cacheTime)) {
+    return null;
+  }
+
+  return data.registry || null;
 }
 
 /**
@@ -340,13 +327,7 @@ function getAgentSeed(agentType) {
  * Clear the seed cache (force rescan on next access)
  */
 function clearSeedCache() {
-  try {
-    if (fs.existsSync(REGISTRY_PATH)) {
-      fs.unlinkSync(REGISTRY_PATH);
-    }
-  } catch (err) {
-    debugLog("seed-registry", `Failed to clear cache: ${err.message}`);
-  }
+  remove(registryPath());
 }
 
 module.exports = {
@@ -354,5 +335,4 @@ module.exports = {
   scanSeeds,
   clearSeedCache,
   agentFilesModifiedSince,
-  REGISTRY_PATH,
 };
