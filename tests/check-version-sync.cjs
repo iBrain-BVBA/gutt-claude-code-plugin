@@ -17,6 +17,13 @@ const errors = [];
 const pkg = readJson("package.json");
 const market = readJson(".claude-plugin/marketplace.json");
 
+if (!Array.isArray(market.plugins)) {
+  console.error(
+    'Version-sync check FAILED:\n  .claude-plugin/marketplace.json: "plugins" must be an array'
+  );
+  process.exit(1);
+}
+
 // package.json holds the root/repo version; exactly one published plugin shares
 // its name (gutt-core) and must track it. Guard the anchor itself — a check that
 // silently matches nothing is worse than one that fails loudly (this repo has a
@@ -24,6 +31,18 @@ const market = readJson(".claude-plugin/marketplace.json");
 let rootAnchored = false;
 
 for (const entry of market.plugins) {
+  // entry.source feeds a path read — keep it a repo-relative, non-escaping string
+  // so a malformed manifest fails with an actionable message, not a stack trace.
+  if (
+    typeof entry.source !== "string" ||
+    path.isAbsolute(entry.source) ||
+    entry.source.split(/[\\/]/).includes("..")
+  ) {
+    errors.push(
+      `.claude-plugin/marketplace.json: entry "${entry.name || "?"}" has an invalid "source" (${JSON.stringify(entry.source)}) — expected a repo-relative path`
+    );
+    continue;
+  }
   const manifestRel = path.join(entry.source, ".claude-plugin", "plugin.json");
   let manifest;
   try {
