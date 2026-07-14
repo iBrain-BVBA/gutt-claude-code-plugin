@@ -36,14 +36,14 @@ All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
 
 ## The shared lib — `shared/plugin-state.cjs`
 
-| Function                             | Purpose                                                                                                                      |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `stateRoot()` / `statePath(...segs)` | Resolve `${CLAUDE_PLUGIN_DATA}` (or a file under it). `null` when unset.                                                     |
-| `readJson(path, fallback)`           | Read + parse; `fallback` on missing/unparseable.                                                                             |
-| `writeJson(path, data)`              | **The one atomic-write idiom**: unique temp (`PID+timestamp`) → delete-before-rename (Windows-safe). No non-atomic fallback. |
-| `appendLine(path, line)`             | Append a line to a log.                                                                                                      |
-| `remove(path)` / `exists(path)`      | Delete / test a state file (null-safe).                                                                                      |
-| `sweep(dir, { maxAgeMs, match })`    | The SessionStart TTL cleanup.                                                                                                |
+| Function                             | Purpose                                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `stateRoot()` / `statePath(...segs)` | Resolve `${CLAUDE_PLUGIN_DATA}` (or a file under it). `null` when unset.                                                             |
+| `readJson(path, fallback)`           | Read + parse; `fallback` on missing/unparseable.                                                                                     |
+| `writeJson(path, data)`              | **The one atomic-write idiom**: unique temp (`PID+timestamp+counter`) → delete-before-rename (Windows-safe). No non-atomic fallback. |
+| `appendLine(path, line)`             | Append a line to a log.                                                                                                              |
+| `remove(path)` / `exists(path)`      | Delete / test a state file (null-safe).                                                                                              |
+| `sweep(dir, { maxAgeMs, match })`    | The SessionStart TTL cleanup.                                                                                                        |
 
 ### Fail-safe when `${CLAUDE_PLUGIN_DATA}` is unset
 
@@ -65,6 +65,8 @@ Structural, zero-dep (like `check:shared`). Scans `shared/` and every plugin's
 `hooks/` and **fails on any direct `fs` write call** outside a small, reasoned
 allowlist (`plugin-state.cjs`, `debug.cjs`, `sessionstart-setup.cjs`). This is how
 "state escapes to the project tree" is caught: writes must route through the lib.
+As a second layer, the lib's own writers refuse any path outside `${CLAUDE_PLUGIN_DATA}`,
+so even a stray path handed to `writeJson`/`appendLine` is a no-op (returns `false`).
 
 ## Adding new state
 

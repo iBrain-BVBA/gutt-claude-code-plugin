@@ -86,24 +86,24 @@ Hooks must exit with code 0 unless the hook intentionally blocks a tool call (e.
 
 ### State Management
 
-- Hook state is stored in `.claude/hooks/.state/`
-- State is cleared on `SessionStart` event
-- Use atomic writes (temp + delete + rename) for Windows safety
+- Hook state lives under `${CLAUDE_PLUGIN_DATA}` (R37, GP-855) — never the project tree; see `docs/runtime-state-convention.md`
+- State is cleared/swept on `SessionStart`
+- Use `plugin-state.writeJson()` for atomic writes; it returns `false` on failure, so check the return
 
 ## Shared Libraries Reference
 
-| File                  | Key Exports                                                                                   | Purpose                          |
-| --------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
-| `env.cjs`             | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `PROJECT_STATE_DIR`, `USER_CONFIG_DIR` | IDE and path detection           |
-| `constants.cjs`       | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                                     | Shared constant lists            |
-| `debug.cjs`           | `debugLog()`                                                                                  | Error logging to hook-errors.log |
-| `mcp-config.cjs`      | `isGuttMcpConfigured()`, `getGuttMcpUrl()`                                                    | MCP server discovery             |
-| `config.cjs`          | `getGroupId()`, `getConfig()`                                                                 | Config loading from config.json  |
-| `memory-cache.cjs`    | `getMemoryCache()`, `setLastSearchQuery()`                                                    | Session-scoped memory cache      |
-| `session-state.cjs`   | `getState()`, `incrementMemoryQueries()`                                                      | Persistent state management      |
-| `seed-registry.cjs`   | `getAgentSeed()`, `parseGroundingCall()`                                                      | Agent seed prompts               |
-| `platform-detect.cjs` | `isCursor()`, `supportsDecisionBlock()`                                                       | IDE feature detection            |
-| `text-utils.cjs`      | `sanitizeForDisplay()`                                                                        | String sanitization              |
+| File                  | Key Exports                                                              | Purpose                          |
+| --------------------- | ------------------------------------------------------------------------ | -------------------------------- |
+| `env.cjs`             | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `USER_CONFIG_DIR` | IDE and path detection           |
+| `constants.cjs`       | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                | Shared constant lists            |
+| `debug.cjs`           | `debugLog()`                                                             | Error logging to hook-errors.log |
+| `mcp-config.cjs`      | `isGuttMcpConfigured()`, `getGuttMcpUrl()`                               | MCP server discovery             |
+| `config.cjs`          | `getGroupId()`, `getConfig()`                                            | Config loading from config.json  |
+| `memory-cache.cjs`    | `getMemoryCache()`, `setLastSearchQuery()`                               | Session-scoped memory cache      |
+| `session-state.cjs`   | `getState()`, `incrementMemoryQueries()`                                 | Persistent state management      |
+| `seed-registry.cjs`   | `getAgentSeed()`, `parseGroundingCall()`                                 | Agent seed prompts               |
+| `platform-detect.cjs` | `isCursor()`, `supportsDecisionBlock()`                                  | IDE feature detection            |
+| `text-utils.cjs`      | `sanitizeForDisplay()`                                                   | String sanitization              |
 
 ## Hook Lifecycle Events
 
@@ -228,7 +228,7 @@ Group ID is resolved in priority order:
 2. Verify stdin consumption — broken pipe errors mean stdin is not being read
 3. Verify exit code — non-zero exits block the IDE pipeline
 4. Test in isolation: pipe sample JSON to the hook via command line
-5. Check state files in `.claude/hooks/.state/` for corruption
+5. Check state files under `${CLAUDE_PLUGIN_DATA}` for corruption
 6. Verify `hooks.json` registration matches the expected lifecycle event and tool_name
 
 ### When Updating Manifests

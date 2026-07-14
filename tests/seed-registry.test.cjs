@@ -63,10 +63,16 @@ const CONTACT_POAB_SEED = `# contact:poab
 // ---------------------------------------------------------------------------
 
 let tmpDir;
+let dataDir;
 let agentsDir;
 let getAgentSeed;
 let scanSeeds;
 let clearSeedCache;
+
+// R37 (GP-855): the seed cache now lives under ${CLAUDE_PLUGIN_DATA}. Capture the
+// original so we can restore it — otherwise this test writes into (and clears) a
+// dev's real cache when their shell already has the var set.
+const ORIGINAL_PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA;
 
 /**
  * Bust the require cache for all hooks/lib modules so they re-read env vars.
@@ -94,6 +100,11 @@ before(() => {
   process.env.CLAUDE_PROJECT_DIR = tmpDir;
   delete process.env.CURSOR_PROJECT_DIR;
 
+  // Point the R37 state root at a throwaway temp dir so the seed cache round-trip
+  // (write/TTL/invalidate) is actually exercised and never touches a real cache.
+  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "seed-reg-data-"));
+  process.env.CLAUDE_PLUGIN_DATA = dataDir;
+
   // Bust any previously-cached requires so env.cjs picks up the new env var
   bustRequireCache();
 
@@ -108,11 +119,19 @@ before(() => {
 });
 
 after(() => {
-  // Restore env and clean up temp dir
+  // Restore env and clean up temp dirs
   delete process.env.CLAUDE_PROJECT_DIR;
+  if (ORIGINAL_PLUGIN_DATA === undefined) {
+    delete process.env.CLAUDE_PLUGIN_DATA;
+  } else {
+    process.env.CLAUDE_PLUGIN_DATA = ORIGINAL_PLUGIN_DATA;
+  }
   bustRequireCache();
   if (tmpDir) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+  if (dataDir) {
+    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
 

@@ -53,7 +53,7 @@ function scanFile(absFile) {
     const m = code.match(WRITE_RE);
     if (m) {
       errors.push(
-        `${rel}:${i + 1} direct fs.${m[1]} — route runtime-state writes through shared/plugin-state.cjs (R37)`
+        `${rel}:${i + 1} direct ${m[0]} — route runtime-state writes through shared/plugin-state.cjs (R37)`
       );
     }
   });

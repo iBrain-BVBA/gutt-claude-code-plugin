@@ -54,8 +54,15 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
-    // Mark as prompted so the next stop goes through
-    writeJson(marker, { promptedAt: new Date().toISOString() });
+    // Mark as prompted so the next stop goes through. If the marker can't be
+    // persisted (data dir unavailable/unwritable), allow the stop rather than
+    // block — otherwise we'd re-block every stop with no way to record that we
+    // already prompted. The pre-GP-855 fs.writeFileSync threw here and hit the
+    // outer catch (fail open); writeJson returns false instead, so check it.
+    if (!writeJson(marker, { promptedAt: new Date().toISOString() })) {
+      debugLog("stop-lessons", "could not persist lessons-prompted marker; allowing stop");
+      process.exit(0);
+    }
 
     // Build context from session state
     const state = getState();

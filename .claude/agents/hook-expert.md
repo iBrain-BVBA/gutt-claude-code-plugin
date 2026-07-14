@@ -20,7 +20,7 @@ Deep specialist in the gutt-claude-code-plugin hook system. Focuses on debugging
 Invoke this agent when:
 
 - A hook is silently failing or producing unexpected output
-- State files in `.claude/hooks/.state/` appear corrupt or stale
+- State files under `${CLAUDE_PLUGIN_DATA}` appear corrupt or stale
 - Hooks work in Claude Code but fail in Cursor (or vice versa)
 - Hook execution is slow or causing IDE lag
 - Debugging complex interactions between multiple hooks
@@ -67,51 +67,38 @@ Matchers use `tool_name` field with pipe-separated patterns:
 
 ## Shared Libraries Reference
 
-| File                  | Key Exports                                                                                   | Debugging Relevance                        |
-| --------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `env.cjs`             | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `PROJECT_STATE_DIR`, `USER_CONFIG_DIR` | Path resolution failures, IDE misdetection |
-| `constants.cjs`       | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                                     | Agent filtering bugs, missing agent types  |
-| `debug.cjs`           | `debugLog()`                                                                                  | All errors logged to `hook-errors.log`     |
-| `mcp-config.cjs`      | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `extractUrlFromConfig()`                          | MCP URL extraction failures                |
-| `config.cjs`          | `getGroupId()`, `getConfig()`, `getStatuslineConfig()`                                        | Config loading issues                      |
-| `memory-cache.cjs`    | `getMemoryCache()`, `setLastSearchQuery()`, `formatMemoryContext()`                           | Stale cache, parallel overwrite            |
-| `session-state.cjs`   | `getState()`, `incrementMemoryQueries()`, `addTickerItem()`                                   | State file corruption                      |
-| `seed-registry.cjs`   | `getAgentSeed()`, `parseGroundingCall()`, `extractSection()`                                  | Seed lookup failures                       |
-| `platform-detect.cjs` | `isCursor()`, `supportsDecisionBlock()`                                                       | IDE feature detection bugs                 |
-| `text-utils.cjs`      | `sanitizeForDisplay()`                                                                        | Display corruption                         |
+| File                  | Key Exports                                                              | Debugging Relevance                        |
+| --------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
+| `env.cjs`             | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `USER_CONFIG_DIR` | Path resolution failures, IDE misdetection |
+| `constants.cjs`       | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                | Agent filtering bugs, missing agent types  |
+| `debug.cjs`           | `debugLog()`                                                             | All errors logged to `hook-errors.log`     |
+| `mcp-config.cjs`      | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `extractUrlFromConfig()`     | MCP URL extraction failures                |
+| `config.cjs`          | `getGroupId()`, `getConfig()`, `getStatuslineConfig()`                   | Config loading issues                      |
+| `memory-cache.cjs`    | `getMemoryCache()`, `setLastSearchQuery()`, `formatMemoryContext()`      | Stale cache, parallel overwrite            |
+| `session-state.cjs`   | `getState()`, `incrementMemoryQueries()`, `addTickerItem()`              | State file corruption                      |
+| `seed-registry.cjs`   | `getAgentSeed()`, `parseGroundingCall()`, `extractSection()`             | Seed lookup failures                       |
+| `platform-detect.cjs` | `isCursor()`, `supportsDecisionBlock()`                                  | IDE feature detection bugs                 |
+| `text-utils.cjs`      | `sanitizeForDisplay()`                                                   | Display corruption                         |
 
 ## State Management
 
-### State Directory
+Runtime state lives under `${CLAUDE_PLUGIN_DATA}` (the per-plugin data dir) — **never**
+the project tree. This is the R37 convention (GP-855). All reads/writes/cleanup route
+through `shared/plugin-state.cjs`; no hook joins its own `.state` path.
 
-- Location: `.claude/hooks/.state/` (resolved via `PROJECT_STATE_DIR` from `env.cjs`)
-- Session state cleared on `SessionStart` event
-
-### Key State Files
-
-| File                      | Purpose                             | Written By                 |
-| ------------------------- | ----------------------------------- | -------------------------- |
-| `gutt-session.json`       | Session metadata, counters          | `session-state.cjs`        |
-| `gutt-memory-cache.json`  | Cached memory context               | `memory-cache.cjs`         |
-| `gutt-seed-registry.json` | Agent seed prompt registry          | `seed-registry.cjs`        |
-| `hook-errors.log`         | Error log for all hooks             | `debug.cjs`                |
-| `.lessons-prompted`       | Marker: lesson prompt already shown | `stop-lessons.cjs`         |
-| `.plan-feedback-prompted` | Marker: plan feedback already shown | `subagent-plan-review.cjs` |
+See **`docs/runtime-state-convention.md`** for the authoritative file set
+(`sessions/<id>.json`, `memory-cache.json`, `seed-registry.json`, `hook-errors.log`,
+`hook-invocations.log`, `<id>.lessons-prompted`), the fail-safe (every write is a no-op
+when the var is unset — never a project-tree fallback), and the SessionStart TTL sweep.
+A CI guard (`tests/check-state-location.cjs`, `npm run check:state`) fails on any direct
+`fs` write outside that dir.
 
 ### Atomic Writes (Critical for Windows)
 
-Windows requires delete-before-rename for atomic file writes:
-
-```javascript
-const tmp = target + ".tmp";
-fs.writeFileSync(tmp, data);
-try {
-  fs.unlinkSync(target);
-} catch {}
-fs.renameSync(tmp, target);
-```
-
-This prevents `EPERM` errors on Windows where rename-over-existing fails.
+Don't hand-roll this — use `plugin-state.writeJson()`, the one sanctioned idiom: a unique
+temp name (`PID + timestamp + counter`) then delete-before-rename (Windows can't overwrite
+on rename). It returns `false` on failure instead of throwing, so a caller that gates
+control flow on the write must check the return.
 
 ## Known Gotchas
 
@@ -150,7 +137,7 @@ Marker files like `.lessons-prompted` prevent showing the same prompt twice in a
 #### Step 1: Check Error Log
 
 ```bash
-cat .claude/hooks/.state/hook-errors.log
+cat "$CLAUDE_PLUGIN_DATA/hook-errors.log"
 ```
 
 Look for recent timestamps and stack traces. The log uses `debugLog()` format.
@@ -177,10 +164,10 @@ Check:
 
 ```bash
 # List state files with timestamps
-ls -la .claude/hooks/.state/
+ls -la "$CLAUDE_PLUGIN_DATA/"
 
-# Validate JSON state files
-node -e "console.log(JSON.parse(require('fs').readFileSync('.claude/hooks/.state/gutt-session.json','utf8')))"
+# Validate a per-session JSON state file
+node -e "console.log(JSON.parse(require('fs').readFileSync(process.env.CLAUDE_PLUGIN_DATA + '/sessions/<session_id>.json', 'utf8')))"
 ```
 
 Look for:

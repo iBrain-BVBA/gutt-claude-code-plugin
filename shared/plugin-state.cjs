@@ -39,6 +39,25 @@ function statePath(...segments) {
 }
 
 /**
+ * True when `absPath` resolves inside the plugin data dir. Guards the writers so a
+ * hand-built path (os.tmpdir, the project tree, a repo-relative path) can't escape
+ * ${CLAUDE_PLUGIN_DATA} even when it bypasses statePath() (R37, GP-855). This is the
+ * choke-point enforcement of AC3's named checks — the CI guard stops code from
+ * bypassing this lib; this stops the lib itself from being handed a bad path.
+ * @param {string} absPath
+ * @returns {boolean}
+ */
+function isUnderRoot(absPath) {
+  const root = stateRoot();
+  if (!root) {
+    return false;
+  }
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(absPath);
+  return resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep);
+}
+
+/**
  * null-safe existence check.
  * @param {string|null} absPath
  * @returns {boolean}
@@ -103,6 +122,10 @@ function writeJson(absPath, data) {
   if (!absPath) {
     return false;
   }
+  if (!isUnderRoot(absPath)) {
+    debugLog("plugin-state", `refusing write outside plugin data dir: ${absPath}`);
+    return false;
+  }
   if (!ensureDir(path.dirname(absPath))) {
     return false;
   }
@@ -136,6 +159,10 @@ function writeJson(absPath, data) {
  */
 function appendLine(absPath, line) {
   if (!absPath) {
+    return false;
+  }
+  if (!isUnderRoot(absPath)) {
+    debugLog("plugin-state", `refusing write outside plugin data dir: ${absPath}`);
     return false;
   }
   if (!ensureDir(path.dirname(absPath))) {

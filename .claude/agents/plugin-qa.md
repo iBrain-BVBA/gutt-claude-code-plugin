@@ -182,7 +182,7 @@ echo '{"session_id":"qa-001","tool_name":"Task","tool_input":{"prompt":"test"}}'
 
 #### 3e. Verify State Changes
 
-Check `.claude/hooks/.state/` for expected state mutations:
+Check `${CLAUDE_PLUGIN_DATA}` for expected state mutations:
 
 - State files created/updated as expected
 - JSON state files are valid JSON
@@ -224,7 +224,7 @@ Review `hooks/lib/env.cjs` and verify:
 
 - `IDE` export correctly detects `"claude"` vs `"cursor"`
 - `PLUGIN_ROOT` resolves correctly for both IDEs
-- `PROJECT_STATE_DIR` uses IDE-appropriate state directory
+- `USER_CONFIG_DIR` resolves to the IDE-appropriate user dir (`~/.claude` vs `~/.cursor`); runtime state itself now lives under `${CLAUDE_PLUGIN_DATA}` (R37), enforced by `npm run check:state`
 
 Test detection:
 
