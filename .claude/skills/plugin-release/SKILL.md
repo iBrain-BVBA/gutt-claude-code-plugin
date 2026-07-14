@@ -65,7 +65,7 @@ mcp__github__push_files(
 
 ## Step 2b: Verify Version Sync
 
-Before tagging, confirm every manifest agrees:
+Before tagging, confirm the version invariant holds:
 
 ```bash
 npm run check:version

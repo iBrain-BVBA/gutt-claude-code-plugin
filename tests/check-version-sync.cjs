@@ -24,8 +24,9 @@ if (!Array.isArray(market.plugins)) {
   process.exit(1);
 }
 
-// package.json holds the root/repo version; exactly one published plugin shares
-// its name (gutt-core) and must track it. Guard the anchor itself — a check that
+// package.json holds the root/repo version; exactly one published plugin (gutt-core)
+// has the same plugin.json `name` as package.json (`gutt-claude-code-plugin`) and must
+// track it. Guard the anchor itself — a check that
 // silently matches nothing is worse than one that fails loudly (this repo has a
 // history of silent no-op guards).
 let rootAnchored = false;
@@ -56,7 +57,7 @@ for (const entry of market.plugins) {
   // single source of truth. A stray version here would drift silently.
   if ("version" in entry) {
     errors.push(
-      `.claude-plugin/marketplace.json: entry "${entry.name}" must not carry a "version" — plugin.json is the single source of truth (GP-852)`
+      `.claude-plugin/marketplace.json: entry "${entry.name || "?"}" must not carry a "version" — plugin.json is the single source of truth (GP-852)`
     );
   }
 
@@ -72,7 +73,7 @@ for (const entry of market.plugins) {
 
 if (!rootAnchored) {
   errors.push(
-    `no marketplace plugin has name "${pkg.name}" (from package.json) — root version is unanchored; nothing verifies package.json's version`
+    `no plugin manifest has name "${pkg.name}" (from package.json) — root version is unanchored; nothing verifies package.json's version`
   );
 }
 
