@@ -37,35 +37,19 @@ Use semantic versioning (semver):
 
 **Ask the user** if the version isn't obvious from the changes. When in doubt, MINOR for features, PATCH for fixes.
 
-## Step 2: Bump Version in 3 Files
+## Step 2: Bump Version
 
-**CRITICAL:** All 3 files must have the same version. This is the most common release mistake.
+Each plugin's `.claude-plugin/plugin.json` `"version"` is the **single source of truth** for that plugin — `marketplace.json` deliberately carries no version fields (GP-852), and the update mechanism reads `plugin.json`'s version as its cache key. The root `package.json` version tracks the **root plugin**, `gutt-core` (whose `name` is `gutt-claude-code-plugin`, same as `package.json`).
 
 ### Files to update:
 
-1. **`package.json`** — top-level `"version"` field
-2. **`.claude-plugin/plugin.json`** — top-level `"version"` field
-3. **`.claude-plugin/marketplace.json`** — `plugins[0].version` field (NOT the top-level `version` which is the marketplace schema version `1.0.0`)
+1. **`package.json`** — top-level `"version"` (root/repo version)
+2. **`gutt-core/.claude-plugin/plugin.json`** — top-level `"version"`; **must equal `package.json`**
+3. Any other plugin you changed (e.g. **`auto-lint-plugin/.claude-plugin/plugin.json`**) — bump its own `"version"`; it is versioned independently and does **not** track `package.json`
 
-### How to bump:
+**Do NOT** add a `"version"` to `.claude-plugin/marketplace.json` or any of its entries — `plugin.json` is the source of truth, and `npm run check:version` (Step 2b) fails if a stray version appears there.
 
-```javascript
-// package.json
-{ "version": "X.Y.Z" }  // ← Update this
-
-// .claude-plugin/plugin.json
-{ "version": "X.Y.Z" }  // ← Update this
-
-// .claude-plugin/marketplace.json
-{
-  "version": "1.0.0",  // ← DO NOT CHANGE (marketplace schema version)
-  "plugins": [{
-    "version": "X.Y.Z"  // ← Update this
-  }]
-}
-```
-
-Use `mcp__github__push_files` to update all 3 in a single commit to master:
+Use `mcp__github__push_files` to update the changed manifests in a single commit to master:
 
 ```
 mcp__github__push_files(
@@ -73,11 +57,21 @@ mcp__github__push_files(
   repo="gutt-claude-code-plugin",
   branch="master",
   message="chore: bump version to X.Y.Z",
-  files=[...all 3 files with updated version...]
+  files=[...package.json + the bumped plugin.json file(s)...]
 )
 ```
 
 **NOTE:** Version bump commits go directly to master. This is an intentional exception to the PR workflow — version bumps are mechanical (no code logic changes) and happen after all feature PRs are already merged and reviewed. The github-workflow skill's "no direct pushes to master" rule does not apply to version bump commits.
+
+## Step 2b: Verify Version Sync
+
+Before tagging, confirm every manifest agrees:
+
+```bash
+npm run check:version
+```
+
+This is the same zero-dep guard CI runs (`tests/check-version-sync.cjs`, GP-854): it fails if `gutt-core`'s `plugin.json` version and `package.json` disagree, or if any `marketplace.json` entry carries a `version`. **Do not create the tag/release until it exits clean** — a release cut out-of-sync silently blocks users from receiving the update.
 
 ## Step 3: Create Git Tag and GitHub Release
 
@@ -186,31 +180,35 @@ After the release is created:
 
 ## Common Mistakes
 
-| Mistake                                         | Prevention                                                                         |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Forgetting one of the 3 version files           | Always use `mcp__github__push_files` with all 3 in one commit                      |
-| Bumping marketplace.json top-level version      | That's `1.0.0` (schema version) — don't touch it                                   |
-| Creating branch instead of tag                  | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
-| Missing `Co-Authored-By` in version bump commit | Include if Claude authored the bump                                                |
-| Not verifying after release                     | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release`        |
+| Mistake                                            | Prevention                                                                         |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Bumping package.json but not gutt-core plugin.json | Run `npm run check:version` before tagging (CI runs it too)                        |
+| Adding a `version` to marketplace.json             | It carries none by design (GP-852); plugin.json is the source of truth             |
+| Creating branch instead of tag                     | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
+| Missing `Co-Authored-By` in version bump commit    | Include if Claude authored the bump                                                |
+| Not verifying after release                        | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release`        |
 
 ## Troubleshooting: Version Sync Issues
 
 If the plugin reports "up to date" but the version is wrong:
 
-1. **Check all 3 version files match:**
+1. **Run the sync check:**
    ```bash
-   grep '"version"' package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
+   npm run check:version
    ```
-2. **Most likely cause:** `marketplace.json` was missed during the last version bump — this is the file the plugin installer checks
-3. **Fix:** Update the out-of-sync file, commit, push, and create a new tag if needed
+2. **Check by hand if needed:**
+   ```bash
+   grep '"version"' package.json gutt-core/.claude-plugin/plugin.json
+   ```
+3. **Most likely cause:** `package.json` and `gutt-core/.claude-plugin/plugin.json` drifted apart, or a new tag was never created. `plugin.json`'s version is the update cache key — if it didn't change, Claude Code reports "already up to date."
+4. **Fix:** Sync the versions, commit, push, and create a new tag.
 
 ## Repository Details
 
 - **Owner:** `iBrain-BVBA`
 - **Repo:** `gutt-claude-code-plugin`
 - **Default branch:** `master`
-- **Version files:** `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+- **Version files:** `package.json`, `gutt-core/.claude-plugin/plugin.json` (+ each plugin's own `.claude-plugin/plugin.json`)
 - **Tag format:** `vX.Y.Z`
 - **Auto-update:** Users with Claude Code auto-update get new versions from git tags
 
