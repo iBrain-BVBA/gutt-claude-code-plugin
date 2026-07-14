@@ -29,6 +29,9 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Check shared libs (single source + symlinks)
+        run: npm run check:shared
+
   commitlint:
     name: Commit Message Lint
     runs-on: ubuntu-latest

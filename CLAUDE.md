@@ -13,9 +13,10 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 ```
 gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── .claude-plugin/         # marketplace.json — lists gutt-core + auto-lint-plugin
+├── shared/                 # single source for hook libs; plugins symlink these (GP-853)
 ├── gutt-core/              # core plugin (name: gutt-claude-code-plugin, displayName: gutt-core)
 │   ├── .claude-plugin/     # plugin.json
-│   ├── hooks/              # Claude Code hooks (.cjs) + lib/ shared utilities
+│   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
 │   ├── skills/ agents/ commands/
 │   └── rules/ mcp.json config.json.example
 ├── auto-lint-plugin/       # standalone lint-on-edit plugin (no gutt dependency)
@@ -27,24 +28,17 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 └── package.json
 ```
 
-## Shared Lib File Propagation
+## Shared Hook Libraries
 
-Hook lib files now live in `gutt-core/hooks/lib/*.cjs` and are copied into each other plugin that needs them (`auto-lint-plugin/hooks/lib/`, `plugins/gutt-subagent-hooks-plugin/hooks/lib/`). Each plugin must be self-contained for independent installation. (GP-853 will replace these copies with in-repo symlinks and retire the table below.)
+Hook libraries have a single source in `shared/*.cjs`. Each plugin's `hooks/lib/<name>.cjs` is a **symlink** into `shared/` (`../../../shared/` from `gutt-core` and `auto-lint-plugin`; `../../../../shared/` from `plugins/gutt-subagent-hooks-plugin`). Edit the file in `shared/` once — every plugin sees it. No manual copying, no propagation table.
 
-**When modifying a lib file, changes MUST be propagated to all plugins that contain a copy:**
+- **Guard:** `npm run check:shared` (run in CI) fails if any plugin ships a divergent real copy of a shared lib instead of a symlink.
+- **Install-time:** Claude Code dereferences intra-marketplace symlinks when copying a plugin to its cache, so installed plugins get real files and stay self-contained. ([docs](https://code.claude.com/docs/en/plugins-reference#share-files-within-a-marketplace-with-symlinks))
+- **Plugin-local libs** with no `shared/` counterpart (e.g. `gutt-subagent-hooks-plugin/hooks/lib/text-utils.cjs`) stay as real files — allowed by the guard.
+- **Local dev:** `--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks. Running from the repo works (the link resolves in place); to exercise a real install, install from the git marketplace source.
+- **Windows:** symlinks need `git config core.symlinks true` (or Developer Mode); without it the links check out as plain text files.
 
-| Lib file                | auto-lint-plugin | gutt-subagent-hooks-plugin |
-| ----------------------- | ---------------- | -------------------------- |
-| `env.cjs`               | YES              | YES                        |
-| `debug.cjs`             | YES              | YES                        |
-| `platform-detect.cjs`   | YES              | YES                        |
-| `session-state.cjs`     | —                | YES                        |
-| `memory-cache.cjs`      | —                | YES                        |
-| `config.cjs`            | —                | YES                        |
-| `constants.cjs`         | —                | YES                        |
-| `text-utils.cjs`        | —                | YES                        |
-| `seed-registry.cjs`     | —                | YES                        |
-| `memory-classifier.cjs` | —                | YES                        |
+When adding a new shared lib: put the real file in `shared/`, then symlink it into each consuming plugin's `hooks/lib/`.
 
 ## Development Guidelines
 

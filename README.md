@@ -47,6 +47,8 @@ This plugin provides a memory backbone for Claude Code, enabling:
 2. **Enable:** Add to `.claude/settings.json` under `"plugins"`
 3. **Setup:** Run `/gutt-claude-code-plugin:onboard`
 
+> **Shared hook libs:** Hook libraries have a single source in `shared/`; each plugin's `hooks/lib/*` symlinks into it. Running from a cloned repo resolves those symlinks in place. Note that `--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks — to test a real install, use the git marketplace source. Marketplace installs dereference them automatically into real files.
+
 ### Cursor
 
 #### Installation
@@ -157,9 +159,10 @@ Capture learnings using one of 4 patterns:
 gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── .claude-plugin/
 │   └── marketplace.json           # lists gutt-core + auto-lint-plugin
+├── shared/                         # single source for hook libs; plugins symlink these
 ├── gutt-core/                      # core plugin — name: gutt-claude-code-plugin, displayName: gutt-core
 │   ├── .claude-plugin/plugin.json
-│   ├── hooks/                      # Claude Code hooks (.cjs) + lib/ shared utilities
+│   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
 │   ├── skills/                     # memory-retrieval, memory-capture, onboard, skills-discovery
 │   ├── agents/                     # gutt-pro-memory, memory-keeper, and other memory agents
 │   ├── commands/                   # setup, start, health, reset-counters
@@ -190,6 +193,8 @@ This plugin works on:
 - Windows (PowerShell, Git Bash)
 
 **Note:** Hooks use relative paths for cross-platform compatibility.
+
+**Windows contributors:** The shared hook libs use git symlinks. Enable them with `git config core.symlinks true` (or turn on Developer Mode) before cloning, or the links check out as plain text files. End users installing from the marketplace are unaffected — Claude Code copies real files into its cache.
 
 ## Troubleshooting
 
