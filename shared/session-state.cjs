@@ -4,26 +4,19 @@
  * Shared state management for statusline and hooks
  */
 
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
-const { PROJECT_STATE_DIR } = require("./env.cjs");
-const { debugLog } = require("./debug.cjs");
+const { statePath, readJson, writeJson } = require("./plugin-state.cjs");
 
-// Store session state in the project's IDE directory (not plugin install path)
-// This ensures state is per-project and survives plugin updates
-const STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
-
-// Per-session state file path: when init(sessionId) is called, the file name
-// includes the session ID so concurrent Claude Code sessions don't corrupt
-// each other's state.  Falls back to the legacy shared file when not initialised.
+// Runtime state lives under ${CLAUDE_PLUGIN_DATA} (R37, GP-855) — never the
+// project tree. Per-session files under sessions/<session_id>.json keep
+// concurrent Claude Code sessions from corrupting each other's state; falls
+// back to sessions/default.json when init() was never called.
 let _sessionId = null;
 
 function getStatePath() {
-  if (_sessionId) {
-    return path.join(STATE_DIR, `gutt-session-${_sessionId}.json`);
-  }
-  return path.join(STATE_DIR, "gutt-session.json");
+  return _sessionId
+    ? statePath("sessions", `${_sessionId}.json`)
+    : statePath("sessions", "default.json");
 }
 
 /**
@@ -61,55 +54,15 @@ const DEFAULT_STATE = {
   },
 };
 
-function ensureDir() {
-  if (!fs.existsSync(STATE_DIR)) {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-  }
-}
-
 function getState() {
-  try {
-    return JSON.parse(fs.readFileSync(getStatePath(), "utf8"));
-  } catch (err) {
-    if (err.code !== "ENOENT") {
-      debugLog("session-state", `Failed to read state: ${err.message}`);
-    }
-    return { ...DEFAULT_STATE };
-  }
+  return readJson(getStatePath(), { ...DEFAULT_STATE });
 }
 
 function updateState(updater) {
-  ensureDir();
   const state = getState();
   const newState = updater(state);
   newState.lastUpdated = new Date().toISOString();
-
-  // Cross-platform safe write using temp file with replace-safe rename
-  const statePath = getStatePath();
-  const tempPath = statePath + ".tmp";
-  const serialized = JSON.stringify(newState, null, 2);
-  fs.writeFileSync(tempPath, serialized);
-
-  try {
-    // On Windows, rename cannot overwrite an existing file, so delete first if present
-    if (fs.existsSync(statePath)) {
-      fs.unlinkSync(statePath);
-    }
-    fs.renameSync(tempPath, statePath);
-  } catch (renameErr) {
-    debugLog("session-state", `Atomic write failed, falling back: ${renameErr.message}`);
-    fs.writeFileSync(statePath, serialized);
-  } finally {
-    // Best-effort cleanup of any leftover temp file
-    if (fs.existsSync(tempPath)) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch {
-        // ignore cleanup errors
-      }
-    }
-  }
-
+  writeJson(getStatePath(), newState);
   return newState;
 }
 

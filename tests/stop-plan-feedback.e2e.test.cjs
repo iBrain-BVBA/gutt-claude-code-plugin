@@ -11,6 +11,18 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const os = require("os");
+const { sanitizeSessionId } = require("../gutt-core/hooks/lib/session-state.cjs");
+
+// Runtime state now lives under ${CLAUDE_PLUGIN_DATA} (R37, GP-855); each test
+// points it at a throwaway temp dir and restores the original on exit.
+const ORIGINAL_PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA;
+process.on("exit", () => {
+  if (ORIGINAL_PLUGIN_DATA === undefined) {
+    delete process.env.CLAUDE_PLUGIN_DATA;
+  } else {
+    process.env.CLAUDE_PLUGIN_DATA = ORIGINAL_PLUGIN_DATA;
+  }
+});
 
 let failures = 0;
 
@@ -29,10 +41,11 @@ console.log("=== E2E Test: stop-lessons.cjs block-once ===\n");
 function createTempEnv() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-test-"));
   const claudeDir = path.join(tmpDir, ".claude");
-  const hooksDir = path.join(claudeDir, "hooks");
-  const stateDir = path.join(hooksDir, ".state");
+  fs.mkdirSync(claudeDir, { recursive: true });
 
-  fs.mkdirSync(stateDir, { recursive: true });
+  // R37 (GP-855): runtime state lives under ${CLAUDE_PLUGIN_DATA}, not the project.
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-data-"));
+  process.env.CLAUDE_PLUGIN_DATA = dataDir;
 
   // Mock settings.json with gutt-mcp-remote configured
   const settingsPath = path.join(claudeDir, "settings.json");
@@ -48,12 +61,13 @@ function createTempEnv() {
     })
   );
 
-  return { tmpDir, claudeDir, hooksDir, stateDir };
+  return { tmpDir, claudeDir, dataDir };
 }
 
-// Helper: Write mock session state
-function writeSessionState(stateDir, sessionId, state) {
-  const statePath = path.join(stateDir, `gutt-session-${sessionId}.json`);
+// Helper: Write mock session state to the new sessions/<id>.json location
+function writeSessionState(dataDir, sessionId, state) {
+  const statePath = path.join(dataDir, "sessions", `${sanitizeSessionId(sessionId)}.json`);
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
   fs.writeFileSync(statePath, JSON.stringify(state));
 }
 
@@ -85,10 +99,10 @@ function runHook(tmpDir, sessionId, extraInput = {}) {
 // Test 1: First stop blocks
 console.log("Test 1: First stop blocks with lesson capture prompt...");
 {
-  const { tmpDir, stateDir } = createTempEnv();
+  const { tmpDir, dataDir } = createTempEnv();
   const sessionId = "test-first-stop";
 
-  writeSessionState(stateDir, sessionId, {
+  writeSessionState(dataDir, sessionId, {
     startedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
     memoryQueries: 5,
     lessonsCaptured: 0,
@@ -122,15 +136,16 @@ console.log("Test 1: First stop blocks with lesson capture prompt...");
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true });
 }
 
 // Test 2: Second stop allows through
 console.log("\nTest 2: Second stop allows through...");
 {
-  const { tmpDir, stateDir } = createTempEnv();
+  const { tmpDir, dataDir } = createTempEnv();
   const sessionId = "test-second-stop";
 
-  writeSessionState(stateDir, sessionId, {
+  writeSessionState(dataDir, sessionId, {
     startedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
     memoryQueries: 1,
     lessonsCaptured: 0,
@@ -151,6 +166,7 @@ console.log("\nTest 2: Second stop allows through...");
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true });
 }
 
 // Test 3: No MCP configured — allows stop immediately
@@ -160,9 +176,8 @@ console.log("\nTest 2: Second stop allows through...");
 console.log("\nTest 3: No MCP configured — allows stop (best-effort)...");
 {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-test-"));
-  const claudeDir = path.join(tmpDir, ".claude");
-  const stateDir = path.join(claudeDir, "hooks", ".state");
-  fs.mkdirSync(stateDir, { recursive: true });
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-data-"));
+  process.env.CLAUDE_PLUGIN_DATA = dataDir;
 
   const sessionId = "test-no-mcp";
 
@@ -176,15 +191,16 @@ console.log("\nTest 3: No MCP configured — allows stop (best-effort)...");
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true });
 }
 
 // Test 4: Session state stats appear in reason
 console.log("\nTest 4: Session state stats in reason...");
 {
-  const { tmpDir, stateDir } = createTempEnv();
+  const { tmpDir, dataDir } = createTempEnv();
   const sessionId = "test-stats";
 
-  writeSessionState(stateDir, sessionId, {
+  writeSessionState(dataDir, sessionId, {
     startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     memoryQueries: 13,
     lessonsCaptured: 2,
@@ -216,15 +232,16 @@ console.log("\nTest 4: Session state stats in reason...");
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true });
 }
 
 // Test 5: Subagent stop is always allowed (agent_id present)
 console.log("\nTest 5: Subagent stop is always allowed...");
 {
-  const { tmpDir, stateDir } = createTempEnv();
+  const { tmpDir, dataDir } = createTempEnv();
   const sessionId = "test-subagent";
 
-  writeSessionState(stateDir, sessionId, {
+  writeSessionState(dataDir, sessionId, {
     startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     memoryQueries: 10,
     lessonsCaptured: 0,
@@ -239,7 +256,7 @@ console.log("\nTest 5: Subagent stop is always allowed...");
   }
 
   // Verify marker was NOT created — subagent should not consume the block
-  const markerFile = path.join(stateDir, `${sessionId}.lessons-prompted`);
+  const markerFile = path.join(dataDir, `${sanitizeSessionId(sessionId)}.lessons-prompted`);
   if (!fs.existsSync(markerFile)) {
     pass("Subagent did not create marker file");
   } else {
@@ -255,6 +272,7 @@ console.log("\nTest 5: Subagent stop is always allowed...");
   }
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true });
 }
 
 console.log("\n=== E2E Test Complete ===");

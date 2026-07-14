@@ -6,16 +6,12 @@
  * stops. No transcript parsing — session state provides the context.
  */
 
-const fs = require("fs");
-const path = require("path");
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
 const { getState, init, sanitizeSessionId } = require("./lib/session-state.cjs");
 const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
-const { PROJECT_DIR, STATE_DIR_NAME } = require("./lib/env.cjs");
+const { statePath, exists, appendLine, writeJson } = require("./lib/plugin-state.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
-const logFile = path.join(PROJECT_DIR, STATE_DIR_NAME, "hooks", "hook-invocations.log");
-const stateDir = path.join(PROJECT_DIR, STATE_DIR_NAME, "hooks", ".state");
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
 
 let input = "";
@@ -46,27 +42,27 @@ process.stdin.on("end", () => {
   try {
     init(sessionId);
 
-    // Ensure directories exist
-    if (!fs.existsSync(path.dirname(logFile))) {
-      fs.mkdirSync(path.dirname(logFile), { recursive: true });
-    }
-    if (!fs.existsSync(stateDir)) {
-      fs.mkdirSync(stateDir, { recursive: true });
-    }
-
-    const stateFile = path.join(stateDir, `${sanitizeSessionId(sessionId)}.lessons-prompted`);
+    const invocationLog = statePath("hook-invocations.log");
+    const marker = statePath(`${sanitizeSessionId(sessionId)}.lessons-prompted`);
 
     // Already prompted this session — allow stop
-    if (fs.existsSync(stateFile)) {
-      fs.appendFileSync(
-        logFile,
-        `[${timestamp}] Stop hook: Session ${sessionId} already prompted, allowing stop\n`
+    if (exists(marker)) {
+      appendLine(
+        invocationLog,
+        `[${timestamp}] Stop hook: Session ${sessionId} already prompted, allowing stop`
       );
       process.exit(0);
     }
 
-    // Mark as prompted so the next stop goes through
-    fs.writeFileSync(stateFile, "");
+    // Mark as prompted so the next stop goes through. If the marker can't be
+    // persisted (data dir unavailable/unwritable), allow the stop rather than
+    // block — otherwise we'd re-block every stop with no way to record that we
+    // already prompted. The pre-GP-855 fs.writeFileSync threw here and hit the
+    // outer catch (fail open); writeJson returns false instead, so check it.
+    if (!writeJson(marker, { promptedAt: new Date().toISOString() })) {
+      debugLog("stop-lessons", "could not persist lessons-prompted marker; allowing stop");
+      process.exit(0);
+    }
 
     // Build context from session state
     const state = getState();
@@ -81,9 +77,9 @@ process.stdin.on("end", () => {
       `use the memory-keeper agent (Task tool with subagent_type="memory-keeper") to capture insights.\n\n` +
       `If the work was trivial, you may proceed — you will not be blocked again.`;
 
-    fs.appendFileSync(
-      logFile,
-      `[${timestamp}] Stop hook: Prompting lesson capture for session ${sessionId}\n`
+    appendLine(
+      invocationLog,
+      `[${timestamp}] Stop hook: Prompting lesson capture for session ${sessionId}`
     );
 
     // Platform-appropriate output

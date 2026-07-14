@@ -8,8 +8,6 @@
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
-const fs = require("fs");
-const path = require("path");
 const {
   init,
   getState,
@@ -17,44 +15,21 @@ const {
   resetCounters,
   setConnectionStatus,
 } = require("./lib/session-state.cjs");
-const { PROJECT_STATE_DIR } = require("./lib/env.cjs");
+const { statePath, sweep } = require("./lib/plugin-state.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
-const HOOK_STATE_DIR = path.join(PROJECT_STATE_DIR, "hooks", ".state");
+const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
- * Remove stale per-session state files older than 24 hours.
- * These accumulate as sessions start and stop; cleaning on session start
- * keeps the .state directory tidy without needing a separate cron job.
+ * Remove stale per-session files and one-shot markers older than 24h.
+ * The R37 SessionStart TTL sweep (GP-855) — generalizes the old cleanup and
+ * keeps ${CLAUDE_PLUGIN_DATA} tidy without a separate cron job. (Only patterns
+ * something actually writes: the old dead gutt-routing-session-/.plan-feedback-
+ * prompted/.session-summary-prompted filters matched nothing and were dropped.)
  */
-function cleanupStaleSessionFiles() {
-  if (!fs.existsSync(HOOK_STATE_DIR)) {
-    return;
-  }
-  const now = Date.now();
-  const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
-  const files = fs.readdirSync(HOOK_STATE_DIR);
-  for (const file of files) {
-    // Only clean up session-scoped files (contain a session ID segment)
-    if (
-      !file.startsWith("gutt-session-") &&
-      !file.startsWith("gutt-routing-session-") &&
-      !file.includes(".lessons-prompted") &&
-      !file.includes(".plan-feedback-prompted") &&
-      !file.includes(".session-summary-prompted")
-    ) {
-      continue;
-    }
-    const filePath = path.join(HOOK_STATE_DIR, file);
-    try {
-      const stat = fs.statSync(filePath);
-      if (now - stat.mtimeMs > MAX_AGE_MS) {
-        fs.unlinkSync(filePath);
-      }
-    } catch {
-      // Skip files we can't stat/delete
-    }
-  }
+function cleanupStaleState() {
+  sweep(statePath("sessions"), { maxAgeMs: MAX_AGE_MS, match: (f) => f.endsWith(".json") });
+  sweep(statePath(), { maxAgeMs: MAX_AGE_MS, match: (f) => f.endsWith(".lessons-prompted") });
 }
 
 // Read JSON input from stdin (required for hooks)
@@ -76,7 +51,7 @@ process.stdin.on("end", () => {
 
   // Clean up stale session state files older than 24 hours
   try {
-    cleanupStaleSessionFiles();
+    cleanupStaleState();
   } catch (err) {
     debugLog("SessionStart", `stale file cleanup: ${err.message || err}`);
   }
