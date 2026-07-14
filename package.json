@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "files": [
+    "shared",
     "gutt-core",
     "auto-lint-plugin",
     "plugins",
@@ -15,7 +16,8 @@
   ],
   "scripts": {
     "test": "node --test tests/**/*.test.js tests/**/*.test.cjs",
-    "test:all": "node --test tests/**/*.test.js tests/**/*.test.cjs && node tests/test-all-hooks.cjs",
+    "test:all": "node --test tests/**/*.test.js tests/**/*.test.cjs && node tests/test-all-hooks.cjs && node tests/check-shared-libs.cjs",
+    "check:shared": "node tests/check-shared-libs.cjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
