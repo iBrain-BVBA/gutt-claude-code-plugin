@@ -124,7 +124,7 @@ List all hooks that are active and what they do:
 
 You are ready to use gutt memory integration. Here is what to try:
 
-1. **Search before tasks** -- Use `/memory-retrieval` or just start working;
+1. **Search before tasks** -- Use `/memory-search` or just start working;
    the hooks automatically search memory for relevant context.
 
 2. **Capture corrections and decisions** -- Use `/memory-capture` when you
