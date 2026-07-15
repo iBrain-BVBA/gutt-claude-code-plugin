@@ -87,14 +87,15 @@ All navigation tools below are **unbounded** — no pagination, no validity
 filter — and belong to the `graph-traversal` skill (rung 3), not routine
 search.
 
-| tool                               | tier  | signature / notes                                                                                       |
-| ---------------------------------- | ----- | ------------------------------------------------------------------------------------------------------- |
-| list_entities                      | v2.0  | `(group_ids?, limit=10 max 100, cursor?)` — cursor-paginated, no query                                  |
-| find_path                          | v2.0  | `(source_id, target_id, max_depth=5 max 10)` — no validity filter; won't cross episode-only co-mentions |
-| get_node_edges                     | v2.0  | `(node_id, edge_type?)` — returns every edge, `has_more` always false                                   |
-| get_edges_between_nodes            | v2.0  | `(source_id, target_id)` — directional source→target                                                    |
-| get_entity_node / get_entity_edge  | v2/v1 | single item by id                                                                                       |
-| get_available_schemas / get_schema | v2.0  | type introspection for rung-2 filters                                                                   |
+| tool                               | tier | signature / notes                                                                                       |
+| ---------------------------------- | ---- | ------------------------------------------------------------------------------------------------------- |
+| list_entities                      | v2.0 | `(group_ids?, limit=10 max 100, cursor?)` — cursor-paginated, no query                                  |
+| find_path                          | v2.0 | `(source_id, target_id, max_depth=5 max 10)` — no validity filter; won't cross episode-only co-mentions |
+| get_node_edges                     | v2.0 | `(node_id, edge_type?)` — returns every edge, `has_more` always false                                   |
+| get_edges_between_nodes            | v2.0 | `(source_id, target_id)` — directional source→target                                                    |
+| get_entity_edge                    | v1.0 | single edge (fact) by id                                                                                |
+| get_entity_node                    | v2.0 | single node (entity) by id                                                                              |
+| get_available_schemas / get_schema | v2.0 | type introspection for rung-2 filters                                                                   |
 
 ## Episodes (full bodies — use late)
 

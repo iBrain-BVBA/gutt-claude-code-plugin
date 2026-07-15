@@ -7,7 +7,7 @@ description: "Search organizational memory efficiently before any non-trivial ta
 
 How every agent should read the gutt knowledge graph: one strong first pass,
 judged for relevance, deepened only when it falls short. This is the most-used
-memory operation and the foundation skill (R13) — other memory skills
+memory operation and the foundation skill — other memory skills
 cross-reference it rather than restate it. Its job is to surface the answer as
 fast as possible **when it exists**, and to say so plainly when it doesn't.
 
@@ -85,7 +85,7 @@ forthcoming). Cross-reference it; do not inline traversal here. Those nav tools
 are **unbounded** (no pagination, no validity filter) — one more reason to let
 that skill own them.
 
-## Summary-first discipline (R14 / R35)
+## Summary-first discipline
 
 The three summary surfaces — read these before any episode body:
 
@@ -98,7 +98,7 @@ The three summary surfaces — read these before any episode body:
 Full episode bodies (`get_episode`, `get_episodes`, `get_episodes_for_entity`)
 only to quote verbatim or recover a crucial detail. These list endpoints return
 the **full body of every item**, so page small (`limit`) and call them **last**.
-There is no server-side episode-summary retrieval (R35) — summary-first is a
+There is no server-side episode-summary retrieval — summary-first is a
 reading discipline, not a tool flag.
 
 ## Degradation
