@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `memory-search` skill (gutt-core): the shallow-first, summary-first memory-search discipline — search ladder (rung 1 shallow → rung 2 filters → rung 3 traversal handoff), summary-first episode rules, a pagination prohibition, and tool-tier degradation; exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)
+
+### Deprecated
+
+- `memory-retrieval` skill redirected to `memory-search`: its trigger phrases moved to `memory-search` so it no longer auto-fires, and the `/gutt-claude-code-plugin:memory-retrieval` command remains only as an alias (GP-856)
+
 ### Removed
 
 - Dead routing/intent-extraction engine and orphaned libs with no live callers: `agent-discovery`, `router`, `memory-routing`, `intent-extractor`, `transcript-parser`, `lesson-builder`, `plan-feedback-detector`, root `text-utils`, and the write-only `cross-session-learner` analytics (nothing reads `gutt-analytics.json`) — ~1,840 lines (GP-851, part of the 3.0 E1 foundation)

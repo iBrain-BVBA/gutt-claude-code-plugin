@@ -218,7 +218,7 @@ These skills live in the same repo under `skills/`:
 
 - **github-workflow** (`skills/github-workflow/`): Handles pre-merge workflow (PRs, Copilot review). This skill picks up after merge.
 - **memory-capture** (`skills/memory-capture/`): Use to record the release event in organizational memory.
-- **memory-retrieval** (`skills/memory-retrieval/`): Search past release context before starting.
+- **memory-search** (`skills/memory-search/`): Search past release context before starting.
 
 The **jira-ticket-creation** skill lives in the user's Cowork skills directory and can be used to link releases to Jira tickets (e.g., GP-530).
 

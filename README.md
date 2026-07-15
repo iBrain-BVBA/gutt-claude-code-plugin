@@ -109,10 +109,11 @@ The statusline is auto-enabled on first session. Optional settings in `~/.claude
 
 ### Skills
 
-| Skill            | Command                                     | Purpose                                      |
-| ---------------- | ------------------------------------------- | -------------------------------------------- |
-| memory-retrieval | `/gutt-claude-code-plugin:memory-retrieval` | 3-part memory search (facts, nodes, lessons) |
-| memory-capture   | `/gutt-claude-code-plugin:memory-capture`   | Structured lesson capture with 4 patterns    |
+| Skill            | Command                                     | Purpose                                    |
+| ---------------- | ------------------------------------------- | ------------------------------------------ |
+| memory-search    | `/gutt-claude-code-plugin:memory-search`    | Shallow-first, summary-first memory search |
+| memory-capture   | `/gutt-claude-code-plugin:memory-capture`   | Structured lesson capture with 4 patterns  |
+| memory-retrieval | `/gutt-claude-code-plugin:memory-retrieval` | Deprecated alias → use memory-search       |
 
 ### Agents
 
@@ -124,12 +125,12 @@ The statusline is auto-enabled on first session. Optional settings in `~/.claude
 
 ## Usage
 
-### Memory Retrieval
+### Memory Search
 
 Search organizational memory before starting work:
 
 ```
-/gutt-claude-code-plugin:memory-retrieval "authentication patterns"
+/gutt-claude-code-plugin:memory-search "authentication patterns"
 ```
 
 Returns:
@@ -163,7 +164,7 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── gutt-core/                      # core plugin — name: gutt-claude-code-plugin, displayName: gutt-core
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
-│   ├── skills/                     # memory-retrieval, memory-capture, onboard, skills-discovery
+│   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery
 │   ├── agents/                     # gutt-pro-memory, memory-keeper, and other memory agents
 │   ├── commands/                   # setup, start, health, reset-counters
 │   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow

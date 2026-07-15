@@ -337,7 +337,7 @@ The skill handles:
 
 Works seamlessly with:
 
-- **memory-retrieval**: Captured lessons can be searched and retrieved
+- **memory-search**: Captured lessons can be searched and retrieved
 - **planning skills**: Lessons inform future architectural decisions
 - **ralph/autopilot**: Captures lessons learned during execution
 
@@ -363,7 +363,7 @@ Always includes:
 
 All captures are logged to:
 
-- gutt memory graph (queryable via memory-retrieval)
+- gutt memory graph (queryable via memory-search)
 - Standard Claude Code conversation history
 - Returns UUID for audit trail
 
@@ -375,5 +375,5 @@ Compatible with: gutt MCP v1.0+
 ## Related
 
 - MCP Tool: `mcp__claude_ai_gutt-pro-memory__add_memory`
-- Related Skill: `memory-retrieval`
+- Related Skill: `memory-search`
 - Parent Ticket: GP-428
