@@ -1,114 +1,123 @@
 ---
 name: memory-search
-description: "Search organizational memory efficiently before any non-trivial task — a shallow-first ladder, summary-first reading, and strict token discipline over the gutt knowledge graph. Use to recall prior decisions, lessons learned, past work, patterns, owners, or why something was done. Triggers on: previous, before, last time, decision, why did we, what do we know about, prior art, past work, lessons learned, have we done, did we already, history of, who worked on."
+description: "Search organizational memory efficiently before any non-trivial task — an adaptive, relevance-gated first pass over the gutt knowledge graph, deepening only when needed. Use to recall prior decisions, lessons learned, past work, patterns, owners, or why something was done. Triggers on: previous, before, last time, decision, why did we, what do we know about, prior art, past work, lessons learned, have we done, did we already, history of, who worked on."
 ---
 
 # Memory Search
 
-How every agent should read the gutt knowledge graph: start shallow, read
-summaries, and only go deeper when a rung leaves a real gap. This is the
-foundation skill (R13) — other memory skills cross-reference it rather than
-restate it.
+How every agent should read the gutt knowledge graph: one strong first pass,
+judged for relevance, deepened only when it falls short. This is the most-used
+memory operation and the foundation skill (R13) — other memory skills
+cross-reference it rather than restate it. Its job is to surface the answer as
+fast as possible **when it exists**, and to say so plainly when it doesn't.
 
 ## Hard rules (non-negotiable — read first)
 
-1. **Ladder order.** Always open at rung 1. Climb only when the current rung
-   left a genuine gap. Never start at rung 2 or 3.
-2. **Summary-first.** Read the summary layer (node `summary`, lesson `summary`
-   / `context_summary`, `search` result `title`) before ever fetching a full
-   episode body. Full bodies are for citation or a crucial missing detail only.
-3. **Pagination is opt-in.** Never fetch the next page just because
-   `has_more` is `true`. Page only when most of the current page was relevant.
-4. **Count caps, not truncation.** There is no `summary_only` / `max_chars`
-   parameter on any tool. Control context with `max_nodes` / `max_facts` /
-   `max_results` / `limit` and by choosing summary-shaped tools. Never invent a
-   truncation flag.
-5. **Bare tool names.** Call tools by bare name (`search_memory_nodes`). The
-   `mcp__…__` prefix varies per install — never hardcode it. Use whatever your
-   tool list surfaces.
+1. **One adaptive pass first.** Open with a single pass — `search_memory_nodes`
+   and `search_memory_facts` in parallel, on your best phrasing. Never open with
+   traversal, schema calls, or `fetch_lessons_learned`.
+2. **Relevance gate.** Answer only from results that genuinely fit the question.
+   If nothing on-topic comes back, say **"no relevant memory found"** — never
+   assemble an answer out of loosely-matching distractors.
+3. **Reformulate, don't paginate.** If the first pass is weak, **rephrase** the
+   query and re-run nodes+facts (up to 2 more times, accumulating). Stop early
+   if a rephrase returns essentially the same weak results. Never fetch page 2
+   just because `has_more` is true — a different phrasing beats pagination.
+4. **Summary-first.** Read summaries (node `summary`, lesson `summary`, `search`
+   `title`) before fetching any full episode body. Full bodies only to cite or
+   recover a crucial missing detail.
+5. **Count caps, not truncation.** No `summary_only` / `max_chars` parameter
+   exists — bound context with `max_nodes` / `max_facts` / `limit` and by
+   choosing summary-shaped tools. Never invent a truncation flag.
+6. **Bare tool names.** Call `search_memory_nodes` etc. by bare name; the
+   `mcp__…__` prefix varies per install — use whatever your tool list surfaces.
 
 ## When to use
 
-- Before starting any non-trivial task, to surface prior decisions, lessons,
-  and context.
-- To answer "have we done this / why did we / what do we know about X".
-- To find who worked on something or what a work item depends on.
+- Before any non-trivial task, to surface prior decisions, lessons, and context.
+- To answer "have we done this / why did we / what do we know about X / who owns Y".
 
-For **writing** memory, see `memory-capture`. For **multi-hop traversal**
-(paths, neighborhoods), see `graph-traversal` (rung 3).
+For **writing** memory see `memory-capture`; for **multi-hop traversal** see
+`graph-traversal` (rung 3).
 
 ## The search ladder
 
-### Rung 1 — shallow (default; always available)
+### Rung 1 — the adaptive first pass (the workhorse)
 
-Two calls, then read the summaries and stop if you have enough:
+1. Run **`search_memory_nodes(query, max_nodes≈10)`** and
+   **`search_memory_facts(query, max_facts≈10)`** together on your best phrasing.
+   Nodes give entity summaries ("what/who is X"); facts give the relationships
+   and specific claims ("why / who decided / what's linked"). Most real
+   questions need **both** — facts frequently carry the actual answer and rank
+   it higher than the entity summary does.
+2. **Judge the results against the question.** If the top few clearly answer it
+   → stop and answer. This is the common, cheap case.
+3. **If weak** (nothing clearly on-topic) → **reformulate** — different wording,
+   synonyms, a more specific angle — and re-run nodes+facts. Repeat at most
+   twice; stop as soon as a rephrase adds nothing new. Accumulate across
+   phrasings; the best phrasing is often not the first.
+4. **Relevance gate before answering:** cite only genuinely on-topic results.
+   If after reformulating nothing fits, report "no relevant memory found"
+   rather than stretching a distractor into an answer.
 
-- `search_memory_nodes(query, max_nodes: 10)` — entities (Lessons, Decisions,
-  People, WorkItems). Read each node's `summary`.
-- `fetch_lessons_learned(query)` — curated lessons. Read `summary` /
-  `context_summary` + `guidance`.
+Skip `fetch_lessons_learned` in rung 1 — Lesson entities are also nodes, so
+`search_memory_nodes` already surfaces them. Reach for it only when the task is
+explicitly about lessons/pitfalls, where its `guidance` / `outcome` structure
+is worth a dedicated call.
 
-Both are v1.0-core tools — present on every install (see Degradation).
+### Rung 2 — narrow with filters (only if rung 1 left a gap)
 
-### Rung 2 — narrow (only if rung 1 left a gap)
+Introspect types with `get_available_schemas` / `get_schema` (v2.0 — skip if
+hidden), then refine:
 
-1. **Introspect types first** with `get_available_schemas` / `get_schema` so
-   your filters use real labels. (These are v2.0 — if absent, skip and use the
-   labels you already saw in rung 1.)
-2. **Refine:**
-   - Entities: `search_memory_nodes(entity="<Label>", center_node_id=<id>)`.
-   - Relationships: `search_memory_facts(edge_type="<TYPE>", center_node_id=<id>)`.
-   - Time-bound: `search_memory_facts(created_after=…, created_before=…)`.
-     Current-valid facts are the default; pass `include_invalidated=true` only
-     for history/audit.
-   - Scoping facts to a person/agent: `search_memory_facts` has **no**
-     `agent_id` — pivot via `center_node_id` from an already-scoped node
-     instead.
+- Entities: `search_memory_nodes(entity="<Label>", center_node_id=<id>)`.
+- Relationships: `search_memory_facts(edge_type="<TYPE>", center_node_id=<id>)`.
+- Time-bound: `search_memory_facts(created_after=…, created_before=…)` —
+  current-valid is the default; `include_invalidated=true` only for history.
+- To scope facts to a person/agent, pivot via `center_node_id` from an
+  already-scoped node (`search_memory_facts` has no `agent_id`).
 
 ### Rung 3 — deep traversal (hand off)
 
-Multi-hop navigation — shortest paths, full neighborhoods, walking edges — is
-the **`graph-traversal` skill** (GP-857, forthcoming). Cross-reference it; do
-not inline traversal here. Note those nav tools (`get_node_edges`,
-`get_edges_between_nodes`, `find_path`) are **unbounded** — no pagination, no
-validity filter — one more reason to let that skill own them.
+Multi-hop paths and full neighborhoods — `find_path`, `get_node_edges`,
+walking edges — belong to the **`graph-traversal` skill** (GP-857,
+forthcoming). Cross-reference it; do not inline traversal here. Those nav tools
+are **unbounded** (no pagination, no validity filter) — one more reason to let
+that skill own them.
 
 ## Summary-first discipline (R14 / R35)
 
 The three summary surfaces — read these before any episode body:
 
 - **node `summary`** — from `search_memory_nodes`.
-- **lesson `summary` / `context_summary`** — from `fetch_lessons_learned`.
+- **lesson `summary` / `context_summary`** — from `fetch_lessons_learned`
   (`context_summary` is often empty for edge-derived lessons; `summary` is the
-  dependable field.)
+  dependable field).
 - **result `title`** — from the OpenAI-compatible `search`, when present.
 
 Full episode bodies (`get_episode`, `get_episodes`, `get_episodes_for_entity`)
-only to quote verbatim or recover a crucial detail the summaries lack. These
-list endpoints return the **full body of every item**, so page small (`limit`)
-and call them **last**, after summaries have pinned the target. There is no
-server-side episode-summary retrieval (R35) — summary-first is a reading
-discipline, not a tool flag.
+only to quote verbatim or recover a crucial detail. These list endpoints return
+the **full body of every item**, so page small (`limit`) and call them **last**.
+There is no server-side episode-summary retrieval (R35) — summary-first is a
+reading discipline, not a tool flag.
 
 ## Degradation
 
-Probe with ToolSearch before assuming a tool exists — installs can hide
-advanced tools via `ENABLED_TOOL_VERSIONS` (1.0 / 2.0 / 3.0) and `TOOL_PROFILE`
-(agent-lite / agent-full / openai-research / all); hidden tools drop out of the
-tool list entirely.
+Probe with ToolSearch before assuming a tool exists — installs hide advanced
+tools via `ENABLED_TOOL_VERSIONS` (1.0 / 2.0 / 3.0) and `TOOL_PROFILE`
+(agent-lite / agent-full / openai-research / all); hidden tools drop from the
+tool list.
 
 - **v1.0-core (always present):** `search_memory_nodes`, `search_memory_facts`,
   `fetch_lessons_learned`. Rung 1 always works.
 - **v2.0 (hideable):** schema introspection + traversal.
 - **v3.0 (hideable):** the `search` / `fetch` pair.
 
-If v2/v3 tools are hidden: stay on rung 1, skip schema introspection, use the
-labels you already have, and drop the `search` titles surface. If the memory
-server is absent entirely: state the degradation in one line and proceed with
-the task — never stall or block on it.
+If v2/v3 tools are hidden: stay on rung 1 and its reformulation loop, skip
+schema introspection, drop the `search` titles surface. If the memory server is
+absent entirely: state the degradation in one line and proceed — never stall.
 
 ## References
 
-- `references/tools.md` — exact per-tool parameters, defaults, return shapes,
-  version tiers, and scoping behavior (the detail this skill deliberately keeps
-  out of the ladder above).
+- `references/tools.md` — exact per-tool parameters, return shapes, version
+  tiers, and scoping behavior.

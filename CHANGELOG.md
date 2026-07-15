@@ -4,7 +4,7 @@
 
 ### Added
 
-- `memory-search` skill (gutt-core): the shallow-first, summary-first memory-search discipline — search ladder (rung 1 shallow → rung 2 filters → rung 3 traversal handoff), summary-first episode rules, a pagination prohibition, and tool-tier degradation; exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)
+- `memory-search` skill (gutt-core): the adaptive, relevance-gated memory-search discipline — rung 1 = one `search_memory_nodes` + `search_memory_facts` pass, judged for relevance and reformulated (not paginated) when weak; a relevance gate that reports "no relevant memory found" rather than stretching a distractor; rung 2 narrowing filters; rung 3 traversal handoff to `graph-traversal`; summary-first episode rules and tool-tier degradation. Rung-1 shape validated on a 50-query live-graph benchmark (top-3 hit-rate 86% vs 58% for a fixed single pass; zero false answers on absent-topic queries). Exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)
 
 ### Deprecated
 

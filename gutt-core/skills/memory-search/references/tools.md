@@ -71,7 +71,9 @@ Returns `{message, lessons: [{id, summary, outcome, guidance, lesson_type,
 domain, source_episode_id, relevance_score, timestamp, context_summary}],
 total_count, has_more}`. `context_summary` is populated only for node-derived
 lessons (edge lessons hardcode `""`); edge lessons also carry a fixed
-`relevance_score` of `0.7`. Prefer `summary`.
+`relevance_score` of `0.7`. Prefer `summary`. For general recall this tool is
+redundant with `search_memory_nodes` (Lesson entities are themselves nodes) —
+reach for it only when a task is specifically about lessons/pitfalls.
 
 ### search (v3.0, OpenAI-compatible)
 
