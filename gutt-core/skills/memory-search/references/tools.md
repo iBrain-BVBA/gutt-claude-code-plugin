@@ -5,18 +5,30 @@ against the server source (not the tool descriptions, which can be stale or
 truncated). `group_ids` and auth-derived scoping are resolved server-side — see
 Scoping. Call tools by **bare name**; the `mcp__…__` prefix varies per install.
 
-## Version tiers
+## Version tiers and profiles
 
-Installs may hide tools via `ENABLED_TOOL_VERSIONS` (max tier; default `1.0`)
-and `TOOL_PROFILE` (tag set). Hidden tools disappear from the tool list, so
-**probe, don't assume**.
+Two **independent** gates decide whether a tool is visible — probe with
+ToolSearch, don't assume:
 
-| Tier                    | Tools                                                                                                                                                                       |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| v1.0 `core` (always on) | `search_memory_nodes`, `search_memory_facts`, `fetch_lessons_learned`, `get_user_preferences`, `get_episode`, `get_episodes`, `get_entity_edge`                             |
-| v2.0 `navigation`       | `list_entities`, `find_path`, `get_node_edges`, `get_edges_between_nodes`, `get_entity_node`, `get_episodes_for_entity`, `get_nodes_and_edges_by_episode`, `register_agent` |
-| v2.0 `schema`           | `get_available_schemas`, `get_schema`                                                                                                                                       |
-| v3.0 `deep-research`    | `search`, `fetch` (OpenAI-compatible)                                                                                                                                       |
+- **`ENABLED_TOOL_VERSIONS`** — a max version (default `1.0`; may be `2.0` / `3.0`).
+- **`TOOL_PROFILE`** — a set of tags (`core` / `navigation` / `schema` / `deep-research`).
+
+A tool shows only if its **version ≤ the enabled max AND its tag is in the
+profile.** The axes are orthogonal: `core` is a _tag_, not "v1.0"
+(`add_personal_memory` is `core`-tagged but version `3.0`), and a whole tag
+(e.g. `navigation` under an `agent-lite` profile) can be hidden even at
+version `2.0`.
+
+Read/search tools by tag (writes — `add_memory` (see `memory-capture`),
+`add_personal_memory`, `delete_entity_edge`, `delete_episode`, `clear_graph` —
+are out of scope here):
+
+| tag             | ver | tools                                                                                                                                                                       |
+| --------------- | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`          | 1.0 | `search_memory_nodes`, `search_memory_facts`, `fetch_lessons_learned`, `get_user_preferences`, `get_episode`, `get_episodes`, `get_entity_edge`                             |
+| `navigation`    | 2.0 | `list_entities`, `find_path`, `get_node_edges`, `get_edges_between_nodes`, `get_entity_node`, `get_episodes_for_entity`, `get_nodes_and_edges_by_episode`, `register_agent` |
+| `schema`        | 2.0 | `get_available_schemas`, `get_schema`                                                                                                                                       |
+| `deep-research` | 3.0 | `search`, `fetch` (OpenAI-compatible)                                                                                                                                       |
 
 ## Search & discovery
 
@@ -93,6 +105,7 @@ search.
 | find_path                          | v2.0 | `(source_id, target_id, max_depth=5 max 10)` — no validity filter; won't cross episode-only co-mentions |
 | get_node_edges                     | v2.0 | `(node_id, edge_type?)` — returns every edge, `has_more` always false                                   |
 | get_edges_between_nodes            | v2.0 | `(source_id, target_id)` — directional source→target                                                    |
+| get_nodes_and_edges_by_episode     | v2.0 | `(episode_ids: list, max 10)` — entities + facts extracted from given episodes; no validity filter      |
 | get_entity_edge                    | v1.0 | single edge (fact) by id                                                                                |
 | get_entity_node                    | v2.0 | single node (entity) by id                                                                              |
 | get_available_schemas / get_schema | v2.0 | type introspection for rung-2 filters                                                                   |
