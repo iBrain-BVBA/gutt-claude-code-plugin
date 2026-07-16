@@ -17,14 +17,13 @@ PICK**, never at a fresh search.
    memory-search's rung 1–2 results already in context. Crucially, rung 2 —
    `search_memory_facts(center_node_id=…, edge_type=…)` — is **valid-only by
    default**, so it often settles "is X still …?" without the unbounded nav
-   tools. Drop to rung-3 traversal only for what rung 2 can't give: exhaustive
-   neighborhoods, multi-hop chains, affirmative history (an edge _and_ when it
-   died), or reconciling duplicate nodes. If invoked with no entry node in hand,
-   run memory-search rung 1 first.
+   tools. Drop to rung-3 traversal only for what rung 2 can't give (see "When to
+   go deeper" below). If invoked with no entry node in hand, run memory-search
+   rung 1 first.
 
 2. **Never trust an edge's currency without checking dates — and one date isn't
-   enough.** The nav tools return superseded edges with no warning (on an active
-   item, ~a third are stale). Before presenting any edge as current:
+   enough.** The nav tools return superseded edges with no warning. Before
+   presenting any edge as current:
    - drop edges with `expired_at` or `invalid_at` set;
    - when two _live_ edges of the same kind disagree (duplicate `HAS_STATUS`,
      etc. — it happens), prefer the newest `valid_at`;
@@ -79,8 +78,6 @@ PICK**, never at a fresh search.
 
 ## The loop: pick → navigate → inspect
 
-Search already ran (memory-search rung 1–2), so you enter at **pick**.
-
 1. **Pick** — choose the most promising node id(s). Prefer specific, low-degree
    nodes over hubs (rule 4).
 2. **Navigate** — expand with the tool that fits the goal (below), filtering
@@ -99,16 +96,14 @@ Search already ran (memory-search rung 1–2), so you enter at **pick**.
 | A named node / edge                 | `get_entity_node` / `get_entity_edge`                                           |
 | Provenance or a verbatim quote      | `get_episode`                                                                   |
 
-**Depth:** one or two hops wins; three at most, for a real cascade. `find_path`'s
-default `max_depth=5` is headroom — don't raise it.
+**Depth:** `find_path`'s default `max_depth=5` is headroom — don't raise it.
 
 ## Degradation
 
-Navigation is gated two independent ways — probe with ToolSearch, don't assume:
-a tool shows only if its **version** ≤ the install's `ENABLED_TOOL_VERSIONS`
-_and_ its **tag** is in the `TOOL_PROFILE`. So the nav tools can vanish either
-because the version is below 2.0 _or_ because the profile (e.g. `agent-lite`)
-omits the `navigation` tag — the whole rung can disappear at once.
+The nav tools are version+tag gated (v2.0, `navigation`) — probe with ToolSearch,
+don't assume. Under a restrictive profile (e.g. `agent-lite`) the whole rung can
+disappear at once, and it can also drop by version; the full gating model lives
+in `references/tools.md`.
 
 Without nav tools you lose reliable enumeration and pathfinding — a real
 downgrade. Fall back to `search_memory_facts(center_node_id=…)` (relevance-
