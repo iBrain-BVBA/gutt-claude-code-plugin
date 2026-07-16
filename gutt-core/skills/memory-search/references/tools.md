@@ -19,9 +19,9 @@ profile.** The axes are orthogonal: `core` is a _tag_, not "v1.0"
 (e.g. `navigation` under an `agent-lite` profile) can be hidden even at
 version `2.0`.
 
-Read/search tools by tag (writes — `add_memory`, `delete_entity_edge`,
-`delete_episode`, `clear_graph`, `add_personal_memory` — belong to
-`memory-capture`):
+Read/search tools by tag (writes — `add_memory` (see `memory-capture`),
+`add_personal_memory`, `delete_entity_edge`, `delete_episode`, `clear_graph` —
+are out of scope here):
 
 | tag             | ver | tools                                                                                                                                                                       |
 | --------------- | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

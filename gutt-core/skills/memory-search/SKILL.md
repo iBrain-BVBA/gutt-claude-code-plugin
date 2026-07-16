@@ -103,7 +103,7 @@ reading discipline, not a tool flag.
 
 ## Degradation
 
-Probe with ToolSearch before assuming a tool exists. Visibility is gated two
+Probe with ToolSearch before assuming a tool exists. Visibility is gated in two
 **independent** ways — a tool shows only if its **version** ≤ the install's
 `ENABLED_TOOL_VERSIONS` _and_ its **tag** is in the `TOOL_PROFILE` (see
 `references/tools.md` for the full map).
