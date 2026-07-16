@@ -23,27 +23,26 @@ shows, not env vars you can't see:
   (honored only under OAuth + policy enforcement; otherwise ignored and the
   server uses the identity-derived group).
 - **`add_personal_memory`** — personal scope; no `group_id` (server derives it
-  from your login). See Personal scope.
+  from your login). See the `add_personal_memory` section below.
 
 Rule of thumb for the skill: **if you see `add_memory_to_*` tools, use them and
-pass no `group_id`; otherwise use `add_memory`.** Never assume a fixed name.
-Note that a group can be writable at call time without appearing in the tool
-list — tool visibility is filtered independently of execution authorization.
+pass no `group_id`; otherwise use `add_memory`.** Never assume a fixed name —
+your tool list is the practical source of truth for what you can target.
 
 ## add_memory (v1.0, `core`)
 
-| param              | type          | default | notes                                                        |
-| ------------------ | ------------- | ------- | ------------------------------------------------------------ |
-| name               | str           | —       | required; typed prefix + concise title                       |
-| episode_body       | str           | —       | required; ≤15,000 chars (split larger); no raw payloads      |
-| group_id           | str           | None    | see group targeting above; often ignored/overwritten         |
-| source             | str           | `text`  | `text` \| `message` \| `json`; unknown value silently → text |
-| source_description | str           | `""`    | provenance, e.g. `"memory-capture skill"`                    |
-| uuid               | str           | None    | **don't** use as an idempotency key — see caveats            |
-| previous_episodes  | list[str]     | None    | UUIDs or semantic IDs; leave unset when `last_n_episodes=0`  |
-| last_n_episodes    | int           | 3       | **pass `0` for all org/group writes (R34)**                  |
-| reference_time     | ISO8601 \| dt | now     | use tz-aware ISO 8601 when backdating                        |
-| agent_id           | str           | None    | must be `register_agent`-registered or the call errors       |
+| param              | type          | default | notes                                                                                            |
+| ------------------ | ------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| name               | str           | —       | required; typed prefix + concise title                                                           |
+| episode_body       | str           | —       | required; hard cap 15,000 chars (`MAX_CONTENT_CHARS`, rejected above it — split, don't truncate) |
+| group_id           | str           | None    | see group targeting above; often ignored/overwritten                                             |
+| source             | str           | `text`  | `text` \| `message` \| `json`; unknown value silently → text                                     |
+| source_description | str           | `""`    | provenance, e.g. `"memory-capture skill"`                                                        |
+| uuid               | str           | None    | **don't** use as an idempotency key — see caveats                                                |
+| previous_episodes  | list[str]     | None    | UUIDs or semantic IDs; leave unset when `last_n_episodes=0`                                      |
+| last_n_episodes    | int           | 3       | **pass `0` for all org/group writes** (keeps them self-contained)                                |
+| reference_time     | ISO8601 \| dt | now     | use tz-aware ISO 8601 when backdating                                                            |
+| agent_id           | str           | None    | must be `register_agent`-registered or the call errors                                           |
 
 The per-group `add_memory_to_<alias>` tools take the **same params minus
 `group_id`** (it's fixed to that group).

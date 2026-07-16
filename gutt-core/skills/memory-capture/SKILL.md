@@ -23,10 +23,11 @@ _whether you may write it without asking_.
    signal** — the user asked for it or confirmed it. No signal (you inferred it
    yourself) → **draft it for review, don't write.** Can't confidently type it →
    treat it as gated.
-3. **`last_n_episodes=0` on every org/group write (R34).** Org episodes must be
-   self-contained; the server default of `3` is wrong for plugin writes — it
-   pulls unrelated recent episodes into entity/edge extraction. Non-zero is
-   meaningful **only** in personal scope, for intentionally chaining check-ins.
+3. **Keep org writes self-contained — `last_n_episodes=0`.** Pass
+   `last_n_episodes=0` on every org/group write; the server default of `3` is
+   wrong for plugin writes — it pulls unrelated recent episodes into entity/edge
+   extraction. Non-zero is meaningful **only** in personal scope, for
+   intentionally chaining check-ins.
 4. **Discover the write tool — don't assume its name.** Depending on the
    deployment you'll see per-group `add_memory_to_<group>` tools (pick the one
    for your target group; there is **no `group_id` argument**), or a generic
@@ -34,9 +35,10 @@ _whether you may write it without asking_.
    user who can write to 2+ groups often sees **only** the per-group tools —
    generic `add_memory` is hidden. Read your tool list; never hardcode a tool
    name or the `mcp__…__` prefix. (`references/tools.md` has the full map.)
-5. **One focused episode, ≤15,000 chars.** Split anything larger into several
-   self-contained episodes. Never store raw payloads, logs, secrets, PII, or
-   one-off noise — capture the insight, not the transcript.
+5. **One focused episode, ≤15,000 chars.** The server hard-rejects anything
+   larger, so split it into several self-contained episodes rather than let the
+   write fail. Never store raw payloads, logs, secrets, PII, or one-off noise —
+   capture the insight, not the transcript.
 6. **A write is queued, not confirmed.** A success response means the episode was
    _enqueued_; extraction can still fail silently server-side. Don't treat
    success as proof it landed — verify (see Batching).
@@ -60,19 +62,19 @@ fight the tier gate: a Decision you inferred without the user saying so is a
    no human signal → draft for review and stop here.
 3. **Dedup.** `memory-search` rung 1 on the key terms. Already there? Write only
    the delta as a new episode, or skip.
-4. **Structure.** `name` with a typed prefix (`Decision:` / `Pitfall:` /
-   `Pattern:` / `Insight:` / `Incident:`); `episode_body` as
-   Context → Insight → Outcome → Guidance, ≤15k; `source="json"` for structured
-   runs, `"text"` for narrative; tz-aware ISO `reference_time` only when
-   backdating.
+4. **Structure.** `name` with a typed prefix — one of the five tier types
+   (`Insight:` / `Incident:` / `Lesson:` / `Decision:` / `WorkingAgreement:`);
+   `episode_body` as Context → Insight → Outcome → Guidance, ≤15,000 chars;
+   `source="json"` for structured runs, `"text"` for narrative; tz-aware ISO
+   `reference_time` only when backdating.
 5. **Write.** Choose the tool per rule 4; pass `last_n_episodes=0`. Omit
    `group_id` unless you're on the generic tool and must target a specific group.
 6. **Verify.** After the batch, confirm with a search (see Batching).
 
 ## Trust tiers
 
-The tier map is single-sourced from the E4 joint ADR (S4.5); until that lands,
-this is the operative map, from the program's capture policy:
+Until the shared trust-tier policy is finalized in a later story, this is the
+operative map, from the program's capture policy:
 
 **Auto-write — no confirmation needed:**
 
@@ -86,8 +88,8 @@ this is the operative map, from the program's capture policy:
 - **Lesson** — a corrective takeaway. _"Don't hardcode the MCP prefix; read it
   from the tool list."_ (User says "capture that lesson" → write; you inferred
   it → queue.)
-- **Decision** — a choice with rationale. _"We chose Design B for version-sync
-  because AC1 forbids a marketplace version."_
+- **Decision** — a choice with rationale. _"We kept the marketplace file
+  version-free to avoid a second source of version drift."_
 - **WorkingAgreement** — a team rule. _"Every PR gets a Copilot review before
   merge."_
 
@@ -97,17 +99,21 @@ Anything you can't cleanly place → treat as gated.
 
 Don't write one episode at a time in a tight loop. Collect up to **5–10**
 episodes, write them, then run **one** verification search to confirm they're in
-the graph — a success response only means _queued_ (rule 6). If the check comes
-back empty, the writes didn't land: re-queue them, don't silently move on.
+the graph — a success response only means _queued_ (rule 6). Extraction is
+asynchronous, so an immediate empty result may just mean not-yet-processed:
+re-check after a moment before concluding anything was lost, and re-queue only
+what's still missing — re-queueing a still-processing write manufactures the
+duplicate rule 1 forbids.
 
 ## Degradation
 
 If no write tool is visible (fail-closed auth with no writable group) or the
-memory server is absent, **do not drop the capture.** Record the full episode
-draft(s) — name, body, type, intended scope — to the pending capture queue and
-move on; flush them once a write tool is available. State the degradation in one
-line. (The queue file and its flush are owned by the capture pipeline; here the
-rule is simply: never lose a capture to an unavailable tool.)
+memory server is absent, **do not drop the capture.** Hold the full episode
+draft(s) — name, body, type, intended scope — in your working notes and retry
+when a write tool returns; if the write can't complete this session, surface the
+drafts to the user so they aren't lost. State the degradation in one line. (A
+durable capture queue — `capture-queue.jsonl` — is coming with the background
+pipeline; until it lands, retry in-session.)
 
 ## References
 
@@ -115,5 +121,5 @@ rule is simply: never lose a capture to an unavailable tool.)
   `add_memory_to_<group>`, `add_personal_memory`), params and defaults, the
   group-targeting model, and the queued-not-persisted caveat.
 - Dedup and read tools: `memory-search`. Relationship checks: `graph-traversal`.
-- Autonomous end-of-session capture is done by the **memory-keeper** agent, which
-  follows these same rules.
+- Autonomous end-of-session capture is done by the **memory-keeper** agent (being
+  brought in line with these rules).
