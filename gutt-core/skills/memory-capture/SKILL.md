@@ -1,379 +1,119 @@
 ---
 name: memory-capture
-description: "Capture lessons, decisions, and patterns into gutt memory graph. Triggers on: actually, no that's wrong, we decided, lesson learned, next time, remember that."
+description: "Write to the gutt knowledge graph with discipline — the capture counterpart to memory-search. Use when something learned, decided, or agreed is worth persisting for future work; classify it, dedup against what's already there, and write one self-contained episode. Auto-write covers only Insight and Incident — Lesson, Decision, and WorkingAgreement need an explicit human signal first. Triggers on: remember that, capture this, we decided, lesson learned, next time, note that, actually that's wrong, document this decision, store this insight, record this, worth remembering, don't forget."
 ---
 
-# Memory Capture Skill
-
-## Overview
-
-The Memory Capture skill provides a structured workflow for capturing lessons, decisions, insights, and patterns into the gutt memory graph. It guides users through pattern-based lesson capture with anti-rationalization enforcement and proper entity classification.
-
-## Capabilities
-
-This skill helps capture organizational knowledge in 4 structured patterns:
-
-1. **Negation** - "X does NOT work because Y"
-2. **Replacement** - "Instead of X, use Y"
-3. **Decision** - "We decided X because Y"
-4. **Lesson** - "Learned that X when Y"
-
-## Pattern Detection & Classification
-
-The skill automatically:
-
-- Detects which pattern the user's input matches
-- Classifies into the appropriate entity type (Lesson, Decision, Insight)
-- Structures the content for optimal memory storage
-- Calls `add_memory` with proper formatting
-- Returns confirmation with memory UUID
-
-### Pattern → Entity Type Mapping
-
-| Pattern          | Entity Type       | Example                                                                                                |
-| ---------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
-| Negation         | Lesson            | "React Context does NOT work for high-frequency updates because it triggers full subtree re-renders"   |
-| Replacement      | Lesson            | "Instead of useContext for global state, use Zustand for better performance"                           |
-| Decision         | Decision          | "We decided to use PostgreSQL over MongoDB because we need ACID guarantees for financial transactions" |
-| Lesson (general) | Lesson or Insight | "Learned that always validate API responses in TypeScript, even with type assertions"                  |
-
-## Anti-Rationalization Protocol
-
-The skill actively fights the "too minor to capture" trap:
-
-- **No lesson is too small**: Micro-patterns compound over time
-- **Capture immediately**: Memory fades, context is lost
-- **Err on the side of over-capturing**: Better to have it than need it
-
-Common rationalizations the skill rejects:
-
-- "This is obvious"
-- "Everyone knows this"
-- "It's just one line"
-- "I'll remember this"
-- "Not worth documenting"
-
-### Exception: Duplicates
-
-The one valid reason NOT to capture is if the lesson already exists in memory.
-This is not rationalization — this is data hygiene. Always search first.
-
-## Usage
-
-### Automatic Invocation
-
-The skill activates automatically when users say:
-
-- "Remember that..."
-- "Capture this lesson..."
-- "Document this decision..."
-- "Store this insight..."
-- "Note that [pattern]..."
-
-### Manual Invocation
-
-```
-/gutt-claude-code-plugin:memory-capture
-```
-
-## Workflow
-
-1. **Detect Pattern**: Analyze user input to identify which of the 4 patterns applies
-2. **Extract Components**: Parse the "what" and "why" from the input
-3. **Classify Entity**: Map pattern to entity type (Lesson, Decision, Insight)
-4. **SEARCH FOR DUPLICATES (MANDATORY)**: Before capturing, you MUST search memory for similar existing entries:
-
-   ```
-   mcp__claude_ai_gutt-pro-memory__fetch_lessons_learned(query="[key terms from the lesson]", max_results=5)
-   mcp__claude_ai_gutt-pro-memory__search_memory_nodes(query="[key terms]", entity="[Lesson|Decision|Insight]", max_nodes=5)
-   ```
-
-   **If a similar entry exists (same topic, same insight):**
-   - DO NOT call add_memory
-   - Tell the user: "This is already captured in memory: [existing entry name] (uuid: [id]). Skipping duplicate."
-   - If the new version has additional context, suggest updating the existing entry instead
-
-   **If no similar entry exists:** Proceed to step 5.
-
-5. **Structure Content**: Format episode body with clear structure
-6. **Enrich Context**: Add source description, timestamp
-7. **Call add_memory**: Invoke MCP tool with proper parameters
-8. **Confirm Capture**: Return success message with UUID and classified type
-
-## Implementation
-
-### Pattern Detection Logic
-
-```
-IF input contains "does NOT work" OR "doesn't work" OR "fails when":
-  → NEGATION pattern
-  → Extract: what doesn't work, why it fails
-
-ELIF input contains "instead of" OR "rather than" OR "use X over Y":
-  → REPLACEMENT pattern
-  → Extract: old approach, new approach, reason
-
-ELIF input contains "decided" OR "chose" OR "selected":
-  → DECISION pattern
-  → Extract: decision made, rationale, constraints
-
-ELSE:
-  → LESSON pattern (general)
-  → Extract: what was learned, context
-```
-
-### Entity Classification
-
-```
-NEGATION → Lesson
-  Format: "What: [X] does not work. Why: [Y]. Context: [Z]."
-
-REPLACEMENT → Lesson
-  Format: "Old: [X]. New: [Y]. Reason: [Z]."
-
-DECISION → Decision
-  Format: "Decision: [X]. Rationale: [Y]. Trade-offs: [Z]."
-
-LESSON → Lesson or Insight
-  Lesson: Actionable, specific technique or pattern
-  Insight: Broader understanding or principle
-  Format: "Learned: [X]. Context: [Y]. Impact: [Z]."
-```
-
-### add_memory Call Structure
-
-```javascript
-mcp__claude_ai_gutt -
-  pro -
-  memory__add_memory({
-    name: "<Pattern Type>: <Brief Summary>",
-    episode_body: "<Structured content with what/why/context>",
-    source: "text",
-    source_description: "memory-capture skill - <pattern> pattern",
-    last_n_episodes: 0, // Self-sufficient episodes
-  });
-```
-
-## Output Format
-
-Upon successful capture, the skill returns:
-
-```
-Memory captured successfully!
-
-Pattern: <Negation|Replacement|Decision|Lesson>
-Entity Type: <Lesson|Decision|Insight>
-UUID: <uuid>
-
-Stored: <brief summary of what was captured>
-```
-
-## Examples
-
-### Example 1: Negation Pattern
-
-**User Input:**
-"React useContext does NOT work for frequently updating global state because it causes full component tree re-renders"
-
-**Detected Pattern:** Negation
-
-**Entity Type:** Lesson
-
-**Episode Body:**
-
-```
-What: React useContext for frequently updating global state
-Why it doesn't work: Causes full component tree re-renders on every update
-Impact: Performance degradation in apps with high-frequency state changes
-Alternative: Consider Zustand, Jotai, or component composition patterns
-```
-
-**add_memory Call:**
-
-```javascript
-{
-  name: "Negation: React useContext performance issue",
-  episode_body: "[structured content above]",
-  source: "text",
-  source_description: "memory-capture skill - negation pattern",
-  last_n_episodes: 0
-}
-```
-
-### Example 2: Replacement Pattern
-
-**User Input:**
-"Instead of async/await in tight loops, use Promise.all for parallel execution"
-
-**Detected Pattern:** Replacement
-
-**Entity Type:** Lesson
-
-**Episode Body:**
-
-```
-Old Approach: async/await in tight loops (sequential execution)
-New Approach: Promise.all for parallel execution
-Reason: Dramatically reduces total execution time when operations are independent
-Context: Array processing, API calls, file I/O operations
-Example: Array.map + Promise.all instead of for-of loop with await
-```
-
-**add_memory Call:**
-
-```javascript
-{
-  name: "Replacement: Promise.all over sequential await",
-  episode_body: "[structured content above]",
-  source: "text",
-  source_description: "memory-capture skill - replacement pattern",
-  last_n_episodes: 0
-}
-```
-
-### Example 3: Decision Pattern
-
-**User Input:**
-"We decided to use PostgreSQL over MongoDB because we need strong consistency guarantees for financial transactions"
-
-**Detected Pattern:** Decision
-
-**Entity Type:** Decision
-
-**Episode Body:**
-
-```
-Decision: Use PostgreSQL as primary database
-Alternative Considered: MongoDB
-Rationale: Need ACID guarantees for financial transactions
-Context: Financial application with complex relational data
-Trade-offs:
-  - Pro: Strong consistency, mature ecosystem, SQL familiarity
-  - Con: Less flexible schema, potentially more complex migrations
-Date: [timestamp]
-```
-
-**add_memory Call:**
-
-```javascript
-{
-  name: "Decision: PostgreSQL for financial transactions",
-  episode_body: "[structured content above]",
-  source: "text",
-  source_description: "memory-capture skill - decision pattern",
-  last_n_episodes: 0
-}
-```
-
-### Example 4: General Lesson Pattern
-
-**User Input:**
-"Learned that TypeScript's type assertions (as) don't provide runtime safety - always validate at API boundaries"
-
-**Detected Pattern:** Lesson (general)
-
-**Entity Type:** Lesson
-
-**Episode Body:**
-
-```
-Learned: TypeScript type assertions provide no runtime safety
-Context: API boundary validation, external data sources
-Why It Matters: Silent failures when API returns unexpected shape
-Best Practice: Always validate external data with zod, io-ts, or manual checks
-Anti-pattern: Trusting 'as' assertions on unvalidated data
-Real-world trigger: Production bug from changed API response structure
-```
-
-**add_memory Call:**
-
-```javascript
-{
-  name: "Lesson: TypeScript type assertions need runtime validation",
-  episode_body: "[structured content above]",
-  source: "text",
-  source_description: "memory-capture skill - lesson pattern",
-  last_n_episodes: 0
-}
-```
-
-## Advanced Features
-
-### Context Enrichment
-
-The skill automatically enriches captured memories with:
-
-- **Timestamp**: When the lesson was captured
-- **Source**: Identifies this as a memory-capture skill capture
-- **Pattern Type**: Tags with the detected pattern for retrieval
-
-### UUID Return
-
-Every capture returns a UUID that can be used to:
-
-- Reference this memory in future episodes
-- Create explicit relationships between memories
-- Retrieve or update the memory later
-
-### Self-Sufficient Episodes
-
-Uses `last_n_episodes: 0` because:
-
-- Each capture is self-contained
-- Doesn't need historical context for processing
-- Reduces token costs
-- Faster processing
-
-## Error Handling
-
-The skill handles:
-
-- **Ambiguous patterns**: Asks clarifying questions
-- **Missing context**: Prompts for "why" or "what happened"
-- **Too vague**: Requests more specificity
-- **add_memory failures**: Reports error with actionable next steps
-
-## Integration with Other Skills
-
-Works seamlessly with:
-
-- **memory-search**: Captured lessons can be searched and retrieved
-- **planning skills**: Lessons inform future architectural decisions
-- **ralph/autopilot**: Captures lessons learned during execution
-
-## Best Practices
-
-1. **Capture immediately**: Don't wait until "later"
-2. **Include context**: What were you working on? What triggered this?
-3. **Be specific**: "React hooks" vs "useEffect with async functions"
-4. **Capture failures**: Especially valuable - what DIDN'T work
-5. **Capture alternatives**: What did you choose instead?
-6. **No self-censorship**: Capture even "obvious" things
-
-## Configuration
-
-### Source Description Format
-
-Always includes:
-
-- Skill name: "memory-capture skill"
-- Pattern detected: "negation pattern", "replacement pattern", etc.
-
-## Monitoring
-
-All captures are logged to:
-
-- gutt memory graph (queryable via memory-search)
-- Standard Claude Code conversation history
-- Returns UUID for audit trail
-
-## Version
-
-Version: 1.0.0
-Compatible with: gutt MCP v1.0+
-
-## Related
-
-- MCP Tool: `mcp__claude_ai_gutt-pro-memory__add_memory`
-- Related Skill: `memory-search`
-- Parent Ticket: GP-428
+# Memory Capture
+
+How every agent should write to the gutt knowledge graph: classify what you
+have, gate it by trust tier, make sure it isn't already there, then write one
+self-contained episode. This is the **write** counterpart to `memory-search`
+and `graph-traversal` (which only read) — they forward-reference it rather than
+restate it. Most captures are cheap; the discipline is in _what_ you write, and
+_whether you may write it without asking_.
+
+## Hard rules (non-negotiable — read first)
+
+1. **Search before you write.** Run `memory-search` rung 1 first. If the point
+   already exists, don't duplicate it — write a new episode with **only what
+   changed**. Dedup ≠ update: a near-match is a reason to write _less_, never to
+   rewrite the old entry.
+2. **Trust-tier gate.** Auto-write only **Insight** and **Incident**.
+   **Lesson**, **Decision**, and **WorkingAgreement** need an **explicit human
+   signal** — the user asked for it or confirmed it. No signal (you inferred it
+   yourself) → **draft it for review, don't write.** Can't confidently type it →
+   treat it as gated.
+3. **`last_n_episodes=0` on every org/group write (R34).** Org episodes must be
+   self-contained; the server default of `3` is wrong for plugin writes — it
+   pulls unrelated recent episodes into entity/edge extraction. Non-zero is
+   meaningful **only** in personal scope, for intentionally chaining check-ins.
+4. **Discover the write tool — don't assume its name.** Depending on the
+   deployment you'll see per-group `add_memory_to_<group>` tools (pick the one
+   for your target group; there is **no `group_id` argument**), or a generic
+   `add_memory` (pass `group_id` to target a group), or `add_personal_memory`. A
+   user who can write to 2+ groups often sees **only** the per-group tools —
+   generic `add_memory` is hidden. Read your tool list; never hardcode a tool
+   name or the `mcp__…__` prefix. (`references/tools.md` has the full map.)
+5. **One focused episode, ≤15,000 chars.** Split anything larger into several
+   self-contained episodes. Never store raw payloads, logs, secrets, PII, or
+   one-off noise — capture the insight, not the transcript.
+6. **A write is queued, not confirmed.** A success response means the episode was
+   _enqueued_; extraction can still fail silently server-side. Don't treat
+   success as proof it landed — verify (see Batching).
+
+## When to write — and when not to
+
+**Write** when there's a concrete, reusable insight a future agent couldn't get
+from `git log` or reading the code: a decision and its rationale, a pitfall and
+its cause, a pattern that worked, a working agreement.
+
+**Don't write** trivia, restated task summaries, anything derivable from the
+code or history, incomplete or abandoned work, or sensitive data. And don't
+fight the tier gate: a Decision you inferred without the user saying so is a
+**review** item, not a write.
+
+## The capture path
+
+1. **Worth it?** Apply the significance test above. Cheap, obvious, or transient
+   → stop.
+2. **Classify + gate.** Pick the type (below) and apply rule 2. Gated type with
+   no human signal → draft for review and stop here.
+3. **Dedup.** `memory-search` rung 1 on the key terms. Already there? Write only
+   the delta as a new episode, or skip.
+4. **Structure.** `name` with a typed prefix (`Decision:` / `Pitfall:` /
+   `Pattern:` / `Insight:` / `Incident:`); `episode_body` as
+   Context → Insight → Outcome → Guidance, ≤15k; `source="json"` for structured
+   runs, `"text"` for narrative; tz-aware ISO `reference_time` only when
+   backdating.
+5. **Write.** Choose the tool per rule 4; pass `last_n_episodes=0`. Omit
+   `group_id` unless you're on the generic tool and must target a specific group.
+6. **Verify.** After the batch, confirm with a search (see Batching).
+
+## Trust tiers
+
+The tier map is single-sourced from the E4 joint ADR (S4.5); until that lands,
+this is the operative map, from the program's capture policy:
+
+**Auto-write — no confirmation needed:**
+
+- **Insight** — an observation or understanding gained. _"Extraction folds in
+  the last N episodes, so org writes should pass `last_n_episodes=0`."_
+- **Incident** — something broke, and what happened. _"A marker file was written
+  on MCP failure too, permanently poisoning the needs-onboarding gate."_
+
+**Gated — write only on an explicit human signal, otherwise queue for review:**
+
+- **Lesson** — a corrective takeaway. _"Don't hardcode the MCP prefix; read it
+  from the tool list."_ (User says "capture that lesson" → write; you inferred
+  it → queue.)
+- **Decision** — a choice with rationale. _"We chose Design B for version-sync
+  because AC1 forbids a marketplace version."_
+- **WorkingAgreement** — a team rule. _"Every PR gets a Copilot review before
+  merge."_
+
+Anything you can't cleanly place → treat as gated.
+
+## Batching and verification
+
+Don't write one episode at a time in a tight loop. Collect up to **5–10**
+episodes, write them, then run **one** verification search to confirm they're in
+the graph — a success response only means _queued_ (rule 6). If the check comes
+back empty, the writes didn't land: re-queue them, don't silently move on.
+
+## Degradation
+
+If no write tool is visible (fail-closed auth with no writable group) or the
+memory server is absent, **do not drop the capture.** Record the full episode
+draft(s) — name, body, type, intended scope — to the pending capture queue and
+move on; flush them once a write tool is available. State the degradation in one
+line. (The queue file and its flush are owned by the capture pipeline; here the
+rule is simply: never lose a capture to an unavailable tool.)
+
+## References
+
+- `references/tools.md` — exact write-tool contracts (`add_memory`,
+  `add_memory_to_<group>`, `add_personal_memory`), params and defaults, the
+  group-targeting model, and the queued-not-persisted caveat.
+- Dedup and read tools: `memory-search`. Relationship checks: `graph-traversal`.
+- Autonomous end-of-session capture is done by the **memory-keeper** agent, which
+  follows these same rules.
