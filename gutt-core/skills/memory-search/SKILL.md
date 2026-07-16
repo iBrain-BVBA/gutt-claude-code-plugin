@@ -80,8 +80,8 @@ hidden), then refine:
 ### Rung 3 — deep traversal (hand off)
 
 Multi-hop paths and full neighborhoods — `find_path`, `get_node_edges`,
-walking edges — belong to the **`graph-traversal` skill** (GP-857,
-forthcoming). Cross-reference it; do not inline traversal here. Those nav tools
+walking edges — belong to the **`graph-traversal` skill**. Cross-reference it;
+do not inline traversal here. Those nav tools
 are **unbounded** (no pagination, no validity filter) — one more reason to let
 that skill own them.
 
@@ -103,19 +103,20 @@ reading discipline, not a tool flag.
 
 ## Degradation
 
-Probe with ToolSearch before assuming a tool exists — installs hide advanced
-tools via `ENABLED_TOOL_VERSIONS` (1.0 / 2.0 / 3.0) and `TOOL_PROFILE`
-(agent-lite / agent-full / openai-research / all); hidden tools drop from the
-tool list.
+Probe with ToolSearch before assuming a tool exists. Visibility is gated two
+**independent** ways — a tool shows only if its **version** ≤ the install's
+`ENABLED_TOOL_VERSIONS` _and_ its **tag** is in the `TOOL_PROFILE` (see
+`references/tools.md` for the full map).
 
-- **v1.0-core (always present):** `search_memory_nodes`, `search_memory_facts`,
-  `fetch_lessons_learned`. Rung 1 always works.
-- **v2.0 (hideable):** schema introspection + traversal.
-- **v3.0 (hideable):** the `search` / `fetch` pair.
+- **Rung 1 always works:** `search_memory_nodes` and `search_memory_facts` are
+  `core`-tagged and v1.0 — present under any profile.
+- **Hideable:** schema introspection and traversal (`navigation` / `schema`
+  tags, v2.0) and the `search` / `fetch` pair (v3.0) — each can drop out by
+  version _or_ by profile (e.g. `agent-lite` omits `navigation` even at v2.0).
 
-If v2/v3 tools are hidden: stay on rung 1 and its reformulation loop, skip
-schema introspection, drop the `search` titles surface. If the memory server is
-absent entirely: state the degradation in one line and proceed — never stall.
+If those are hidden: stay on rung 1 and its reformulation loop, skip schema
+introspection, drop the `search` titles surface. If the memory server is absent
+entirely: state the degradation in one line and proceed — never stall.
 
 ## References
 
