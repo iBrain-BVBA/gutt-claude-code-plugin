@@ -3,32 +3,42 @@
 Single source of truth for how an agent identifies itself in gutt memory: what its
 name is, how it registers, how it tags what it writes, and the order it recalls in.
 The `agent-memory-protocol` skill and the gutt-core agents build on this — they
-reference it rather than restate it.
+reference it rather than restate it, and where they compress it, this file wins.
 
-Scope: this is the **team / org graph** only. Personal-scope memory carries no agent
-identity (see Guard rails).
+Contents: Name · Register · Write · Recall · Unavailable · Guard rails · Template.
 
 ## Name
 
 - A registered agent is a node `{alias}:Agent:{name}` — you supply `{name}`; the server
-  adds the `{alias}:Agent:` prefix from the memory group (e.g. `gutt_pro:Agent:pr-reviewer`).
-- Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`). To run the same agent
-  with separate memory per team, project, or person, add a scope suffix to the name —
-  `pr-reviewer--acme-web`. The suffix lives inside the name, because registration is keyed
-  on the name (below).
+  derives the `{alias}:Agent:` prefix from the memory group (e.g. `gutt_pro:Agent:pr-reviewer`).
+- Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`).
+- Identity is keyed on **name + group** (see Register), so different groups separate
+  same-named agents on their own. Add a `--<scope>` suffix — `pr-reviewer--acme-web` —
+  only to run separate instances of one agent **inside the same group** (per team,
+  project, or individual context sharing one org graph). The double dash marks where
+  the name ends and the scope begins; a single dash would be ambiguous inside
+  kebab-case names.
+- Display note: node IDs are slugified, which collapses `--` to a single `-`
+  (`gutt_pro:Agent:pr-reviewer-acme-web`). The registered name keeps the double dash
+  and stays the identity key; the collapsed ID is cosmetic.
 - Resolve which name to use in this order: bound config (the `/gutt:agent-scope` setting,
   when it exists) → the git remote's owner/repo → the working folder's name.
 
 ## Register (once, before tagging or scoped recall)
 
 ```
-register_agent(name="pr-reviewer", description="Reviews PRs for correctness and team standards")
+register_agent(
+  name="pr-reviewer",
+  description="Reviews PRs for correctness and team standards",
+  group_id="<group>")
 ```
 
-- Get-or-create: the same name always resolves to the same identity node (keyed on
-  name + group). Re-registering only refreshes the description; it never duplicates.
+- Get-or-create, keyed on **name + group**: the same pair always resolves to the same
+  identity node. Re-registering only refreshes the description; it never duplicates.
   Idempotent and cheap.
-- No group needed — the server uses its default group.
+- **Choosing the group:** if you can write to more than one group, pass `group_id`
+  explicitly — omitting it targets an unspecified one of your groups, not a fixed
+  default. With exactly one group you may omit it.
 - If a later scoped call fails with an unknown-agent error, register again and retry.
 
 ## Write (as this agent): tag every write
@@ -38,25 +48,28 @@ register_agent(name="pr-reviewer", description="Reviews PRs for correctness and 
   (provenance) and lets you recall it later from your own scope.
 - This rule is about authorship — it applies to writes _an agent_ makes. Memory captured
   from the main session (e.g. the `memory-capture` skill used directly, with no agent)
-  carries no `agent_id`; there is no agent identity to attach. See `memory-capture` for that
-  path.
+  carries no `agent_id`; there is no agent identity to attach.
 - Tagging hides nothing: a tagged write is still found by anyone's un-scoped search — the
   tag only _adds_ it to your scope on top. So as an agent, always tag; there is no
-  "leave it untagged" case for your own writes.
-- Set `last_n_episodes=0` on org-scope writes (R34).
+  "leave it untagged" case for your own org writes.
+- Set `last_n_episodes=0` on org-scope writes.
 - The write response does not confirm the tag landed. When it matters, verify with
   `get_episodes_for_entity(<your agent node>)`. Org writes cannot be undone from a normal
   session — write with care.
 
-## Recall (two steps, always both)
+## Recall (two steps — the group-wide one is never optional)
 
-1. **Your scope first** — `search_memory_nodes(query, agent_id="<name>", include_related=True)`
-   and `fetch_lessons_learned(query, agent_id="<name>")`. This is what you have learned.
-2. **Then group-wide** — the same calls without `agent_id`. This is what the whole team knows.
+1. **Your scope first** (default; skip only for purely org-wide questions) —
+   `search_memory_nodes(query="…", agent_id="<name>", include_related=true)` and
+   `fetch_lessons_learned(query="…", agent_id="<name>")`. This is what you have learned.
+2. **Then group-wide, always** — the same calls without `agent_id`. This is what the
+   whole team knows.
 
-Always do step 2, even when step 1 returns results. Agent scope narrows hard: for a new or
-thin agent it returns **nothing at all**, while the group-wide search returns the org's full
-knowledge. Scoped-only recall silently misses everything the agent has not written itself.
+Agent scope contains only what has been tagged to your identity — it is provenance
+scoping, not access control, and it never falls back on its own: a new or thin identity
+has an empty scope by construction, and the server answers "No memories found for
+agent …" even when the group graph is rich. Scoped-only recall silently misses
+everything the agent has not written itself.
 
 - `agent_id` and `center_on_user` are mutually exclusive — one at a time.
 - Facts carry no `agent_id`. To scope facts, first get one of your scoped nodes, then
@@ -64,9 +77,13 @@ knowledge. Scoped-only recall silently misses everything the agent has not writt
 
 ## When memory tools are unavailable
 
-If the register/search tools are not loaded (try ToolSearch: `gutt-pro-memory`) or the
-server is down, do not stall: proceed unscoped and untagged, note the degradation in one
-line, and continue. Never fail the task because memory is down.
+Probe with ToolSearch (`gutt-pro-memory`) before assuming. `register_agent` can be
+hidden by a deployment's version/profile gates while the `agent_id` parameters stay
+available on the core search and write tools — an identity that is **already
+registered keeps working**. Degrade — run unscoped and untagged, note it in one line,
+and continue — only when the server is absent, or scoped calls fail with an
+unknown-agent error and you cannot re-register. Never fail the task because memory
+is down.
 
 ## Guard rails (rules)
 
@@ -74,6 +91,28 @@ line, and continue. Never fail the task because memory is down.
   node from another context (repo/project) just because the name matches — it pollutes both
   subgraphs. Create a new anchor. Rule of thumb: if more than ~30–50% of an existing anchor's
   edges point at a different repo/project, it is not yours — make a new one.
-- **`last_n_episodes=0` on every org-scope write.** (R34)
-- **No agent tagging in personal scope.** Personal-scope writes carry no `agent_id`; agent
-  identity is org-scope only. (R32)
+- **`last_n_episodes=0` on every org-scope write.**
+- **Personal scope stays untagged.** The server supports agent identity in personal scope
+  too — don't use it: register in an org group, and keep personal-scope writes untagged.
+
+## Identity template (copy, fill in)
+
+Drop this into a role agent to make it memory-aware:
+
+```
+# On start, register once (idempotent):
+register_agent(
+  name="<agent-name>",              # stable; --<scope> only to separate contexts in one group
+  description="<what this agent does, one or two sentences>",
+  group_id="<group>")               # omit only if you can write to exactly one group
+
+# Recall before work — your scope, then the group:
+search_memory_nodes(query="<task>", agent_id="<agent-name>", include_related=true)
+fetch_lessons_learned(query="<task>", agent_id="<agent-name>")
+# … then the same two WITHOUT agent_id, for org-wide knowledge.
+
+# Capture after work — tag every write (write-tool name varies; see memory-capture):
+add_memory(name="<Typed: title>", episode_body="<one self-contained insight>",
+           agent_id="<agent-name>", last_n_episodes=0)
+# Verify when it matters: get_episodes_for_entity("<alias>:Agent:<agent-name>")
+```
