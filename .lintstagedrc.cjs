@@ -20,9 +20,10 @@ module.exports = {
     return [`eslint --fix ${quote(real)}`, `prettier --write ${quote(real)}`];
   },
   "*.{json,md,yml,yaml}": (files) => {
-    if (files.length === 0) {
+    const real = realFiles(files);
+    if (real.length === 0) {
       return [];
     }
-    return [`prettier --write ${quote(files)}`];
+    return [`prettier --write ${quote(real)}`];
   },
 };
