@@ -18,9 +18,12 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
   project, or individual context sharing one org graph). The double dash marks where
   the name ends and the scope begins; a single dash would be ambiguous inside
   kebab-case names.
-- Display note: node IDs are slugified, which collapses `--` to a single `-`
-  (`gutt_pro:Agent:pr-reviewer-acme-web`). The registered name keeps the double dash
-  and stays the identity key; the collapsed ID is cosmetic.
+- Two handles, two uses: the registered **name** (keeps the `--`) is the identity key —
+  pass it to `register_agent` and as `agent_id` on writes and scoped searches. The
+  **node ID** is the slugified semantic ID, which collapses `--` to a single `-`
+  (`gutt_pro:Agent:pr-reviewer-acme-web`) — it is what ID parameters (`center_node_id`,
+  `get_episodes_for_entity`, …) expect. Don't build it by hand: `register_agent` returns
+  it (`id`, plus the `uuid`).
 - Resolve which name to use in this order: bound config (the `/gutt:agent-scope` setting,
   when it exists) → the git remote's owner/repo → the working folder's name.
 
@@ -35,7 +38,8 @@ register_agent(
 
 - Get-or-create, keyed on **name + group**: the same pair always resolves to the same
   identity node. Re-registering only refreshes the description; it never duplicates.
-  Idempotent and cheap.
+  Idempotent and cheap. The response returns your node handles — `id` (the semantic ID)
+  and `uuid`; keep one for ID-based calls like write verification.
 - **Choosing the group:** if you can write to more than one group, pass `group_id`
   explicitly — omitting it targets an unspecified one of your groups, not a fixed
   default. With exactly one group you may omit it.
@@ -54,8 +58,8 @@ register_agent(
   "leave it untagged" case for your own org writes.
 - Set `last_n_episodes=0` on org-scope writes.
 - The write response does not confirm the tag landed. When it matters, verify with
-  `get_episodes_for_entity(<your agent node>)`. Org writes cannot be undone from a normal
-  session — write with care.
+  `get_episodes_for_entity(<node id or uuid from registration>)`. Org writes cannot be
+  undone from a normal session — write with care.
 
 ## Recall (two steps — the group-wide one is never optional)
 
@@ -100,7 +104,7 @@ is down.
 Drop this into a role agent to make it memory-aware:
 
 ```
-# On start, register once (idempotent):
+# On start, register once (idempotent; the response returns your node id + uuid):
 register_agent(
   name="<agent-name>",              # stable; --<scope> only to separate contexts in one group
   description="<what this agent does, one or two sentences>",
@@ -114,5 +118,5 @@ fetch_lessons_learned(query="<task>", agent_id="<agent-name>")
 # Capture after work — tag every write (write-tool name varies; see memory-capture):
 add_memory(name="<Typed: title>", episode_body="<one self-contained insight>",
            agent_id="<agent-name>", last_n_episodes=0)
-# Verify when it matters: get_episodes_for_entity("<alias>:Agent:<agent-name>")
+# Verify when it matters: get_episodes_for_entity("<node id or uuid from registration>")
 ```

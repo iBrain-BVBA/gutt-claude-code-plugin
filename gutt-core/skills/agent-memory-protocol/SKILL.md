@@ -21,9 +21,10 @@ registration, no tagging.
 
 1. **Register first.** `register_agent(name="…", description="…", group_id="…")`
    before any agent-scoped read or tagged write — idempotent, keyed on name +
-   group. Pass `group_id` explicitly when you can write to more than one group.
-   Resolve the name per the reference (bound config → git remote → folder). If a
-   scoped call later fails with an unknown-agent error: re-register, retry.
+   group. Pass `group_id` explicitly when you can write to more than one group;
+   keep the returned node `id`/`uuid` for verification (step 5). Resolve the name
+   per the reference (bound config → git remote → folder). If a scoped call later
+   fails with an unknown-agent error: re-register, retry.
 2. **Recall — your scope** (default; skip only for purely org-wide questions —
    see the table below).
    `search_memory_nodes(query="…", agent_id="<name>", include_related=true)` and
@@ -38,8 +39,8 @@ registration, no tagging.
 5. **Capture — tag every write.** Follow `memory-capture` (classify, dedup,
    trust-tier gate) and add `agent_id="<name>"` plus `last_n_episodes=0` to every
    org write. The response does not confirm the tag — when it matters, verify
-   with `get_episodes_for_entity(<your agent node>)`. Personal-scope writes stay
-   untagged (see the reference's guard rails).
+   with `get_episodes_for_entity(<node id or uuid from registration>)`.
+   Personal-scope writes stay untagged (see the reference's guard rails).
 
 ## Which scope to recall
 
