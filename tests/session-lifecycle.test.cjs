@@ -688,6 +688,29 @@ describe("session lifecycle: TTL primitives", () => {
     fs.writeFileSync(log, "x".repeat(400 * 1024));
     assert.equal(pluginState.trimLog(log, { maxBytes: 8 * 1024, keepLines: 200 }).trimmed, true);
     assert.ok(fs.statSync(log).size <= 8 * 1024, "log bounded despite having no line breaks");
+    // "Bounded" is not the whole contract — an empty file is bounded too, and
+    // asserting only the size let a fallback that wiped the log to a single
+    // newline pass for as long as it existed.
+    assert.ok(fs.statSync(log).size > 1, "bounded, not emptied");
+  });
+
+  it("a long line does not take the short ones with it", () => {
+    // The realistic shape: an ordinary log that picks up one big stack trace.
+    // The byte-bounded fallback used to drop "the partial first line" even when
+    // that was the entire window, replacing the file with a lone "\n".
+    const log = pluginState.statePath("hook-errors.log");
+    fs.writeFileSync(
+      log,
+      "2026-07-27 INFO short line one\n" +
+        "2026-07-27 INFO short line two\n" +
+        `2026-07-27 ERROR ${"Z".repeat(5000)}-END\n`
+    );
+    pluginState.trimLog(log, { maxBytes: 1000, keepLines: 200 });
+
+    const after = fs.readFileSync(log, "utf8");
+    assert.ok(Buffer.byteLength(after) <= 1000, "bounded");
+    assert.notEqual(after, "\n", "the log must not be wiped to a single newline");
+    assert.ok(after.trim().length > 0, "something has to survive a trim");
   });
 });
 

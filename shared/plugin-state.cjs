@@ -235,9 +235,15 @@ function withLock(absPath, fn) {
         break; // can't lock at all — proceed unlocked
       }
       // Reclaim a lock whose holder died before releasing it.
+      //
+      // lstat, not stat: stat follows a symlink, so a *dangling* one at the lock
+      // path throws ENOENT on every pass and is read as "it vanished" — the lock
+      // is never reclaimed and every future call pays the full timeout forever.
+      // rmSync likewise handles a directory left at the path, which unlink
+      // cannot. Neither shape should exist, but both are permanent once they do.
       try {
-        if (Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS) {
-          fs.unlinkSync(lockPath);
+        if (Date.now() - fs.lstatSync(lockPath).mtimeMs > LOCK_STALE_MS) {
+          fs.rmSync(lockPath, { recursive: true, force: true });
         }
       } catch (reclaimErr) {
         // ENOENT just means it vanished under us and the next attempt wins it.
@@ -378,8 +384,14 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
  * Dropped, not deleted. These files are the user's un-drained captures and the
  * plugin's only diagnostic log; unlinking one throws away every entry including
  * the newest, and for `hook-errors.log` it also throws away the note saying it
- * happened. Keeping the tail bounds the work just as well and loses only the
- * oldest data.
+ * happened. Keeping the tail bounds the work just as well and normally loses
+ * only the oldest data.
+ *
+ * The exception is a file with no line structure at all in its tail — a single
+ * multi-megabyte "line". `pruneJsonl` still removes that one, because for a
+ * queue of JSON entries an unparseable blob is garbage by the same rule that
+ * drops any other unparseable line, and keeping it would mean re-reading it on
+ * every SessionStart forever.
  */
 const DISCARD_BYTES = 4 * 1024 * 1024;
 
@@ -560,7 +572,16 @@ function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
         .subarray(-(maxBytes - 1))
         .toString("utf8");
       const firstBreak = out.indexOf("\n");
-      out = firstBreak >= 0 ? out.slice(firstBreak + 1) : out;
+      // Same guard as readTail, and for the same reason: when the window's only
+      // newline is its terminator — which is the case whenever the newest line
+      // is itself bigger than maxBytes — dropping "the partial line" drops
+      // everything, and the `out += "\n"` below then writes a 1-byte file that
+      // looks like a normal trim. One long stack trace was enough to wipe the
+      // whole log, valid short lines included.
+      const rest = firstBreak >= 0 ? out.slice(firstBreak + 1) : "";
+      if (rest.trim() !== "") {
+        out = rest;
+      }
       if (!out.endsWith("\n")) {
         out += "\n";
       }
