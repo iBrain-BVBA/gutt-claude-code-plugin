@@ -40,6 +40,12 @@ PICK**, never at a fresh search.
    distrust any path running through a status/person hub. For a dependency or
    impact chain, walk `get_node_edges(edge_type=BLOCKS|DEPENDS_ON)` hop by hop.
 
+   **Confirm each hop's direction before reporting it.** `get_node_edges` names
+   the node you queried as the source every time, so an inbound edge comes back
+   inverted — the walk finds the chain, but not which way it runs. Confirm with
+   `get_entity_edge` on the edge's id, or an uncentered `search_memory_facts`
+   (`references/tools.md`).
+
 4. **Re-center when a node is big — it may not just flood, it can error.**
    People, sprints, and epics can have hundreds of edges, and `get_node_edges`
    has no limit; on a busy person it can exceed the tool's output cap and fail
@@ -85,16 +91,16 @@ PICK**, never at a fresh search.
    cascade.
 3. **Inspect** — fetch a single node, edge, or episode only to confirm or quote.
 
-| Goal                                | Tool                                                                            |
-| ----------------------------------- | ------------------------------------------------------------------------------- |
-| All of a node's neighbors           | `get_node_edges` (then filter stale)                                            |
-| A typed dependency / impact chain   | `get_node_edges(edge_type=…)` hop by hop — **not** `find_path`                  |
-| How X relates to topic Q            | `search_memory_facts(query=Q, center_node_id=X)` — valid-only, partial          |
-| Are two nodes connected at all      | `find_path` — undirected; distrust hub-routed paths                             |
-| A directed link A→B                 | `get_edges_between_nodes(source_id=A, target_id=B)`                             |
-| Entities co-mentioned in a snapshot | `get_nodes_and_edges_by_episode(episode_ids)` — from an edge's `episodes` field |
-| A named node / edge                 | `get_entity_node` / `get_entity_edge`                                           |
-| Provenance or a verbatim quote      | `get_episode`                                                                   |
+| Goal                                | Tool                                                                                                  |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| All of a node's neighbors           | `get_node_edges` (then filter stale)                                                                  |
+| A typed dependency / impact chain   | `get_node_edges(edge_type=…)` hop by hop — **not** `find_path`; confirm each hop's direction (rule 3) |
+| How X relates to topic Q            | `search_memory_facts(query=Q, center_node_id=X)` — valid-only, partial                                |
+| Are two nodes connected at all      | `find_path` — undirected; distrust hub-routed paths                                                   |
+| A directed link A→B                 | `get_edges_between_nodes(source_id=A, target_id=B)`                                                   |
+| Entities co-mentioned in a snapshot | `get_nodes_and_edges_by_episode(episode_ids)` — from an edge's `episodes` field                       |
+| A named node / edge                 | `get_entity_node` / `get_entity_edge`                                                                 |
+| Provenance or a verbatim quote      | `get_episode`                                                                                         |
 
 **Depth:** `find_path`'s default `max_depth=5` is headroom — don't raise it.
 
