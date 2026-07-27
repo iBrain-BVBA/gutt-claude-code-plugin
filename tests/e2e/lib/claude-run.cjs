@@ -34,11 +34,6 @@ const PLUGIN_DIR = path.join(REPO_ROOT, "gutt-core");
 const FIXTURE_PROJECT = path.join(__dirname, "..", "fixture-project");
 
 /**
- * Keys that would bill the run to an API account. R36 requires headless capture
- * to stay on the user's subscription, so they are stripped rather than trusted
- * to be absent.
- */
-/**
  * Every variable that can route this suite onto something the user pays for
  * per-token (R36). Not just the two API-key vars: Bedrock and Vertex are
  * selected by their own flags and bill to a cloud account, and a redirected

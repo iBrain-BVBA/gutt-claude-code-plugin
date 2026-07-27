@@ -34,9 +34,20 @@ function getStatePath() {
  * @returns {string}
  */
 function sanitizeSessionId(sessionId) {
+  let raw;
+  try {
+    raw = String(sessionId ?? "unknown");
+  } catch {
+    // String() is itself fallible. `{"toString": "x"}` is ordinary JSON, and it
+    // shadows Object.prototype.toString with something not callable — ToPrimitive
+    // then falls through to valueOf, which returns the object, and throws
+    // "Cannot convert object to primitive value". Coercing without this catch
+    // leaves exactly the uncaught TypeError the coercion was added to prevent.
+    raw = "unknown";
+  }
   // Trailing `|| "unknown"` catches inputs that sanitize down to nothing (""),
   // which would otherwise produce a bare ".json" state file.
-  return String(sessionId ?? "unknown").replace(/[^a-zA-Z0-9_-]/g, "_") || "unknown";
+  return raw.replace(/[^a-zA-Z0-9_-]/g, "_") || "unknown";
 }
 
 /**

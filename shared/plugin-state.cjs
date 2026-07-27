@@ -189,6 +189,24 @@ function sleepSync(ms) {
 }
 
 /**
+ * Inode from a stat call, or null when it is unavailable or meaningless.
+ *
+ * Windows reports ino as 0 on filesystems with no file index, which is useless
+ * for identity, so callers treat null as "can't tell" and fall back to
+ * path-based behavior rather than guessing.
+ * @param {() => import("fs").Stats} statFn
+ * @returns {number|null}
+ */
+function statIno(statFn) {
+  try {
+    const { ino } = statFn();
+    return typeof ino === "number" && ino > 0 ? ino : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Run `fn` holding an exclusive lock on `absPath`.
  *
  * `open(..., "wx")` is an atomic create-if-absent on both POSIX and Windows,
@@ -204,24 +222,6 @@ function sleepSync(ms) {
  * @param {() => *} fn
  * @returns {*} whatever `fn` returns
  */
-/**
- * Inode from a stat call, or null when it is unavailable or meaningless.
- *
- * Windows reports ino as 0 on some filesystems and node can surface it as a
- * BigInt; both are useless for identity, so callers treat null as "can't tell"
- * and fall back to path-based behavior rather than guessing.
- * @param {() => import("fs").Stats} statFn
- * @returns {number|null}
- */
-function statIno(statFn) {
-  try {
-    const { ino } = statFn();
-    return typeof ino === "number" && ino > 0 ? ino : null;
-  } catch {
-    return null;
-  }
-}
-
 function withLock(absPath, fn) {
   // A lock outside the data root would be created (along with its parents) by
   // the ensureDir below even though the write it guards is going to no-op. Same
@@ -296,8 +296,15 @@ function withLock(absPath, fn) {
   } finally {
     if (fd !== null) {
       try {
-        fs.closeSync(fd);
+        // Identify *before* closing. An open fd pins the inode, so while it is
+        // held no other file can be allocated the same one and a match here is
+        // proof the file at lockPath is still ours. Closing first would release
+        // the inode for reuse, and a reclaiming writer's lock could be handed
+        // the very number we recorded — an ABA that reads as "still mine" and
+        // deletes their lock, which is the bug this check exists to prevent.
+        // lstat needs no handle, so the reorder is safe on Windows too.
         const currentIno = statIno(() => fs.lstatSync(lockPath));
+        fs.closeSync(fd);
         if (heldIno === null || currentIno === null || currentIno === heldIno) {
           fs.unlinkSync(lockPath);
         } else {

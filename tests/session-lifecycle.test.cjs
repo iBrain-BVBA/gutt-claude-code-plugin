@@ -871,6 +871,11 @@ describe("session lifecycle: hooks end to end", () => {
     ["a number", 123],
     ["an array", ["a"]],
     ["an object", { id: "x" }],
+    // Coerces via ToPrimitive -> Object.prototype.toString, which this shadows
+    // with a non-callable; ToPrimitive then tries valueOf, gets the object back,
+    // and throws. Plain `String(x)` is not safe on arbitrary parsed JSON.
+    ["an object with a non-callable toString", { toString: "x" }],
+    ["an object with toString and valueOf shadowed", { toString: 2, valueOf: 1 }],
     ["null", null],
     ["empty", ""],
   ]) {
