@@ -72,5 +72,7 @@ personal scope being enabled and a resolvable login.
 
 `delete_entity_edge`, `delete_episode`, and `clear_graph` exist on the server but
 are **not part of this curriculum** and aren't used by the capture path. Correct
-a stale memory by writing a **new episode** with the current fact (conflict
-adjudication supersedes the old one where supported) — not by deleting.
+a stale memory by writing a **new episode** with the current fact — not by
+deleting. Whether the old memory should be retired at all is the
+`conflict-adjudication` skill's call; it only recommends, and the approved
+correction is written back through this path.

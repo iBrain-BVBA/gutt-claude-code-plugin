@@ -116,3 +116,5 @@ biased, valid-only, partial) plus `get_entity_edge` / `get_episode` by id, and
   tool reference in the `memory-search` skill (`references/tools.md`). Single
   source; not restated here.
 - Entry search (rungs 1–2): `memory-search`. Writing memory: `memory-capture`.
+- Rule 2 settles which _edge_ is current. When two stored _memories_ contradict
+  each other and the question is which should stand: `conflict-adjudication`.
