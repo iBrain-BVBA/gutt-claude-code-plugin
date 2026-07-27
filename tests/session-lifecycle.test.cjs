@@ -17,6 +17,9 @@ const pluginState = require("../shared/plugin-state.cjs");
 const sessionState = require("../shared/session-state.cjs");
 const runtimeConfig = require("../shared/runtime-config.cjs");
 const { guard } = require("../shared/debug.cjs");
+// The hook module, required rather than spawned: gated behind `require.main`, it
+// exports the real ttlSweep so the sweep tests below can't drift from shipped code.
+const { ttlSweep } = require("../gutt-core/hooks/session-start.cjs");
 
 const HOOKS = path.join(__dirname, "..", "gutt-core", "hooks");
 const HOUR = 60 * 60 * 1000;
@@ -694,6 +697,24 @@ describe("session lifecycle: TTL primitives", () => {
     assert.ok(fs.statSync(log).size > 1, "bounded, not emptied");
   });
 
+  it("the byte bound holds when the cut lands mid-character", () => {
+    // Every other trim fixture is ASCII, where a byte cut is always a character
+    // cut. Slicing bytes and decoding afterwards turns a split multi-byte
+    // character into U+FFFD, which re-encodes to more bytes than it replaced —
+    // so the "bounded" result came back over the bound, and a log that stays
+    // over its bound is re-read and rewritten on every SessionStart forever.
+    const log = pluginState.statePath("hook-errors.log");
+    for (const [script, ch] of Object.entries({ emoji: "😀", cjk: "日", latin1: "é" })) {
+      for (const pad of [0, 1, 2, 3]) {
+        fs.writeFileSync(log, `${"p".repeat(pad)}${ch.repeat(3000)}\n`);
+        pluginState.trimLog(log, { maxBytes: 1000, keepLines: 200 });
+        const size = fs.statSync(log).size;
+        assert.ok(size <= 1000, `${script} pad=${pad}: ${size} bytes exceeds the 1000-byte bound`);
+        assert.ok(size > 1, `${script} pad=${pad}: bounded, but emptied`);
+      }
+    }
+  });
+
   it("a long line does not take the short ones with it", () => {
     // The realistic shape: an ordinary log that picks up one big stack trace.
     // The byte-bounded fallback used to drop "the partial first line" even when
@@ -915,6 +936,24 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       path.join(dir, "config.json"),
       JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
     );
+    // Debris from hooks killed mid-write: a lock whose session id will never be
+    // reused (so nothing ever contends for it to trigger stale reclamation) and
+    // an orphaned atomic-write temp. Backdated past DEBRIS_TTL_MS so the sweep
+    // is entitled to reclaim them; the fresh pair below must survive.
+    const stale = new Date(Date.now() - 2 * HOUR);
+    for (const f of [
+      path.join(dir, "sessions", "bench-0.json.lock"),
+      path.join(dir, "sessions", "bench-0.json.tmp.1234"),
+      // Root-level debris has to be a temp, not a lock: config.json is contended
+      // by the sweep's own clearExpiredSnooze, so a stale lock there is reclaimed
+      // by withLock and would prove nothing about this step. A temp filename is
+      // never reused, so nothing but root-debris will ever remove it.
+      path.join(dir, "capture-queue.jsonl.tmp.1234"),
+    ]) {
+      fs.writeFileSync(f, "");
+      fs.utimesSync(f, stale, stale);
+    }
+    fs.writeFileSync(path.join(dir, "sessions", "live.json.lock"), "");
   });
 
   after(() => {
@@ -931,13 +970,10 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
     // 40 samples with the first discarded: p95 then tolerates two outliers
     // rather than one, so a GC pause or a noisy CI neighbour can't fail the run
     // without the budget genuinely being blown.
-    const { statePath, sweep, pruneJsonl, trimLog } = pluginState;
+    // The hook's own ttlSweep, not a copy: a reimplementation here would keep
+    // passing while the real sweep grew a slow step or lost one entirely.
     const sweepOnce = (i) => {
-      sweep(statePath("sessions"), { maxAgeMs: DAY, match: (f) => f.endsWith(".json") });
-      sweep(statePath(), { maxAgeMs: 0, match: (f) => f.endsWith(".lessons-prompted") });
-      pruneJsonl(statePath("capture-queue.jsonl"), { maxAgeMs: 7 * DAY, maxLines: 500 });
-      trimLog(statePath("hook-invocations.log"), { maxBytes: 256 * 1024, keepLines: 200 });
-      runtimeConfig.clearExpiredSnooze();
+      ttlSweep();
       sessionState.init(`bench-run-${i}`);
       sessionState.beginSession(`bench-run-${i}`, "startup");
     };
@@ -971,6 +1007,22 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       fs.readdirSync(sessions).filter((f) => /^bench-\d+\.json$/.test(f)).length,
       30,
       "exactly the 30 backdated files were reclaimed"
+    );
+
+    // The debris steps: the `.json` match above never sees these, so without
+    // them an abandoned lock would sit in the data dir forever.
+    for (const f of ["bench-0.json.lock", "bench-0.json.tmp.1234"]) {
+      assert.equal(fs.existsSync(path.join(sessions, f)), false, `stale ${f} reclaimed`);
+    }
+    assert.equal(
+      fs.existsSync(path.join(dir, "capture-queue.jsonl.tmp.1234")),
+      false,
+      "root debris reclaimed"
+    );
+    assert.equal(
+      fs.existsSync(path.join(sessions, "live.json.lock")),
+      true,
+      "a lock younger than the debris TTL is left alone — it may be genuinely held"
     );
   });
 });

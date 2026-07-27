@@ -92,29 +92,39 @@ function ttlSweep() {
   step("snooze", () => clearExpiredSnooze());
 }
 
-let input = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  input += chunk;
-});
-process.stdin.on("end", () => {
-  let sessionId = "unknown";
-  let source = null;
-  try {
-    const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
-    sessionId = data.session_id || "unknown";
-    source = data.source || null;
-  } catch {
-    // Unparseable payload — still open a session record under the default id.
-  }
-  init(sessionId);
+// Only wire stdin when actually run as a hook. Requiring this file (the latency
+// and sweep-coverage tests do, so they exercise the real ttlSweep instead of a
+// copy of it that can drift) must not leave a stdin listener holding the test
+// process open.
+if (require.main === module) {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    input += chunk;
+  });
+  process.stdin.on("end", () => {
+    let sessionId = "unknown";
+    let source = null;
+    try {
+      const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
+      sessionId = data.session_id || "unknown";
+      source = data.source || null;
+    } catch {
+      // Unparseable payload — still open a session record under the default id.
+    }
+    init(sessionId);
 
-  // Sweep before writing: the record this hook is about to create is fresh, so
-  // ordering it first would only make the sweep stat a file it can never expire.
-  ttlSweep();
+    // Sweep before writing: the record this hook is about to create is fresh, so
+    // ordering it first would only make the sweep stat a file it can never expire.
+    ttlSweep();
 
-  guard("SessionStart", "begin session", () => beginSession(sessionId, source));
+    guard("SessionStart", "begin session", () => beginSession(sessionId, source));
 
-  // exitCode over process.exit() so any buffered output flushes.
-  process.exitCode = 0;
-});
+    // exitCode over process.exit() so any buffered output flushes.
+    process.exitCode = 0;
+  });
+}
+
+// Exported for the tests that assert the sweep bounds every artifact and stays
+// inside the R25 budget — they must measure this sweep, not a reimplementation.
+module.exports = { ttlSweep, SESSION_TTL_MS, QUEUE_MAX_LINES, LOG_MAX_BYTES, DEBRIS_TTL_MS };
