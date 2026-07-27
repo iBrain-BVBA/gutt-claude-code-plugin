@@ -1,6 +1,6 @@
 ---
 name: conflict-adjudication
-description: "Work out what to do when two stored memories disagree. Given one specific pair, gather the evidence — who asserted each, what standing that carries, whether the two even apply to the same thing — then recommend exactly one of supersede, coexist, or escalate, or report that the pair doesn't qualify, with the evidence cited. Read-only: it never rewrites or removes memory. Triggers on: these two memories disagree, which decision wins, conflicting decisions, contradicting lessons, is this decision still authoritative, supersede or keep both, who has authority here, resolve this conflict."
+description: "Work out what to do when two memories disagree — both stored, or one stored and one about to be written. Given one specific pair, gather the evidence — who asserted each, what standing that carries, whether the two even apply to the same thing — then recommend exactly one of supersede, coexist, or escalate, or report that the pair doesn't qualify, with the evidence cited. Read-only: it never rewrites or removes memory. Triggers on: these two memories disagree, which decision wins, conflicting decisions, contradicting lessons, does the old decision still beat the new one, supersede or keep both, which of these two has authority, resolve this conflict."
 ---
 
 # Conflict Adjudication
@@ -15,7 +15,11 @@ judged.
 
 It runs on **one pair you already hold** — typically because a capture path
 searched before writing and turned up something that contradicts what was about
-to be stored, or because a reader noticed two stored memories disagree.
+to be stored, or because a reader noticed two stored memories disagree. So the
+pair arrives in one of two shapes: **two stored memories**, or **one stored
+memory and one candidate** — content not yet written, whether a claim being
+made live or a queued draft carrying its own provenance. A candidate is
+adjudicated like any other side; only where its evidence comes from differs.
 
 The evidence is the organization itself: who or what asserted each memory, what
 standing that carries, and whether the two apply to the same thing. It is
@@ -27,7 +31,9 @@ skill is about knowing when it is good enough to act on.
 1. **A pair comes in — never go hunting for one.** Two specific memories, one
    recommendation. This skill does not sweep the graph looking for
    contradictions; "find all the conflicts" is a different job and not this one.
-   With no pair in hand, ask which two memories are in question and stop.
+   With no pair in hand, ask which two memories are in question and stop — and
+   when the question is really whether a single memory is still current, with
+   no second memory in play, hand it to `graph-traversal`.
 
 2. **Recommend, never act.** Name what should happen and why — the caller
    decides and writes. Never call a delete tool, never write a correcting
@@ -62,6 +68,12 @@ skill is about knowing when it is good enough to act on.
      Judge by the traces it left, not by how long it lasted — a call meant from
      the outset to cover one task or one sprint was still settled, for exactly
      that reach.
+
+   For a **candidate** side there is no stored source to trace — judge the same
+   three checks on the assertion itself: settled only if a position is being
+   stated rather than an option floated, ours if asserted for this
+   organization, real unless it is illustration. The stored side still gets the
+   full trace.
 
    Judge by the primary source, not by everything attached. A memory whose
    sources include material that merely _re-cites_ it is still real — the
@@ -99,21 +111,30 @@ skill is about knowing when it is good enough to act on.
 Four things, for each side of the pair. Any of them may be missing — say so and
 carry on; partial evidence is normal and is itself an input to the verdict.
 
-| Evidence     | What you're after                 | How                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Scope**    | What each memory applies to       | A scope relationship where one exists — often none does; then triangulate from what the memory was produced by or attached to, and say which route you relied on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Author**   | Who or what asserted it           | Trace the memory to its source. That may be a person speaking, a person writing directly, a record imported from another system, or an automated pass with nobody behind it. Where the source names no one, attribute it to whoever owned the session or record and say the attribution is circumstantial                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Standing** | What authority the author carries | Where the author is a person: their role, reporting lines, and which teams they belong to — the last matters on its own, since two people can hold the same role while only one sits inside the group the memory governs. Direction per rule 5, corroboration per rule 6. Filter by relationship type — an unfiltered pull on a well-connected person can exceed the tool's output limit and fail. Where no person is behind it, standing belongs to whoever stands behind the source record; if that can't be traced, standing is **unavailable, not zero**                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **Timing**   | When each became true             | Take it from the episodes behind each memory: an episode carries `valid_at` — when the content actually happened — alongside `created_at`, when it was ingested. Both are always present there; prefer `valid_at`, which can precede ingestion by hours or by years. Where the two land within seconds of each other, suspect the source had no date of its own and the field was filled from ingestion — but that costs you _precision_, not _ordering_: two sides from separately-named sources days apart are still ordered, even when neither timestamp is exact. The memory entity carries only `created_at`, its ingestion time — never `valid_at` — so never date it from the entity. Relationships carry validity too, and unlike episodes theirs can end — for _dating_ that end, read `invalid_at`, when the fact stopped being true, rather than `expired_at`, which only records when that was noticed. Either field being set still means the relationship is no longer current |
+| Evidence     | What you're after                 | How                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Scope**    | What each memory applies to       | A scope relationship where one exists — often none does; then triangulate from what the memory was produced by or attached to, and say which route you relied on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Author**   | Who or what asserted it           | Trace the memory to its source. That may be a person speaking, a person writing directly, a record imported from another system, or an automated pass with nobody behind it. Where the source names no one, attribute it to whoever owned the session or record and say the attribution is circumstantial                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Standing** | What authority the author carries | Where the author is a person: their role, reporting lines, and which teams they belong to — the last matters on its own, since two people can hold the same role while only one sits inside the group the memory governs. Direction per rule 5, corroboration per rule 6. Filter by relationship type — an unfiltered pull on a well-connected person can exceed the tool's output limit and fail. Where no person is behind it, standing belongs to whoever stands behind the source record; if that can't be traced, standing is **unavailable, not zero**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Timing**   | When each became true             | Take it from the episodes behind each memory: an episode carries `valid_at` — when the content actually happened — alongside `created_at`, when it was ingested. Both are always present there; prefer `valid_at`, which can precede ingestion by hours or by years. Where the two land within seconds of each other, suspect the source had no date of its own and the field was filled from ingestion — but that costs you _precision_, not _ordering_: two sides from separately-named sources days apart are still ordered, even when neither timestamp is exact. The memory entity carries only `created_at`, its ingestion time — never `valid_at` — so never date it from the entity. Relationships carry validity too, and unlike episodes theirs can end — for _dating_ that end, read `invalid_at`, when the fact stopped being true, rather than `expired_at`, which only records when that was noticed. An end field being set means the relationship has an end, not that it has already passed — compare `invalid_at` to now, since a future `invalid_at` records a scheduled end still in force |
+
+**A candidate side is evidenced from its assertion, not the graph.** Its author
+is whoever is asserting it — read from the live session or from the provenance
+the draft carries, no graph trace to run. Its timing is when it was asserted,
+often simply now; its scope is what the assertion applies it to. Standing for
+that author is still gathered from the graph like anyone else's. Say in the
+output that one side is a candidate: its evidence is first-hand, but its claim
+carries no corroboration yet — under rule 6 it is exactly one source.
 
 **Standing is historical — who held it when the memory was asserted, not who
 holds it now.** Roles lapse, and a fact search returns only what is valid today,
 so left alone you will weigh an old memory against present-day authority. Where
 the two are far enough apart for that to matter, ask as of the date in question
 (`valid_at_time`), or include superseded relationships (`include_invalidated`).
-The same trap sits under rule 5's confirmation step: a relationship that has
-since lapsed comes back empty, which reads as "no such relationship" rather than
-"not anymore".
+The same trap sits under rule 5's confirmation step when it runs through a
+fact search: a lapsed relationship vanishes from the results, which reads as
+"no such relationship" rather than "not anymore" — while `get_entity_edge` by
+id returns it regardless, end dates visible.
 
 **A memory can hold more than one story.** A long-lived one accumulates strands
 — a proposal that was rejected, a practice that took hold later, an unrelated
@@ -228,11 +249,15 @@ so the evidence has to stand on its own:
   `no adjudication`. The first three are the rubric's; `no adjudication` is the
   reality gate's exit and never comes from the rubric at all
 - **pair** — both memories by readable node id, with a one-line statement of
-  what each claims
+  what each claims; a not-yet-written side is cited as `candidate (unwritten)`
+  in place of an id, with the same one-line claim
 - **for `supersede`** — which one is superseded and which replaces it. Where the
   losing memory bundles several claims and only one is contested, say so: name
   the claim that falls, and state that the rest stand unadjudicated so nobody
   retires the whole memory over one line of it
+- **for `coexist`** — why there is no collision: a conflict that never existed,
+  or one already settled elsewhere; and where the narrower side is a local
+  variation, that it was judged a deliberate exception rather than a correction
 - **for `no adjudication`** — which side failed, or both when they fail together
   off shared sources; which of rule 4's three checks it failed; and the source
   that shows it. This stands in for **reasoning**, since no rung ran
@@ -248,7 +273,8 @@ worse than an escalation.
 ## Degradation
 
 Needs the memory read tools; the navigation ones are separately gated and may be
-absent. Probe rather than assume.
+absent. Probe with ToolSearch rather than assume, and call every tool by its
+bare name — the `mcp__…__` prefix varies per install.
 
 Without navigation you keep search but lose reliable relationship walking: scope
 and authorship usually survive, standing rarely does. Gather what you can, then

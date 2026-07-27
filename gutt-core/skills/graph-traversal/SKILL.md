@@ -24,7 +24,9 @@ PICK**, never at a fresh search.
 2. **Never trust an edge's currency without checking dates — and one date isn't
    enough.** The nav tools return superseded edges with no warning. Before
    presenting any edge as current:
-   - drop edges with `expired_at` or `invalid_at` set;
+   - drop edges whose `invalid_at` is in the past — `expired_at` only records
+     when the end was noticed, and a **future** `invalid_at` is a scheduled
+     end, still current until it arrives;
    - when two _live_ edges of the same kind disagree (duplicate `HAS_STATUS`,
      etc. — it happens), prefer the newest `valid_at`;
    - for "is X still blocked / true?", also look for a **replacement** — an old
