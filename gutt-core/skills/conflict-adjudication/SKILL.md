@@ -30,7 +30,8 @@ skill is about knowing when it is good enough to act on.
    isn't, until someone acts on the recommendation.
 
 3. **Escalating is the honest default.** `supersede` and `coexist` have to be
-   earned from evidence; `escalate` is where you land when they aren't. Most
+   earned from evidence; `escalate` is where you land when they aren't. (A pair
+   that fails rule 4 exits before any of this applies.) Most
    real pairs escalate, and that is a correct outcome, not a failure — a
    well-evidenced "a human should look at this, here's why" is the product.
    Never manufacture confidence the evidence doesn't support.
@@ -46,8 +47,9 @@ skill is about knowing when it is good enough to act on.
      the one recounting it;
    - **aspirational** — "should be", "we're considering", "the plan is" records
      an intention, not a decision in force. Weigh follow-through over phrasing
-     though: a proposal the team visibly acted on for months is a real position,
-     whatever tense it happened to be recorded in.
+     though: a proposal the team visibly acted on — artifacts produced, parts
+     adopted — is a real position, whatever tense it was recorded in. Judge by
+     whether it left traces, not by how long it lasted.
 
    Judge by the primary source, not by every episode attached. A memory whose
    episodes mix a genuine transcript with demo or eval material that merely
@@ -82,12 +84,21 @@ skill is about knowing when it is good enough to act on.
 Four things, for each side of the pair. Any of them may be missing — say so and
 carry on; partial evidence is normal and is itself an input to the verdict.
 
-| Evidence     | What you're after                              | How                                                                                                                                                                                                                                     |
-| ------------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Scope**    | Which project or domain each memory applies to | A scope relationship where one exists — but often none does; then triangulate from what the memory was produced by or attached to, and say which you relied on. If it points at a ticket or product, hop up to the project              |
-| **Author**   | Who asserted it                                | No relationship reliably links a memory to its author — read the source episode and take the speaker. A person relationship on the memory is a bonus, not the norm                                                                      |
-| **Standing** | Each author's role and reporting lines         | Their role and reporting relationships, direction confirmed per rule 5, corroboration counted per rule 6. Always filter by relationship type — an unfiltered pull on a senior person can blow the tool's output limit and fail outright |
-| **Timing**   | When each became true                          | The validity date where present; otherwise creation time, which is when it was _recorded_, not when it became true — weaker, and say so                                                                                                 |
+| Evidence     | What you're after                              | How                                                                                                                                                                                                                                                                                               |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Scope**    | Which project or domain each memory applies to | A scope relationship where one exists — but often none does; then triangulate from what the memory was produced by or attached to, and say which you relied on. If it points at a ticket or product, hop up to the project                                                                        |
+| **Author**   | Who asserted it                                | No relationship reliably links a memory to its author — read the source episode and take the speaker. Where the episode is a summary of outcomes rather than a transcript there may be no speaker to take; attribute from who ran or owned the session, and say the attribution is circumstantial |
+| **Standing** | Each author's role and reporting lines         | Their role and reporting relationships, direction confirmed per rule 5, corroboration counted per rule 6. Always filter by relationship type — an unfiltered pull on a senior person can blow the tool's output limit and fail outright                                                           |
+| **Timing**   | When each became true                          | The validity date where present; otherwise creation time, which is when it was _recorded_, not when it became true — weaker, and say so                                                                                                                                                           |
+
+**A memory can hold more than one story.** A long-lived node accumulates strands
+— a proposal that was rejected, a practice that took hold later, an aside from
+someone describing a former employer. Rule 4 removes the strands that aren't
+ours; it doesn't choose among the ones that are. Take the node's current summary
+as what the memory now claims, since that is what a reader is shown, then say in
+your reasoning which other strands you found and why they don't change the call.
+Watch for this when a node's scope points at many unrelated targets at once —
+that fan-out is the signature of a node carrying several stories.
 
 **Match on an edge's shape, not just its name.** The extractor may call a
 relationship anything, but entity types are a fixed set — a reporting line is
@@ -115,10 +126,17 @@ evidence differs every time.
 
 1. **Scope first — do these even collide?** Different projects, or different
    altitude (a team-wide practice and one project's local variation), and there
-   is no conflict to resolve: **coexist**. This is the cheapest question and the
-   evidence behind it is the most reliable, so ask it first. Note that scope
-   relationships point at several kinds of target — a project, a ticket, a
-   product, a domain — so normalize before concluding two scopes differ.
+   is nothing to resolve: **coexist**. This is the cheapest question and its
+   evidence is the most reliable, so ask it first. Scope relationships point at
+   several kinds of target — project, ticket, product, domain — so normalize
+   before concluding two scopes differ.
+
+   Two checks keep this honest. Ask _why_ there is no collision: a conflict that
+   never existed and one already settled elsewhere both end in `coexist`, but the
+   human reading it needs to know which. And when the narrower memory looks like
+   a local variation, ask whether it reads as a **deliberate exception** or as
+   someone **correcting a general misunderstanding** — the first genuinely
+   coexists, the second is a supersede wearing a narrow scope.
 
 2. **Then weigh standing and timing together.** Hold both: who had the standing
    to make this call, and which came later.
@@ -133,17 +151,18 @@ evidence differs every time.
      two peers — leaves timing to decide it alone: **supersede**, saying that
      standing was neutral rather than absent.
    - **One signal missing entirely, the other clear and well-corroborated** — it
-     may carry the verdict alone. Say which one you leaned on and that the other
-     was unavailable.
+     may carry the verdict alone. Say which one you leaned on, and that the other
+     was unavailable rather than weighed.
 
-3. **Escalate on thin evidence, and name what was thin.** The distinction from
-   the case above is whether the evidence is _absent_ or _unreliable_: absent
-   evidence can be worked around, unreliable evidence can't. Escalate when a
-   signal is present but untrustworthy — standing resting on a single
-   uncorroborated mention, contradictory reporting lines, duplicate people you
-   couldn't consolidate — or when too little is left to stand on: no recoverable
-   author on either side, or both sides undated. Name the specific gap, so the
-   human knows what to supply.
+3. **Escalate on unreliable evidence — not merely thin evidence.** Absent
+   evidence can be worked around, as rung 2's last case shows; evidence that is
+   present but untrustworthy can't. Escalate when a signal misleads: standing
+   resting on a single uncorroborated mention, contradictory reporting lines, or
+   an author you can name but can't pin to one person node — that last one is
+   neither absent nor false but unattributable, and it counts as unreliable.
+   Escalate too when too little remains to stand on at all: no recoverable author
+   on either side, or both sides undated. Name the specific gap, so the human
+   knows what to supply.
 
 Retiring a memory never means deleting it. The older one stays in the graph,
 marked as no longer current, so the record of what was decided and when survives.
@@ -154,7 +173,10 @@ Say that explicitly whenever you recommend `supersede`.
 One verdict, and the evidence behind it. The consumer renders this for a human,
 so the evidence has to stand on its own:
 
-- **verdict** — exactly one of `supersede`, `coexist`, `escalate`
+- **verdict** — exactly one of `supersede`, `coexist`, `escalate`. A pair that
+  fails the reality gate never reaches the rubric: report `no adjudication`
+  instead, keeping every other field below, and say which side failed — or both,
+  when they fail together off shared sources
 - **pair** — both memories by id, with a one-line statement of what each claims
 - **for supersede**: which one is superseded and which replaces it
 - **reasoning** — which rung decided it, and which signals pointed where
