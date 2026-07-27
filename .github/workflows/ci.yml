@@ -38,6 +38,35 @@ jobs:
       - name: Check version sync (plugin.json ↔ package.json)
         run: npm run check:version
 
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The declared engines floor and the version the other jobs pin. The
+        # suite silently ran zero tests on both until the glob was fixed, so the
+        # floor is covered explicitly rather than assumed.
+        node-version: ["18", "20"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run hook smoke tests
+        run: node tests/test-all-hooks.cjs
+
   commitlint:
     name: Commit Message Lint
     runs-on: ubuntu-latest
