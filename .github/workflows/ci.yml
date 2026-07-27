@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -41,13 +41,6 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # The declared engines floor and the version the other jobs pin. The
-        # suite silently ran zero tests on both until the glob was fixed, so the
-        # floor is covered explicitly rather than assumed.
-        node-version: ["18", "20"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,16 +48,40 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Report the Node version under test
+        run: node --version
+
       - name: Run unit tests
         run: npm test
 
       - name: Run hook smoke tests
+        run: node tests/test-all-hooks.cjs
+
+  # The toolchain version above is ours. Hooks are not: Claude Code spawns them
+  # with whatever `node` the end user has on PATH, which is routinely older than
+  # what we develop against. So the hook entry points get smoke-tested on the
+  # oldest runtime we are willing to have a user on, to catch syntax or API that
+  # only exists in a newer Node before it reaches someone's session as a broken
+  # hook. Zero-dep by design, so this needs no install and stays fast.
+  hook-runtime-compat:
+    name: Hook Runtime Compat (Node 18)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Run hook smoke tests on the end-user runtime floor
         run: node tests/test-all-hooks.cjs
 
   commitlint:
@@ -80,7 +97,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
