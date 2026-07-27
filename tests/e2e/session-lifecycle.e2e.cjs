@@ -35,7 +35,6 @@ const {
   plantSessionFile,
   removeDir,
   runClaude,
-  subscriptionSafeEnv,
 } = require("./lib/claude-run.cjs");
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -82,6 +81,20 @@ function walk(dir, base = dir, found = []) {
 }
 
 const version = claudeVersion();
+
+// Skipping is the default because this tier needs a working CLI and a logged-in
+// subscription, which a contributor may not have. But a skip that reports
+// `tests 0 / pass 0 / fail 0` and exit 0 is indistinguishable from a suite that
+// ran and passed — so anywhere this is meant to be a gate (CI, a release check),
+// set GUTT_E2E_REQUIRED=1 and an unusable CLI becomes a hard failure instead of
+// silence. `claudeVersion()` returns null for a missing binary *and* for one
+// that exits non-zero or hangs, so this also catches a broken install.
+if (!version && process.env.GUTT_E2E_REQUIRED === "1") {
+  throw new Error(
+    "GUTT_E2E_REQUIRED=1 but the `claude` CLI is unusable (missing from PATH, " +
+      "non-zero exit, or timed out) — refusing to report a green run that asserted nothing"
+  );
+}
 
 describe(
   "GP-863 session lifecycle: real claude -p session",
@@ -130,9 +143,21 @@ describe(
     });
 
     it("runs on the subscription, never on an API key (R36)", () => {
-      const env = subscriptionSafeEnv();
+      // Asserts against the environment the child was actually handed. Calling
+      // subscriptionSafeEnv() here instead would be a tautology: it would check
+      // that the scrubber scrubs, and stay green even if runClaude spawned with
+      // process.env untouched.
+      assert.ok(run.childEnv, "the harness must record the env it spawned with");
       for (const key of BILLABLE_ENV_KEYS) {
-        assert.equal(env[key], undefined, `${key} must not reach the child process`);
+        assert.equal(run.childEnv[key], undefined, `${key} must not reach the child process`);
+      }
+      // And the scrub list has to still cover the vars that cost money.
+      for (const key of [
+        "ANTHROPIC_API_KEY",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_USE_VERTEX",
+      ]) {
+        assert.ok(BILLABLE_ENV_KEYS.includes(key), `${key} dropped out of the scrub list`);
       }
     });
 

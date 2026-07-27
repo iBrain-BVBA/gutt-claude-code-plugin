@@ -38,7 +38,22 @@ const FIXTURE_PROJECT = path.join(__dirname, "..", "fixture-project");
  * to stay on the user's subscription, so they are stripped rather than trusted
  * to be absent.
  */
-const BILLABLE_ENV_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
+/**
+ * Every variable that can route this suite onto something the user pays for
+ * per-token (R36). Not just the two API-key vars: Bedrock and Vertex are
+ * selected by their own flags and bill to a cloud account, and a redirected
+ * base URL can point at a metered gateway. A test suite that quietly spends
+ * the user's money is a worse failure than one that does not run.
+ */
+const BILLABLE_ENV_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_BEDROCK_BASE_URL",
+  "ANTHROPIC_VERTEX_BASE_URL",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_VERTEX",
+];
 
 /**
  * Tools the model is not allowed to reach for. The plugin's UserPromptSubmit
@@ -343,11 +358,15 @@ function runClaude(options) {
     }
   }
 
+  // Built once and returned with the result, so the R36 assertion can inspect
+  // the environment the child was actually given rather than re-deriving one.
+  const childEnv = subscriptionSafeEnv();
+
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
     const child = spawn("claude", args, {
       cwd: projectDir,
-      env: subscriptionSafeEnv(),
+      env: childEnv,
       // stdin closed: the CLI otherwise waits 3s for piped input.
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -384,6 +403,7 @@ function runClaude(options) {
           stdout,
           stderr,
           args,
+          childEnv,
           result,
           sessionId,
           durationMs: Date.now() - startedAt,
@@ -394,9 +414,14 @@ function runClaude(options) {
           dataDir: stateFile ? path.dirname(path.dirname(stateFile)) : null,
           transcriptFile,
           transcript: transcriptFile ? readTranscript(transcriptFile) : [],
-          samples: samples.filter(
-            (entry) => !sessionId || path.basename(entry.file) === `${sessionId}.json`
-          ),
+          // Strictly this run's session. `!sessionId || …` used to widen this to
+          // every session in every plugin data dir when the id was unknown, so a
+          // concurrent local `claude` session could satisfy an assertion about
+          // *this* one. With no id there is nothing to attribute: return none and
+          // let the assertion fail rather than pass on a stranger's state.
+          samples: sessionId
+            ? samples.filter((entry) => path.basename(entry.file) === `${sessionId}.json`)
+            : [],
           allSamples: samples,
         });
       }, 750);
