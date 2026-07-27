@@ -20,7 +20,7 @@ how far to go, and how to report back.
 Invoke this agent when:
 
 - A question needs relationship traversal or multi-hop reasoning.
-- An answer has to be synthesised from several memory sources.
+- An answer has to be synthesized from several memory sources.
 - Exploration is likely to produce bulky intermediate results the caller
   shouldn't pay for in context.
 
@@ -79,7 +79,7 @@ A crib for filtering `search_memory_nodes(entity=…)` and
 back empty, call `get_available_schemas` — the graph is authoritative, this list
 is a convenience.
 
-- **People & organisation**: `Person`, `Team`, `Role`, `Agent`
+- **People & organization**: `Person`, `Team`, `Role`, `Agent`
 - **Work**: `WorkItem`, `Project`, `Iteration`, `ActionItem`
 - **Code & systems**: `Repository`, `CodeComponent`, `SystemConcept`, `PullRequest`, `Commit`
 - **Knowledge**: `Lesson`, `Decision`, `Insight`, `Document`
@@ -89,7 +89,7 @@ is a convenience.
 
 Common edge types:
 
-- **Organisational**: `BELONGS_TO`, `WORKS_AS`, `REPORTS_TO`, `HAS_EXPERTISE_IN`
+- **Organizational**: `BELONGS_TO`, `WORKS_AS`, `REPORTS_TO`, `HAS_EXPERTISE_IN`
 - **Work**: `WORKS_ON`, `ASSIGNED_TO`, `OWNED_BY`, `PART_OF`, `DEPENDS_ON`, `BLOCKS`
 - **Code**: `AUTHORED_BY`, `IMPLEMENTS`, `AFFECTS`, `INCLUDES`, `CONTAINED_IN`, `REALIZES`
 - **Knowledge**: `APPLIES_TO`, `LEARNED_FROM`, `LED_TO`, `DOCUMENTS`, `EXAMPLE_OF`
