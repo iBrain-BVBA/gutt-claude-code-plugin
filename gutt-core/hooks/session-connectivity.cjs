@@ -42,11 +42,11 @@ process.stdin.on("end", () => {
     clearSeedCache();
   });
 
-  const diag = guard("SessionStart/async", "mcp diagnose", diagnoseGuttMcp) || {
-    configured: false,
-    url: null,
-    error: "probe failed",
-  };
+  // A throw here is "we could not tell", which is a different thing from "not
+  // configured" and must not be flattened into it — the difference decides both
+  // what the user is told below and what the HUD shows.
+  const probe = guard("SessionStart/async", "mcp diagnose", diagnoseGuttMcp);
+  const diag = probe || { configured: false, url: null, error: "probe failed" };
 
   // Conservative mapping, unchanged from 2.x: only a configured server with a
   // reachable-looking URL counts as "ok". A stdio-transport server can't be
@@ -58,6 +58,9 @@ process.stdin.on("end", () => {
       state.connectionStatus = diag.configured && diag.url ? "ok" : "unknown";
       state.mcpConfigured = Boolean(diag.configured);
       state.mcpUrl = diag.url || null;
+      // Persisted so a consumer can tell a failed probe from a genuine absence;
+      // without it both look like `mcpConfigured: false`.
+      state.mcpError = diag.error || null;
       state.connectionCheckedAt = new Date().toISOString();
       return state;
     })
@@ -66,7 +69,11 @@ process.stdin.on("end", () => {
   // Best-effort user-facing note. An async hook's stdout is not guaranteed to
   // surface in the transcript; the state written above is the contract, this is
   // the courtesy.
-  if (!diag.configured) {
+  if (!probe) {
+    // Telling someone with a working setup to go and re-run setup is worse than
+    // saying nothing, so say what actually happened instead.
+    console.log(`💡 gutt memory status could not be determined (${diag.error}).`);
+  } else if (!diag.configured) {
     console.log(
       "💡 gutt memory not configured. Run /gutt-claude-code-plugin:setup or /gutt-claude-code-plugin:onboard to get started."
     );

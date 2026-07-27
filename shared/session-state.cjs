@@ -256,14 +256,23 @@ function finalizeSession(reason) {
  * @returns {boolean} whether the flag was set
  */
 function consumeFlag(flag, clearedValue = false) {
+  // Unlocked fast path: not set means nothing to do and no lock to take.
   if (!getState()[flag]) {
     return false;
   }
-  updateState((state) => {
-    state[flag] = clearedValue;
+  // Whether *this* caller consumed it has to be decided inside the lock. The
+  // read above is unlocked, so with two hooks racing on one event — the premise
+  // this whole module is built around — both would otherwise see the flag set
+  // and both return true, and "true exactly once" is the entire contract.
+  let consumed = false;
+  applyUpdate((state) => {
+    consumed = Boolean(state[flag]);
+    if (consumed) {
+      state[flag] = clearedValue;
+    }
     return state;
   });
-  return true;
+  return consumed;
 }
 
 /**

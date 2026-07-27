@@ -203,6 +203,14 @@ function sleepSync(ms) {
  * @returns {*} whatever `fn` returns
  */
 function withLock(absPath, fn) {
+  // A lock outside the data root would be created (along with its parents) by
+  // the ensureDir below even though the write it guards is going to no-op. Same
+  // containment rule as atomicWrite/appendLine — refuse, and run unlocked.
+  if (!isUnderRoot(absPath)) {
+    debugLog("plugin-state", `refusing to lock outside the data root: ${absPath}`);
+    return fn();
+  }
+
   const lockPath = `${absPath}.lock`;
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   let fd = null;
@@ -212,7 +220,13 @@ function withLock(absPath, fn) {
   // contended) write of a session fails to lock and every writer races.
   ensureDir(path.dirname(lockPath));
 
-  while (fd === null) {
+  // The deadline governs the loop itself, and every failure path falls through
+  // to the sleep. Both matter: an early `continue` that skips them turns a lock
+  // that cannot be removed — a directory or dangling symlink left at lockPath,
+  // EACCES on the data dir, a Windows delete-pending handle — into an
+  // unbreakable hot loop. That is the session-blocking hang this function's
+  // fail-open exists to prevent, so it must not be reachable from inside it.
+  while (fd === null && Date.now() < deadline) {
     try {
       fd = fs.openSync(lockPath, "wx");
     } catch (err) {
@@ -224,17 +238,21 @@ function withLock(absPath, fn) {
       try {
         if (Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS) {
           fs.unlinkSync(lockPath);
-          continue;
         }
-      } catch {
-        continue; // vanished between stat and now — race for it again
-      }
-      if (Date.now() >= deadline) {
-        debugLog("plugin-state", `lock timeout for ${lockPath}; proceeding unlocked`);
-        break;
+      } catch (reclaimErr) {
+        // ENOENT just means it vanished under us and the next attempt wins it.
+        // Anything else means we will never remove it — say so once and let the
+        // deadline end this rather than retrying forever.
+        if (reclaimErr.code !== "ENOENT") {
+          debugLog("plugin-state", `lock reclaim failed for ${lockPath}: ${reclaimErr.message}`);
+        }
       }
       sleepSync(2);
     }
+  }
+
+  if (fd === null) {
+    debugLog("plugin-state", `proceeding unlocked: ${lockPath}`);
   }
 
   try {
@@ -353,11 +371,51 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
 }
 
 /**
- * A line-oriented file this big is past saving: reading it to prune costs more
- * than the SessionStart budget allows, and it is only ever a queue or a
- * breadcrumb log. Discard wholesale instead of parsing it (GP-863, R25).
+ * Reading a line-oriented file bigger than this to prune it costs more than the
+ * SessionStart budget allows (GP-863, R25), so past this size only the tail is
+ * read and the rest is dropped unread.
+ *
+ * Dropped, not deleted. These files are the user's un-drained captures and the
+ * plugin's only diagnostic log; unlinking one throws away every entry including
+ * the newest, and for `hook-errors.log` it also throws away the note saying it
+ * happened. Keeping the tail bounds the work just as well and loses only the
+ * oldest data.
  */
 const DISCARD_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Read at most the last `bytes` of a file without loading the whole thing.
+ * The first line is dropped when the file was truncated, since a tail read
+ * almost always lands mid-line.
+ * @param {string} absPath
+ * @param {number} bytes
+ * @returns {{text: string, truncated: boolean}}
+ */
+function readTail(absPath, bytes) {
+  const fd = fs.openSync(absPath, "r");
+  try {
+    const size = fs.fstatSync(fd).size;
+    const length = Math.min(bytes, size);
+    const buf = Buffer.alloc(length);
+    fs.readSync(fd, buf, 0, length, size - length);
+    const truncated = length < size;
+    let text = buf.toString("utf8");
+    if (truncated) {
+      const nl = text.indexOf("\n");
+      // Only drop the partial line if something survives it. A tail with no
+      // newline until its very end — a corrupt or sparse file, or one enormous
+      // line — would otherwise discard the whole read, turning "some data" into
+      // "none", which is exactly the outcome reading the tail exists to avoid.
+      const rest = nl === -1 ? "" : text.slice(nl + 1);
+      if (rest.trim() !== "") {
+        text = rest;
+      }
+    }
+    return { text, truncated };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
 
 /**
  * Size of a file on disk, or -1 when missing/unstattable.
@@ -395,14 +453,24 @@ function pruneJsonl(absPath, { maxAgeMs, maxLines = Infinity, timestampField = "
   if (size < 0) {
     return { removed: 0, discarded: false };
   }
-  if (size > DISCARD_BYTES) {
-    debugLog("plugin-state", `discarding oversized jsonl (${size}B): ${absPath}`);
-    return { removed: 0, discarded: remove(absPath) };
-  }
-
+  // Past the cap, read only the tail and let the normal policy below run on it.
+  // Deleting the file instead would destroy every pending capture — including
+  // the newest — in exactly the situation that produces a huge queue: one
+  // nobody has drained.
   let lines;
+  let discarded = false;
   try {
-    lines = fs.readFileSync(absPath, "utf8").split("\n");
+    if (size > DISCARD_BYTES) {
+      const tail = readTail(absPath, DISCARD_BYTES);
+      discarded = tail.truncated;
+      lines = tail.text.split("\n");
+      debugLog(
+        "plugin-state",
+        `oversized jsonl (${size}B), keeping the last ${DISCARD_BYTES}B: ${absPath}`
+      );
+    } else {
+      lines = fs.readFileSync(absPath, "utf8").split("\n");
+    }
   } catch (err) {
     debugLog("plugin-state", `prune read failed for ${absPath}: ${err.message}`);
     return { removed: 0, discarded: false };
@@ -437,14 +505,17 @@ function pruneJsonl(absPath, { maxAgeMs, maxLines = Infinity, timestampField = "
     kept.splice(0, kept.length - maxLines);
   }
 
-  if (removed === 0) {
+  // A truncated read means what is still on disk is the oversized original, so
+  // it has to be rewritten even when the policy above dropped nothing.
+  if (removed === 0 && !discarded) {
     return { removed: 0, discarded: false };
   }
   if (kept.length === 0) {
-    return { removed, discarded: remove(absPath) };
+    remove(absPath);
+    return { removed, discarded };
   }
   atomicWrite(absPath, `${kept.join("\n")}\n`);
-  return { removed, discarded: false };
+  return { removed, discarded };
 }
 
 /**
@@ -460,12 +531,25 @@ function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
   if (size < 0 || size <= maxBytes) {
     return { trimmed: false, discarded: false };
   }
-  if (size > DISCARD_BYTES) {
-    debugLog("plugin-state", `discarding oversized log (${size}B): ${absPath}`);
-    return { trimmed: false, discarded: remove(absPath) };
-  }
   try {
-    const lines = fs.readFileSync(absPath, "utf8").split("\n").filter(Boolean);
+    // Past the cap, read only the tail rather than unlinking. Deleting the file
+    // takes the newest entries with it, and for hook-errors.log the note saying
+    // it happened is written *into the file being deleted* — the log erasing
+    // exactly the evidence someone would need.
+    let discarded = false;
+    let text;
+    if (size > DISCARD_BYTES) {
+      const tail = readTail(absPath, DISCARD_BYTES);
+      discarded = tail.truncated;
+      text = tail.text;
+      debugLog(
+        "plugin-state",
+        `oversized log (${size}B), keeping the last ${DISCARD_BYTES}B: ${absPath}`
+      );
+    } else {
+      text = fs.readFileSync(absPath, "utf8");
+    }
+    const lines = text.split("\n").filter(Boolean);
     let out = `${lines.slice(-keepLines).join("\n")}\n`;
     if (Buffer.byteLength(out) > maxBytes) {
       // Pathological: a few enormous lines (or one with no newline at all), so
@@ -481,7 +565,7 @@ function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
         out += "\n";
       }
     }
-    return { trimmed: atomicWrite(absPath, out), discarded: false };
+    return { trimmed: atomicWrite(absPath, out), discarded };
   } catch (err) {
     debugLog("plugin-state", `trim failed for ${absPath}: ${err.message}`);
     return { trimmed: false, discarded: false };

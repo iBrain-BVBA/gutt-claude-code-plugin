@@ -27,7 +27,11 @@ const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // capture-queue.jsonl entries
 const QUEUE_MAX_LINES = 500; // capture-queue.jsonl overflow cap
 const LOG_MAX_BYTES = 256 * 1024; // breadcrumb logs
 const LOG_KEEP_LINES = 200; // lines retained when a log is trimmed
+const DEBRIS_TTL_MS = 60 * 60 * 1000; // orphaned .lock / .tmp.* files
 const BREADCRUMB_LOGS = Object.values(LOG_FILES);
+
+/** Lock and atomic-write temp files, which are never legitimately old. */
+const isDebris = (f) => f.endsWith(".lock") || f.includes(".tmp.");
 
 /**
  * The R37 sweep: every artifact in the state contract gets bounded here, at the
@@ -45,6 +49,22 @@ function ttlSweep() {
       match: (f) => f.endsWith(".json"),
     })
   );
+
+  // Lock and temp files are siblings of the records, not records themselves, so
+  // the `.json` match above never reclaims them. A hook killed mid-write leaves
+  // one behind, and since session ids are never reused nothing ever contends for
+  // that lock again to trigger stale reclamation — it would sit there forever.
+  // Their TTL is short: no legitimate lock is held for more than a few hundred
+  // milliseconds, and no atomicWrite temp outlives its own call.
+  step("session-debris", () =>
+    sweep(statePath("sessions"), {
+      maxAgeMs: DEBRIS_TTL_MS,
+      match: isDebris,
+    })
+  );
+
+  // config.json's lock lives at the data root rather than in sessions/.
+  step("root-debris", () => sweep(statePath(), { maxAgeMs: DEBRIS_TTL_MS, match: isDebris }));
 
   // Retired marker format: `<session_id>.lessons-prompted` now lives as a field
   // in the session JSON. Nothing writes these any more, so any left on disk are

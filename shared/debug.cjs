@@ -45,7 +45,11 @@ function guard(hook, label, fn) {
   try {
     return fn();
   } catch (err) {
-    debugLog(hook, `${label}: ${err?.message || err}`);
+    // Hand debugLog the stack, not just a formatted string. It appends `.stack`
+    // when it gets one, and a swallowed exception with no stack is close to
+    // undiagnosable — several sweep steps share one log and the throw is often
+    // three or four frames inside a shared helper.
+    debugLog(hook, { message: `${label}: ${err?.message ?? err}`, stack: err?.stack });
     return undefined;
   }
 }

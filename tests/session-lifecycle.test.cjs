@@ -16,6 +16,7 @@ const { spawnSync } = require("child_process");
 const pluginState = require("../shared/plugin-state.cjs");
 const sessionState = require("../shared/session-state.cjs");
 const runtimeConfig = require("../shared/runtime-config.cjs");
+const { guard } = require("../shared/debug.cjs");
 
 const HOOKS = path.join(__dirname, "..", "gutt-core", "hooks");
 const HOUR = 60 * 60 * 1000;
@@ -293,6 +294,106 @@ describe("session lifecycle: concurrent writers", () => {
     assert.equal(typeof state.mcpConfigured, "boolean");
   });
 
+  it("an unremovable lock is waited out, never spun on", () => {
+    // The fail-open contract has one way to betray itself: a lock that cannot be
+    // deleted. A directory or dangling symlink at the lock path makes openSync
+    // return EEXIST and unlinkSync throw every time, and an early `continue`
+    // past the deadline check turns that into a hot loop that never returns —
+    // hanging the very session the fail-open exists to protect.
+    const statePathForSession = pluginState.statePath("sessions", "unremovable.json");
+    const lockPath = `${statePathForSession}.lock`;
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+
+    for (const [shape, make] of [
+      ["directory", () => fs.mkdirSync(lockPath)],
+      ["dangling symlink", () => fs.symlinkSync(path.join(dir, "does-not-exist"), lockPath)],
+    ]) {
+      fs.rmSync(lockPath, { recursive: true, force: true });
+      make();
+      let elapsed;
+      let returned;
+      try {
+        const startedAt = Date.now();
+        returned = pluginState.withLock(statePathForSession, () => "ran");
+        elapsed = Date.now() - startedAt;
+      } finally {
+        fs.rmSync(lockPath, { recursive: true, force: true });
+      }
+      assert.equal(returned, "ran", `${shape}: must fail open and still run fn`);
+      assert.ok(elapsed < 2000, `${shape}: took ${elapsed}ms — it is spinning, not failing open`);
+    }
+  });
+
+  it("a lock left by a dead process is reclaimed rather than waited out", () => {
+    sessionState.init("reclaim");
+    const lockPath = `${pluginState.statePath("sessions", "reclaim.json")}.lock`;
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, "held by a process that died");
+    const stale = new Date(Date.now() - 30_000); // > LOCK_STALE_MS
+    fs.utimesSync(lockPath, stale, stale);
+
+    const startedAt = Date.now();
+    const result = sessionState.applyUpdate((state) => {
+      state.memoryQueries = 7;
+      return state;
+    });
+    const elapsed = Date.now() - startedAt;
+
+    assert.ok(elapsed < 200, `reclaim must be immediate, took ${elapsed}ms`);
+    assert.equal(result.written, true);
+    assert.equal(readSession(dir, "reclaim").memoryQueries, 7);
+    assert.equal(fs.existsSync(lockPath), false, "the reclaiming writer released the lock");
+  });
+
+  it("a held lock is waited out and the write still lands", () => {
+    // Fail-open must mean "proceed without the lock", not "silently skip the
+    // write" — a dropped finalizeSession leaves a session marked live for 24h.
+    sessionState.init("failopen");
+    sessionState.updateState((state) => {
+      state.memoryQueries = 5;
+      return state;
+    });
+    const lockPath = `${pluginState.statePath("sessions", "failopen.json")}.lock`;
+    fs.writeFileSync(lockPath, "held"); // fresh mtime — not reclaimable
+
+    let result;
+    try {
+      result = sessionState.applyUpdate((state) => {
+        state.memoryQueries = 99;
+        return state;
+      });
+    } finally {
+      fs.rmSync(lockPath, { force: true });
+    }
+
+    assert.equal(result.written, true, "fail-open must still perform the write");
+    assert.equal(readSession(dir, "failopen").memoryQueries, 99);
+  });
+
+  it("consumeFlag hands the flag to exactly one of two racing readers", () => {
+    // The unlocked fast path decides only "is there anything to do"; whether
+    // *this* caller consumed it has to be settled inside the lock, or both
+    // hooks on one event return true and a one-shot injection fires twice.
+    sessionState.init("one-shot");
+    sessionState.beginSession("one-shot", "startup");
+
+    const fixture = path.join(__dirname, "fixtures", "consume-once.cjs");
+    const readers = 6;
+    const cmd =
+      Array.from({ length: readers }, () => `node ${JSON.stringify(fixture)} one-shot &`).join(
+        " "
+      ) + " wait";
+    const res = spawnSync("sh", ["-c", cmd], {
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: dir },
+    });
+    assert.equal(res.status, 0, res.stderr);
+
+    const wins = res.stdout.split("\n").filter((line) => line.trim() === "consumed").length;
+    assert.equal(wins, 1, `expected exactly one consumer, ${wins} of ${readers} claimed the flag`);
+    assert.equal(readSession(dir, "one-shot").firstPromptPending, false);
+  });
+
   it("config.json mutations take the write lock too", () => {
     // config.json is global — every concurrent session on the machine shares it,
     // and SessionStart expires a snooze while SessionEnd drops one. It shipped
@@ -403,6 +504,53 @@ describe("session lifecycle: snooze", () => {
 // TTL primitives (AC2)
 // ---------------------------------------------------------------------------
 
+describe("session lifecycle: guard()", () => {
+  let dir;
+  before(() => {
+    dir = makeDataDir();
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const errorLog = () => path.join(dir, "hook-errors.log");
+  const readLog = () => (fs.existsSync(errorLog()) ? fs.readFileSync(errorLog(), "utf8") : "");
+
+  it("passes a successful result straight through", () => {
+    assert.equal(
+      guard("Probe", "fine", () => 42),
+      42
+    );
+  });
+
+  it("swallows a throw, returns undefined, and records it with a stack", () => {
+    // guard() is the single reason it is safe for hooks to swallow errors, so a
+    // swallow that loses the stack makes every one of them undiagnosable — the
+    // throw is usually several frames inside a shared helper and five sweep
+    // steps share one log.
+    const returned = guard("Probe", "the step that failed", () => {
+      throw new TypeError("kaboom");
+    });
+
+    assert.equal(returned, undefined);
+    const log = readLog();
+    assert.match(log, /\[Probe\] the step that failed: kaboom/);
+    assert.match(log, /TypeError: kaboom/, "the stack must survive into the log");
+    assert.match(log, /session-lifecycle\.test\.cjs/, "and it must name a frame");
+  });
+
+  it("handles a thrown non-Error", () => {
+    assert.equal(
+      guard("Probe", "threw a string", () => {
+        throw "not an error object";
+      }),
+      undefined
+    );
+    assert.match(readLog(), /threw a string: not an error object/);
+  });
+});
+
 describe("session lifecycle: TTL primitives", () => {
   let dir;
   before(() => {
@@ -423,6 +571,49 @@ describe("session lifecycle: TTL primitives", () => {
       ? fs.readFileSync(queuePath(), "utf8").trim().split("\n").filter(Boolean)
       : [];
   }
+
+  it("an oversized queue keeps its newest entries instead of being deleted", () => {
+    // The 4MB cap exists so SessionStart never reads a huge file, not so the
+    // user's un-drained captures get thrown away — and a queue only gets that
+    // big precisely when nobody has drained it.
+    const file = queuePath();
+    const filler = `${JSON.stringify({ ts: new Date().toISOString(), n: "x".repeat(120) })}\n`;
+    fs.writeFileSync(file, filler.repeat(Math.ceil((5 * 1024 * 1024) / filler.length)));
+    fs.appendFileSync(file, `${JSON.stringify({ ts: new Date().toISOString(), n: "newest" })}\n`);
+    assert.ok(fs.statSync(file).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
+
+    const result = pluginState.pruneJsonl(file, { maxAgeMs: 7 * DAY, maxLines: 500 });
+
+    assert.equal(result.discarded, true, "the unread head is reported as lost");
+    assert.equal(fs.existsSync(file), true, "the queue must survive, not be unlinked");
+    assert.ok(fs.statSync(file).size <= 4 * 1024 * 1024, "and it must now be bounded");
+    assert.ok(
+      queueLines().some((line) => line.includes("newest")),
+      "the newest entry is exactly the one that must not be lost"
+    );
+  });
+
+  it("an oversized log keeps its tail rather than erasing its own evidence", () => {
+    // trimLog used to unlink the file. For hook-errors.log that means the notice
+    // explaining the deletion is written into the file being deleted — the only
+    // diagnostic surface in the plugin, erasing itself when it matters most.
+    const file = pluginState.statePath("hook-errors.log");
+    const filler = `${new Date().toISOString()} [Hook] a routine logged failure\n`;
+    fs.writeFileSync(file, filler.repeat(Math.ceil((5 * 1024 * 1024) / filler.length)));
+    fs.appendFileSync(file, "the error someone needs to read\n");
+    assert.ok(fs.statSync(file).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
+
+    const result = pluginState.trimLog(file, { maxBytes: 256 * 1024, keepLines: 200 });
+
+    assert.equal(result.discarded, true);
+    assert.equal(fs.existsSync(file), true, "the log must survive");
+    assert.ok(fs.statSync(file).size <= 256 * 1024, "bounded to maxBytes");
+    assert.match(
+      fs.readFileSync(file, "utf8"),
+      /the error someone needs to read/,
+      "the newest entry survived"
+    );
+  });
 
   it("pruneJsonl drops entries past the TTL and keeps the rest", () => {
     writeQueue([
