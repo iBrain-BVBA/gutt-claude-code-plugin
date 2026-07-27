@@ -119,6 +119,22 @@ search.
 | get_episodes_for_entity | v2.0 | offset-paginated, `last_n=10`                                       |
 | fetch                   | v3.0 | `(objectIds: list\|str, max 50)` — mixed nodes/edges/episodes by id |
 
+## Known defects and misleading failures
+
+- **`get_node_edges` reverses direction.** It writes the node you queried into
+  `source_node_id` regardless of how the edge is stored, so every inbound
+  relationship comes back inverted — the tell is that every row names your own
+  query as the source. `edge_type` filtering is unaffected. Ground truth:
+  `get_entity_edge(uuid)` or an uncentered `search_memory_facts`.
+- **A raw-UUID lookup can report as forbidden when the record is fine.** Payloads
+  carry the pre-remap id in `attributes._original_uuid`; passing that to
+  `get_entity_node` returns "Access denied", while the semantic id for the same
+  node returns it. Never read that error as "missing" or "not permitted" — retry
+  with the readable id.
+- **Bulk source fetches overflow, and not only on hub nodes.**
+  `get_episodes_for_entity` has exceeded the output cap on quite ordinary items;
+  reach episodes via the `episodes` array on a fact plus `get_episode` instead.
+
 ## Scoping (group_id / agent_id)
 
 - **group_ids is not a reliable client filter.** With OAuth + policy enforcement

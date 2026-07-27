@@ -24,7 +24,9 @@ PICK**, never at a fresh search.
 2. **Never trust an edge's currency without checking dates — and one date isn't
    enough.** The nav tools return superseded edges with no warning. Before
    presenting any edge as current:
-   - drop edges with `expired_at` or `invalid_at` set;
+   - drop edges whose `invalid_at` is in the past — `expired_at` only records
+     when the end was noticed, and a **future** `invalid_at` is a scheduled
+     end, still current until it arrives;
    - when two _live_ edges of the same kind disagree (duplicate `HAS_STATUS`,
      etc. — it happens), prefer the newest `valid_at`;
    - for "is X still blocked / true?", also look for a **replacement** — an old
@@ -39,6 +41,12 @@ PICK**, never at a fresh search.
    often over a _stale_ edge. Use it only for "are these connected _at all_", and
    distrust any path running through a status/person hub. For a dependency or
    impact chain, walk `get_node_edges(edge_type=BLOCKS|DEPENDS_ON)` hop by hop.
+
+   **Confirm each hop's direction before reporting it.** `get_node_edges` names
+   the node you queried as the source every time, so an inbound edge comes back
+   inverted — the walk finds the chain, but not which way it runs. Confirm with
+   `get_entity_edge` on the edge's id, or an uncentered `search_memory_facts`
+   (`references/tools.md`).
 
 4. **Re-center when a node is big — it may not just flood, it can error.**
    People, sprints, and epics can have hundreds of edges, and `get_node_edges`
@@ -85,16 +93,16 @@ PICK**, never at a fresh search.
    cascade.
 3. **Inspect** — fetch a single node, edge, or episode only to confirm or quote.
 
-| Goal                                | Tool                                                                            |
-| ----------------------------------- | ------------------------------------------------------------------------------- |
-| All of a node's neighbors           | `get_node_edges` (then filter stale)                                            |
-| A typed dependency / impact chain   | `get_node_edges(edge_type=…)` hop by hop — **not** `find_path`                  |
-| How X relates to topic Q            | `search_memory_facts(query=Q, center_node_id=X)` — valid-only, partial          |
-| Are two nodes connected at all      | `find_path` — undirected; distrust hub-routed paths                             |
-| A directed link A→B                 | `get_edges_between_nodes(source_id=A, target_id=B)`                             |
-| Entities co-mentioned in a snapshot | `get_nodes_and_edges_by_episode(episode_ids)` — from an edge's `episodes` field |
-| A named node / edge                 | `get_entity_node` / `get_entity_edge`                                           |
-| Provenance or a verbatim quote      | `get_episode`                                                                   |
+| Goal                                | Tool                                                                                                  |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| All of a node's neighbors           | `get_node_edges` (then filter stale)                                                                  |
+| A typed dependency / impact chain   | `get_node_edges(edge_type=…)` hop by hop — **not** `find_path`; confirm each hop's direction (rule 3) |
+| How X relates to topic Q            | `search_memory_facts(query=Q, center_node_id=X)` — valid-only, partial                                |
+| Are two nodes connected at all      | `find_path` — undirected; distrust hub-routed paths                                                   |
+| A directed link A→B                 | `get_edges_between_nodes(source_id=A, target_id=B)`                                                   |
+| Entities co-mentioned in a snapshot | `get_nodes_and_edges_by_episode(episode_ids)` — from an edge's `episodes` field                       |
+| A named node / edge                 | `get_entity_node` / `get_entity_edge`                                                                 |
+| Provenance or a verbatim quote      | `get_episode`                                                                                         |
 
 **Depth:** `find_path`'s default `max_depth=5` is headroom — don't raise it.
 
@@ -116,3 +124,5 @@ biased, valid-only, partial) plus `get_entity_edge` / `get_episode` by id, and
   tool reference in the `memory-search` skill (`references/tools.md`). Single
   source; not restated here.
 - Entry search (rungs 1–2): `memory-search`. Writing memory: `memory-capture`.
+- Rule 2 settles which _edge_ is current. When two stored _memories_ contradict
+  each other and the question is which should stand: `conflict-adjudication`.
