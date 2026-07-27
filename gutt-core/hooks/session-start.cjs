@@ -19,7 +19,7 @@
 const { beginSession, init } = require("./lib/session-state.cjs");
 const { statePath, sweep, pruneJsonl, trimLog } = require("./lib/plugin-state.cjs");
 const { clearExpiredSnooze } = require("./lib/runtime-config.cjs");
-const { debugLog } = require("./lib/debug.cjs");
+const { LOG_FILES, guard } = require("./lib/debug.cjs");
 
 // R37 TTL policy. One place, because E8-S8.4 (GP-893) verifies these numbers.
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // sessions/<id>.json
@@ -27,7 +27,7 @@ const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // capture-queue.jsonl entries
 const QUEUE_MAX_LINES = 500; // capture-queue.jsonl overflow cap
 const LOG_MAX_BYTES = 256 * 1024; // breadcrumb logs
 const LOG_KEEP_LINES = 200; // lines retained when a log is trimmed
-const BREADCRUMB_LOGS = ["hook-invocations.log", "hook-errors.log"];
+const BREADCRUMB_LOGS = Object.values(LOG_FILES);
 
 /**
  * The R37 sweep: every artifact in the state contract gets bounded here, at the
@@ -37,13 +37,7 @@ const BREADCRUMB_LOGS = ["hook-invocations.log", "hook-errors.log"];
  * session sweep, and neither may abort the hook.
  */
 function ttlSweep() {
-  const step = (name, fn) => {
-    try {
-      fn();
-    } catch (err) {
-      debugLog("SessionStart", `ttl sweep (${name}): ${err.message || err}`);
-    }
-  };
+  const step = (name, fn) => guard("SessionStart", `ttl sweep (${name})`, fn);
 
   step("sessions", () =>
     sweep(statePath("sessions"), {
@@ -99,11 +93,7 @@ process.stdin.on("end", () => {
   // ordering it first would only make the sweep stat a file it can never expire.
   ttlSweep();
 
-  try {
-    beginSession(sessionId, source);
-  } catch (err) {
-    debugLog("SessionStart", `begin session: ${err.message || err}`);
-  }
+  guard("SessionStart", "begin session", () => beginSession(sessionId, source));
 
   // exitCode over process.exit() so any buffered output flushes.
   process.exitCode = 0;

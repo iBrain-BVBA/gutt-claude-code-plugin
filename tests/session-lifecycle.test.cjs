@@ -196,7 +196,7 @@ describe("session lifecycle: flag consumption", () => {
   it("the lesson-prompt record replaces the retired marker file", () => {
     sessionState.beginSession("s-flags", "startup");
     assert.equal(sessionState.wasLessonsPrompted(), false);
-    assert.equal(sessionState.markLessonsPrompted(), true);
+    assert.equal(sessionState.markLessonsPrompted().written, true);
     assert.equal(sessionState.wasLessonsPrompted(), true);
     assert.equal(sessionState.clearLessonsPrompted(), true, "a new prompt re-arms it");
     assert.equal(sessionState.wasLessonsPrompted(), false);
@@ -209,7 +209,7 @@ describe("session lifecycle: flag consumption", () => {
   it("markLessonsPrompted reports failure so Stop can fail open", () => {
     const saved = process.env.CLAUDE_PLUGIN_DATA;
     delete process.env.CLAUDE_PLUGIN_DATA;
-    assert.equal(sessionState.markLessonsPrompted(), false, "no data dir → not persisted");
+    assert.equal(sessionState.markLessonsPrompted().written, false, "no data dir → not persisted");
     process.env.CLAUDE_PLUGIN_DATA = saved;
   });
 
@@ -291,6 +291,34 @@ describe("session lifecycle: concurrent writers", () => {
     assert.equal(state.firstPromptPending, true, "lifecycle hook's flag survived");
     assert.ok(state.connectionCheckedAt, "connectivity probe's result survived");
     assert.equal(typeof state.mcpConfigured, "boolean");
+  });
+
+  it("config.json mutations take the write lock too", () => {
+    // config.json is global — every concurrent session on the machine shares it,
+    // and SessionStart expires a snooze while SessionEnd drops one. It shipped
+    // with the same unguarded read-then-write that cost us the session file, so
+    // this pins the mutators to the lock.
+    //
+    // Asserted by holding the lock and timing the mutator: a locked writer waits
+    // out LOCK_TIMEOUT_MS (250ms) and then fails open, an unlocked one returns
+    // immediately.
+    const lockPath = `${runtimeConfig.configPath()}.lock`;
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, "held by the test");
+
+    let elapsed;
+    try {
+      const startedAt = Date.now();
+      runtimeConfig.setSnooze({ sessionId: "locked-out" });
+      elapsed = Date.now() - startedAt;
+    } finally {
+      fs.rmSync(lockPath, { force: true });
+    }
+
+    assert.ok(
+      elapsed >= 200,
+      `setSnooze returned in ${elapsed}ms while the lock was held — it is not locked`
+    );
   });
 });
 

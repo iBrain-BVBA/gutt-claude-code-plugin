@@ -19,7 +19,7 @@ const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { clearMemoryCache } = require("./lib/memory-cache.cjs");
 const { clearSeedCache } = require("./lib/seed-registry.cjs");
 const { init, updateState } = require("./lib/session-state.cjs");
-const { debugLog } = require("./lib/debug.cjs");
+const { guard } = require("./lib/debug.cjs");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -37,36 +37,31 @@ process.stdin.on("end", () => {
   init(sessionId);
 
   // Stale results from the previous session must not leak into this one.
-  try {
+  guard("SessionStart/async", "cache clear", () => {
     clearMemoryCache();
     clearSeedCache();
-  } catch (err) {
-    debugLog("SessionStart/async", `cache clear: ${err.message || err}`);
-  }
+  });
 
-  let diag = { configured: false, url: null, error: "probe failed" };
-  try {
-    diag = diagnoseGuttMcp();
-  } catch (err) {
-    debugLog("SessionStart/async", `mcp diagnose: ${err.message || err}`);
-  }
+  const diag = guard("SessionStart/async", "mcp diagnose", diagnoseGuttMcp) || {
+    configured: false,
+    url: null,
+    error: "probe failed",
+  };
 
   // Conservative mapping, unchanged from 2.x: only a configured server with a
   // reachable-looking URL counts as "ok". A stdio-transport server can't be
   // verified from a hook, so it stays "unknown" rather than showing red. The raw
   // facts go in alongside it so the HUD port (GP-867) can fix the false "!"
   // without re-running this probe.
-  try {
+  guard("SessionStart/async", "state write", () =>
     updateState((state) => {
       state.connectionStatus = diag.configured && diag.url ? "ok" : "unknown";
       state.mcpConfigured = Boolean(diag.configured);
       state.mcpUrl = diag.url || null;
       state.connectionCheckedAt = new Date().toISOString();
       return state;
-    });
-  } catch (err) {
-    debugLog("SessionStart/async", `state write: ${err.message || err}`);
-  }
+    })
+  );
 
   // Best-effort user-facing note. An async hook's stdout is not guaranteed to
   // surface in the transcript; the state written above is the contract, this is

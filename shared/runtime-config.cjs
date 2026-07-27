@@ -16,10 +16,16 @@
  *
  * Mutations read the file raw and touch only the keys they own, so this module
  * never materialises defaults it doesn't manage into a config GP-866 owns.
+ *
+ * Concurrency: unlike `sessions/<id>.json`, this file is **global** — every
+ * concurrent Claude Code session on the machine shares it, and SessionStart and
+ * SessionEnd both write it. Every mutation therefore runs under the same write
+ * lock the session state uses; an unguarded read-then-write here loses updates
+ * exactly the way it did there (see plugin-state.updateJson).
  */
 "use strict";
 
-const { statePath, readJson, writeJson } = require("./plugin-state.cjs");
+const { statePath, readJson, writeJson, withLock } = require("./plugin-state.cjs");
 
 /**
  * The documented shape of `config.json`. Read-side only: `enabled` and `mode`
@@ -83,31 +89,59 @@ function isSnoozed(sessionId = null, now = Date.now()) {
 }
 
 /**
+ * Read-modify-write `config.json` under the write lock.
+ *
+ * `mutate` receives the stored config (or null when the file does not exist)
+ * and returns the object to persist, or null to write nothing. Returning null
+ * matters: a session that merely checks for a lapsed snooze must not create a
+ * config file, and must not rewrite one it did not change.
+ *
+ * @param {(config: Object|null) => Object|null} mutate
+ * @returns {boolean} true if a write landed
+ */
+function updateConfig(mutate) {
+  const file = configPath();
+  if (!file) {
+    return false;
+  }
+  return (
+    withLock(file, () => {
+      // Re-read inside the lock: the pre-check that got us here ran unlocked and
+      // may already be stale.
+      const next = mutate(readJson(file, null));
+      return next ? writeJson(file, next) : false;
+    }) || false
+  );
+}
+
+/**
+ * Strip the snooze keys from a config object.
+ * @param {Object|null} config
+ * @returns {Object|null} the mutated config, or null when no snooze was set
+ */
+function withoutSnooze(config) {
+  if (!config || !SNOOZE_KEYS.some((k) => config[k] !== undefined && config[k] !== null)) {
+    return null;
+  }
+  for (const key of SNOOZE_KEYS) {
+    delete config[key];
+  }
+  return config;
+}
+
+/**
  * Persist a snooze. The primitive behind GP-866's `/gutt off` — GP-863 ships it
  * so the lifecycle it clears is expressible (and testable) in one place.
  * @param {{untilMs?: number|null, sessionId?: string|null}} [opts]
  * @returns {boolean} true if written
  */
 function setSnooze({ untilMs = null, sessionId = null } = {}) {
-  const config = readRawConfig() || {};
-  config.snoozeUntil = Number.isFinite(untilMs) ? new Date(untilMs).toISOString() : null;
-  config.snoozeSessionId = sessionId;
-  return writeJson(configPath(), config);
-}
-
-/**
- * Drop the snooze keys if any are set. Shared tail of both clear paths.
- * @param {Object|null} config
- * @returns {boolean} true if written
- */
-function dropSnooze(config) {
-  if (!config || !SNOOZE_KEYS.some((k) => config[k] !== undefined && config[k] !== null)) {
-    return false;
-  }
-  for (const key of SNOOZE_KEYS) {
-    delete config[key];
-  }
-  return writeJson(configPath(), config);
+  return updateConfig((config) => {
+    const next = config || {};
+    next.snoozeUntil = Number.isFinite(untilMs) ? new Date(untilMs).toISOString() : null;
+    next.snoozeSessionId = sessionId;
+    return next;
+  });
 }
 
 /**
@@ -117,16 +151,23 @@ function dropSnooze(config) {
  * @returns {boolean} true if an expired snooze was cleared
  */
 function clearExpiredSnooze(now = Date.now()) {
-  const config = readRawConfig();
-  if (!config?.snoozeUntil) {
+  // Unlocked pre-check. No snooze at all is overwhelmingly the common case, and
+  // this runs on every SessionStart — taking the lock to discover there is
+  // nothing to do would be pure cost on a path with a 50ms budget (R25).
+  if (!readRawConfig()?.snoozeUntil) {
     return false;
   }
-  const until = Date.parse(config.snoozeUntil);
-  // An unparseable deadline can never expire on its own — treat it as stale.
-  if (Number.isFinite(until) && until > now) {
-    return false;
-  }
-  return dropSnooze(config);
+  return updateConfig((config) => {
+    if (!config?.snoozeUntil) {
+      return null;
+    }
+    const until = Date.parse(config.snoozeUntil);
+    // An unparseable deadline can never expire on its own — treat it as stale.
+    if (Number.isFinite(until) && until > now) {
+      return null;
+    }
+    return withoutSnooze(config);
+  });
 }
 
 /**
@@ -139,11 +180,12 @@ function clearSessionSnooze(sessionId) {
   if (!sessionId) {
     return false;
   }
-  const config = readRawConfig();
-  if (!config || config.snoozeSessionId !== sessionId) {
+  if (readRawConfig()?.snoozeSessionId !== sessionId) {
     return false;
   }
-  return dropSnooze(config);
+  return updateConfig((config) =>
+    config?.snoozeSessionId === sessionId ? withoutSnooze(config) : null
+  );
 }
 
 module.exports = {

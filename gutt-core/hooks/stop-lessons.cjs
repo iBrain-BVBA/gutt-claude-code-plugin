@@ -7,15 +7,10 @@
  */
 
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
-const {
-  getState,
-  init,
-  wasLessonsPrompted,
-  markLessonsPrompted,
-} = require("./lib/session-state.cjs");
+const { init, wasLessonsPrompted, markLessonsPrompted } = require("./lib/session-state.cjs");
 const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
 const { statePath, appendLine } = require("./lib/plugin-state.cjs");
-const { debugLog } = require("./lib/debug.cjs");
+const { LOG_FILES, debugLog } = require("./lib/debug.cjs");
 
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
 
@@ -47,7 +42,7 @@ process.stdin.on("end", () => {
   try {
     init(sessionId);
 
-    const invocationLog = statePath("hook-invocations.log");
+    const invocationLog = statePath(LOG_FILES.invocations);
 
     // Already prompted this session — allow stop. The "prompted" record lives in
     // sessions/<id>.json since GP-863; the old sibling marker file is gone.
@@ -63,13 +58,15 @@ process.stdin.on("end", () => {
     // (data dir unavailable/unwritable), allow the stop rather than block —
     // otherwise we'd re-block every stop with no way to record that we already
     // prompted.
-    if (!markLessonsPrompted()) {
+    const marked = markLessonsPrompted();
+    if (!marked.written) {
       debugLog("stop-lessons", "could not persist lessons-prompted state; allowing stop");
       process.exit(0);
     }
 
-    // Build context from session state
-    const state = getState();
+    // Build context from the state the write above already produced — re-reading
+    // the file we just wrote would be a third read of it in this hook.
+    const state = marked.state;
     const memoryQueries = state.memoryQueries || 0;
     const lessonsCaptured = state.lessonsCaptured || 0;
     const significantOps = state.significantOps || 0;

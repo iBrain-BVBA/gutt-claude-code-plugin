@@ -17,7 +17,7 @@
 
 const { init, finalizeSession } = require("./lib/session-state.cjs");
 const { clearSessionSnooze } = require("./lib/runtime-config.cjs");
-const { debugLog } = require("./lib/debug.cjs");
+const { guard } = require("./lib/debug.cjs");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -36,17 +36,8 @@ process.stdin.on("end", () => {
   }
   init(sessionId);
 
-  try {
-    clearSessionSnooze(sessionId);
-  } catch (err) {
-    debugLog("SessionEnd", `clear session snooze: ${err.message || err}`);
-  }
-
-  try {
-    finalizeSession(reason);
-  } catch (err) {
-    debugLog("SessionEnd", `finalize session: ${err.message || err}`);
-  }
+  guard("SessionEnd", "clear session snooze", () => clearSessionSnooze(sessionId));
+  guard("SessionEnd", "finalize session", () => finalizeSession(reason));
 
   process.exitCode = 0;
 });

@@ -4,6 +4,7 @@
  */
 
 const { statePath, appendLine } = require("./lib/plugin-state.cjs");
+const { LOG_FILES } = require("./lib/debug.cjs");
 const { init, clearLessonsPrompted } = require("./lib/session-state.cjs");
 
 let input = "";
@@ -25,7 +26,7 @@ process.stdin.on("end", () => {
   }
 
   const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
-  const invocationLog = statePath("hook-invocations.log");
+  const invocationLog = statePath(LOG_FILES.invocations);
 
   appendLine(invocationLog, `[${timestamp}] Prompt: ${prompt}`);
 

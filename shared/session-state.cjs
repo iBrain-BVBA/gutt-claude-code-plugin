@@ -76,7 +76,10 @@ function defaultState() {
 }
 
 function getState() {
-  return readJson(getStatePath(), defaultState());
+  // `|| defaultState()` rather than passing it as the fallback argument: JS
+  // evaluates arguments eagerly, so the latter would mint a UUID and two
+  // timestamps on every read for a value used only when the file is missing.
+  return readJson(getStatePath(), null) || defaultState();
 }
 
 /**
@@ -99,16 +102,13 @@ function getState() {
  * @returns {{state: Object, written: boolean}}
  */
 function applyUpdate(updater) {
-  return updateJson(
-    getStatePath(),
-    (current) => {
-      const newState = updater(current);
-      newState.rev = (current?.rev || 0) + 1;
-      newState.lastUpdated = new Date().toISOString();
-      return newState;
-    },
-    defaultState()
-  );
+  return updateJson(getStatePath(), (current) => {
+    // Same eager-argument reason as getState(): build the default only on a miss.
+    const newState = updater(current || defaultState());
+    newState.rev = (current?.rev || 0) + 1;
+    newState.lastUpdated = new Date().toISOString();
+    return newState;
+  });
 }
 
 function updateState(updater) {
@@ -249,16 +249,18 @@ function finalizeSession(reason) {
 
 /**
  * Read-and-clear a lifecycle flag. Writes only when the flag was set, so the
- * common case on the UserPromptSubmit guard's hot path is one read (R25).
+ * common case on the UserPromptSubmit guard's hot path is one read and no lock
+ * (R25).
  * @param {string} flag
+ * @param {*} [clearedValue] - what "consumed" looks like for this field
  * @returns {boolean} whether the flag was set
  */
-function consumeFlag(flag) {
+function consumeFlag(flag, clearedValue = false) {
   if (!getState()[flag]) {
     return false;
   }
   updateState((state) => {
-    state[flag] = false;
+    state[flag] = clearedValue;
     return state;
   });
   return true;
@@ -288,30 +290,29 @@ function wasLessonsPrompted() {
 }
 
 /**
- * Mark the lesson-capture prompt as shown. Returns false when the write did not
- * land, so the caller can fail open rather than re-prompt forever.
- * @returns {boolean} true if persisted
+ * Mark the lesson-capture prompt as shown.
+ *
+ * Returns the persisted state alongside the outcome so the Stop hook can build
+ * its message from it instead of re-reading the file it just wrote; `written`
+ * is false when the write did not land, so the caller can fail open rather than
+ * re-prompt forever.
+ *
+ * @returns {{state: Object, written: boolean}}
  */
 function markLessonsPrompted() {
   return applyUpdate((state) => {
     state.lessonsPromptedAt = new Date().toISOString();
     return state;
-  }).written;
+  });
 }
 
 /**
- * Re-arm the lesson-capture prompt (called on each new user prompt).
+ * Re-arm the lesson-capture prompt (called on each new user prompt). Cleared to
+ * null rather than false — this field holds a timestamp, not a flag.
  * @returns {boolean} true if a prompt record was cleared
  */
 function clearLessonsPrompted() {
-  if (!getState().lessonsPromptedAt) {
-    return false;
-  }
-  updateState((state) => {
-    state.lessonsPromptedAt = null;
-    return state;
-  });
-  return true;
+  return consumeFlag("lessonsPromptedAt", null);
 }
 
 module.exports = {
