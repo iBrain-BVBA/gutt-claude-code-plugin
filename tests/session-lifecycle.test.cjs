@@ -327,6 +327,43 @@ describe("session lifecycle: concurrent writers", () => {
     }
   });
 
+  it("a holder that stalled does not release the lock that replaced it", () => {
+    // The stale reclaim has a mirror-image failure. If a holder stalls past
+    // LOCK_STALE_MS — laptop suspend, heavy swap, an fsync stall on a network
+    // HOME — a second writer correctly reclaims the lock and creates its own.
+    // Releasing by path would then delete *that* writer's lock, letting a third
+    // writer in alongside it: exactly the concurrent read-modify-write the lock
+    // exists to prevent.
+    //
+    // Staged in-process rather than by stalling for 5s: rename the held lock
+    // aside and drop a different file in its place, which is the state the
+    // stalled holder would wake up to. Renaming rather than deleting keeps the
+    // original inode allocated, so the replacement cannot be handed the same
+    // one and quietly turn this into a tautology.
+    const file = pluginState.statePath("sessions", "stalled-holder.json");
+    const lockPath = `${file}.lock`;
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.rmSync(lockPath, { recursive: true, force: true });
+
+    let inodesDiffered = false;
+    pluginState.withLock(file, () => {
+      const held = fs.lstatSync(lockPath).ino;
+      fs.renameSync(lockPath, `${lockPath}.parked`);
+      fs.writeFileSync(lockPath, "second writer");
+      inodesDiffered = fs.lstatSync(lockPath).ino !== held;
+    });
+
+    assert.ok(inodesDiffered, "test setup: the replacement lock must be a different inode");
+    assert.equal(
+      fs.existsSync(lockPath),
+      true,
+      "the reclaiming writer's lock was deleted — a third writer can now run concurrently"
+    );
+    assert.equal(fs.readFileSync(lockPath, "utf8"), "second writer");
+    fs.rmSync(lockPath, { force: true });
+    fs.rmSync(`${lockPath}.parked`, { force: true });
+  });
+
   it("a lock left by a dead process is reclaimed rather than waited out", () => {
     sessionState.init("reclaim");
     const lockPath = `${pluginState.statePath("sessions", "reclaim.json")}.lock`;
@@ -826,6 +863,35 @@ describe("session lifecycle: hooks end to end", () => {
     assert.equal(r.status, 0);
   });
 
+  // Well-formed JSON carrying a wrong-typed session_id is the gap the test above
+  // leaves: it parses fine, so nothing rejects it, and it reaches sanitizeSessionId
+  // — which every lifecycle hook calls via init(), outside its guard(). All three
+  // exited 1 on an uncaught TypeError before sanitizeSessionId coerced its input.
+  for (const [label, sessionId] of [
+    ["a number", 123],
+    ["an array", ["a"]],
+    ["an object", { id: "x" }],
+    ["null", null],
+    ["empty", ""],
+  ]) {
+    it(`every lifecycle hook survives ${label} session_id`, () => {
+      for (const hook of ["session-start.cjs", "session-end.cjs", "session-connectivity.cjs"]) {
+        const r = runHook(
+          hook,
+          { session_id: sessionId, source: "startup" },
+          { dataDir: dir, home }
+        );
+        assert.equal(r.status, 0, `${hook} exited ${r.status}: ${r.stderr}`);
+      }
+      // The id still has to route to a real file rather than a bare ".json".
+      const written = fs.readdirSync(path.join(dir, "sessions")).filter((f) => f.endsWith(".json"));
+      assert.ok(
+        written.every((f) => f.length > ".json".length),
+        `unnamed state file among: ${written.join(", ")}`
+      );
+    });
+  }
+
   it("SessionStart writes nothing outside CLAUDE_PLUGIN_DATA (AC3)", () => {
     const probeHome = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-ac3-home-"));
     const probeData = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-ac3-data-"));
@@ -910,11 +976,16 @@ describe("session lifecycle: hooks end to end", () => {
 describe("session lifecycle: synchronous path stays inside the latency budget", () => {
   let dir;
 
-  before(() => {
-    dir = makeDataDir();
-    // A deliberately dirty state dir: expired sessions to sweep, a queue with
-    // stale entries, an oversized log, and a lapsed snooze — the worst case the
-    // sweep can face on a real machine.
+  /**
+   * Re-seed the worst dirty state a real machine can present: expired sessions,
+   * a queue with stale entries, an oversized log, a lapsed snooze, and debris.
+   *
+   * Repeatable on purpose. It used to run once in before(), which meant the
+   * latency loop swept an already-clean dir for 39 of its 40 samples and the
+   * bounding assertions below silently depended on that loop having run first.
+   */
+  function seedDirtyState() {
+    fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
     for (let i = 0; i < 60; i++) {
       const f = path.join(dir, "sessions", `bench-${i}.json`);
@@ -954,6 +1025,10 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       fs.utimesSync(f, stale, stale);
     }
     fs.writeFileSync(path.join(dir, "sessions", "live.json.lock"), "");
+  }
+
+  before(() => {
+    dir = makeDataDir();
   });
 
   after(() => {
@@ -961,36 +1036,85 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("sweep + state write stays well under 50ms p95", () => {
-    // Measured in-process on purpose. Wall-clock for the spawned hook is
-    // dominated by node's own interpreter startup (~20-50ms depending on the
-    // machine), which no hook can influence and which would make this assertion
-    // a coin flip on a loaded CI box. What GP-863 controls is the work below.
-    //
-    // 40 samples with the first discarded: p95 then tolerates two outliers
-    // rather than one, so a GC pause or a noisy CI neighbour can't fail the run
-    // without the budget genuinely being blown.
-    // The hook's own ttlSweep, not a copy: a reimplementation here would keep
-    // passing while the real sweep grew a slow step or lost one entirely.
-    const sweepOnce = (i) => {
-      ttlSweep();
-      sessionState.init(`bench-run-${i}`);
-      sessionState.beginSession(`bench-run-${i}`, "startup");
-    };
+  /**
+   * One SessionStart's synchronous work: the hook's own ttlSweep — not a copy,
+   * which would keep passing while the real sweep grew a slow step or lost one
+   * — plus the single state write that follows it.
+   *
+   * Measured in-process on purpose. Wall-clock for the spawned hook is dominated
+   * by node's own interpreter startup (~20-50ms depending on the machine), which
+   * no hook can influence and which would make this a coin flip on a loaded CI
+   * box. What GP-863 controls is the work below.
+   */
+  function sweepOnce(i) {
+    ttlSweep();
+    sessionState.init(`bench-run-${i}`);
+    sessionState.beginSession(`bench-run-${i}`, "startup");
+  }
 
-    sweepOnce("warmup"); // cold-start I/O and JIT, not part of the measurement
+  /**
+   * @param {number} n samples
+   * @param {(i: number) => void} run the timed work
+   * @param {(i: number) => void} [prepare] untimed setup, run before each sample
+   *   — seeding writes ~400KB and would otherwise dominate the measurement
+   * @returns {{p95: number, max: number}}
+   */
+  function measure(n, run, prepare) {
     const samples = [];
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < n; i++) {
+      prepare?.(i);
       const started = process.hrtime.bigint();
-      sweepOnce(i);
+      run(i);
       samples.push(Number(process.hrtime.bigint() - started) / 1e6);
     }
     samples.sort((a, b) => a - b);
-    const p95 = samples[Math.ceil(0.95 * samples.length) - 1];
-    assert.ok(p95 < 50, `sweep + write p95 was ${p95.toFixed(1)}ms, budget is 50ms (R25)`);
+    return { p95: samples[Math.ceil(0.95 * n) - 1], max: samples[n - 1] };
+  }
+
+  it("sweep + state write stays well under 50ms p95", () => {
+    // The R25 assertion proper, on the steady state — which is what a real p95
+    // is made of. A dirty dir is swept clean by the first SessionStart after it
+    // goes dirty; every subsequent one finds nothing to reclaim, so the dirty
+    // case below is a tail event, not the 95th percentile.
+    //
+    // 40 samples after a warmup: p95 then tolerates two outliers rather than
+    // one, so a GC pause or a noisy CI neighbour can't fail the run without the
+    // budget genuinely being blown.
+    seedDirtyState();
+    sweepOnce("warmup"); // absorbs the dirt, plus cold-start I/O and JIT
+    const { p95 } = measure(40, sweepOnce);
+    assert.ok(
+      p95 < 50,
+      `steady-state sweep + write p95 was ${p95.toFixed(1)}ms, budget 50ms (R25)`
+    );
+  });
+
+  it("a cold sweep of a fully dirty dir stays bounded", () => {
+    // The tail the test above deliberately excludes: the first SessionStart
+    // after a dirty period, re-seeded before every sample so each one pays the
+    // full cost. This is real work — reclaiming 30 session files and rewriting
+    // a 400KB log — and it is not free: measured on an M4 at p95 33-37ms with
+    // occasional maxima past 50ms, against a steady state of 1-9ms.
+    //
+    // So the budget here is a regression guard, not R25: 250ms is ~4x the worst
+    // observed locally, leaving room for a slower CI disk while still catching
+    // anything that makes the sweep super-linear. If this starts failing, the
+    // sweep got algorithmically worse — don't just raise the number.
+    seedDirtyState();
+    sweepOnce("warmup");
+    const { p95, max } = measure(20, sweepOnce, seedDirtyState);
+    assert.ok(
+      p95 < 250,
+      `cold dirty sweep p95 was ${p95.toFixed(1)}ms (max ${max.toFixed(1)}ms), guard is 250ms`
+    );
   });
 
   it("the dirty-state sweep actually bounded every artifact", () => {
+    // Seeds and sweeps for itself. It used to assert on state left behind by
+    // the latency test's warmup, so running it alone failed.
+    seedDirtyState();
+    ttlSweep();
+
     assert.ok(
       fs.readFileSync(path.join(dir, "capture-queue.jsonl"), "utf8").trim().split("\n").length <=
         500,

@@ -111,10 +111,12 @@ let writeSeq = 0;
 
 /**
  * Atomically replace a file's contents — the one atomic-write idiom for the
- * suite: unique temp name (PID + timestamp + counter) then delete-before-rename
- * (Windows can't overwrite on rename). No non-atomic fallback: a failed write
- * returns false rather than risk a torn file. No-op (false) when unavailable or
- * when the path escapes ${CLAUDE_PLUGIN_DATA}.
+ * suite: unique temp name (PID + timestamp + counter) then rename *over* the
+ * target. See the inline note at the rename for why it must not unlink first;
+ * only Windows, which cannot always rename onto an existing file, keeps an
+ * unlink fallback. No non-atomic fallback: a failed write returns false rather
+ * than risk a torn file. No-op (false) when unavailable or when the path
+ * escapes ${CLAUDE_PLUGIN_DATA}.
  * @param {string|null} absPath
  * @param {string} contents
  * @returns {boolean} true if written
@@ -202,6 +204,24 @@ function sleepSync(ms) {
  * @param {() => *} fn
  * @returns {*} whatever `fn` returns
  */
+/**
+ * Inode from a stat call, or null when it is unavailable or meaningless.
+ *
+ * Windows reports ino as 0 on some filesystems and node can surface it as a
+ * BigInt; both are useless for identity, so callers treat null as "can't tell"
+ * and fall back to path-based behavior rather than guessing.
+ * @param {() => import("fs").Stats} statFn
+ * @returns {number|null}
+ */
+function statIno(statFn) {
+  try {
+    const { ino } = statFn();
+    return typeof ino === "number" && ino > 0 ? ino : null;
+  } catch {
+    return null;
+  }
+}
+
 function withLock(absPath, fn) {
   // A lock outside the data root would be created (along with its parents) by
   // the ensureDir below even though the write it guards is going to no-op. Same
@@ -261,13 +281,28 @@ function withLock(absPath, fn) {
     debugLog("plugin-state", `proceeding unlocked: ${lockPath}`);
   }
 
+  // Which inode we actually hold. Releasing by path alone is wrong once the
+  // stale reclaim above exists: if this holder stalls past LOCK_STALE_MS (a
+  // laptop suspend, heavy swap, an fsync stall on a network HOME), another
+  // writer legitimately reclaims the lock and creates its own. Unlinking by
+  // path would then delete *that* writer's lock and let a third in alongside
+  // it — reintroducing the lost update this whole mechanism exists to stop.
+  // Comparing inodes narrows the window from seconds to microseconds; where
+  // the platform gives no usable inode it degrades to releasing by path.
+  const heldIno = fd === null ? null : statIno(() => fs.fstatSync(fd));
+
   try {
     return fn();
   } finally {
     if (fd !== null) {
       try {
         fs.closeSync(fd);
-        fs.unlinkSync(lockPath);
+        const currentIno = statIno(() => fs.lstatSync(lockPath));
+        if (heldIno === null || currentIno === null || currentIno === heldIno) {
+          fs.unlinkSync(lockPath);
+        } else {
+          debugLog("plugin-state", `not releasing a reclaimed lock: ${lockPath}`);
+        }
       } catch {
         /* best effort — a stale lock is reclaimed by the next writer */
       }

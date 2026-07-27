@@ -22,11 +22,21 @@ function getStatePath() {
 /**
  * Sanitize a session ID for safe use in file paths.
  * Strips anything that isn't alphanumeric, underscore, or hyphen.
- * @param {string} sessionId
+ *
+ * Coerces rather than assuming a string. The three lifecycle hooks call init()
+ * outside their guard(), so a payload with a non-string `session_id` used to
+ * throw here and take the whole hook down with an uncaught TypeError — exit 1,
+ * against a contract that promises exit 0 no matter what arrives on stdin.
+ * Claude Code always sends a string, so this is a contract hole rather than an
+ * observed failure, but it is the one input every hook touches before any guard.
+ *
+ * @param {*} sessionId
  * @returns {string}
  */
 function sanitizeSessionId(sessionId) {
-  return (sessionId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
+  // Trailing `|| "unknown"` catches inputs that sanitize down to nothing (""),
+  // which would otherwise produce a bare ".json" state file.
+  return String(sessionId ?? "unknown").replace(/[^a-zA-Z0-9_-]/g, "_") || "unknown";
 }
 
 /**
