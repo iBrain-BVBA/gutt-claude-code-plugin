@@ -440,41 +440,6 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
  * drops any other unparseable line, and keeping it would mean re-reading it on
  * every SessionStart forever.
  */
-const DISCARD_BYTES = 4 * 1024 * 1024;
-
-/**
- * Read at most the last `bytes` of a file without loading the whole thing.
- * The first line is dropped when the file was truncated, since a tail read
- * almost always lands mid-line.
- * @param {string} absPath
- * @param {number} bytes
- * @returns {{text: string, truncated: boolean}}
- */
-function readTail(absPath, bytes) {
-  const fd = fs.openSync(absPath, "r");
-  try {
-    const size = fs.fstatSync(fd).size;
-    const length = Math.min(bytes, size);
-    const buf = Buffer.alloc(length);
-    fs.readSync(fd, buf, 0, length, size - length);
-    const truncated = length < size;
-    let text = buf.toString("utf8");
-    if (truncated) {
-      const nl = text.indexOf("\n");
-      // Only drop the partial line if something survives it. A tail with no
-      // newline until its very end — a corrupt or sparse file, or one enormous
-      // line — would otherwise discard the whole read, turning "some data" into
-      // "none", which is exactly the outcome reading the tail exists to avoid.
-      const rest = nl === -1 ? "" : text.slice(nl + 1);
-      if (rest.trim() !== "") {
-        text = rest;
-      }
-    }
-    return { text, truncated };
-  } finally {
-    fs.closeSync(fd);
-  }
-}
 
 /**
  * Size of a file on disk, or -1 when missing/unstattable.
@@ -490,91 +455,6 @@ function sizeOf(absPath) {
   } catch {
     return -1;
   }
-}
-
-/**
- * Drop stale entries from an append-only JSONL file (the R37 `capture-queue.jsonl`
- * shape). An entry is stale when its timestamp is older than `maxAgeMs`, when it
- * doesn't parse (an unprocessable queue item is garbage, not data), or when it
- * falls outside the newest `maxLines`. Rewrites only when something was dropped,
- * so the common no-op SessionStart costs one read.
- *
- * Concurrency: read → filter → atomic replace. A line appended between the read
- * and the rename is lost. Acceptable for a best-effort queue; the alternative is
- * a lock on the SessionStart hot path.
- *
- * @param {string|null} absPath
- * @param {{maxAgeMs?: number, maxLines?: number, timestampField?: string}} opts
- * @returns {{removed: number, discarded: boolean}}
- */
-function pruneJsonl(absPath, { maxAgeMs, maxLines = Infinity, timestampField = "ts" } = {}) {
-  const size = sizeOf(absPath);
-  if (size < 0) {
-    return { removed: 0, discarded: false };
-  }
-  // Past the cap, read only the tail and let the normal policy below run on it.
-  // Deleting the file instead would destroy every pending capture — including
-  // the newest — in exactly the situation that produces a huge queue: one
-  // nobody has drained.
-  let lines;
-  let discarded = false;
-  try {
-    if (size > DISCARD_BYTES) {
-      const tail = readTail(absPath, DISCARD_BYTES);
-      discarded = tail.truncated;
-      lines = tail.text.split("\n");
-      debugLog(
-        "plugin-state",
-        `oversized jsonl (${size}B), keeping the last ${DISCARD_BYTES}B: ${absPath}`
-      );
-    } else {
-      lines = fs.readFileSync(absPath, "utf8").split("\n");
-    }
-  } catch (err) {
-    debugLog("plugin-state", `prune read failed for ${absPath}: ${err.message}`);
-    return { removed: 0, discarded: false };
-  }
-
-  const cutoff = Number.isFinite(maxAgeMs) ? Date.now() - maxAgeMs : -Infinity;
-  const kept = [];
-  let removed = 0;
-  for (const line of lines) {
-    if (line.trim() === "") {
-      continue; // trailing newline, not an entry
-    }
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      removed++; // unparseable — no consumer can ever drain it
-      continue;
-    }
-    const ts = Date.parse(entry?.[timestampField]);
-    if (Number.isFinite(ts) && ts < cutoff) {
-      removed++;
-      continue;
-    }
-    kept.push(line);
-  }
-
-  // Newest-wins overflow trim, applied after the age pass so a burst of fresh
-  // entries can't be held under the cap by expired ones.
-  if (Number.isFinite(maxLines) && kept.length > maxLines) {
-    removed += kept.length - maxLines;
-    kept.splice(0, kept.length - maxLines);
-  }
-
-  // A truncated read means what is still on disk is the oversized original, so
-  // it has to be rewritten even when the policy above dropped nothing.
-  if (removed === 0 && !discarded) {
-    return { removed: 0, discarded: false };
-  }
-  if (kept.length === 0) {
-    remove(absPath);
-    return { removed, discarded };
-  }
-  atomicWrite(absPath, `${kept.join("\n")}\n`);
-  return { removed, discarded };
 }
 
 /**
@@ -623,6 +503,42 @@ function boundToBytes(text, maxBytes) {
  * @param {{maxBytes?: number, keepLines?: number}} opts
  * @returns {{trimmed: boolean, discarded: boolean}}
  */
+/**
+ * Read at most the last `bytes` of a file without loading the whole thing.
+ * The first line is dropped when the file was truncated, since a tail read
+ * almost always lands mid-line.
+ * @param {string} absPath
+ * @param {number} bytes
+ * @returns {{text: string, truncated: boolean}}
+ */
+const DISCARD_BYTES = 4 * 1024 * 1024;
+
+function readTail(absPath, bytes) {
+  const fd = fs.openSync(absPath, "r");
+  try {
+    const size = fs.fstatSync(fd).size;
+    const length = Math.min(bytes, size);
+    const buf = Buffer.alloc(length);
+    fs.readSync(fd, buf, 0, length, size - length);
+    const truncated = length < size;
+    let text = buf.toString("utf8");
+    if (truncated) {
+      const nl = text.indexOf("\n");
+      // Only drop the partial line if something survives it. A tail with no
+      // newline until its very end — a corrupt or sparse file, or one enormous
+      // line — would otherwise discard the whole read, turning "some data" into
+      // "none", which is exactly the outcome reading the tail exists to avoid.
+      const rest = nl === -1 ? "" : text.slice(nl + 1);
+      if (rest.trim() !== "") {
+        text = rest;
+      }
+    }
+    return { text, truncated };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
   const size = sizeOf(absPath);
   if (size < 0 || size <= maxBytes) {
@@ -668,10 +584,8 @@ module.exports = {
   writeJson,
   updateJson,
   withLock,
-  atomicWrite,
   appendLine,
   remove,
   sweep,
-  pruneJsonl,
   trimLog,
 };

@@ -17,14 +17,12 @@
  */
 
 const { beginSession, init } = require("./lib/session-state.cjs");
-const { statePath, sweep, pruneJsonl, trimLog } = require("./lib/plugin-state.cjs");
+const { statePath, sweep, trimLog } = require("./lib/plugin-state.cjs");
 const { clearExpiredSnooze } = require("./lib/runtime-config.cjs");
 const { LOG_FILES, guard } = require("./lib/debug.cjs");
 
 // R37 TTL policy. One place, because E8-S8.4 (GP-893) verifies these numbers.
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // sessions/<id>.json
-const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // capture-queue.jsonl entries
-const QUEUE_MAX_LINES = 500; // capture-queue.jsonl overflow cap
 const LOG_MAX_BYTES = 256 * 1024; // breadcrumb logs
 const LOG_KEEP_LINES = 200; // lines retained when a log is trimmed
 const DEBRIS_TTL_MS = 60 * 60 * 1000; // orphaned .lock / .tmp.* files
@@ -73,16 +71,6 @@ function ttlSweep() {
     sweep(statePath(), { maxAgeMs: 0, match: (f) => f.endsWith(".lessons-prompted") })
   );
 
-  // Entries that survived a week of SessionStarts are never going to be drained.
-  // The TTL is deliberately far longer than the drain interval so this can never
-  // race GP-873's queue consumer.
-  step("capture-queue", () =>
-    pruneJsonl(statePath("capture-queue.jsonl"), {
-      maxAgeMs: QUEUE_TTL_MS,
-      maxLines: QUEUE_MAX_LINES,
-    })
-  );
-
   step("logs", () => {
     for (const name of BREADCRUMB_LOGS) {
       trimLog(statePath(name), { maxBytes: LOG_MAX_BYTES, keepLines: LOG_KEEP_LINES });
@@ -127,4 +115,4 @@ if (require.main === module) {
 
 // Exported for the tests that assert the sweep bounds every artifact and stays
 // inside the R25 budget — they must measure this sweep, not a reimplementation.
-module.exports = { ttlSweep, SESSION_TTL_MS, QUEUE_MAX_LINES, LOG_MAX_BYTES, DEBRIS_TTL_MS };
+module.exports = { ttlSweep, SESSION_TTL_MS, LOG_MAX_BYTES, DEBRIS_TTL_MS };

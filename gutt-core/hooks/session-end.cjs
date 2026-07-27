@@ -19,6 +19,12 @@ const { init, finalizeSession } = require("./lib/session-state.cjs");
 const { clearSessionSnooze } = require("./lib/runtime-config.cjs");
 const { guard } = require("./lib/debug.cjs");
 
+// Stamped at module load, the earliest moment this process can observe — before
+// stdin, before the lock. finalizeSession() refuses to close a record that was
+// started after this instant, because on `/clear` that record belongs to the
+// session which replaced ours. See the ordering guard in session-state.cjs.
+const DISPATCHED_AT = Date.now();
+
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -37,7 +43,7 @@ process.stdin.on("end", () => {
   init(sessionId);
 
   guard("SessionEnd", "clear session snooze", () => clearSessionSnooze(sessionId));
-  guard("SessionEnd", "finalize session", () => finalizeSession(reason));
+  guard("SessionEnd", "finalize session", () => finalizeSession(reason, DISPATCHED_AT));
 
   process.exitCode = 0;
 });

@@ -62,9 +62,8 @@ function init(sessionId) {
 }
 
 /**
- * A fresh session record. Built per call — a shared literal would hand every
- * getState() fallback the same nested `ticker` object, so one addTickerItem on a
- * missing state file would leak items into every later read in the process.
+ * A fresh session record. Built per call rather than shared, so no caller can
+ * mutate a literal that every later getState() fallback would then hand out.
  * @returns {Object}
  */
 function defaultState() {
@@ -72,10 +71,6 @@ function defaultState() {
     sessionId: crypto.randomUUID(),
     startedAt: new Date().toISOString(),
     connectionStatus: "unknown",
-    memoryQueries: 0,
-    lessonsCaptured: 0,
-    significantOps: 0, // GP-530: tracks Edit/Write/Task ops for periodic capture
-    lastCapturePromptAt: null, // GP-530: ISO timestamp of last capture prompt injection
     lastUpdated: new Date().toISOString(),
     // Monotonic write counter — the compare-and-swap token in applyUpdate().
     rev: 0,
@@ -85,14 +80,8 @@ function defaultState() {
     source: null,
     firstPromptPending: false,
     compacted: false,
-    // Replaces the pre-3.0 `<session_id>.lessons-prompted` marker file (R37
-    // "prefer JSON over markers").
-    lessonsPromptedAt: null,
     endedAt: null,
     endReason: null,
-    ticker: {
-      items: [], // FIFO queue, max 5 items with createdAt timestamps
-    },
   };
 }
 
@@ -136,78 +125,6 @@ function updateState(updater) {
   return applyUpdate(updater).state;
 }
 
-function incrementMemoryQueries() {
-  return updateState((state) => {
-    state.memoryQueries = (state.memoryQueries || 0) + 1;
-    return state;
-  });
-}
-
-function incrementLessonsCaptured() {
-  return updateState((state) => {
-    state.lessonsCaptured = (state.lessonsCaptured || 0) + 1;
-    return state;
-  });
-}
-
-function setConnectionStatus(status) {
-  return updateState((state) => {
-    state.connectionStatus = status;
-    return state;
-  });
-}
-
-function addTickerItem(item) {
-  return updateState((state) => {
-    if (!state.ticker) {
-      state.ticker = { items: [] };
-    }
-    // Add timestamp
-    item.createdAt = Date.now();
-    state.ticker.items.push(item);
-    // FIFO: keep max 5 items
-    if (state.ticker.items.length > 5) {
-      state.ticker.items.shift();
-    }
-    return state;
-  });
-}
-
-function resetCounters() {
-  return updateState((state) => {
-    state.memoryQueries = 0;
-    state.lessonsCaptured = 0;
-    state.significantOps = 0;
-    state.lastCapturePromptAt = null;
-    state.connectionStatus = "unknown";
-    state.lastReset = new Date().toISOString();
-    return state;
-  });
-}
-
-/**
- * GP-530: Increment significant operations counter for periodic capture
- * Tracks Edit, Write, and Task tool uses to determine when to prompt for lesson capture
- */
-function incrementSignificantOps() {
-  return updateState((state) => {
-    state.significantOps = (state.significantOps || 0) + 1;
-    return state;
-  });
-}
-
-/**
- * GP-530: Reset significant ops counter and record capture prompt timestamp
- * Called after a periodic capture prompt is injected
- */
-function recordCapturePrompt() {
-  return updateState((state) => {
-    state.significantOps = 0;
-    state.lastCapturePromptAt = new Date().toISOString();
-    return state;
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Session lifecycle (GP-863) — SessionStart/SessionEnd own everything below.
 // ---------------------------------------------------------------------------
@@ -216,8 +133,7 @@ function recordCapturePrompt() {
  * Record a SessionStart. `compact` is the only mid-session source, so it alone
  * sets `compacted`; every other source (startup, resume, clear, fork, and any
  * matcher Claude Code adds later) is a session (re)start and arms
- * `firstPromptPending`. Only `clear` zeroes the counters — a resumed or
- * compacted session is the same run and keeps its tally.
+ * `firstPromptPending`.
  *
  * Deliberately leaves `connectionStatus` untouched: the async connectivity hook
  * runs in parallel and is its sole writer.
@@ -239,14 +155,6 @@ function beginSession(sessionId, source) {
       state.endedAt = null;
       state.endReason = null;
     }
-    // Fresh context either way — the Stop lesson prompt is due again.
-    state.lessonsPromptedAt = null;
-    if (source === "clear") {
-      state.memoryQueries = 0;
-      state.lessonsCaptured = 0;
-      state.significantOps = 0;
-      state.lastCapturePromptAt = null;
-    }
     return state;
   });
 }
@@ -255,11 +163,35 @@ function beginSession(sessionId, source) {
  * Record a SessionEnd. The file is finalized rather than deleted so the
  * statusline and the next SessionStart can still read the last known state; the
  * 24h sweep reclaims it.
+ *
+ * Ordering guard: `/clear` fires SessionEnd and SessionStart as two separate
+ * processes with no completion ordering between them, both targeting this same
+ * record. If the SessionEnd lands second it stamps `endedAt` on a session that
+ * is already running — the HUD reads a dead session, and `firstPromptPending`
+ * is cleared before the new session's first prompt ever arrives, so the memory
+ * pointer never fires. The lock in applyUpdate() serialises the two writes but
+ * says nothing about which one *should* win; mutual exclusion is not ordering.
+ *
+ * So compare against when this process was dispatched: a `startedAt` newer than
+ * that belongs to a session which began after this SessionEnd was issued, and
+ * is not ours to close.
+ *
  * @param {string} [reason] - SessionEnd reason from the hook payload
+ * @param {number} [dispatchedAt] - epoch ms at which this SessionEnd was issued
  * @returns {Object} the persisted state
  */
-function finalizeSession(reason) {
+function finalizeSession(reason, dispatchedAt = Date.now()) {
   return updateState((state) => {
+    // Compared inside the lock, against the same read the write is based on: an
+    // unlocked pre-check could pass on a record that beginSession() replaces
+    // before this updater ever runs.
+    //
+    // A missing or corrupt `startedAt` parses to NaN and every comparison with
+    // NaN is false, so it falls through and finalizes — fail-open, matching the
+    // ordinary case this guard is carving an exception out of.
+    if (Date.parse(state.startedAt) > dispatchedAt) {
+      return state;
+    }
     state.endedAt = new Date().toISOString();
     state.endReason = reason || "other";
     state.firstPromptPending = false;
@@ -314,50 +246,12 @@ function consumeCompacted() {
   return consumeFlag("compacted");
 }
 
-/** @returns {boolean} whether this session already saw a lesson-capture prompt */
-function wasLessonsPrompted() {
-  return Boolean(getState().lessonsPromptedAt);
-}
-
-/**
- * Mark the lesson-capture prompt as shown.
- *
- * Returns the persisted state alongside the outcome so the Stop hook can build
- * its message from it instead of re-reading the file it just wrote; `written`
- * is false when the write did not land, so the caller can fail open rather than
- * re-prompt forever.
- *
- * @returns {{state: Object, written: boolean}}
- */
-function markLessonsPrompted() {
-  return applyUpdate((state) => {
-    state.lessonsPromptedAt = new Date().toISOString();
-    return state;
-  });
-}
-
-/**
- * Re-arm the lesson-capture prompt (called on each new user prompt). Cleared to
- * null rather than false — this field holds a timestamp, not a flag.
- * @returns {boolean} true if a prompt record was cleared
- */
-function clearLessonsPrompted() {
-  return consumeFlag("lessonsPromptedAt", null);
-}
-
 module.exports = {
   init,
   sanitizeSessionId,
   getState,
   updateState,
   applyUpdate,
-  incrementMemoryQueries,
-  incrementLessonsCaptured,
-  incrementSignificantOps,
-  recordCapturePrompt,
-  setConnectionStatus,
-  addTickerItem,
-  resetCounters,
   getStatePath,
   defaultState,
   // GP-863 session lifecycle
@@ -365,7 +259,4 @@ module.exports = {
   finalizeSession,
   consumeFirstPromptPending,
   consumeCompacted,
-  wasLessonsPrompted,
-  markLessonsPrompted,
-  clearLessonsPrompted,
 };

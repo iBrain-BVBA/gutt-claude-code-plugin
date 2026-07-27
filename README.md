@@ -18,7 +18,7 @@ This plugin connects Claude Code to your gutt memory, automatically:
 
 - 📥 **Retrieves** relevant context before every task
 - 📤 **Captures** lessons after every task
-- 🔄 **Works with subagents** — All agents get memory, automatically
+- 🔄 **Session-aware** — Memory context follows the session lifecycle
 
 [**Sign up for gutt →**](https://gutt.pro)
 
@@ -59,7 +59,7 @@ This plugin provides a memory backbone for Claude Code, enabling:
 4. Restart Cursor → **Settings → Tools & MCP Servers** → Connect `gutt-mcp-remote`
 5. Complete OAuth login
 
-Cursor doesn't support all Claude Code hooks. 4 of 11 hooks are portable (prompt submit, file edit lint, pre-task memory, stop lessons). Missing automation is compensated by Cursor rules (`.mdc`) that guide memory-first workflows.
+Cursor doesn't support all Claude Code hooks. The portable ones are prompt submit and file edit lint. Missing automation is compensated by Cursor rules (`.mdc`) that guide memory-first workflows.
 
 See [docs/team-onboarding.md](docs/team-onboarding.md) for detailed installation instructions for both IDEs.
 
@@ -71,9 +71,8 @@ Real-time gutt status in your Claude Code HUD:
 
 ![gutt statusline](docs/statusline-hud.png)
 
-- **Connection status** — Green circle when connected
-- **Memory stats** — `mem:X` queries, `lessons:X` captured
-- **Toast notifications** — Shows memory operations for 5 seconds
+- **Connection status** — Green circle when connected, `!` when not configured
+- **Group** — the organizational group the session is writing to
 
 Configure the statusline in your own `~/.claude/settings.json` (the plugin no
 longer edits that file for you — see
@@ -88,38 +87,22 @@ longer edits that file for you — see
 }
 ```
 
-Optional display settings, also in `~/.claude/settings.json`:
-
-```json
-{
-  "gutt": {
-    "statusline": {
-      "showTicker": true,
-      "multiLine": true
-    }
-  }
-}
-```
+> A `statusLine` in your own settings takes precedence over the plugin's. If you
+> upgraded from 2.x, the retired auto-setup may have left one there — run
+> `/gutt-claude-code-plugin:health` to check.
 
 ### Hooks
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                        | Event            | Purpose                                             |
-| --------------------------- | ---------------- | --------------------------------------------------- |
-| `session-start.cjs`         | SessionStart     | Opens the session record, runs the state TTL sweep  |
-| `session-connectivity.cjs`  | SessionStart     | Async MCP connectivity probe and cache reset        |
-| `session-end.cjs`           | SessionEnd       | Finalizes the session record, clears session snooze |
-| `user-prompt-submit.cjs`    | UserPromptSubmit | Reminds to search memory before tasks               |
-| `stop-lessons.cjs`          | Stop             | Prompts for lesson capture after work               |
-| `post-tool-lint.cjs`        | PostToolUse      | Auto-lints files after Edit/Write                   |
-| `pre-task-memory.cjs`       | PreToolUse       | Injects memory context before subagents             |
-| `post-task-lessons.cjs`     | PostToolUse      | Captures lessons when subagents complete            |
-| `post-memory-ops.cjs`       | PostToolUse      | Tracks memory tool calls for statusline             |
-| `subagent-start-memory.cjs` | SubagentStart    | Injects cached memory context into subagents        |
-| `subagent-plan-review.cjs`  | SubagentStop     | Suggests GUTT memory search after plans             |
-
-**Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents get organizational context and contribute lessons back.
+| Hook                       | Event            | Purpose                                                                            |
+| -------------------------- | ---------------- | ---------------------------------------------------------------------------------- |
+| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                 |
+| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                           |
+| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                |
+| `user-prompt-submit.cjs`   | UserPromptSubmit | Points at `memory-search` on a new session or after a compaction                   |
+| _(prompt hook)_            | Stop             | Fast-model judge: suggests memory-capture when the turn produced something durable |
+| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                  |
 
 ### Skills
 
@@ -180,13 +163,11 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
 │   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery
 │   ├── agents/                     # gutt-pro-memory, memory-keeper, and other memory agents
-│   ├── commands/                   # setup, start, health, reset-counters
+│   ├── commands/                   # setup, start, health
 │   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow
 │   ├── mcp.json                    # MCP config template
 │   └── config.json.example
 ├── auto-lint-plugin/               # standalone lint-on-edit plugin (no gutt dependency)
-├── plugins/
-│   └── gutt-subagent-hooks-plugin/ # legacy subagent hooks (retired in a later 3.0 story)
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide
 ├── tests/
 ├── package.json

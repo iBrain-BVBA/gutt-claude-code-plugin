@@ -85,13 +85,13 @@ add_memory(
 Explain the statusline that appears at the bottom of the terminal:
 
 ```
-The HUD statusline shows live counters:
+The HUD statusline shows gutt connection status:
 
-- memoryQueries: Number of memory searches performed this session
-- lessonsCaptured: Number of lessons/decisions written to memory this session
+  [gutt🟢 your-group]   connected
+  [gutt⚪! your-group]  not configured — run /gutt-claude-code-plugin:setup
 
-These reset each session. You can manually reset them with:
-  /gutt-claude-code-plugin:reset-counters
+Configure it in your own ~/.claude/settings.json; the plugin does not edit
+that file for you.
 ```
 
 ### Step 6: Active Hooks
@@ -101,21 +101,15 @@ List all hooks that are active and what they do:
 ```markdown
 ## Active Hooks
 
-| Hook                    | Event                               | What It Does                                            |
-| ----------------------- | ----------------------------------- | ------------------------------------------------------- |
-| session-start           | SessionStart                        | Opens the session record and runs the state TTL sweep   |
-| session-connectivity    | SessionStart (async)                | Checks MCP configuration and clears stale caches        |
-| session-end             | SessionEnd                          | Finalizes the session record and clears session snooze  |
-| user-prompt-submit      | UserPromptSubmit                    | Injects relevant memory context before each prompt      |
-| stop-lessons            | Stop                                | Captures lessons learned when a conversation ends       |
-| post-tool-lint          | PostToolUse (Edit/Write)            | Runs lint checks after file edits                       |
-| cowork-periodic-capture | PostToolUse (Edit/Write/Task/Agent) | Periodically captures progress to memory during work    |
-| post-task-lessons       | PostToolUse (Task/Agent)            | Extracts lessons from completed agent tasks             |
-| post-memory-ops         | PostToolUse (MCP memory tools)      | Tracks memory operation metrics for the HUD             |
-| pre-task-memory         | PreToolUse (Task/Agent)             | Injects relevant memory context before agent delegation |
-| subagent-start-memory   | SubagentStart                       | Injects organizational memory into subagent context     |
-| subagent-plan-review    | SubagentStop                        | Reviews subagent output for lessons to capture          |
-| statusline              | StatusLine                          | Renders the HUD with memory operation counters          |
+| Hook                 | Event                    | What It Does                                           |
+| -------------------- | ------------------------ | ------------------------------------------------------ |
+| session-start        | SessionStart             | Opens the session record and runs the state TTL sweep  |
+| session-connectivity | SessionStart (async)     | Probes MCP configuration for the HUD                   |
+| session-end          | SessionEnd               | Finalizes the session record and clears session snooze |
+| user-prompt-submit   | UserPromptSubmit         | Injects relevant memory context before each prompt     |
+| _(prompt hook)_      | Stop                     | Judges whether the turn is worth capturing to memory   |
+| post-tool-lint       | PostToolUse (Edit/Write) | Runs lint checks after file edits                      |
+| statusline           | StatusLine               | Renders the HUD connection status                      |
 ```
 
 ### Step 7: Next Steps
@@ -144,18 +138,16 @@ When invoked with `--check`, skip the tutorial and just verify:
 
 1. **MCP connectivity** -- Run test query, report pass/fail.
 2. **Hook registration** -- Confirm hooks.json is loadable and all hook scripts exist on disk.
-3. **Seed registry** -- Check if seed registry cache exists at the expected state directory.
-4. **Cache status** -- Report whether the memory cache is warm or cold.
+3. **Statusline ownership** -- Warn if `~/.claude/settings.json` has its own `statusLine`, which takes precedence over the plugin's.
 
 Output a compact status table:
 
 ```markdown
 ## gutt Plugin Health Check
 
-| Component         | Status                          |
-| ----------------- | ------------------------------- |
-| MCP connectivity  | OK / FAIL: [reason]             |
-| Hook registration | OK ([N] hooks) / FAIL: [reason] |
-| Seed registry     | OK / NOT FOUND                  |
-| Memory cache      | WARM / COLD                     |
+| Component            | Status                               |
+| -------------------- | ------------------------------------ |
+| MCP connectivity     | OK / FAIL: [reason]                  |
+| Hook registration    | OK ([N] hooks) / FAIL: [reason]      |
+| Statusline ownership | plugin's / STALE user-level override |
 ```

@@ -26,7 +26,7 @@ Report:
 
 ### 2. List Registered Hooks
 
-Read `hooks/hooks.json` from the plugin root. For each hook event (SessionStart, UserPromptSubmit, Stop, PostToolUse, PreToolUse, SubagentStart, SubagentStop), list:
+Read `hooks/hooks.json` from the plugin root. For each hook event present, list:
 
 - Event name
 - Number of registered hook commands
@@ -34,38 +34,20 @@ Read `hooks/hooks.json` from the plugin root. For each hook event (SessionStart,
 
 Also check if `statusLine` is registered.
 
-### 3. Check Seed Registry
+### 3. Check the statusline is actually ours
 
-Read the seed registry cache file at `${CLAUDE_PLUGIN_DATA}/seed-registry.json` (the per-plugin data dir, `~/.claude/plugins/data/<id>/`; see docs/runtime-state-convention.md).
+A `statusLine` entry in the user's own `~/.claude/settings.json` takes precedence
+over the plugin's. The retired 2.x `sessionstart-setup.cjs` wrote one there and
+nothing removes it, so an upgraded user can be running a stale statusline while
+the plugin's own is registered and ignored. If `~/.claude/settings.json` has a
+`statusLine` pointing at a gutt path, report it as **stale — remove it to use
+the plugin's**.
 
-Report:
-
-- **Agents cached**: number of agents in the registry
-- **Cache age**: how old the cache is (or "stale" / "missing")
-- **Scan paths**: which directories are scanned for agent seeds
-
-### 4. Show Session Metrics
-
-Read session state from `hooks/lib/session-state.cjs`:
-
-```javascript
-const { getState } = require("./hooks/lib/session-state.cjs");
-const state = getState();
-```
-
-Report:
-
-- **memoryQueries**: number of memory searches this session
-- **lessonsCaptured**: number of lessons stored this session
-- **significantOps**: number of significant operations tracked
-- **connectionStatus**: current connection status
-- **Session started**: timestamp
-
-### 5. Count Agents
+### 4. Count Agents
 
 List the `agents/` directory in the plugin root. Count `.md` files (excluding any starting with `_`).
 
-### 6. Format Report
+### 5. Format Report
 
 Output a clean status report:
 
@@ -84,19 +66,10 @@ Registered Hooks
   UserPromptSubmit:  [N] hook(s)
   Stop:              [N] hook(s)
   PostToolUse:       [N] hook(s) across [M] matcher(s)
-  PreToolUse:        [N] hook(s) across [M] matcher(s)
-  SubagentStart:     [N] hook(s)
-  SubagentStop:      [N] hook(s)
   StatusLine:        [registered / not registered]
+  User-level override: [none / STALE — ~/.claude/settings.json wins]
 
-Seed Registry
-  Agents cached:  [N]
-  Cache status:   [fresh (Xm old) / stale / missing]
-
-Session Metrics
-  Memory queries:    [N]
-  Lessons captured:  [N]
-  Significant ops:   [N]
+Session
   Connection:        [status]
   Session started:   [timestamp]
 

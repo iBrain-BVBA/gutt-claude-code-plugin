@@ -11,12 +11,7 @@ const ROOT = path.resolve(__dirname, "..");
 
 // Dirs whose .cjs files ship as plugin hooks/libs. shared/ holds the canonical
 // libs; hooks/lib/* are symlinks into it (skipped during the walk, scanned here).
-const SCAN_DIRS = [
-  "shared",
-  "gutt-core/hooks",
-  "auto-lint-plugin/hooks",
-  "plugins/gutt-subagent-hooks-plugin/hooks",
-];
+const SCAN_DIRS = ["shared", "gutt-core/hooks", "auto-lint-plugin/hooks"];
 
 // Sanctioned direct writers, each with a one-line reason (kept short so the list
 // can't rot silently). Everything else must go through shared/plugin-state.cjs.

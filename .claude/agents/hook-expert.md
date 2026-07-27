@@ -70,7 +70,6 @@ Matchers use `tool_name` field with pipe-separated patterns:
 | File                  | Key Exports                                                              | Debugging Relevance                        |
 | --------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
 | `env.cjs`             | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `USER_CONFIG_DIR` | Path resolution failures, IDE misdetection |
-| `constants.cjs`       | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                | Agent filtering bugs, missing agent types  |
 | `debug.cjs`           | `debugLog()`                                                             | All errors logged to `hook-errors.log`     |
 | `mcp-config.cjs`      | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `extractUrlFromConfig()`     | MCP URL extraction failures                |
 | `config.cjs`          | `getGroupId()`, `getConfig()`, `getStatuslineConfig()`                   | Config loading issues                      |

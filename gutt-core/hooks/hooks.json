@@ -43,37 +43,9 @@
         "matcher": "",
         "hooks": [
           {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-lessons.cjs\""
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/cowork-periodic-capture.cjs\""
-          }
-        ]
-      },
-      {
-        "matcher": "Task|Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/cowork-periodic-capture.cjs\""
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__.*gutt.*__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-memory-ops.cjs\""
+            "type": "prompt",
+            "prompt": "You are deciding whether this finished turn produced anything worth writing to the team's long-term memory.\n\nTranscript context: $ARGUMENTS\n\nWorth capturing means a durable, reusable fact: a decision and its reasoning, a lesson from something that failed, a non-obvious constraint discovered, or an agreement about how the team works. NOT worth capturing: routine edits, answering a question, reading or searching code, formatting, work that is still in progress, or anything already captured earlier in this turn.\n\nJudge the substance of the work, not the language it is written in.\n\nRespond with {\"ok\": true} when nothing durable came out of this turn — this is the common case and the right default whenever you are unsure. Respond with {\"ok\": false, \"reason\": \"...\"} only when something clearly is worth keeping. The reason is fed back as the next instruction, so phrase it as a short factual note naming what is worth recording and pointing at the memory-capture skill.",
+            "timeout": 20
           }
         ]
       }

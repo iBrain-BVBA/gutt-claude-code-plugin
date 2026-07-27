@@ -8,20 +8,15 @@
  * thing SessionStart used to do. hooks.json runs this with `async: true`, so it
  * never delays the session.
  *
- * Owns the connectivity fields of `sessions/<id>.json` at SessionStart (AC4):
+ * Sole writer of the connectivity fields of `sessions/<id>.json`:
  * session-start.cjs never touches them, and the statusline is a read-only
- * consumer. Not the only writer of `connectionStatus` over a session's life —
- * post-memory-ops.cjs sets it to "ok" whenever a memory tool actually succeeds,
- * which is later evidence than a startup probe and should win. That is safe
- * because both go through the locked read-modify-write in session-state.cjs.
+ * consumer.
  *
  * Running async means this races the synchronous hook, so the probe finishes
  * *before* the one state write, keeping the read-modify-write window short.
  */
 
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
-const { clearMemoryCache } = require("./lib/memory-cache.cjs");
-const { clearSeedCache } = require("./lib/seed-registry.cjs");
 const { init, updateState } = require("./lib/session-state.cjs");
 const { guard } = require("./lib/debug.cjs");
 
@@ -39,12 +34,6 @@ process.stdin.on("end", () => {
     // Parse error — fall through with the default id.
   }
   init(sessionId);
-
-  // Stale results from the previous session must not leak into this one.
-  guard("SessionStart/async", "cache clear", () => {
-    clearMemoryCache();
-    clearSeedCache();
-  });
 
   // A throw here is "we could not tell", which is a different thing from "not
   // configured" and must not be flattened into it — the difference decides both
