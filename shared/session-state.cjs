@@ -5,7 +5,7 @@
  */
 
 const crypto = require("crypto");
-const { statePath, readJson, writeJson } = require("./plugin-state.cjs");
+const { statePath, readJson, updateJson } = require("./plugin-state.cjs");
 
 // Runtime state lives under ${CLAUDE_PLUGIN_DATA} (R37, GP-855) — never the
 // project tree. Per-session files under sessions/<session_id>.json keep
@@ -56,6 +56,8 @@ function defaultState() {
     significantOps: 0, // GP-530: tracks Edit/Write/Task ops for periodic capture
     lastCapturePromptAt: null, // GP-530: ISO timestamp of last capture prompt injection
     lastUpdated: new Date().toISOString(),
+    // Monotonic write counter — the compare-and-swap token in applyUpdate().
+    rev: 0,
     // GP-863 session lifecycle. `source` is the SessionStart matcher that last
     // (re)started this session; the two flags are produced here and consumed by
     // the UserPromptSubmit command guard (GP-864).
@@ -80,20 +82,33 @@ function getState() {
 /**
  * Read-modify-write the session file, reporting whether the write landed.
  *
- * Concurrency: the read and the write sit in one synchronous block, so the
- * clobber window between two hooks running in parallel on the same session is a
- * single tick. Hooks keep it that way by doing their slow work *before* calling
- * in and by writing exactly once — see session-connectivity.cjs, which owns
- * `connectionStatus` alone precisely so the SessionStart pair can't fight over it.
+ * Concurrency: Claude Code runs sibling hooks on one event **in parallel**, so
+ * this file is genuinely contended — the SessionStart pair (`session-start.cjs`
+ * and the `async: true` `session-connectivity.cjs`) always writes it at once.
+ * Confining each hook to disjoint fields is not enough on its own: an unguarded
+ * read-then-write still drops the other process's update when the two interleave.
+ * Observed for real — a `claude -p` session where the connectivity probe
+ * demonstrably succeeded but its `connectionStatus: "ok"` never reached disk.
+ *
+ * Comparing revisions cannot fix this either: a writer can confirm its own write
+ * landed and still be overwritten immediately afterwards by one that started
+ * later. So the whole read-modify-write runs under an exclusive lock, which is
+ * the only primitive that actually serialises it (see plugin-state.updateJson).
  *
  * @param {(state: Object) => Object} updater
  * @returns {{state: Object, written: boolean}}
  */
 function applyUpdate(updater) {
-  const state = getState();
-  const newState = updater(state);
-  newState.lastUpdated = new Date().toISOString();
-  return { state: newState, written: writeJson(getStatePath(), newState) };
+  return updateJson(
+    getStatePath(),
+    (current) => {
+      const newState = updater(current);
+      newState.rev = (current?.rev || 0) + 1;
+      newState.lastUpdated = new Date().toISOString();
+      return newState;
+    },
+    defaultState()
+  );
 }
 
 function updateState(updater) {

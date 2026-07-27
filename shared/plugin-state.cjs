@@ -133,10 +133,21 @@ function atomicWrite(absPath, contents) {
   const tempPath = `${absPath}.tmp.${process.pid}.${Date.now()}.${writeSeq++}`;
   try {
     fs.writeFileSync(tempPath, contents);
-    if (fs.existsSync(absPath)) {
+    try {
+      // POSIX rename atomically replaces the target: a concurrent reader sees
+      // either the old file or the new one, never a gap. Do NOT unlink first —
+      // hooks run in parallel, and the moment the path is absent a reader falls
+      // back to its defaults and writes those back, wiping live state.
+      fs.renameSync(tempPath, absPath);
+    } catch (renameErr) {
+      // Windows can't rename onto an existing file, so there it has to go. The
+      // gap is unavoidable on that platform; every other platform never sees it.
+      if (!["EEXIST", "EPERM", "EACCES"].includes(renameErr.code)) {
+        throw renameErr;
+      }
       fs.unlinkSync(absPath);
+      fs.renameSync(tempPath, absPath);
     }
-    fs.renameSync(tempPath, absPath);
     return true;
   } catch (err) {
     debugLog("plugin-state", `atomic write failed for ${absPath}: ${err.message}`);
@@ -159,6 +170,104 @@ function atomicWrite(absPath, contents) {
  */
 function writeJson(absPath, data) {
   return atomicWrite(absPath, JSON.stringify(data, null, 2));
+}
+
+/** How long to keep trying for a lock before giving up and proceeding anyway. */
+const LOCK_TIMEOUT_MS = 250;
+/** A lock older than this belonged to a process that died holding it. */
+const LOCK_STALE_MS = 5000;
+
+/**
+ * Block this process for `ms` without burning CPU. Hooks are synchronous
+ * top-to-bottom, so there is no event loop to yield to.
+ * @param {number} ms
+ */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Run `fn` holding an exclusive lock on `absPath`.
+ *
+ * `open(..., "wx")` is an atomic create-if-absent on both POSIX and Windows,
+ * which is the only mutual-exclusion primitive the filesystem actually gives us.
+ * It is needed because read-modify-write on a shared file cannot be made safe by
+ * comparing revisions: every writer can verify its own write landed and still be
+ * overwritten a microsecond later by a writer that started after it.
+ *
+ * Fail-open by design: if the lock can't be taken within LOCK_TIMEOUT_MS, `fn`
+ * runs unlocked. A hook that blocks a session is worse than a rare lost counter.
+ *
+ * @param {string} absPath - the file being guarded
+ * @param {() => *} fn
+ * @returns {*} whatever `fn` returns
+ */
+function withLock(absPath, fn) {
+  const lockPath = `${absPath}.lock`;
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  let fd = null;
+
+  // The lock lives beside the file it guards, so its directory has to exist
+  // before the first write creates it — otherwise the very first (and most
+  // contended) write of a session fails to lock and every writer races.
+  ensureDir(path.dirname(lockPath));
+
+  while (fd === null) {
+    try {
+      fd = fs.openSync(lockPath, "wx");
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        debugLog("plugin-state", `lock open failed for ${lockPath}: ${err.message}`);
+        break; // can't lock at all — proceed unlocked
+      }
+      // Reclaim a lock whose holder died before releasing it.
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS) {
+          fs.unlinkSync(lockPath);
+          continue;
+        }
+      } catch {
+        continue; // vanished between stat and now — race for it again
+      }
+      if (Date.now() >= deadline) {
+        debugLog("plugin-state", `lock timeout for ${lockPath}; proceeding unlocked`);
+        break;
+      }
+      sleepSync(2);
+    }
+  }
+
+  try {
+    return fn();
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+        fs.unlinkSync(lockPath);
+      } catch {
+        /* best effort — a stale lock is reclaimed by the next writer */
+      }
+    }
+  }
+}
+
+/**
+ * Read-modify-write a JSON state file under an exclusive lock. The one safe way
+ * to mutate state that parallel hooks share; a bare readJson/writeJson pair is
+ * not, because sibling hooks on the same event run concurrently.
+ * @param {string|null} absPath
+ * @param {(current: *) => *} updater
+ * @param {*} [fallback] - value handed to `updater` when the file is absent
+ * @returns {{state: *, written: boolean}}
+ */
+function updateJson(absPath, updater, fallback = null) {
+  if (!absPath) {
+    return { state: updater(fallback), written: false };
+  }
+  return withLock(absPath, () => {
+    const next = updater(readJson(absPath, fallback));
+    return { state: next, written: writeJson(absPath, next) };
+  });
 }
 
 /**
@@ -385,6 +494,8 @@ module.exports = {
   exists,
   readJson,
   writeJson,
+  updateJson,
+  withLock,
   atomicWrite,
   appendLine,
   remove,

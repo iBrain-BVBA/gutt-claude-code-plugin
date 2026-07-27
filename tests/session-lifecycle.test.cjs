@@ -224,6 +224,77 @@ describe("session lifecycle: flag consumption", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Parallel-hook safety. Claude Code runs sibling hooks on one event at once, so
+// the session file is genuinely contended (AC4).
+// ---------------------------------------------------------------------------
+
+describe("session lifecycle: concurrent writers", () => {
+  let dir;
+  before(() => {
+    dir = makeDataDir();
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("no update is lost when processes contend for one session file", () => {
+    // Regression test for a real lost update: a `claude -p` run where the async
+    // connectivity probe succeeded but its connectionStatus never reached disk.
+    // Each child holds its read open 3ms, which is enough that an unguarded
+    // read-modify-write loses 5 of these 6 increments every single run.
+    const fixture = path.join(__dirname, "fixtures", "concurrent-increment.cjs");
+    const writers = 6;
+    // spawnSync serialises, so background the children through the shell to get
+    // genuine OS-level parallelism.
+    const cmd =
+      Array.from({ length: writers }, () => `node ${JSON.stringify(fixture)} contended 3 &`).join(
+        " "
+      ) + " wait";
+    const res = spawnSync("sh", ["-c", cmd], {
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: dir },
+    });
+    assert.equal(res.status, 0, res.stderr);
+
+    const state = JSON.parse(fs.readFileSync(path.join(dir, "sessions", "contended.json"), "utf8"));
+    assert.equal(
+      state.memoryQueries,
+      writers,
+      `expected all ${writers} increments to survive, got ${state.memoryQueries}`
+    );
+    assert.equal(state.rev, writers, "every write bumped the revision exactly once");
+    assert.deepEqual(
+      fs.readdirSync(path.join(dir, "sessions")).filter((f) => f.endsWith(".lock")),
+      [],
+      "no lock left behind"
+    );
+  });
+
+  it("the two SessionStart hooks do not clobber each other's fields", () => {
+    // The exact real-world pairing: the fast lifecycle hook and the async probe.
+    const sessionId = "parallel-start";
+    const cmd =
+      `echo '{"session_id":"${sessionId}","source":"startup"}' | node ${JSON.stringify(path.join(HOOKS, "session-start.cjs"))} & ` +
+      `echo '{"session_id":"${sessionId}"}' | node ${JSON.stringify(path.join(HOOKS, "session-connectivity.cjs"))} & wait`;
+    const res = spawnSync("sh", ["-c", cmd], {
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: dir },
+    });
+    assert.equal(res.status, 0, res.stderr);
+
+    const state = JSON.parse(
+      fs.readFileSync(path.join(dir, "sessions", `${sessionId}.json`), "utf8")
+    );
+    // Each hook's own field survived the other's write.
+    assert.equal(state.source, "startup", "lifecycle hook's field survived");
+    assert.equal(state.firstPromptPending, true, "lifecycle hook's flag survived");
+    assert.ok(state.connectionCheckedAt, "connectivity probe's result survived");
+    assert.equal(typeof state.mcpConfigured, "boolean");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Snooze: expiry at SessionStart, session-scope cleared at SessionEnd (AC1/AC2)
 // ---------------------------------------------------------------------------
 
