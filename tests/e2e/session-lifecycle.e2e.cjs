@@ -283,15 +283,24 @@ describe(
       assert.equal(run.state.compacted, false);
     });
 
-    it("records the lesson-capture prompt in state rather than a marker file", () => {
-      assert.ok(
-        Number.isFinite(Date.parse(run.state.lessonsPromptedAt)),
-        "the Stop hook did not record its prompt in session state"
+    it("leaves a trivial turn alone and writes nothing for it", () => {
+      // The Stop judgement is a prompt hook now (GP-844): it does no file I/O at
+      // all, and on a turn worth nothing durable — this one asks for the word
+      // "pong" — it must answer ok:true and stay silent. A Stop hook that fires
+      // on everything is the 2.x nag in new wording, so the silence *is* the
+      // assertion here, not the absence of one.
+      const blocked = hookAttachments(run.transcript).filter(
+        (a) => a.hookEvent === "Stop" && a.blockingError
       );
+      assert.deepEqual(blocked, [], "the Stop hook interrupted a turn that produced nothing");
+
+      // The retired marker formats stay retired, and the state contract no longer
+      // carries the lesson-capture field they used to migrate into.
       const markers = walk(run.dataDir).filter(
         (rel) => rel.endsWith(".lessons-prompted") || rel.includes("statusline-configured")
       );
       assert.deepEqual(markers, [], `retired marker files reappeared: ${markers.join(", ")}`);
+      assert.equal(run.state.lessonsPromptedAt, undefined, "a retired field is back in state");
     });
 
     it("sweeps stale session files on SessionStart and spares fresh ones", () => {
@@ -322,35 +331,62 @@ describe(
       );
     });
 
-    it("surfaces hook output in the Claude session transcript", () => {
+    it("injects the memory pointer as context, not as text the model surfaces", () => {
       assert.ok(run.transcriptFile, `no transcript found for session ${run.sessionId}`);
       const attachments = hookAttachments(run.transcript);
       assert.ok(attachments.length > 0, "the transcript recorded no hook activity");
 
       const prompt = attachments.find((a) => a.hookEvent === "UserPromptSubmit");
       assert.ok(prompt, "UserPromptSubmit left no record in the transcript");
-      assert.equal(prompt.type, "hook_success");
-      assert.equal(prompt.exitCode, 0);
-      assert.match(prompt.content, /search organizational memory/i);
+      // Not `hook_success`: a hook returning additionalContext is recorded under
+      // its own attachment type, whose payload is {type, content, hookName,
+      // toolUseID, hookEvent} — no exitCode, no stdout, no durationMs. `content`
+      // is an array of strings here, where hook_success carried a bare string.
+      assert.equal(prompt.type, "hook_additional_context");
+      const injected = [].concat(prompt.content).join("\n");
+      assert.match(injected, /organizational memory available through gutt/i);
 
-      const stop = attachments.find((a) => a.hookEvent === "Stop");
-      assert.ok(stop, "the Stop hook left no record in the transcript");
+      // The CLI's own account of what it did with the hook's stdout. Without
+      // this, a hook whose JSON was rejected outright would still leave a
+      // plausible-looking transcript row.
       assert.match(
-        stop.blockingError.blockingError,
-        /capturing lessons learned/i,
-        "the Stop hook blocked for an unexpected reason"
+        run.debug,
+        /Hook UserPromptSubmit \([^)]*user-prompt-submit\.cjs[^)]*\) provided additionalContext \(\d+ chars\)/,
+        "the CLI did not accept the hook's output as additionalContext"
+      );
+
+      // GP-868, and why the phrasing is load-bearing rather than cosmetic: the
+      // docs warn that imperative out-of-band-command framing "can trigger
+      // Claude's prompt-injection defenses, which causes Claude to surface the
+      // text to you instead of treating it as context."
+      assert.doesNotMatch(
+        injected,
+        /MANDATORY|you MUST|NOT optional|CRITICAL violation|NEVER skip/i,
+        "the injected context reads as an out-of-band system command"
+      );
+
+      // The check itself. The fixture prompt asks for one word, so a model that
+      // treated the injection as an instruction — or flagged it as suspicious —
+      // would answer with something about memory instead. This is the failure
+      // mode the 2.x phrasing was plausibly hitting.
+      const reply = String(run.result.result);
+      assert.match(reply, /pong/i, `the model answered something else entirely: ${reply}`);
+      assert.doesNotMatch(
+        reply,
+        /memory|gutt|skill|instruction/i,
+        `the model surfaced the injected context instead of consuming it: ${reply}`
       );
     });
 
-    it("keeps the prompt hook inside its 2s latency budget (R25)", () => {
-      const prompt = hookAttachments(run.transcript).find(
-        (a) => a.hookEvent === "UserPromptSubmit" && typeof a.durationMs === "number"
-      );
-      assert.ok(prompt, "no timed UserPromptSubmit record to measure");
-      assert.ok(
-        prompt.durationMs < 2000,
-        `UserPromptSubmit took ${prompt.durationMs}ms, over the 2s budget`
-      );
-    });
+    // There is deliberately no R25 assertion at this tier any more. Claude Code's
+    // own per-hook `durationMs` only ever arrived on `hook_success` attachments,
+    // and a hook returning additionalContext produces `hook_additional_context`
+    // instead, which has no timing field. The debug log has none either: its four
+    // UserPromptSubmit lines cover response *handling* and span ~5ms, so a budget
+    // check against them would pass no matter how slow the hook actually was.
+    //
+    // R25 is measured in-process by tests/session-lifecycle.test.cjs, which is the
+    // only tier that can subtract Node's interpreter floor (~47ms p50 on this
+    // machine, already over the 50ms budget before any of our code runs).
   }
 );
