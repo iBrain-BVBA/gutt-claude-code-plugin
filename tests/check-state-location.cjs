@@ -60,7 +60,11 @@ const WRITE_RE =
 const errors = [];
 
 function scanFile(absFile) {
-  const rel = path.relative(ROOT, absFile);
+  // Normalised to forward slashes: ALLOW and the per-path exemptions are keyed
+  // that way, and path.relative yields backslashes on Windows — where this
+  // otherwise fails deterministically on the one file the allowlist exists to
+  // permit. CI is Linux-only, so it would only ever bite a contributor.
+  const rel = path.relative(ROOT, absFile).split(path.sep).join("/");
   const writesAllowed = rel in ALLOW;
   const lines = fs.readFileSync(absFile, "utf8").split("\n");
   lines.forEach((line, i) => {

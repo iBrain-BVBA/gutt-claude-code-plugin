@@ -365,8 +365,13 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
     }
     const p = path.join(dir, name);
     try {
-      if (now - fs.statSync(p).mtimeMs > maxAgeMs) {
-        fs.unlinkSync(p);
+      // lstat + rmSync, matching withLock's reclaim: stat follows symlinks, so a
+      // dangling one throws ENOENT and gets skipped forever, and unlink cannot
+      // remove a directory. This sweep is the backstop for exactly those shapes
+      // — an orphaned lock nothing will ever contend for again — so it has to be
+      // able to remove what it is here to remove.
+      if (now - fs.lstatSync(p).mtimeMs > maxAgeMs) {
+        fs.rmSync(p, { recursive: true, force: true });
         removed++;
       }
     } catch {
@@ -531,6 +536,44 @@ function pruneJsonl(absPath, { maxAgeMs, maxLines = Infinity, timestampField = "
 }
 
 /**
+ * Cut `text` down to at most `maxBytes` UTF-8 bytes, starting at a line
+ * boundary where one is available and always ending in exactly one newline.
+ *
+ * Both traps this avoids shipped as bugs in earlier revisions, so it does the
+ * work in one place rather than as guards bolted onto a slice:
+ *
+ *  - Dropping the leading partial line *unconditionally* empties the result
+ *    whenever the window holds no other newline — which is exactly the case
+ *    when one line is longer than `maxBytes`. That replaced whole logs with a
+ *    single "\n" while still reporting a successful trim.
+ *  - Slicing raw bytes and decoding afterwards turns a split multi-byte
+ *    character into U+FFFD, which re-encodes to *more* bytes than it replaced,
+ *    so the result comes back over the bound. A log that stays over its bound
+ *    is re-read and rewritten on every SessionStart, forever, on a path with a
+ *    50ms budget.
+ *
+ * @param {string} text
+ * @param {number} maxBytes
+ * @returns {string} at most `maxBytes` bytes, newline-terminated
+ */
+function boundToBytes(text, maxBytes) {
+  const budget = Math.max(1, maxBytes - 1); // room for the terminating newline
+  // Strip any replacement characters the cut invented at the front; each stood
+  // for a byte we already counted, so removing them can only shorten the result.
+  let out = Buffer.from(text, "utf8")
+    .subarray(-budget)
+    .toString("utf8")
+    .replace(/^\uFFFD+/, "");
+  const firstBreak = out.indexOf("\n");
+  const rest = firstBreak >= 0 ? out.slice(firstBreak + 1) : "";
+  // Prefer a clean line start, but never at the cost of emptying the result.
+  if (rest.trim() !== "") {
+    out = rest;
+  }
+  return out.endsWith("\n") ? out : `${out}\n`;
+}
+
+/**
  * Keep a breadcrumb log bounded. Under `maxBytes` this is a single stat and no
  * write. Over it, the newest `keepLines` survive; absurdly large logs are
  * dropped outright rather than read into memory.
@@ -565,26 +608,8 @@ function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
     let out = `${lines.slice(-keepLines).join("\n")}\n`;
     if (Buffer.byteLength(out) > maxBytes) {
       // Pathological: a few enormous lines (or one with no newline at all), so
-      // keeping `keepLines` of them doesn't bound anything. Fall back to a
-      // byte-bounded tail and drop the partial line the cut lands in.
-      // -1 leaves room for the terminating newline, so the result is ≤ maxBytes.
-      out = Buffer.from(out, "utf8")
-        .subarray(-(maxBytes - 1))
-        .toString("utf8");
-      const firstBreak = out.indexOf("\n");
-      // Same guard as readTail, and for the same reason: when the window's only
-      // newline is its terminator — which is the case whenever the newest line
-      // is itself bigger than maxBytes — dropping "the partial line" drops
-      // everything, and the `out += "\n"` below then writes a 1-byte file that
-      // looks like a normal trim. One long stack trace was enough to wipe the
-      // whole log, valid short lines included.
-      const rest = firstBreak >= 0 ? out.slice(firstBreak + 1) : "";
-      if (rest.trim() !== "") {
-        out = rest;
-      }
-      if (!out.endsWith("\n")) {
-        out += "\n";
-      }
+      // keeping `keepLines` of them doesn't bound anything.
+      out = boundToBytes(out, maxBytes);
     }
     return { trimmed: atomicWrite(absPath, out), discarded };
   } catch (err) {
