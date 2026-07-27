@@ -40,30 +40,64 @@ function init(sessionId) {
   }
 }
 
-const DEFAULT_STATE = {
-  sessionId: crypto.randomUUID(),
-  startedAt: new Date().toISOString(),
-  connectionStatus: "unknown",
-  memoryQueries: 0,
-  lessonsCaptured: 0,
-  significantOps: 0, // GP-530: tracks Edit/Write/Task ops for periodic capture
-  lastCapturePromptAt: null, // GP-530: ISO timestamp of last capture prompt injection
-  lastUpdated: new Date().toISOString(),
-  ticker: {
-    items: [], // FIFO queue, max 5 items with createdAt timestamps
-  },
-};
-
-function getState() {
-  return readJson(getStatePath(), { ...DEFAULT_STATE });
+/**
+ * A fresh session record. Built per call — a shared literal would hand every
+ * getState() fallback the same nested `ticker` object, so one addTickerItem on a
+ * missing state file would leak items into every later read in the process.
+ * @returns {Object}
+ */
+function defaultState() {
+  return {
+    sessionId: crypto.randomUUID(),
+    startedAt: new Date().toISOString(),
+    connectionStatus: "unknown",
+    memoryQueries: 0,
+    lessonsCaptured: 0,
+    significantOps: 0, // GP-530: tracks Edit/Write/Task ops for periodic capture
+    lastCapturePromptAt: null, // GP-530: ISO timestamp of last capture prompt injection
+    lastUpdated: new Date().toISOString(),
+    // GP-863 session lifecycle. `source` is the SessionStart matcher that last
+    // (re)started this session; the two flags are produced here and consumed by
+    // the UserPromptSubmit command guard (GP-864).
+    source: null,
+    firstPromptPending: false,
+    compacted: false,
+    // Replaces the pre-3.0 `<session_id>.lessons-prompted` marker file (R37
+    // "prefer JSON over markers").
+    lessonsPromptedAt: null,
+    endedAt: null,
+    endReason: null,
+    ticker: {
+      items: [], // FIFO queue, max 5 items with createdAt timestamps
+    },
+  };
 }
 
-function updateState(updater) {
+function getState() {
+  return readJson(getStatePath(), defaultState());
+}
+
+/**
+ * Read-modify-write the session file, reporting whether the write landed.
+ *
+ * Concurrency: the read and the write sit in one synchronous block, so the
+ * clobber window between two hooks running in parallel on the same session is a
+ * single tick. Hooks keep it that way by doing their slow work *before* calling
+ * in and by writing exactly once — see session-connectivity.cjs, which owns
+ * `connectionStatus` alone precisely so the SessionStart pair can't fight over it.
+ *
+ * @param {(state: Object) => Object} updater
+ * @returns {{state: Object, written: boolean}}
+ */
+function applyUpdate(updater) {
   const state = getState();
   const newState = updater(state);
   newState.lastUpdated = new Date().toISOString();
-  writeJson(getStatePath(), newState);
-  return newState;
+  return { state: newState, written: writeJson(getStatePath(), newState) };
+}
+
+function updateState(updater) {
+  return applyUpdate(updater).state;
 }
 
 function incrementMemoryQueries() {
@@ -138,11 +172,139 @@ function recordCapturePrompt() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Session lifecycle (GP-863) — SessionStart/SessionEnd own everything below.
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a SessionStart. `compact` is the only mid-session source, so it alone
+ * sets `compacted`; every other source (startup, resume, clear, fork, and any
+ * matcher Claude Code adds later) is a session (re)start and arms
+ * `firstPromptPending`. Only `clear` zeroes the counters — a resumed or
+ * compacted session is the same run and keeps its tally.
+ *
+ * Deliberately leaves `connectionStatus` untouched: the async connectivity hook
+ * runs in parallel and is its sole writer.
+ *
+ * @param {string} sessionId
+ * @param {string} [source] - SessionStart matcher from the hook payload
+ * @returns {Object} the persisted state
+ */
+function beginSession(sessionId, source) {
+  const compacted = source === "compact";
+  return updateState((state) => {
+    state.sessionId = sessionId;
+    state.source = source || null;
+    if (compacted) {
+      state.compacted = true;
+    } else {
+      state.startedAt = new Date().toISOString();
+      state.firstPromptPending = true;
+      state.endedAt = null;
+      state.endReason = null;
+    }
+    // Fresh context either way — the Stop lesson prompt is due again.
+    state.lessonsPromptedAt = null;
+    if (source === "clear") {
+      state.memoryQueries = 0;
+      state.lessonsCaptured = 0;
+      state.significantOps = 0;
+      state.lastCapturePromptAt = null;
+    }
+    return state;
+  });
+}
+
+/**
+ * Record a SessionEnd. The file is finalized rather than deleted so the
+ * statusline and the next SessionStart can still read the last known state; the
+ * 24h sweep reclaims it.
+ * @param {string} [reason] - SessionEnd reason from the hook payload
+ * @returns {Object} the persisted state
+ */
+function finalizeSession(reason) {
+  return updateState((state) => {
+    state.endedAt = new Date().toISOString();
+    state.endReason = reason || "other";
+    state.firstPromptPending = false;
+    state.compacted = false;
+    return state;
+  });
+}
+
+/**
+ * Read-and-clear a lifecycle flag. Writes only when the flag was set, so the
+ * common case on the UserPromptSubmit guard's hot path is one read (R25).
+ * @param {string} flag
+ * @returns {boolean} whether the flag was set
+ */
+function consumeFlag(flag) {
+  if (!getState()[flag]) {
+    return false;
+  }
+  updateState((state) => {
+    state[flag] = false;
+    return state;
+  });
+  return true;
+}
+
+/**
+ * Consume `firstPromptPending` — true exactly once per session (re)start.
+ * Producer: beginSession(). Consumer: the UserPromptSubmit command guard (GP-864).
+ * @returns {boolean}
+ */
+function consumeFirstPromptPending() {
+  return consumeFlag("firstPromptPending");
+}
+
+/**
+ * Consume `compacted` — true exactly once after each compaction.
+ * Producer: beginSession(). Consumer: the UserPromptSubmit command guard (GP-864).
+ * @returns {boolean}
+ */
+function consumeCompacted() {
+  return consumeFlag("compacted");
+}
+
+/** @returns {boolean} whether this session already saw a lesson-capture prompt */
+function wasLessonsPrompted() {
+  return Boolean(getState().lessonsPromptedAt);
+}
+
+/**
+ * Mark the lesson-capture prompt as shown. Returns false when the write did not
+ * land, so the caller can fail open rather than re-prompt forever.
+ * @returns {boolean} true if persisted
+ */
+function markLessonsPrompted() {
+  return applyUpdate((state) => {
+    state.lessonsPromptedAt = new Date().toISOString();
+    return state;
+  }).written;
+}
+
+/**
+ * Re-arm the lesson-capture prompt (called on each new user prompt).
+ * @returns {boolean} true if a prompt record was cleared
+ */
+function clearLessonsPrompted() {
+  if (!getState().lessonsPromptedAt) {
+    return false;
+  }
+  updateState((state) => {
+    state.lessonsPromptedAt = null;
+    return state;
+  });
+  return true;
+}
+
 module.exports = {
   init,
   sanitizeSessionId,
   getState,
   updateState,
+  applyUpdate,
   incrementMemoryQueries,
   incrementLessonsCaptured,
   incrementSignificantOps,
@@ -151,5 +313,13 @@ module.exports = {
   addTickerItem,
   resetCounters,
   getStatePath,
-  DEFAULT_STATE,
+  defaultState,
+  // GP-863 session lifecycle
+  beginSession,
+  finalizeSession,
+  consumeFirstPromptPending,
+  consumeCompacted,
+  wasLessonsPrompted,
+  markLessonsPrompted,
+  clearLessonsPrompted,
 };

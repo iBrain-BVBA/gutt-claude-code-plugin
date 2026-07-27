@@ -75,7 +75,20 @@ Real-time gutt status in your Claude Code HUD:
 - **Memory stats** — `mem:X` queries, `lessons:X` captured
 - **Toast notifications** — Shows memory operations for 5 seconds
 
-The statusline is auto-enabled on first session. Optional settings in `~/.claude/settings.json`:
+Configure the statusline in your own `~/.claude/settings.json` (the plugin no
+longer edits that file for you — see
+[docs/runtime-state-convention.md](docs/runtime-state-convention.md#retired-locations)):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node \"<plugin-root>/hooks/statusline.cjs\""
+  }
+}
+```
+
+Optional display settings, also in `~/.claude/settings.json`:
 
 ```json
 {
@@ -92,18 +105,19 @@ The statusline is auto-enabled on first session. Optional settings in `~/.claude
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                        | Event            | Purpose                                      |
-| --------------------------- | ---------------- | -------------------------------------------- |
-| `session-start.cjs`         | SessionStart     | Shows setup reminder if not configured       |
-| `sessionstart-setup.cjs`    | SessionStart     | Auto-enables HUD statusline on first run     |
-| `user-prompt-submit.cjs`    | UserPromptSubmit | Reminds to search memory before tasks        |
-| `stop-lessons.cjs`          | Stop             | Prompts for lesson capture after work        |
-| `post-tool-lint.cjs`        | PostToolUse      | Auto-lints files after Edit/Write            |
-| `pre-task-memory.cjs`       | PreToolUse       | Injects memory context before subagents      |
-| `post-task-lessons.cjs`     | PostToolUse      | Captures lessons when subagents complete     |
-| `post-memory-ops.cjs`       | PostToolUse      | Tracks memory tool calls for statusline      |
-| `subagent-start-memory.cjs` | SubagentStart    | Injects cached memory context into subagents |
-| `subagent-plan-review.cjs`  | SubagentStop     | Suggests GUTT memory search after plans      |
+| Hook                        | Event            | Purpose                                             |
+| --------------------------- | ---------------- | --------------------------------------------------- |
+| `session-start.cjs`         | SessionStart     | Opens the session record, runs the state TTL sweep  |
+| `session-connectivity.cjs`  | SessionStart     | Async MCP connectivity probe and cache reset        |
+| `session-end.cjs`           | SessionEnd       | Finalizes the session record, clears session snooze |
+| `user-prompt-submit.cjs`    | UserPromptSubmit | Reminds to search memory before tasks               |
+| `stop-lessons.cjs`          | Stop             | Prompts for lesson capture after work               |
+| `post-tool-lint.cjs`        | PostToolUse      | Auto-lints files after Edit/Write                   |
+| `pre-task-memory.cjs`       | PreToolUse       | Injects memory context before subagents             |
+| `post-task-lessons.cjs`     | PostToolUse      | Captures lessons when subagents complete            |
+| `post-memory-ops.cjs`       | PostToolUse      | Tracks memory tool calls for statusline             |
+| `subagent-start-memory.cjs` | SubagentStart    | Injects cached memory context into subagents        |
+| `subagent-plan-review.cjs`  | SubagentStop     | Suggests GUTT memory search after plans             |
 
 **Subagent Coverage:** The `pre-task-memory` and `post-task-lessons` hooks ensure that ALL subagents get organizational context and contribute lessons back.
 

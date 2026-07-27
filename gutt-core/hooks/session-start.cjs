@@ -1,102 +1,110 @@
 #!/usr/bin/env node
 /**
- * SessionStart hook script (Node.js - cross-platform)
- * Shows setup reminder if gutt-mcp-remote is not configured
- * Clears memory cache for fresh state each session
+ * SessionStart — the single session-lifecycle hook (GP-863, S3.2).
+ *
+ * Replaces the 2.x pair `session-start.cjs` + `sessionstart-setup.cjs`. It is
+ * matcher-aware (it branches on the payload's `source`) and deliberately narrow:
+ * open the session record, run the R37 TTL sweep, exit. Nothing here touches the
+ * network, the user's settings, or the project tree.
+ *
+ * Latency (R25): this is the synchronous path and must stay ≤50ms p95, so it
+ * does exactly one state write and no MCP inspection. The connectivity probe and
+ * cache clears — the only heavy work — moved to session-connectivity.cjs, which
+ * hooks.json runs with `async: true`.
+ *
+ * Never blocks a session: every step is individually guarded and the exit code
+ * is always 0.
  */
 
-const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
-const { clearMemoryCache } = require("./lib/memory-cache.cjs");
-const { clearSeedCache } = require("./lib/seed-registry.cjs");
-const {
-  init,
-  getState,
-  updateState,
-  resetCounters,
-  setConnectionStatus,
-} = require("./lib/session-state.cjs");
-const { statePath, sweep } = require("./lib/plugin-state.cjs");
+const { beginSession, init } = require("./lib/session-state.cjs");
+const { statePath, sweep, pruneJsonl, trimLog } = require("./lib/plugin-state.cjs");
+const { clearExpiredSnooze } = require("./lib/runtime-config.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
-const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+// R37 TTL policy. One place, because E8-S8.4 (GP-893) verifies these numbers.
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // sessions/<id>.json
+const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // capture-queue.jsonl entries
+const QUEUE_MAX_LINES = 500; // capture-queue.jsonl overflow cap
+const LOG_MAX_BYTES = 256 * 1024; // breadcrumb logs
+const LOG_KEEP_LINES = 200; // lines retained when a log is trimmed
+const BREADCRUMB_LOGS = ["hook-invocations.log", "hook-errors.log"];
 
 /**
- * Remove stale per-session files and one-shot markers older than 24h.
- * The R37 SessionStart TTL sweep (GP-855) — generalizes the old cleanup and
- * keeps ${CLAUDE_PLUGIN_DATA} tidy without a separate cron job. (Only patterns
- * something actually writes: the old dead gutt-routing-session-/.plan-feedback-
- * prompted/.session-summary-prompted filters matched nothing and were dropped.)
+ * The R37 sweep: every artifact in the state contract gets bounded here, at the
+ * one event that is guaranteed to fire before any of them are read.
+ *
+ * Each step is independently guarded — a corrupt queue file must not stop the
+ * session sweep, and neither may abort the hook.
  */
-function cleanupStaleState() {
-  sweep(statePath("sessions"), { maxAgeMs: MAX_AGE_MS, match: (f) => f.endsWith(".json") });
-  sweep(statePath(), { maxAgeMs: MAX_AGE_MS, match: (f) => f.endsWith(".lessons-prompted") });
+function ttlSweep() {
+  const step = (name, fn) => {
+    try {
+      fn();
+    } catch (err) {
+      debugLog("SessionStart", `ttl sweep (${name}): ${err.message || err}`);
+    }
+  };
+
+  step("sessions", () =>
+    sweep(statePath("sessions"), {
+      maxAgeMs: SESSION_TTL_MS,
+      match: (f) => f.endsWith(".json"),
+    })
+  );
+
+  // Retired marker format: `<session_id>.lessons-prompted` now lives as a field
+  // in the session JSON. Nothing writes these any more, so any left on disk are
+  // an upgrade leftover — drop them on sight (maxAgeMs 0).
+  step("legacy-markers", () =>
+    sweep(statePath(), { maxAgeMs: 0, match: (f) => f.endsWith(".lessons-prompted") })
+  );
+
+  // Entries that survived a week of SessionStarts are never going to be drained.
+  // The TTL is deliberately far longer than the drain interval so this can never
+  // race GP-873's queue consumer.
+  step("capture-queue", () =>
+    pruneJsonl(statePath("capture-queue.jsonl"), {
+      maxAgeMs: QUEUE_TTL_MS,
+      maxLines: QUEUE_MAX_LINES,
+    })
+  );
+
+  step("logs", () => {
+    for (const name of BREADCRUMB_LOGS) {
+      trimLog(statePath(name), { maxBytes: LOG_MAX_BYTES, keepLines: LOG_KEEP_LINES });
+    }
+  });
+
+  step("snooze", () => clearExpiredSnooze());
 }
 
-// Read JSON input from stdin (required for hooks)
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   input += chunk;
 });
 process.stdin.on("end", () => {
-  // Parse session_id from hook input and initialise per-session state path
   let sessionId = "unknown";
+  let source = null;
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
     sessionId = data.session_id || "unknown";
+    source = data.source || null;
   } catch {
-    // Parse error - continue with defaults
+    // Unparseable payload — still open a session record under the default id.
   }
   init(sessionId);
 
-  // Clean up stale session state files older than 24 hours
+  // Sweep before writing: the record this hook is about to create is fresh, so
+  // ordering it first would only make the sweep stat a file it can never expire.
+  ttlSweep();
+
   try {
-    cleanupStaleState();
+    beginSession(sessionId, source);
   } catch (err) {
-    debugLog("SessionStart", `stale file cleanup: ${err.message || err}`);
+    debugLog("SessionStart", `begin session: ${err.message || err}`);
   }
 
-  // Reset carried-over counters if this session id already had activity
-  try {
-    const prevState = getState();
-    if (prevState.memoryQueries > 0 || prevState.lessonsCaptured > 0) {
-      resetCounters();
-    }
-  } catch (err) {
-    debugLog("SessionStart", `counter reset: ${err.message || err}`);
-  }
-
-  // Always reinitialize session identity on new session start
-  try {
-    updateState((state) => {
-      state.sessionId = sessionId;
-      state.startedAt = new Date().toISOString();
-      return state;
-    });
-  } catch (err) {
-    debugLog("SessionStart", `session identity reset: ${err.message || err}`);
-  }
-
-  // Clear caches for fresh state each session
-  try {
-    clearMemoryCache();
-    clearSeedCache();
-  } catch (err) {
-    debugLog("SessionStart", err);
-  }
-
-  // Check gutt MCP configuration status
-  const diag = diagnoseGuttMcp();
-  if (!diag.configured) {
-    console.log(
-      `💡 gutt memory not configured. Run /gutt-claude-code-plugin:setup or /gutt-claude-code-plugin:onboard to get started.`
-    );
-  } else if (diag.url) {
-    const display = diag.url.length > 50 ? diag.url.slice(0, 47) + "..." : diag.url;
-    setConnectionStatus("ok");
-    console.log(`✅ gutt memory connected (${display})`);
-  }
-
-  // Use exitCode instead of process.exit() to allow stdout to flush
+  // exitCode over process.exit() so any buffered output flushes.
   process.exitCode = 0;
 });

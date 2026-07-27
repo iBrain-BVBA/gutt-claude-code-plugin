@@ -3,8 +3,8 @@
  * UserPromptSubmit hook — logs prompt, resets lesson state, outputs memory reminder.
  */
 
-const { statePath, appendLine, remove } = require("./lib/plugin-state.cjs");
-const { sanitizeSessionId } = require("./lib/session-state.cjs");
+const { statePath, appendLine } = require("./lib/plugin-state.cjs");
+const { init, clearLessonsPrompted } = require("./lib/session-state.cjs");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -29,9 +29,10 @@ process.stdin.on("end", () => {
 
   appendLine(invocationLog, `[${timestamp}] Prompt: ${prompt}`);
 
-  // Clear the lessons-prompted marker for this session so the next Stop re-prompts
-  const marker = statePath(`${sanitizeSessionId(sessionId)}.lessons-prompted`);
-  if (remove(marker)) {
+  // Re-arm the lesson-capture prompt for this session so the next Stop prompts
+  // again. Since GP-863 this is a field in sessions/<id>.json, not a marker file.
+  init(sessionId);
+  if (clearLessonsPrompted()) {
     appendLine(
       invocationLog,
       `[${timestamp}] Cleared lessons-prompted state for session ${sessionId}`

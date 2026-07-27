@@ -103,8 +103,9 @@ List all hooks that are active and what they do:
 
 | Hook                    | Event                               | What It Does                                            |
 | ----------------------- | ----------------------------------- | ------------------------------------------------------- |
-| session-start           | SessionStart                        | Loads seed registry and primes memory cache on startup  |
-| sessionstart-setup      | SessionStart                        | Validates MCP configuration and plugin state            |
+| session-start           | SessionStart                        | Opens the session record and runs the state TTL sweep   |
+| session-connectivity    | SessionStart (async)                | Checks MCP configuration and clears stale caches        |
+| session-end             | SessionEnd                          | Finalizes the session record and clears session snooze  |
 | user-prompt-submit      | UserPromptSubmit                    | Injects relevant memory context before each prompt      |
 | stop-lessons            | Stop                                | Captures lessons learned when a conversation ends       |
 | post-tool-lint          | PostToolUse (Edit/Write)            | Runs lint checks after file edits                       |

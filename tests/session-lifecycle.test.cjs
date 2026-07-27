@@ -1,0 +1,663 @@
+#!/usr/bin/env node
+/**
+ * Tests for the GP-863 session lifecycle: SessionStart/SessionEnd state,
+ * the R37 TTL sweep, and the snooze primitives they operate on.
+ *
+ * Run: node --test tests/session-lifecycle.test.cjs
+ */
+
+const { describe, it, before, after, beforeEach } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { spawnSync } = require("child_process");
+
+const pluginState = require("../shared/plugin-state.cjs");
+const sessionState = require("../shared/session-state.cjs");
+const runtimeConfig = require("../shared/runtime-config.cjs");
+
+const HOOKS = path.join(__dirname, "..", "gutt-core", "hooks");
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+const ORIGINAL_DATA_DIR = process.env.CLAUDE_PLUGIN_DATA;
+
+function restoreEnv() {
+  if (ORIGINAL_DATA_DIR === undefined) {
+    delete process.env.CLAUDE_PLUGIN_DATA;
+  } else {
+    process.env.CLAUDE_PLUGIN_DATA = ORIGINAL_DATA_DIR;
+  }
+}
+
+/** Fresh, isolated ${CLAUDE_PLUGIN_DATA} for a describe block. */
+function makeDataDir() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-lifecycle-"));
+  process.env.CLAUDE_PLUGIN_DATA = dir;
+  return dir;
+}
+
+function readSession(dir, sessionId) {
+  return JSON.parse(fs.readFileSync(path.join(dir, "sessions", `${sessionId}.json`), "utf8"));
+}
+
+/**
+ * Run a hook the way Claude Code does: a fresh node process fed the event JSON
+ * on stdin. HOME is redirected so a hook that reaches for the user's home dir
+ * writes into the sandbox instead of the developer's real one.
+ * @param {string} name - hook filename
+ * @param {Object} payload - stdin JSON
+ * @param {{dataDir: string, home: string}} env
+ */
+function runHook(name, payload, { dataDir, home }) {
+  return spawnSync("node", [path.join(HOOKS, name)], {
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CLAUDE_PLUGIN_DATA: dataDir,
+      HOME: home,
+      USERPROFILE: home,
+      CLAUDE_PROJECT_DIR: home,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// beginSession / finalizeSession — the matcher-aware state machine (AC1)
+// ---------------------------------------------------------------------------
+
+describe("session lifecycle: SessionStart matcher branches", () => {
+  let dir;
+  before(() => {
+    dir = makeDataDir();
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  beforeEach(() => {
+    fs.rmSync(path.join(dir, "sessions"), { recursive: true, force: true });
+  });
+
+  for (const source of ["startup", "resume", "clear"]) {
+    it(`${source} arms firstPromptPending and leaves compacted alone`, () => {
+      sessionState.init(`s-${source}`);
+      const state = sessionState.beginSession(`s-${source}`, source);
+      assert.equal(state.firstPromptPending, true);
+      assert.equal(state.compacted, false);
+      assert.equal(state.source, source);
+    });
+  }
+
+  it("compact sets compacted without re-arming firstPromptPending", () => {
+    sessionState.init("s-compact");
+    sessionState.beginSession("s-compact", "startup");
+    sessionState.consumeFirstPromptPending(); // the guard already ran this session
+    const state = sessionState.beginSession("s-compact", "compact");
+    assert.equal(state.compacted, true);
+    assert.equal(state.firstPromptPending, false, "compact is mid-session, not a restart");
+    assert.equal(state.source, "compact");
+  });
+
+  it("an unknown future matcher is treated as a restart, not a compaction", () => {
+    sessionState.init("s-fork");
+    const state = sessionState.beginSession("s-fork", "fork");
+    assert.equal(state.firstPromptPending, true);
+    assert.equal(state.compacted, false);
+  });
+
+  it("clear zeroes the counters; resume and compact keep them", () => {
+    sessionState.init("s-counters");
+    sessionState.beginSession("s-counters", "startup");
+    sessionState.incrementMemoryQueries();
+    sessionState.incrementLessonsCaptured();
+    sessionState.incrementSignificantOps();
+
+    let state = sessionState.beginSession("s-counters", "resume");
+    assert.equal(state.memoryQueries, 1, "resume keeps the tally");
+    assert.equal(state.lessonsCaptured, 1);
+    assert.equal(state.significantOps, 1);
+
+    state = sessionState.beginSession("s-counters", "compact");
+    assert.equal(state.memoryQueries, 1, "compact keeps the tally");
+
+    state = sessionState.beginSession("s-counters", "clear");
+    assert.equal(state.memoryQueries, 0, "clear resets");
+    assert.equal(state.lessonsCaptured, 0);
+    assert.equal(state.significantOps, 0);
+  });
+
+  it("beginSession never writes connectionStatus (the async hook owns it)", () => {
+    sessionState.init("s-conn");
+    sessionState.beginSession("s-conn", "startup");
+    sessionState.setConnectionStatus("ok"); // stand-in for the async probe
+    const state = sessionState.beginSession("s-conn", "resume");
+    assert.equal(state.connectionStatus, "ok", "a restart must not clobber the probe result");
+  });
+
+  it("SessionEnd finalizes the record and clears the lifecycle flags", () => {
+    sessionState.init("s-end");
+    sessionState.beginSession("s-end", "startup");
+    const state = sessionState.finalizeSession("logout");
+    assert.equal(state.endReason, "logout");
+    assert.ok(state.endedAt, "endedAt stamped");
+    assert.equal(state.firstPromptPending, false);
+    assert.equal(state.compacted, false);
+    assert.ok(fs.existsSync(path.join(dir, "sessions", "s-end.json")), "file kept, not deleted");
+  });
+
+  it("a restart after an end reopens the record", () => {
+    sessionState.init("s-reopen");
+    sessionState.beginSession("s-reopen", "startup");
+    sessionState.finalizeSession("clear");
+    const state = sessionState.beginSession("s-reopen", "clear");
+    assert.equal(state.endedAt, null);
+    assert.equal(state.endReason, null);
+    assert.equal(state.firstPromptPending, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Flags consumed by the GP-864 command guard
+// ---------------------------------------------------------------------------
+
+describe("session lifecycle: flag consumption", () => {
+  let dir;
+  before(() => {
+    dir = makeDataDir();
+    sessionState.init("s-flags");
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("firstPromptPending and compacted each fire exactly once", () => {
+    sessionState.beginSession("s-flags", "startup");
+    assert.equal(sessionState.consumeFirstPromptPending(), true);
+    assert.equal(sessionState.consumeFirstPromptPending(), false, "second read is false");
+
+    sessionState.beginSession("s-flags", "compact");
+    assert.equal(sessionState.consumeCompacted(), true);
+    assert.equal(sessionState.consumeCompacted(), false);
+  });
+
+  it("consuming an unset flag does not rewrite the file", () => {
+    sessionState.beginSession("s-flags", "startup");
+    sessionState.consumeCompacted(); // already false
+    const before = fs.statSync(path.join(dir, "sessions", "s-flags.json")).mtimeMs;
+    assert.equal(sessionState.consumeCompacted(), false);
+    assert.equal(fs.statSync(path.join(dir, "sessions", "s-flags.json")).mtimeMs, before);
+  });
+
+  it("the lesson-prompt record replaces the retired marker file", () => {
+    sessionState.beginSession("s-flags", "startup");
+    assert.equal(sessionState.wasLessonsPrompted(), false);
+    assert.equal(sessionState.markLessonsPrompted(), true);
+    assert.equal(sessionState.wasLessonsPrompted(), true);
+    assert.equal(sessionState.clearLessonsPrompted(), true, "a new prompt re-arms it");
+    assert.equal(sessionState.wasLessonsPrompted(), false);
+    assert.equal(sessionState.clearLessonsPrompted(), false, "already clear");
+
+    const strays = fs.readdirSync(dir).filter((f) => f.endsWith(".lessons-prompted"));
+    assert.deepEqual(strays, [], "no marker files are created any more");
+  });
+
+  it("markLessonsPrompted reports failure so Stop can fail open", () => {
+    const saved = process.env.CLAUDE_PLUGIN_DATA;
+    delete process.env.CLAUDE_PLUGIN_DATA;
+    assert.equal(sessionState.markLessonsPrompted(), false, "no data dir → not persisted");
+    process.env.CLAUDE_PLUGIN_DATA = saved;
+  });
+
+  it("getState() hands out an independent ticker per call", () => {
+    const saved = process.env.CLAUDE_PLUGIN_DATA;
+    delete process.env.CLAUDE_PLUGIN_DATA; // force the default-state path
+    const a = sessionState.getState();
+    a.ticker.items.push({ icon: "x", text: "leak" });
+    assert.deepEqual(sessionState.getState().ticker.items, [], "defaults must not be shared");
+    process.env.CLAUDE_PLUGIN_DATA = saved;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Snooze: expiry at SessionStart, session-scope cleared at SessionEnd (AC1/AC2)
+// ---------------------------------------------------------------------------
+
+describe("session lifecycle: snooze", () => {
+  let dir;
+  before(() => {
+    dir = makeDataDir();
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  beforeEach(() => {
+    fs.rmSync(path.join(dir, "config.json"), { force: true });
+  });
+
+  it("reading config never creates the file", () => {
+    assert.deepEqual(runtimeConfig.readConfig(), runtimeConfig.DEFAULTS);
+    assert.equal(fs.existsSync(path.join(dir, "config.json")), false);
+  });
+
+  it("a live snooze holds, an expired one does not", () => {
+    runtimeConfig.setSnooze({ untilMs: Date.now() + HOUR });
+    assert.equal(runtimeConfig.isSnoozed(), true);
+    runtimeConfig.setSnooze({ untilMs: Date.now() - HOUR });
+    assert.equal(runtimeConfig.isSnoozed(), false);
+  });
+
+  it("clearExpiredSnooze drops a lapsed snooze and keeps a live one", () => {
+    runtimeConfig.setSnooze({ untilMs: Date.now() + HOUR });
+    assert.equal(runtimeConfig.clearExpiredSnooze(), false, "live snooze survives");
+    assert.ok(runtimeConfig.readConfig().snoozeUntil);
+
+    runtimeConfig.setSnooze({ untilMs: Date.now() - HOUR });
+    assert.equal(runtimeConfig.clearExpiredSnooze(), true);
+    assert.equal(runtimeConfig.readConfig().snoozeUntil, null);
+  });
+
+  it("clearExpiredSnooze treats an unparseable deadline as stale", () => {
+    pluginState.writeJson(runtimeConfig.configPath(), { snoozeUntil: "not-a-date" });
+    assert.equal(runtimeConfig.clearExpiredSnooze(), true);
+    assert.equal(runtimeConfig.readConfig().snoozeUntil, null);
+  });
+
+  it("a session-scoped snooze applies only to its own session", () => {
+    runtimeConfig.setSnooze({ sessionId: "mine" });
+    assert.equal(runtimeConfig.isSnoozed("mine"), true);
+    assert.equal(runtimeConfig.isSnoozed("theirs"), false);
+  });
+
+  it("SessionEnd clears a session-scoped snooze but not a durable one", () => {
+    runtimeConfig.setSnooze({ sessionId: "mine" });
+    assert.equal(runtimeConfig.clearSessionSnooze("theirs"), false, "wrong session, no-op");
+    assert.equal(runtimeConfig.clearSessionSnooze("mine"), true);
+    assert.equal(runtimeConfig.readConfig().snoozeSessionId, null);
+
+    runtimeConfig.setSnooze({ untilMs: Date.now() + HOUR }); // durable, unscoped
+    assert.equal(runtimeConfig.clearSessionSnooze("mine"), false);
+    assert.ok(runtimeConfig.readConfig().snoozeUntil, "durable snooze outlives the session");
+  });
+
+  it("clearing snooze leaves keys owned by the config commands untouched", () => {
+    pluginState.writeJson(runtimeConfig.configPath(), {
+      enabled: false,
+      mode: "manual",
+      snoozeUntil: new Date(Date.now() - HOUR).toISOString(),
+    });
+    runtimeConfig.clearExpiredSnooze();
+    const raw = runtimeConfig.readRawConfig();
+    assert.equal(raw.enabled, false, "GP-866's keys survive");
+    assert.equal(raw.mode, "manual");
+    assert.equal("snoozeUntil" in raw, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TTL primitives (AC2)
+// ---------------------------------------------------------------------------
+
+describe("session lifecycle: TTL primitives", () => {
+  let dir;
+  before(() => {
+    dir = makeDataDir();
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const queuePath = () => pluginState.statePath("capture-queue.jsonl");
+
+  function writeQueue(entries) {
+    fs.writeFileSync(queuePath(), entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  }
+  function queueLines() {
+    return fs.existsSync(queuePath())
+      ? fs.readFileSync(queuePath(), "utf8").trim().split("\n").filter(Boolean)
+      : [];
+  }
+
+  it("pruneJsonl drops entries past the TTL and keeps the rest", () => {
+    writeQueue([
+      { ts: new Date(Date.now() - 30 * DAY).toISOString(), n: "stale" },
+      { ts: new Date(Date.now() - HOUR).toISOString(), n: "fresh" },
+    ]);
+    const res = pluginState.pruneJsonl(queuePath(), { maxAgeMs: 7 * DAY });
+    assert.equal(res.removed, 1);
+    assert.equal(queueLines().length, 1);
+    assert.match(queueLines()[0], /fresh/);
+  });
+
+  it("pruneJsonl drops unparseable lines — no consumer can drain them", () => {
+    fs.writeFileSync(queuePath(), '{"ts":"bad json\nnot json at all\n');
+    const res = pluginState.pruneJsonl(queuePath(), { maxAgeMs: 7 * DAY });
+    assert.equal(res.removed, 2);
+    assert.equal(fs.existsSync(queuePath()), false, "nothing left → file removed");
+  });
+
+  it("pruneJsonl keeps an entry with no timestamp field", () => {
+    writeQueue([{ n: "untimed" }]);
+    assert.equal(pluginState.pruneJsonl(queuePath(), { maxAgeMs: 1 }).removed, 0);
+    assert.equal(queueLines().length, 1);
+  });
+
+  it("pruneJsonl enforces the overflow cap, newest wins", () => {
+    writeQueue(Array.from({ length: 10 }, (_, i) => ({ ts: new Date().toISOString(), n: i })));
+    const res = pluginState.pruneJsonl(queuePath(), { maxAgeMs: DAY, maxLines: 4 });
+    assert.equal(res.removed, 6);
+    const kept = queueLines().map((l) => JSON.parse(l).n);
+    assert.deepEqual(kept, [6, 7, 8, 9]);
+  });
+
+  it("pruneJsonl does not rewrite a clean file", () => {
+    writeQueue([{ ts: new Date().toISOString(), n: 1 }]);
+    const before = fs.statSync(queuePath()).mtimeMs;
+    assert.equal(pluginState.pruneJsonl(queuePath(), { maxAgeMs: DAY }).removed, 0);
+    assert.equal(fs.statSync(queuePath()).mtimeMs, before);
+  });
+
+  it("pruneJsonl and trimLog no-op on a missing file", () => {
+    const missing = pluginState.statePath("nope.jsonl");
+    assert.deepEqual(pluginState.pruneJsonl(missing, { maxAgeMs: DAY }), {
+      removed: 0,
+      discarded: false,
+    });
+    assert.deepEqual(pluginState.trimLog(missing, {}), { trimmed: false, discarded: false });
+  });
+
+  it("trimLog leaves a small log alone and tail-trims a large one", () => {
+    const log = pluginState.statePath("hook-invocations.log");
+    fs.writeFileSync(log, "one\ntwo\n");
+    assert.deepEqual(pluginState.trimLog(log, { maxBytes: 1024, keepLines: 1 }), {
+      trimmed: false,
+      discarded: false,
+    });
+
+    fs.writeFileSync(log, Array.from({ length: 500 }, (_, i) => `line-${i}`).join("\n") + "\n");
+    const res = pluginState.trimLog(log, { maxBytes: 100, keepLines: 3 });
+    assert.equal(res.trimmed, true);
+    assert.deepEqual(fs.readFileSync(log, "utf8").trim().split("\n"), [
+      "line-497",
+      "line-498",
+      "line-499",
+    ]);
+  });
+
+  it("trimLog still bounds a log made of a few enormous lines", () => {
+    // keepLines can't help here — one line is already over the cap, so the
+    // byte-bounded fallback has to kick in.
+    const log = pluginState.statePath("hook-errors.log");
+    fs.writeFileSync(log, "x".repeat(400 * 1024));
+    assert.equal(pluginState.trimLog(log, { maxBytes: 8 * 1024, keepLines: 200 }).trimmed, true);
+    assert.ok(fs.statSync(log).size <= 8 * 1024, "log bounded despite having no line breaks");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The hooks themselves, run as Claude Code runs them
+// ---------------------------------------------------------------------------
+
+describe("session lifecycle: hooks end to end", () => {
+  let dir;
+  let home;
+
+  before(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-hooks-data-"));
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-hooks-home-"));
+  });
+  after(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("SessionStart opens the record with the matcher's flags", () => {
+    const r = runHook(
+      "session-start.cjs",
+      { session_id: "e2e-a", source: "startup" },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    const state = readSession(dir, "e2e-a");
+    assert.equal(state.sessionId, "e2e-a");
+    assert.equal(state.source, "startup");
+    assert.equal(state.firstPromptPending, true);
+    assert.equal(state.compacted, false);
+  });
+
+  it("SessionStart[compact] marks the record compacted", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "e2e-b", source: "compact" },
+      { dataDir: dir, home }
+    );
+    const state = readSession(dir, "e2e-b");
+    assert.equal(state.compacted, true);
+    assert.equal(state.source, "compact");
+  });
+
+  it("SessionStart sweeps session files older than 24h and keeps fresh ones", () => {
+    const sessions = path.join(dir, "sessions");
+    fs.mkdirSync(sessions, { recursive: true });
+    const stale = path.join(sessions, "ancient.json");
+    fs.writeFileSync(stale, "{}");
+    const old = new Date(Date.now() - 48 * HOUR);
+    fs.utimesSync(stale, old, old);
+
+    runHook(
+      "session-start.cjs",
+      { session_id: "e2e-sweep", source: "startup" },
+      { dataDir: dir, home }
+    );
+    assert.equal(fs.existsSync(stale), false, "stale session file swept");
+    assert.ok(fs.existsSync(path.join(sessions, "e2e-sweep.json")), "this session survives");
+  });
+
+  it("SessionStart expires a lapsed snooze and clears retired marker files", () => {
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ mode: "auto", snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
+    );
+    fs.writeFileSync(path.join(dir, "leftover.lessons-prompted"), "{}");
+
+    runHook(
+      "session-start.cjs",
+      { session_id: "e2e-snooze", source: "startup" },
+      { dataDir: dir, home }
+    );
+
+    const config = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.equal(config.snoozeUntil, undefined, "expired snooze cleared");
+    assert.equal(config.mode, "auto", "unrelated config preserved");
+    assert.equal(
+      fs.existsSync(path.join(dir, "leftover.lessons-prompted")),
+      false,
+      "upgrade leftover removed"
+    );
+  });
+
+  it("SessionStart survives a malformed payload without failing the session", () => {
+    const r = spawnSync("node", [path.join(HOOKS, "session-start.cjs")], {
+      input: "not json at all",
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: dir, HOME: home, USERPROFILE: home },
+    });
+    assert.equal(r.status, 0);
+  });
+
+  it("SessionStart writes nothing outside CLAUDE_PLUGIN_DATA (AC3)", () => {
+    const probeHome = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-ac3-home-"));
+    const probeData = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-ac3-data-"));
+    try {
+      for (const hook of ["session-start.cjs", "session-connectivity.cjs", "session-end.cjs"]) {
+        runHook(
+          hook,
+          { session_id: "ac3", source: "startup", reason: "clear" },
+          {
+            dataDir: probeData,
+            home: probeHome,
+          }
+        );
+      }
+      assert.deepEqual(fs.readdirSync(probeHome), [], "nothing written to HOME");
+      assert.ok(
+        fs.existsSync(path.join(probeData, "sessions", "ac3.json")),
+        "state went to the data dir"
+      );
+    } finally {
+      fs.rmSync(probeHome, { recursive: true, force: true });
+      fs.rmSync(probeData, { recursive: true, force: true });
+    }
+  });
+
+  it("the async connectivity hook records the probe result for the statusline (AC4)", () => {
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-conn" },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    const state = readSession(dir, "e2e-conn");
+    assert.ok(["ok", "unknown", "error"].includes(state.connectionStatus));
+    assert.equal(typeof state.mcpConfigured, "boolean");
+    assert.ok(state.connectionCheckedAt, "probe timestamped");
+  });
+
+  it("SessionEnd finalizes the record and drops this session's snooze", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "e2e-end", source: "startup" },
+      { dataDir: dir, home }
+    );
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ mode: "auto", snoozeSessionId: "e2e-end" })
+    );
+
+    const r = runHook(
+      "session-end.cjs",
+      { session_id: "e2e-end", reason: "logout" },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+
+    const state = readSession(dir, "e2e-end");
+    assert.equal(state.endReason, "logout");
+    assert.ok(state.endedAt);
+    assert.equal(state.firstPromptPending, false);
+
+    const config = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.equal(config.snoozeSessionId, undefined, "session-scoped snooze cleared");
+    assert.equal(config.mode, "auto");
+  });
+
+  it("SessionEnd defaults the reason when the payload omits it", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "e2e-noreason", source: "startup" },
+      { dataDir: dir, home }
+    );
+    runHook("session-end.cjs", { session_id: "e2e-noreason" }, { dataDir: dir, home });
+    assert.equal(readSession(dir, "e2e-noreason").endReason, "other");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Latency budget (AC2 / R25)
+// ---------------------------------------------------------------------------
+
+describe("session lifecycle: synchronous path stays inside the latency budget", () => {
+  let dir;
+
+  before(() => {
+    dir = makeDataDir();
+    // A deliberately dirty state dir: expired sessions to sweep, a queue with
+    // stale entries, an oversized log, and a lapsed snooze — the worst case the
+    // sweep can face on a real machine.
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    for (let i = 0; i < 60; i++) {
+      const f = path.join(dir, "sessions", `bench-${i}.json`);
+      fs.writeFileSync(f, "{}");
+      if (i % 2 === 0) {
+        const old = new Date(Date.now() - 48 * HOUR);
+        fs.utimesSync(f, old, old);
+      }
+    }
+    const entries = Array.from({ length: 400 }, (_, i) =>
+      JSON.stringify({ ts: new Date(Date.now() - (i < 100 ? 30 : 1) * DAY).toISOString(), n: i })
+    );
+    fs.writeFileSync(path.join(dir, "capture-queue.jsonl"), entries.join("\n") + "\n");
+    fs.writeFileSync(
+      path.join(dir, "hook-invocations.log"),
+      `${"[2026-07-27 00:00:00] Prompt: lorem ipsum dolor sit amet".padEnd(79)}\n`.repeat(5000)
+    );
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
+    );
+  });
+
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("sweep + state write stays well under 50ms p95", () => {
+    // Measured in-process on purpose. Wall-clock for the spawned hook is
+    // dominated by node's own interpreter startup (~20-50ms depending on the
+    // machine), which no hook can influence and which would make this assertion
+    // a coin flip on a loaded CI box. What GP-863 controls is the work below.
+    //
+    // 40 samples with the first discarded: p95 then tolerates two outliers
+    // rather than one, so a GC pause or a noisy CI neighbour can't fail the run
+    // without the budget genuinely being blown.
+    const { statePath, sweep, pruneJsonl, trimLog } = pluginState;
+    const sweepOnce = (i) => {
+      sweep(statePath("sessions"), { maxAgeMs: DAY, match: (f) => f.endsWith(".json") });
+      sweep(statePath(), { maxAgeMs: 0, match: (f) => f.endsWith(".lessons-prompted") });
+      pruneJsonl(statePath("capture-queue.jsonl"), { maxAgeMs: 7 * DAY, maxLines: 500 });
+      trimLog(statePath("hook-invocations.log"), { maxBytes: 256 * 1024, keepLines: 200 });
+      runtimeConfig.clearExpiredSnooze();
+      sessionState.init(`bench-run-${i}`);
+      sessionState.beginSession(`bench-run-${i}`, "startup");
+    };
+
+    sweepOnce("warmup"); // cold-start I/O and JIT, not part of the measurement
+    const samples = [];
+    for (let i = 0; i < 40; i++) {
+      const started = process.hrtime.bigint();
+      sweepOnce(i);
+      samples.push(Number(process.hrtime.bigint() - started) / 1e6);
+    }
+    samples.sort((a, b) => a - b);
+    const p95 = samples[Math.ceil(0.95 * samples.length) - 1];
+    assert.ok(p95 < 50, `sweep + write p95 was ${p95.toFixed(1)}ms, budget is 50ms (R25)`);
+  });
+
+  it("the dirty-state sweep actually bounded every artifact", () => {
+    assert.ok(
+      fs.readFileSync(path.join(dir, "capture-queue.jsonl"), "utf8").trim().split("\n").length <=
+        500,
+      "queue capped"
+    );
+    assert.ok(fs.statSync(path.join(dir, "hook-invocations.log")).size < 256 * 1024, "log trimmed");
+    assert.equal(runtimeConfig.readConfig().snoozeUntil, null, "snooze expired");
+
+    const sessions = path.join(dir, "sessions");
+    // Seeded even-numbered bench files were backdated 48h; odd ones are fresh.
+    assert.equal(fs.existsSync(path.join(sessions, "bench-0.json")), false, "expired file swept");
+    assert.equal(fs.existsSync(path.join(sessions, "bench-1.json")), true, "fresh file kept");
+    assert.equal(
+      fs.readdirSync(sessions).filter((f) => /^bench-\d+\.json$/.test(f)).length,
+      30,
+      "exactly the 30 backdated files were reclaimed"
+    );
+  });
+});

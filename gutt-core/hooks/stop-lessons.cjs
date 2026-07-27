@@ -7,9 +7,14 @@
  */
 
 const { isGuttMcpConfigured } = require("./lib/mcp-config.cjs");
-const { getState, init, sanitizeSessionId } = require("./lib/session-state.cjs");
+const {
+  getState,
+  init,
+  wasLessonsPrompted,
+  markLessonsPrompted,
+} = require("./lib/session-state.cjs");
 const { supportsDecisionBlock } = require("./lib/platform-detect.cjs");
-const { statePath, exists, appendLine, writeJson } = require("./lib/plugin-state.cjs");
+const { statePath, appendLine } = require("./lib/plugin-state.cjs");
 const { debugLog } = require("./lib/debug.cjs");
 
 const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
@@ -43,10 +48,10 @@ process.stdin.on("end", () => {
     init(sessionId);
 
     const invocationLog = statePath("hook-invocations.log");
-    const marker = statePath(`${sanitizeSessionId(sessionId)}.lessons-prompted`);
 
-    // Already prompted this session — allow stop
-    if (exists(marker)) {
+    // Already prompted this session — allow stop. The "prompted" record lives in
+    // sessions/<id>.json since GP-863; the old sibling marker file is gone.
+    if (wasLessonsPrompted()) {
       appendLine(
         invocationLog,
         `[${timestamp}] Stop hook: Session ${sessionId} already prompted, allowing stop`
@@ -54,13 +59,12 @@ process.stdin.on("end", () => {
       process.exit(0);
     }
 
-    // Mark as prompted so the next stop goes through. If the marker can't be
-    // persisted (data dir unavailable/unwritable), allow the stop rather than
-    // block — otherwise we'd re-block every stop with no way to record that we
-    // already prompted. The pre-GP-855 fs.writeFileSync threw here and hit the
-    // outer catch (fail open); writeJson returns false instead, so check it.
-    if (!writeJson(marker, { promptedAt: new Date().toISOString() })) {
-      debugLog("stop-lessons", "could not persist lessons-prompted marker; allowing stop");
+    // Mark as prompted so the next stop goes through. If it can't be persisted
+    // (data dir unavailable/unwritable), allow the stop rather than block —
+    // otherwise we'd re-block every stop with no way to record that we already
+    // prompted.
+    if (!markLessonsPrompted()) {
+      debugLog("stop-lessons", "could not persist lessons-prompted state; allowing stop");
       process.exit(0);
     }
 

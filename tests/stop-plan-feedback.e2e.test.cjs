@@ -65,10 +65,20 @@ function createTempEnv() {
 }
 
 // Helper: Write mock session state to the new sessions/<id>.json location
+function sessionStatePath(dataDir, sessionId) {
+  return path.join(dataDir, "sessions", `${sanitizeSessionId(sessionId)}.json`);
+}
+
 function writeSessionState(dataDir, sessionId, state) {
-  const statePath = path.join(dataDir, "sessions", `${sanitizeSessionId(sessionId)}.json`);
+  const statePath = sessionStatePath(dataDir, sessionId);
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
   fs.writeFileSync(statePath, JSON.stringify(state));
+}
+
+// Helper: Read it back. The block-once record is a field here since GP-863.
+function readSessionState(dataDir, sessionId) {
+  const statePath = sessionStatePath(dataDir, sessionId);
+  return fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, "utf8")) : {};
 }
 
 // Helper: Run hook and parse output
@@ -255,12 +265,12 @@ console.log("\nTest 5: Subagent stop is always allowed...");
     fail(`Subagent stop should allow, got ${result.decision}`);
   }
 
-  // Verify marker was NOT created — subagent should not consume the block
-  const markerFile = path.join(dataDir, `${sanitizeSessionId(sessionId)}.lessons-prompted`);
-  if (!fs.existsSync(markerFile)) {
-    pass("Subagent did not create marker file");
+  // Verify the prompt was NOT recorded — a subagent must not consume the block.
+  // Since GP-863 this lives in sessions/<id>.json, not a sibling marker file.
+  if (!readSessionState(dataDir, sessionId).lessonsPromptedAt) {
+    pass("Subagent did not record a lesson prompt");
   } else {
-    fail("Subagent created marker file — would consume main session block");
+    fail("Subagent recorded a lesson prompt — would consume main session block");
   }
 
   // Main session stop should still block after subagent stop

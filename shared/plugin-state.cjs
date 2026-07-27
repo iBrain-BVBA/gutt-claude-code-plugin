@@ -110,15 +110,16 @@ function readJson(absPath, fallback = null) {
 let writeSeq = 0;
 
 /**
- * Atomically write JSON — the one atomic-write idiom for the suite: unique temp
- * name (PID + timestamp + counter) then delete-before-rename (Windows can't
- * overwrite on rename). No non-atomic fallback: a failed write returns false
- * rather than risk a torn file. No-op (false) when unavailable.
+ * Atomically replace a file's contents — the one atomic-write idiom for the
+ * suite: unique temp name (PID + timestamp + counter) then delete-before-rename
+ * (Windows can't overwrite on rename). No non-atomic fallback: a failed write
+ * returns false rather than risk a torn file. No-op (false) when unavailable or
+ * when the path escapes ${CLAUDE_PLUGIN_DATA}.
  * @param {string|null} absPath
- * @param {*} data
+ * @param {string} contents
  * @returns {boolean} true if written
  */
-function writeJson(absPath, data) {
+function atomicWrite(absPath, contents) {
   if (!absPath) {
     return false;
   }
@@ -129,10 +130,9 @@ function writeJson(absPath, data) {
   if (!ensureDir(path.dirname(absPath))) {
     return false;
   }
-  const serialized = JSON.stringify(data, null, 2);
   const tempPath = `${absPath}.tmp.${process.pid}.${Date.now()}.${writeSeq++}`;
   try {
-    fs.writeFileSync(tempPath, serialized);
+    fs.writeFileSync(tempPath, contents);
     if (fs.existsSync(absPath)) {
       fs.unlinkSync(absPath);
     }
@@ -149,6 +149,16 @@ function writeJson(absPath, data) {
     }
     return false;
   }
+}
+
+/**
+ * Atomically write JSON. No-op (false) when unavailable.
+ * @param {string|null} absPath
+ * @param {*} data
+ * @returns {boolean} true if written
+ */
+function writeJson(absPath, data) {
+  return atomicWrite(absPath, JSON.stringify(data, null, 2));
 }
 
 /**
@@ -233,13 +243,152 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
   return removed;
 }
 
+/**
+ * A line-oriented file this big is past saving: reading it to prune costs more
+ * than the SessionStart budget allows, and it is only ever a queue or a
+ * breadcrumb log. Discard wholesale instead of parsing it (GP-863, R25).
+ */
+const DISCARD_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Size of a file on disk, or -1 when missing/unstattable.
+ * @param {string|null} absPath
+ * @returns {number}
+ */
+function sizeOf(absPath) {
+  if (!absPath) {
+    return -1;
+  }
+  try {
+    return fs.statSync(absPath).size;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Drop stale entries from an append-only JSONL file (the R37 `capture-queue.jsonl`
+ * shape). An entry is stale when its timestamp is older than `maxAgeMs`, when it
+ * doesn't parse (an unprocessable queue item is garbage, not data), or when it
+ * falls outside the newest `maxLines`. Rewrites only when something was dropped,
+ * so the common no-op SessionStart costs one read.
+ *
+ * Concurrency: read → filter → atomic replace. A line appended between the read
+ * and the rename is lost. Acceptable for a best-effort queue; the alternative is
+ * a lock on the SessionStart hot path.
+ *
+ * @param {string|null} absPath
+ * @param {{maxAgeMs?: number, maxLines?: number, timestampField?: string}} opts
+ * @returns {{removed: number, discarded: boolean}}
+ */
+function pruneJsonl(absPath, { maxAgeMs, maxLines = Infinity, timestampField = "ts" } = {}) {
+  const size = sizeOf(absPath);
+  if (size < 0) {
+    return { removed: 0, discarded: false };
+  }
+  if (size > DISCARD_BYTES) {
+    debugLog("plugin-state", `discarding oversized jsonl (${size}B): ${absPath}`);
+    return { removed: 0, discarded: remove(absPath) };
+  }
+
+  let lines;
+  try {
+    lines = fs.readFileSync(absPath, "utf8").split("\n");
+  } catch (err) {
+    debugLog("plugin-state", `prune read failed for ${absPath}: ${err.message}`);
+    return { removed: 0, discarded: false };
+  }
+
+  const cutoff = Number.isFinite(maxAgeMs) ? Date.now() - maxAgeMs : -Infinity;
+  const kept = [];
+  let removed = 0;
+  for (const line of lines) {
+    if (line.trim() === "") {
+      continue; // trailing newline, not an entry
+    }
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      removed++; // unparseable — no consumer can ever drain it
+      continue;
+    }
+    const ts = Date.parse(entry?.[timestampField]);
+    if (Number.isFinite(ts) && ts < cutoff) {
+      removed++;
+      continue;
+    }
+    kept.push(line);
+  }
+
+  // Newest-wins overflow trim, applied after the age pass so a burst of fresh
+  // entries can't be held under the cap by expired ones.
+  if (Number.isFinite(maxLines) && kept.length > maxLines) {
+    removed += kept.length - maxLines;
+    kept.splice(0, kept.length - maxLines);
+  }
+
+  if (removed === 0) {
+    return { removed: 0, discarded: false };
+  }
+  if (kept.length === 0) {
+    return { removed, discarded: remove(absPath) };
+  }
+  atomicWrite(absPath, `${kept.join("\n")}\n`);
+  return { removed, discarded: false };
+}
+
+/**
+ * Keep a breadcrumb log bounded. Under `maxBytes` this is a single stat and no
+ * write. Over it, the newest `keepLines` survive; absurdly large logs are
+ * dropped outright rather than read into memory.
+ * @param {string|null} absPath
+ * @param {{maxBytes?: number, keepLines?: number}} opts
+ * @returns {{trimmed: boolean, discarded: boolean}}
+ */
+function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
+  const size = sizeOf(absPath);
+  if (size < 0 || size <= maxBytes) {
+    return { trimmed: false, discarded: false };
+  }
+  if (size > DISCARD_BYTES) {
+    debugLog("plugin-state", `discarding oversized log (${size}B): ${absPath}`);
+    return { trimmed: false, discarded: remove(absPath) };
+  }
+  try {
+    const lines = fs.readFileSync(absPath, "utf8").split("\n").filter(Boolean);
+    let out = `${lines.slice(-keepLines).join("\n")}\n`;
+    if (Buffer.byteLength(out) > maxBytes) {
+      // Pathological: a few enormous lines (or one with no newline at all), so
+      // keeping `keepLines` of them doesn't bound anything. Fall back to a
+      // byte-bounded tail and drop the partial line the cut lands in.
+      // -1 leaves room for the terminating newline, so the result is ≤ maxBytes.
+      out = Buffer.from(out, "utf8")
+        .subarray(-(maxBytes - 1))
+        .toString("utf8");
+      const firstBreak = out.indexOf("\n");
+      out = firstBreak >= 0 ? out.slice(firstBreak + 1) : out;
+      if (!out.endsWith("\n")) {
+        out += "\n";
+      }
+    }
+    return { trimmed: atomicWrite(absPath, out), discarded: false };
+  } catch (err) {
+    debugLog("plugin-state", `trim failed for ${absPath}: ${err.message}`);
+    return { trimmed: false, discarded: false };
+  }
+}
+
 module.exports = {
   stateRoot,
   statePath,
   exists,
   readJson,
   writeJson,
+  atomicWrite,
   appendLine,
   remove,
   sweep,
+  pruneJsonl,
+  trimLog,
 };

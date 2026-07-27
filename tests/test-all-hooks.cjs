@@ -114,25 +114,41 @@ console.log("══════════════════════�
 console.log(`Project dir: ${projectDir}`);
 console.log(`Platform: ${os.platform()}`);
 
-// Test 1: SessionStart
+// Test 1: SessionStart (synchronous lifecycle path)
 testHook(
   "1. SessionStart",
   "session-start.cjs",
-  {},
-  { shouldContain: null } // May output setup reminder or be silent
+  { session_id: "test-session-" + Date.now(), source: "startup" },
+  { shouldContain: null } // Silent by design — it only writes state
 );
 
-// Test 2: UserPromptSubmit
+// Test 2: SessionStart (async connectivity probe, registered with async: true)
 testHook(
-  "2. UserPromptSubmit",
+  "2. SessionStart (Connectivity)",
+  "session-connectivity.cjs",
+  { session_id: "test-session-" + Date.now() },
+  { shouldContain: null } // Outputs a connect/setup note depending on MCP config
+);
+
+// Test 3: SessionEnd
+testHook(
+  "3. SessionEnd",
+  "session-end.cjs",
+  { session_id: "test-session-" + Date.now(), reason: "clear" },
+  { shouldContain: null } // Silent by design — finalizes the session record
+);
+
+// Test 4: UserPromptSubmit
+testHook(
+  "4. UserPromptSubmit",
   "user-prompt-submit.cjs",
   { prompt: "Implement authentication system" },
   { shouldContain: null } // Output depends on gutt-mcp config
 );
 
-// Test 3: Stop (may block - that's expected)
+// Test 5: Stop (may block - that's expected)
 testHook(
-  "3. Stop (Lessons)",
+  "5. Stop (Lessons)",
   "stop-lessons.cjs",
   {
     session_id: "test-session-" + Date.now(),
@@ -141,9 +157,9 @@ testHook(
   { allowNonZero: true } // May block, which is OK
 );
 
-// Test 4: PostToolUse - Linting (auto-lint-plugin)
+// Test 6: PostToolUse - Linting (auto-lint-plugin)
 testHook(
-  "4. PostToolUse (Linting)",
+  "6. PostToolUse (Linting)",
   "post-tool-lint.cjs",
   {
     tool_name: "Edit",
@@ -152,9 +168,9 @@ testHook(
   { shouldContain: null, pluginDir: "auto-lint-plugin" } // Silent if file doesn't exist
 );
 
-// Test 5: PostToolUse - Task Lessons (gutt-subagent-hooks-plugin)
+// Test 7: PostToolUse - Task Lessons (gutt-subagent-hooks-plugin)
 testHook(
-  "5. PostToolUse (Task Lessons)",
+  "7. PostToolUse (Task Lessons)",
   "post-task-lessons.cjs",
   {
     tool_name: "Task",
@@ -168,9 +184,9 @@ testHook(
   { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May or may not suggest lesson
 );
 
-// Test 6: PostToolUse - Memory Operations
+// Test 8: PostToolUse - Memory Operations
 testHook(
-  "6. PostToolUse (Memory Ops)",
+  "8. PostToolUse (Memory Ops)",
   "post-memory-ops.cjs",
   {
     tool_name: "mcp__gutt-mcp-remote__search_memory_facts",
@@ -180,9 +196,9 @@ testHook(
   { shouldContain: null } // Updates state, not stdout
 );
 
-// Test 7: PreToolUse - Task Memory (gutt-subagent-hooks-plugin)
+// Test 9: PreToolUse - Task Memory (gutt-subagent-hooks-plugin)
 testHook(
-  "7. PreToolUse (Task Memory)",
+  "9. PreToolUse (Task Memory)",
   "pre-task-memory.cjs",
   {
     tool_name: "Task",
@@ -194,17 +210,17 @@ testHook(
   { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // Silent, updates state
 );
 
-// Test 8: SubagentStart - Memory Injection (gutt-subagent-hooks-plugin)
+// Test 10: SubagentStart - Memory Injection (gutt-subagent-hooks-plugin)
 testHook(
-  "8. SubagentStart (Memory Injection)",
+  "10. SubagentStart (Memory Injection)",
   "subagent-start-memory.cjs",
   { agent_type: "general-purpose", agent_id: "test-123" },
   { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May inject memory or provide fallback
 );
 
-// Test 9: SubagentStop - Plan Review (gutt-subagent-hooks-plugin)
+// Test 11: SubagentStop - Plan Review (gutt-subagent-hooks-plugin)
 testHook(
-  "9. SubagentStop (Plan Review)",
+  "11. SubagentStop (Plan Review)",
   "subagent-plan-review.cjs",
   {
     agent_transcript_path: path.join(projectDir, ".claude", "transcript.jsonl"),
@@ -213,9 +229,9 @@ testHook(
   { allowNonZero: true, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May block if plan detected
 );
 
-// Test 10: StatusLine
+// Test 12: StatusLine
 testHook(
-  "10. StatusLine",
+  "12. StatusLine",
   "statusline.cjs",
   {
     model: { display_name: "claude-opus" },

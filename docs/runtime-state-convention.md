@@ -23,27 +23,70 @@ that migration.
 All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
 `${CLAUDE_PLUGIN_DATA}`; no code joins its own `.state` path anymore.
 
-| File                            | Written by                                       | Notes                                                                                                                                                   |
-| ------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions/<session_id>.json`    | `session-state.cjs`                              | Per-session counters/flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Swept >24h at SessionStart.            |
-| `memory-cache.json`             | `memory-cache.cjs`                               | Memory results cache. Still one global file; the per-session split (ADR D3) is **GP-863**.                                                              |
-| `seed-registry.json`            | `seed-registry.cjs`                              | Agent-seed scan cache (own 5-min TTL).                                                                                                                  |
-| `hook-errors.log`               | `debug.cjs`                                      | Best-effort error log.                                                                                                                                  |
-| `hook-invocations.log`          | `user-prompt-submit`, `stop-lessons`             | Prompt/stop breadcrumbs.                                                                                                                                |
-| `<session_id>.lessons-prompted` | `stop-lessons` (cleared by `user-prompt-submit`) | One-shot "already prompted this session" marker. Swept >24h. Folding this into the session JSON (R37 "prefer JSON over markers") is a later E3 cleanup. |
-| `config.json`                   | _(reserved — E3)_                                | Runtime on/off, mode, snooze-until, group_id. **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id).    |
-| `capture-queue.jsonl`           | _(reserved — GP-873)_                            | Append-only capture queue. GP-855 only reserves the name; write/drain/overflow is GP-873's.                                                             |
+| File                         | Written by                                                         | Notes                                                                                                                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions/<session_id>.json` | `session-state.cjs`                                                | Per-session counters/flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields and the connectivity result the statusline reads. Swept >24h at SessionStart. |
+| `config.json`                | config commands (GP-866); snooze lifecycle by `runtime-config.cjs` | Runtime on/off, mode, snooze. **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads.                                                              |
+| `capture-queue.jsonl`        | _(writer/drain — GP-873)_                                          | Append-only capture queue. GP-863 owns only its TTL: entries >7d, unparseable lines, and overflow past 500 lines are pruned at SessionStart.                                                                                     |
+| `memory-cache.json`          | `memory-cache.cjs`                                                 | Memory results cache. Cleared at SessionStart by `session-connectivity.cjs`.                                                                                                                                                     |
+| `seed-registry.json`         | `seed-registry.cjs`                                                | Agent-seed scan cache (own 5-min TTL).                                                                                                                                                                                           |
+| `hook-errors.log`            | `debug.cjs`                                                        | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                     |
+| `hook-invocations.log`       | `user-prompt-submit`, `stop-lessons`                               | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                              |
+
+The three artifacts named by the R37 state contract are the first three rows; the
+rest are caches and logs that rebuild themselves.
+
+### Retired locations
+
+GP-863 removed the last state that lived outside `${CLAUDE_PLUGIN_DATA}`. These
+are now banned outright by `tests/check-state-location.cjs`, not merely discouraged:
+
+| Retired                                        | Replaced by                                            |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| project-tree `PROJECT_STATE_DIR`               | `${CLAUDE_PLUGIN_DATA}` (GP-855)                       |
+| `<session_id>.lessons-prompted` marker files   | `lessonsPromptedAt` in the session JSON                |
+| `~/.claude/.gutt-statusline-configured` marker | nothing — the statusline auto-setup it guarded is gone |
+| writes to the user's `~/.claude/settings.json` | nothing — see below                                    |
+
+`sessionstart-setup.cjs` used to write the HUD statusline into the user's
+`settings.json` on first run. Besides violating R37, it wrote the **plugin's
+current cache path**, which for plugin installs is session-scoped and dead as
+soon as that session ends — so the entry it left behind rotted immediately. The
+hook is deleted; re-landing the HUD is **GP-867 (S3.6)**. Users who ran a 2.x
+version keep a stale `statusLine` in their own `settings.json`; nothing removes
+it for them, because doing so would be exactly the write this story bans.
 
 ## The shared lib — `shared/plugin-state.cjs`
 
-| Function                             | Purpose                                                                                                                              |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `stateRoot()` / `statePath(...segs)` | Resolve `${CLAUDE_PLUGIN_DATA}` (or a file under it). `null` when unset.                                                             |
-| `readJson(path, fallback)`           | Read + parse; `fallback` on missing/unparseable.                                                                                     |
-| `writeJson(path, data)`              | **The one atomic-write idiom**: unique temp (`PID+timestamp+counter`) → delete-before-rename (Windows-safe). No non-atomic fallback. |
-| `appendLine(path, line)`             | Append a line to a log.                                                                                                              |
-| `remove(path)` / `exists(path)`      | Delete / test a state file (null-safe).                                                                                              |
-| `sweep(dir, { maxAgeMs, match })`    | The SessionStart TTL cleanup.                                                                                                        |
+| Function                                   | Purpose                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `stateRoot()` / `statePath(...segs)`       | Resolve `${CLAUDE_PLUGIN_DATA}` (or a file under it). `null` when unset.                                                             |
+| `readJson(path, fallback)`                 | Read + parse; `fallback` on missing/unparseable.                                                                                     |
+| `writeJson(path, data)`                    | **The one atomic-write idiom**: unique temp (`PID+timestamp+counter`) → delete-before-rename (Windows-safe). No non-atomic fallback. |
+| `appendLine(path, line)`                   | Append a line to a log.                                                                                                              |
+| `remove(path)` / `exists(path)`            | Delete / test a state file (null-safe).                                                                                              |
+| `atomicWrite(path, text)`                  | Same idiom for non-JSON contents (backs `writeJson`).                                                                                |
+| `sweep(dir, { maxAgeMs, match })`          | Age-based file cleanup — the sessions sweep.                                                                                         |
+| `pruneJsonl(path, { maxAgeMs, maxLines })` | Drops expired, malformed, and overflow entries from a JSONL queue. Rewrites only when something was dropped.                         |
+| `trimLog(path, { maxBytes, keepLines })`   | Bounds a breadcrumb log: one `stat` when it's small, tail-trim when it isn't.                                                        |
+
+Both TTL helpers discard a file outright rather than parse it once it passes 4MB —
+reading a runaway file would blow the SessionStart budget (R25).
+
+## SessionStart TTL sweep (R37, GP-863)
+
+`gutt-core/hooks/session-start.cjs` runs the whole sweep, and its TTL constants are
+the single place the policy is written down (E8-S8.4 / GP-893 verifies them):
+
+| Artifact                     | TTL / bound                    |
+| ---------------------------- | ------------------------------ |
+| `sessions/<session_id>.json` | 24h                            |
+| `capture-queue.jsonl`        | 7d, max 500 entries            |
+| `hook-*.log`                 | 256KB, newest 200 lines        |
+| `config.json` snooze         | cleared once past its deadline |
+
+Every step is guarded independently: a corrupt queue file must not stop the
+session sweep, and no step may fail the session.
 
 ### Fail-safe when `${CLAUDE_PLUGIN_DATA}` is unset
 
@@ -52,19 +95,23 @@ path helper returns `null` and **every write is a no-op** — the lib never fall
 to the project tree. State is simply unavailable that run; it is never misplaced.
 (Tests that need persistence point `CLAUDE_PLUGIN_DATA` at a temp dir.)
 
-## Exemption
+## Exemptions
 
-`gutt-core/hooks/sessionstart-setup.cjs` writes the user's real
-`~/.claude/settings.json` (and a sibling marker) to install the HUD statusline.
-That is **one-time IDE configuration, not runtime state**, so it stays put and is
-allowlisted in the guard. No other write outside `${CLAUDE_PLUGIN_DATA}` is allowed.
+None. GP-863 removed the last one (`sessionstart-setup.cjs`) — every write the
+suite performs now lands under `${CLAUDE_PLUGIN_DATA}`.
 
 ## CI guard — `tests/check-state-location.cjs` (`npm run check:state`)
 
 Structural, zero-dep (like `check:shared`). Scans `shared/` and every plugin's
-`hooks/` and **fails on any direct `fs` write call** outside a small, reasoned
-allowlist (`plugin-state.cjs`, `debug.cjs`, `sessionstart-setup.cjs`). This is how
-"state escapes to the project tree" is caught: writes must route through the lib.
+`hooks/` and enforces two rules:
+
+1. **No direct `fs` write calls** outside a two-entry allowlist (`plugin-state.cjs`,
+   `debug.cjs`), both of which write only under `${CLAUDE_PLUGIN_DATA}`. This is how
+   "state escapes to the project tree" is caught: writes must route through the lib.
+2. **No retired state paths** (the table above). These would otherwise come back
+   quietly — handed to `plugin-state.cjs` they no-op rather than fail, so the guard
+   catches them at CI instead. This is GP-863 AC3's "grep-verified", kept honest.
+
 As a second layer, the lib's own writers refuse any path outside `${CLAUDE_PLUGIN_DATA}`,
 so even a stray path handed to `writeJson`/`appendLine` is a no-op (returns `false`).
 
