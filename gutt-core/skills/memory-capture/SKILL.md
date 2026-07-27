@@ -17,7 +17,9 @@ _whether you may write it without asking_.
 1. **Search before you write.** Run `memory-search` rung 1 first. If the point
    already exists, don't duplicate it — write a new episode with **only what
    changed**. Dedup ≠ update: a near-match is a reason to write _less_, never to
-   rewrite the old entry.
+   rewrite the old entry. But a near-match that _contradicts_ what you were
+   about to write is not a dedup — take that pair to `conflict-adjudication`
+   before writing.
 2. **Trust-tier gate.** Auto-write only **Insight** and **Incident**.
    **Lesson**, **Decision**, and **WorkingAgreement** need an **explicit human
    signal** — the user asked for it or confirmed it. No signal (you inferred it
@@ -121,5 +123,8 @@ pipeline; until it lands, retry in-session.)
   `add_memory_to_<group>`, `add_personal_memory`), params and defaults, the
   group-targeting model, and the queued-not-persisted caveat.
 - Dedup and read tools: `memory-search`. Relationship checks: `graph-traversal`.
+- Deciding which of two contradicting memories should stand:
+  `conflict-adjudication`. It recommends only — the approved correction is
+  written back through this skill.
 - Autonomous end-of-session capture is done by the **memory-keeper** agent (being
   brought in line with these rules).

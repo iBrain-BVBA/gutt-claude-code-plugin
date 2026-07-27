@@ -1,12 +1,17 @@
 ---
 name: conflict-adjudication
-description: "Work out what to do when two stored memories disagree. Given one specific pair, gather the evidence — who asserted each, what standing that carries, whether the two even apply to the same thing — then recommend exactly one of supersede, coexist, or escalate, with the evidence cited. Reads only: it never rewrites or removes memory. Triggers on: these two memories disagree, which decision wins, conflicting decisions, contradicting lessons, is this decision still authoritative, supersede or keep both, who has authority here, resolve this conflict."
+description: "Work out what to do when two stored memories disagree. Given one specific pair, gather the evidence — who asserted each, what standing that carries, whether the two even apply to the same thing — then recommend exactly one of supersede, coexist, or escalate, or report that the pair doesn't qualify, with the evidence cited. Reads only: it never rewrites or removes memory. Triggers on: these two memories disagree, which decision wins, conflicting decisions, contradicting lessons, is this decision still authoritative, supersede or keep both, who has authority here, resolve this conflict."
 ---
 
 # Conflict Adjudication
 
 Two memories say incompatible things. This skill decides what to recommend about
 them: retire the older one, let both stand, or put it in front of a human.
+
+A **memory** here is one stored entity — a decision, a lesson, a working
+agreement — read through its summary and traced back to the episodes it came
+from. The relationships around it are evidence _about_ it, not the thing being
+judged.
 
 It runs on **one pair you already hold** — typically because a capture path
 searched before writing and turned up something that contradicts what was about
@@ -54,9 +59,10 @@ skill is about knowing when it is good enough to act on.
    sources include material that merely _re-cites_ it is still real — the
    re-citation is weak corroboration, not grounds to discard.
 
-   Discarding is an exit, not a verdict. Report `no adjudication`, name which
-   side failed and why, and cite the source that shows it. Don't reach for
-   `escalate` instead — there is nothing here for a human to decide.
+   Discarding is an exit from the rubric, not a rung inside it. Report
+   `no adjudication`, name which side failed and why, and cite the source that
+   shows it. Don't reach for `escalate` instead — there is nothing here for a
+   human to decide.
 
 5. **Never read a relationship's direction from `get_node_edges`.** It puts the
    node you asked about in the source slot every time, whichever way the
@@ -87,7 +93,16 @@ carry on; partial evidence is normal and is itself an input to the verdict.
 | **Scope**    | What each memory applies to       | A scope relationship where one exists — often none does; then triangulate from what the memory was produced by or attached to, and say which route you relied on                                                                                                                                                                                                                                 |
 | **Author**   | Who or what asserted it           | Trace the memory to its source. That may be a person speaking, a person writing directly, a record imported from another system, or an automated pass with nobody behind it. Where the source names no one, attribute it to whoever owned the session or record and say the attribution is circumstantial                                                                                        |
 | **Standing** | What authority the author carries | Where the author is a person: their role and reporting lines, direction per rule 5, corroboration per rule 6. Filter by relationship type — an unfiltered pull on a well-connected person can exceed the tool's output limit and fail. Where no person is behind it, standing belongs to whoever stands behind the source record; if that can't be traced, standing is **unavailable, not zero** |
-| **Timing**   | When each became true             | The validity date where present; otherwise creation time, which is when it was _recorded_, not when it became true — weaker, and say so                                                                                                                                                                                                                                                          |
+| **Timing**   | When each became true             | Memories carry no validity date of their own — only creation time, which is when it was _recorded_, not when it became true. It is always the weaker signal; say so. Real validity dates live on relationships, so take timing from one where the call turns on it                                                                                                                               |
+
+**Standing is historical — who held it when the memory was asserted, not who
+holds it now.** Roles lapse, and a fact search returns only what is valid today,
+so left alone you will weigh an old memory against present-day authority. Where
+the two are far enough apart for that to matter, ask as of the date in question
+(`valid_at_time`), or include superseded relationships (`include_invalidated`).
+The same trap sits under rule 5's confirmation step: a relationship that has
+since lapsed comes back empty, which reads as "no such relationship" rather than
+"not anymore".
 
 **A memory can hold more than one story.** A long-lived one accumulates strands
 — a proposal that was rejected, a practice that took hold later, an unrelated
@@ -106,11 +121,15 @@ the wrong shape isn't the one it claims to be, whatever it's called.
 **Before comparing two people, make sure each is _one_ person.** The same
 colleague often exists as several nodes holding different facts, and the
 well-connected people most likely to be either side of a conflict are worst
-affected. A shared email settles it. With no email to compare, say the identity
-is unresolved rather than guessing.
+affected. A shared _real_ email settles it — but the field is mandatory, so
+missing ones get filled in: sometimes an obvious marker, sometimes one grafted
+onto a name, sometimes a stand-in that looks like a perfectly valid address. Two
+matching fillers are not a match. Treat any address that doesn't identify a
+specific person as no email at all; with nothing real to compare, say the
+identity is unresolved rather than guessing.
 
-Two failures mislead: a lookup by raw id can report as forbidden when the record
-is fine — retry with the readable id before concluding anything — and bulk
+Two failures mislead: a node lookup by raw id can report as forbidden when the
+record is fine — retry with the readable id before concluding anything — and bulk
 fetches of a memory's sources can exceed output limits, so reach them through a
 specific fact instead.
 
@@ -154,28 +173,35 @@ evidence differs every time.
    an author you can name but can't pin to one identity — that last is neither
    absent nor false but unattributable, and counts as unreliable. Escalate too
    when too little remains to stand on: no recoverable author on either side, or
-   both sides undated. Name the specific gap, so the human knows what to supply.
+   two creation times too close to order — memories ingested in one pass land
+   microseconds apart and say nothing about which came first. Name the specific
+   gap, so the human knows what to supply.
 
-Retiring a memory never means deleting it. The older one stays in the graph,
-marked as no longer current, so the record of what was decided and when
-survives. Say that explicitly whenever you recommend `supersede`.
+Retiring a memory is not a delete — no tool removes one. But nothing marks it
+retired either: only relationships carry validity dates, and a memory that
+absorbs a correction has its summary rewritten in place rather than kept beside
+the new one. What survives is the episode history behind it. Say so whenever you
+recommend `supersede`, so nobody expects a tombstone that won't be there.
 
 ## What to hand back
 
 One verdict, and the evidence behind it. The consumer renders this for a human,
 so the evidence has to stand on its own:
 
-- **verdict** — exactly one of `supersede`, `coexist`, `escalate`. A pair that
-  fails the reality gate never reaches the rubric: report `no adjudication`
-  instead, keeping every other field below, and say which side failed — or
-  both, when they fail together off shared sources
-- **pair** — both memories by id, with a one-line statement of what each claims
-- **for supersede**: which one is superseded and which replaces it
+- **verdict** — exactly one of `supersede`, `coexist`, `escalate`,
+  `no adjudication`. The first three are the rubric's; `no adjudication` is the
+  reality gate's exit and never comes from the rubric at all
+- **pair** — both memories by readable node id, with a one-line statement of
+  what each claims
+- **for `supersede`** — which one is superseded and which replaces it
+- **for `no adjudication`** — which side failed, or both when they fail together
+  off shared sources; which of rule 4's three checks it failed; and the source
+  that shows it. This stands in for **reasoning**, since no rung ran
 - **reasoning** — which rung decided it, and which signals pointed where
 - **evidence** — every fact leaned on, cited: nodes by readable id, edges and
   sources by their own ids, with dates on anything time-sensitive
 - **gaps** — what was missing, unverifiable, or contradictory. Required on
-  `escalate`, and worth stating on the others too
+  `escalate`, and worth stating on the rest
 
 Never present a verdict without its evidence — an unsupported recommendation is
 worse than an escalation.
