@@ -976,6 +976,20 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     const ctx = contextOf(submit("m-first"));
     assert.ok(ctx, "first prompt must inject context");
     assert.match(ctx, /memory-search/);
+
+    // Namespaced, because the bare stem is not invocable: a real session lists the
+    // skill as `gutt-claude-code-plugin:memory-search`, so pointing at
+    // `memory-search` alone leaves the model guessing the prefix. This asserts the
+    // text the hook actually emitted — the static guard in
+    // hook-architecture.test.cjs cannot see a name composed at runtime, which is
+    // exactly how a bare stem shipped once already.
+    // Backticks included deliberately: they pin both ends of the id, so a typo'd
+    // stem like `memory-searchh` fails instead of matching as a substring.
+    assert.match(
+      ctx,
+      /`gutt-claude-code-plugin:memory-search`/,
+      `the pointer must name the skill's full namespaced id, got: ${ctx}`
+    );
   });
 
   it("row 4: every later prompt is silent — the flag is consumed once", () => {

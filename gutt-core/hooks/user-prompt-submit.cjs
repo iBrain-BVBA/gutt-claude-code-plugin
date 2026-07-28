@@ -30,16 +30,31 @@ const { init, consumeFirstPromptPending, consumeCompacted } = require("./lib/ses
 const { isSnoozed } = require("./lib/runtime-config.cjs");
 const { guard } = require("./lib/debug.cjs");
 
+/**
+ * Skills are namespaced by their plugin at runtime, so the bare stem is not
+ * invocable — `skill_listing` in a real session shows
+ * `gutt-claude-code-plugin:memory-search`, not `memory-search`. Naming the stem
+ * alone left the model to guess the prefix. Written without a leading slash
+ * because this text is addressed to Claude, which resolves a skill by name; the
+ * `/`-prefixed form is the human's way of typing it.
+ *
+ * `hook-architecture.test.cjs` asserts both halves of this really exist — that
+ * the prefix matches the plugin's declared name and the stem matches a skill
+ * directory — because a pointer at a skill that cannot be resolved is the
+ * quietest failure this hook has.
+ */
+const SEARCH_SKILL = "gutt-claude-code-plugin:memory-search";
+
 /** Context for the first prompt of a new session. */
 const SEARCH_CONTEXT =
   "This session has organizational memory available through gutt. " +
-  "The `memory-search` skill recalls prior decisions, lessons, and past work on a topic; " +
+  `The \`${SEARCH_SKILL}\` skill recalls prior decisions, lessons, and past work on a topic; ` +
   "it is worth running before non-trivial work when history is likely to matter.";
 
 /** Context for the first prompt after a compaction, where the recap is lossy. */
 const REGROUND_CONTEXT =
   "This conversation was just compacted, so earlier detail is summarized rather than complete. " +
-  "The `memory-search` skill can re-ground specifics that the summary dropped.";
+  `The \`${SEARCH_SKILL}\` skill can re-ground specifics that the summary dropped.`;
 
 let input = "";
 process.stdin.setEncoding("utf8");
