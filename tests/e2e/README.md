@@ -18,8 +18,18 @@ npm run test:e2e
 Requires the `claude` CLI on `PATH` and a logged-in subscription. If `claude` is
 missing the suite skips rather than fails.
 
-**Cost:** one Haiku session, a few cents. The suite makes a single `claude -p`
-call and asserts against its artifacts, rather than one call per test.
+**Cost:** five Haiku sessions, a few cents, ~80s wall clock. The discipline is one
+`claude -p` call per set of claims, never one per assertion.
+
+Two suites:
+
+| Suite                       | Runs | Covers                                                            |
+| --------------------------- | ---- | ----------------------------------------------------------------- |
+| `session-lifecycle.e2e.cjs` | 1    | startup lifecycle, state contract, AC3, first-prompt pointer, R36 |
+| `hook-routing.e2e.cjs`      | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence    |
+
+See `docs/e2e-hook-test-plan.md` for what each run asserts and why, and for the two
+Stop-router defects this tier found.
 
 **Not part of `npm test`.** These files are named `*.e2e.cjs`, not `*.test.cjs`,
 so the `node --test tests/**/*.test.cjs` glob does not pick them up. Keep it that
@@ -63,8 +73,25 @@ Notable checks:
 
 ## Environment facts these tests depend on
 
-Both verified empirically, not assumed:
+All verified empirically, not assumed:
 
+- **`--resume` re-arms the memory pointer.** A resume fires SessionStart with
+  `source: "resume"`, which `beginSession()` treats as a restart, so
+  `firstPromptPending` is set again. A resumed turn is therefore a _first_ prompt and
+  cannot show that later prompts stay silent. Two prompts under one SessionStart need
+  `--input-format stream-json` (`runClaudeStream()`).
+- **The CLI logs no completion line for the synchronous `session-start.cjs`** — only
+  the async sibling's registration line, which is what `sessionStartEvents()` reads.
+- **A prompt hook has no side effects at all.** Its verdict never touches disk, so a
+  hook that was never evaluated is indistinguishable from one that returned `ok:true`.
+  The debug log is the only evidence, via `stopVerdicts()` /
+  `promptHookEvaluations()`.
+- **Claude Code wraps a prompt hook's text as a stopping _condition_** ("has the
+  following stopping condition been satisfied?"), and logs `ok:true` as
+  "condition was met" — discarding any `reason` sent alongside it.
+- **A fixed `--session-id` breaks state sampling on re-runs**, because the sampler
+  ignores files that already existed. Each run generates a fresh UUID and deletes its
+  own record afterwards.
 - **`CLAUDE_PLUGIN_DATA` is not read from the inherited environment.** Exporting
   it does not relocate plugin state. The harness therefore _resolves_ the data
   dir after the run by locating the session file, and separately asserts that a

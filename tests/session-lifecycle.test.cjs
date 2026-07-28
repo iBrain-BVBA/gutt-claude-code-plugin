@@ -11,7 +11,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const pluginState = require("../shared/plugin-state.cjs");
 const sessionState = require("../shared/session-state.cjs");
@@ -23,7 +23,6 @@ const { ttlSweep } = require("../gutt-core/hooks/session-start.cjs");
 
 const HOOKS = path.join(__dirname, "..", "gutt-core", "hooks");
 const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
 
 const ORIGINAL_DATA_DIR = process.env.CLAUDE_PLUGIN_DATA;
 
@@ -113,31 +112,15 @@ describe("session lifecycle: SessionStart matcher branches", () => {
     assert.equal(state.compacted, false);
   });
 
-  it("clear zeroes the counters; resume and compact keep them", () => {
-    sessionState.init("s-counters");
-    sessionState.beginSession("s-counters", "startup");
-    sessionState.incrementMemoryQueries();
-    sessionState.incrementLessonsCaptured();
-    sessionState.incrementSignificantOps();
-
-    let state = sessionState.beginSession("s-counters", "resume");
-    assert.equal(state.memoryQueries, 1, "resume keeps the tally");
-    assert.equal(state.lessonsCaptured, 1);
-    assert.equal(state.significantOps, 1);
-
-    state = sessionState.beginSession("s-counters", "compact");
-    assert.equal(state.memoryQueries, 1, "compact keeps the tally");
-
-    state = sessionState.beginSession("s-counters", "clear");
-    assert.equal(state.memoryQueries, 0, "clear resets");
-    assert.equal(state.lessonsCaptured, 0);
-    assert.equal(state.significantOps, 0);
-  });
-
   it("beginSession never writes connectionStatus (the async hook owns it)", () => {
     sessionState.init("s-conn");
     sessionState.beginSession("s-conn", "startup");
-    sessionState.setConnectionStatus("ok"); // stand-in for the async probe
+    // Stand-in for the async probe, which writes the field directly rather than
+    // through a named setter.
+    sessionState.updateState((state) => {
+      state.connectionStatus = "ok";
+      return state;
+    });
     const state = sessionState.beginSession("s-conn", "resume");
     assert.equal(state.connectionStatus, "ok", "a restart must not clobber the probe result");
   });
@@ -161,6 +144,40 @@ describe("session lifecycle: SessionStart matcher branches", () => {
     assert.equal(state.endedAt, null);
     assert.equal(state.endReason, null);
     assert.equal(state.firstPromptPending, true);
+  });
+
+  // The two hooks above run as separate processes with no completion ordering
+  // between them, so `/clear` can deliver them either way round. The lock makes
+  // the writes atomic; it does not make them ordered.
+  it("SessionEnd does not close a session that started after it was dispatched", () => {
+    sessionState.init("s-clear-race");
+    sessionState.beginSession("s-clear-race", "startup");
+
+    // SessionEnd was issued a second ago and is only now reaching the record —
+    // by which time the replacement SessionStart has already reopened it.
+    const dispatchedAt = Date.now() - 1000;
+    const reopened = sessionState.beginSession("s-clear-race", "clear");
+    assert.ok(
+      Date.parse(reopened.startedAt) > dispatchedAt,
+      "precondition: the restart is stamped after the dispatch"
+    );
+
+    const state = sessionState.finalizeSession("clear", dispatchedAt);
+    assert.equal(state.endedAt, null, "the live session was not marked ended");
+    assert.equal(state.endReason, null, "no end reason stamped on a live session");
+    assert.equal(state.firstPromptPending, true, "the new session keeps its first-prompt flag");
+  });
+
+  it("SessionEnd still closes a session that started before it was dispatched", () => {
+    sessionState.init("s-clear-ordered");
+    sessionState.beginSession("s-clear-ordered", "startup");
+
+    // The ordinary case, with the stamp made explicit: nothing restarted the
+    // record after this SessionEnd, so the guard must stay out of the way.
+    const state = sessionState.finalizeSession("clear", Date.now() + 1000);
+    assert.equal(state.endReason, "clear");
+    assert.ok(state.endedAt, "endedAt stamped");
+    assert.equal(state.firstPromptPending, false);
   });
 });
 
@@ -197,32 +214,14 @@ describe("session lifecycle: flag consumption", () => {
     assert.equal(fs.statSync(path.join(dir, "sessions", "s-flags.json")).mtimeMs, before);
   });
 
-  it("the lesson-prompt record replaces the retired marker file", () => {
-    sessionState.beginSession("s-flags", "startup");
-    assert.equal(sessionState.wasLessonsPrompted(), false);
-    assert.equal(sessionState.markLessonsPrompted().written, true);
-    assert.equal(sessionState.wasLessonsPrompted(), true);
-    assert.equal(sessionState.clearLessonsPrompted(), true, "a new prompt re-arms it");
-    assert.equal(sessionState.wasLessonsPrompted(), false);
-    assert.equal(sessionState.clearLessonsPrompted(), false, "already clear");
-
-    const strays = fs.readdirSync(dir).filter((f) => f.endsWith(".lessons-prompted"));
-    assert.deepEqual(strays, [], "no marker files are created any more");
-  });
-
-  it("markLessonsPrompted reports failure so Stop can fail open", () => {
-    const saved = process.env.CLAUDE_PLUGIN_DATA;
-    delete process.env.CLAUDE_PLUGIN_DATA;
-    assert.equal(sessionState.markLessonsPrompted().written, false, "no data dir → not persisted");
-    process.env.CLAUDE_PLUGIN_DATA = saved;
-  });
-
-  it("getState() hands out an independent ticker per call", () => {
+  it("getState() hands out an independent record per call", () => {
     const saved = process.env.CLAUDE_PLUGIN_DATA;
     delete process.env.CLAUDE_PLUGIN_DATA; // force the default-state path
     const a = sessionState.getState();
-    a.ticker.items.push({ icon: "x", text: "leak" });
-    assert.deepEqual(sessionState.getState().ticker.items, [], "defaults must not be shared");
+    a.endReason = "leak";
+    // A module-level literal would make both calls the same object, so a
+    // mutation here would show up there.
+    assert.equal(sessionState.getState().endReason, null, "defaults must not be shared");
     process.env.CLAUDE_PLUGIN_DATA = saved;
   });
 });
@@ -601,38 +600,6 @@ describe("session lifecycle: TTL primitives", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  const queuePath = () => pluginState.statePath("capture-queue.jsonl");
-
-  function writeQueue(entries) {
-    fs.writeFileSync(queuePath(), entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
-  }
-  function queueLines() {
-    return fs.existsSync(queuePath())
-      ? fs.readFileSync(queuePath(), "utf8").trim().split("\n").filter(Boolean)
-      : [];
-  }
-
-  it("an oversized queue keeps its newest entries instead of being deleted", () => {
-    // The 4MB cap exists so SessionStart never reads a huge file, not so the
-    // user's un-drained captures get thrown away — and a queue only gets that
-    // big precisely when nobody has drained it.
-    const file = queuePath();
-    const filler = `${JSON.stringify({ ts: new Date().toISOString(), n: "x".repeat(120) })}\n`;
-    fs.writeFileSync(file, filler.repeat(Math.ceil((5 * 1024 * 1024) / filler.length)));
-    fs.appendFileSync(file, `${JSON.stringify({ ts: new Date().toISOString(), n: "newest" })}\n`);
-    assert.ok(fs.statSync(file).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
-
-    const result = pluginState.pruneJsonl(file, { maxAgeMs: 7 * DAY, maxLines: 500 });
-
-    assert.equal(result.discarded, true, "the unread head is reported as lost");
-    assert.equal(fs.existsSync(file), true, "the queue must survive, not be unlinked");
-    assert.ok(fs.statSync(file).size <= 4 * 1024 * 1024, "and it must now be bounded");
-    assert.ok(
-      queueLines().some((line) => line.includes("newest")),
-      "the newest entry is exactly the one that must not be lost"
-    );
-  });
-
   it("an oversized log keeps its tail rather than erasing its own evidence", () => {
     // trimLog used to unlink the file. For hook-errors.log that means the notice
     // explaining the deletion is written into the file being deleted — the only
@@ -653,54 +620,6 @@ describe("session lifecycle: TTL primitives", () => {
       /the error someone needs to read/,
       "the newest entry survived"
     );
-  });
-
-  it("pruneJsonl drops entries past the TTL and keeps the rest", () => {
-    writeQueue([
-      { ts: new Date(Date.now() - 30 * DAY).toISOString(), n: "stale" },
-      { ts: new Date(Date.now() - HOUR).toISOString(), n: "fresh" },
-    ]);
-    const res = pluginState.pruneJsonl(queuePath(), { maxAgeMs: 7 * DAY });
-    assert.equal(res.removed, 1);
-    assert.equal(queueLines().length, 1);
-    assert.match(queueLines()[0], /fresh/);
-  });
-
-  it("pruneJsonl drops unparseable lines — no consumer can drain them", () => {
-    fs.writeFileSync(queuePath(), '{"ts":"bad json\nnot json at all\n');
-    const res = pluginState.pruneJsonl(queuePath(), { maxAgeMs: 7 * DAY });
-    assert.equal(res.removed, 2);
-    assert.equal(fs.existsSync(queuePath()), false, "nothing left → file removed");
-  });
-
-  it("pruneJsonl keeps an entry with no timestamp field", () => {
-    writeQueue([{ n: "untimed" }]);
-    assert.equal(pluginState.pruneJsonl(queuePath(), { maxAgeMs: 1 }).removed, 0);
-    assert.equal(queueLines().length, 1);
-  });
-
-  it("pruneJsonl enforces the overflow cap, newest wins", () => {
-    writeQueue(Array.from({ length: 10 }, (_, i) => ({ ts: new Date().toISOString(), n: i })));
-    const res = pluginState.pruneJsonl(queuePath(), { maxAgeMs: DAY, maxLines: 4 });
-    assert.equal(res.removed, 6);
-    const kept = queueLines().map((l) => JSON.parse(l).n);
-    assert.deepEqual(kept, [6, 7, 8, 9]);
-  });
-
-  it("pruneJsonl does not rewrite a clean file", () => {
-    writeQueue([{ ts: new Date().toISOString(), n: 1 }]);
-    const before = fs.statSync(queuePath()).mtimeMs;
-    assert.equal(pluginState.pruneJsonl(queuePath(), { maxAgeMs: DAY }).removed, 0);
-    assert.equal(fs.statSync(queuePath()).mtimeMs, before);
-  });
-
-  it("pruneJsonl and trimLog no-op on a missing file", () => {
-    const missing = pluginState.statePath("nope.jsonl");
-    assert.deepEqual(pluginState.pruneJsonl(missing, { maxAgeMs: DAY }), {
-      removed: 0,
-      discarded: false,
-    });
-    assert.deepEqual(pluginState.trimLog(missing, {}), { trimmed: false, discarded: false });
   });
 
   it("trimLog leaves a small log alone and tail-trims a large one", () => {
@@ -972,6 +891,179 @@ describe("session lifecycle: hooks end to end", () => {
     runHook("session-end.cjs", { session_id: "e2e-noreason" }, { dataDir: dir, home });
     assert.equal(readSession(dir, "e2e-noreason").endReason, "other");
   });
+
+  // The guard's cutoff is the moment SessionEnd was *dispatched*, not the moment
+  // it gets around to writing. Only a stamp taken at module load distinguishes
+  // the two, and nothing else in the suite can tell them apart: reading the
+  // clock at call time would pass every other SessionEnd test here.
+  it("SessionEnd stamps its cutoff at dispatch, not at write time", async () => {
+    const child = spawn("node", [path.join(HOOKS, "session-end.cjs")], {
+      stdio: ["pipe", "ignore", "ignore"],
+      env: {
+        ...process.env,
+        CLAUDE_PLUGIN_DATA: dir,
+        HOME: home,
+        USERPROFILE: home,
+        CLAUDE_PROJECT_DIR: home,
+      },
+    });
+
+    // The hook is now booted and blocked on stdin. Open the record well after
+    // its dispatch but before it can act — the `/clear` race, held still.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const sessions = path.join(dir, "sessions");
+    fs.mkdirSync(sessions, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessions, "e2e-dispatch.json"),
+      JSON.stringify({
+        sessionId: "e2e-dispatch",
+        startedAt: new Date().toISOString(),
+        rev: 1,
+        firstPromptPending: true,
+        endedAt: null,
+        endReason: null,
+      })
+    );
+
+    child.stdin.end(JSON.stringify({ session_id: "e2e-dispatch", reason: "clear" }));
+    const code = await new Promise((resolve) => child.on("close", resolve));
+    assert.equal(code, 0);
+
+    const state = readSession(dir, "e2e-dispatch");
+    assert.equal(state.endedAt, null, "a session opened after dispatch was left running");
+    assert.equal(state.firstPromptPending, true, "its first-prompt flag survived");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The UserPromptSubmit trigger matrix (GP-864). Four rows, and the two silent
+// ones matter as much as the two that speak: a hook that fires on every prompt
+// is the 2.x nag in new wording.
+// ---------------------------------------------------------------------------
+
+describe("UserPromptSubmit: deterministic trigger matrix", () => {
+  let dir;
+  let home;
+
+  /** @returns {Object|null} the parsed hook output, or null when it stayed silent */
+  function submit(sessionId, prompt = "do some work") {
+    const r = runHook(
+      "user-prompt-submit.cjs",
+      { session_id: sessionId, prompt },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0, `hook must exit 0, got ${r.status}: ${r.stderr}`);
+    const out = r.stdout.trim();
+    return out === "" ? null : JSON.parse(out);
+  }
+
+  function contextOf(parsed) {
+    return parsed?.hookSpecificOutput?.additionalContext || null;
+  }
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-ups-data-"));
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-ups-home-"));
+  });
+  after(() => restoreEnv());
+
+  it("row 2: the first prompt of a session points at memory-search", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-first", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-first"));
+    assert.ok(ctx, "first prompt must inject context");
+    assert.match(ctx, /memory-search/);
+
+    // Namespaced, because the bare stem is not invocable: a real session lists the
+    // skill as `gutt-claude-code-plugin:memory-search`, so pointing at
+    // `memory-search` alone leaves the model guessing the prefix. This asserts the
+    // text the hook actually emitted — the static guard in
+    // hook-architecture.test.cjs cannot see a name composed at runtime, which is
+    // exactly how a bare stem shipped once already.
+    // Backticks included deliberately: they pin both ends of the id, so a typo'd
+    // stem like `memory-searchh` fails instead of matching as a substring.
+    assert.match(
+      ctx,
+      /`gutt-claude-code-plugin:memory-search`/,
+      `the pointer must name the skill's full namespaced id, got: ${ctx}`
+    );
+  });
+
+  it("row 4: every later prompt is silent — the flag is consumed once", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-once", source: "startup" },
+      { dataDir: dir, home }
+    );
+    assert.ok(contextOf(submit("m-once")), "first prompt speaks");
+    assert.equal(submit("m-once"), null, "second prompt must be silent");
+    assert.equal(submit("m-once"), null, "third prompt must be silent");
+  });
+
+  it("row 3: the first prompt after a compaction asks to re-ground", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-comp", source: "startup" },
+      { dataDir: dir, home }
+    );
+    submit("m-comp"); // burn the first-prompt flag
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-comp", source: "compact" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-comp"));
+    assert.ok(ctx, "post-compact prompt must inject context");
+    assert.match(ctx, /compacted/i);
+  });
+
+  it("row 1: a snoozed session is silent, and the snooze does not burn the flag", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-snz", source: "startup" },
+      { dataDir: dir, home }
+    );
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ snoozeSessionId: "m-snz" }));
+    assert.equal(submit("m-snz"), null, "snoozed must be silent");
+
+    // Lifting the snooze must reveal the still-unconsumed flag. If the snoozed
+    // path had consumed it, this would stay silent forever and `/gutt off`
+    // would permanently cost the user their session's one injection.
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({}));
+    assert.ok(contextOf(submit("m-snz")), "flag survived the snooze");
+  });
+
+  it("never blocks: no decision field, and unparseable stdin still exits 0", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-safe", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const parsed = submit("m-safe");
+    assert.equal(parsed.decision, undefined, "must never set `decision` (R23)");
+
+    const bad = spawnSync("node", [path.join(HOOKS, "user-prompt-submit.cjs")], {
+      input: "{not json",
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: dir, HOME: home, USERPROFILE: home },
+    });
+    assert.equal(bad.status, 0, "a malformed payload must not take the hook down");
+  });
+
+  it("carries no nag phrasing — factual statements only (GP-868)", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-tone", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-tone"));
+    // Imperative, out-of-band framing is what trips Claude's prompt-injection
+    // defenses, which surfaces the text to the user instead of using it.
+    assert.doesNotMatch(ctx, /MANDATORY|YOU MUST|you MUST|NEVER skip|CRITICAL violation/);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1000,10 +1092,6 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
         fs.utimesSync(f, old, old);
       }
     }
-    const entries = Array.from({ length: 400 }, (_, i) =>
-      JSON.stringify({ ts: new Date(Date.now() - (i < 100 ? 30 : 1) * DAY).toISOString(), n: i })
-    );
-    fs.writeFileSync(path.join(dir, "capture-queue.jsonl"), entries.join("\n") + "\n");
     fs.writeFileSync(
       path.join(dir, "hook-invocations.log"),
       `${"[2026-07-27 00:00:00] Prompt: lorem ipsum dolor sit amet".padEnd(79)}\n`.repeat(5000)
@@ -1115,16 +1203,10 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
   });
 
   it("the dirty-state sweep actually bounded every artifact", () => {
-    // Seeds and sweeps for itself. It used to assert on state left behind by
-    // the latency test's warmup, so running it alone failed.
+    // Seeds and sweeps for itself, so running this test alone still works.
     seedDirtyState();
     ttlSweep();
 
-    assert.ok(
-      fs.readFileSync(path.join(dir, "capture-queue.jsonl"), "utf8").trim().split("\n").length <=
-        500,
-      "queue capped"
-    );
     assert.ok(fs.statSync(path.join(dir, "hook-invocations.log")).size < 256 * 1024, "log trimmed");
     assert.equal(runtimeConfig.readConfig().snoozeUntil, null, "snooze expired");
 
@@ -1136,22 +1218,6 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       fs.readdirSync(sessions).filter((f) => /^bench-\d+\.json$/.test(f)).length,
       30,
       "exactly the 30 backdated files were reclaimed"
-    );
-
-    // The debris steps: the `.json` match above never sees these, so without
-    // them an abandoned lock would sit in the data dir forever.
-    for (const f of ["bench-0.json.lock", "bench-0.json.tmp.1234"]) {
-      assert.equal(fs.existsSync(path.join(sessions, f)), false, `stale ${f} reclaimed`);
-    }
-    assert.equal(
-      fs.existsSync(path.join(dir, "capture-queue.jsonl.tmp.1234")),
-      false,
-      "root debris reclaimed"
-    );
-    assert.equal(
-      fs.existsSync(path.join(sessions, "live.json.lock")),
-      true,
-      "a lock younger than the debris TTL is left alone — it may be genuinely held"
     );
   });
 });

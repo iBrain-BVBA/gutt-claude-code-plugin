@@ -9,11 +9,7 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const SHARED = path.join(ROOT, "shared");
-const LIB_DIRS = [
-  "gutt-core/hooks/lib",
-  "auto-lint-plugin/hooks/lib",
-  "plugins/gutt-subagent-hooks-plugin/hooks/lib",
-];
+const LIB_DIRS = ["gutt-core/hooks/lib", "auto-lint-plugin/hooks/lib"];
 
 const errors = [];
 

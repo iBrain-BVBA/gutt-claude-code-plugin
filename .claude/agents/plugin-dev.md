@@ -95,7 +95,6 @@ Hooks must exit with code 0 unless the hook intentionally blocks a tool call (e.
 | File                  | Key Exports                                                              | Purpose                          |
 | --------------------- | ------------------------------------------------------------------------ | -------------------------------- |
 | `env.cjs`             | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `USER_CONFIG_DIR` | IDE and path detection           |
-| `constants.cjs`       | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                | Shared constant lists            |
 | `debug.cjs`           | `debugLog()`                                                             | Error logging to hook-errors.log |
 | `mcp-config.cjs`      | `isGuttMcpConfigured()`, `getGuttMcpUrl()`                               | MCP server discovery             |
 | `config.cjs`          | `getGroupId()`, `getConfig()`                                            | Config loading from config.json  |

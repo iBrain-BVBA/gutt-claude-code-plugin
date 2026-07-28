@@ -1,1 +1,0 @@
-../../../../shared/seed-registry.cjs

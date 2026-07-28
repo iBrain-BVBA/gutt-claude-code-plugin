@@ -280,57 +280,67 @@ function readTranscript(file) {
 }
 
 /**
- * Run one headless Claude Code session against the plugin in this working tree,
- * sampling session state throughout so mid-session values can be asserted on.
- *
- * Sampling matters: several lifecycle fields are transient by design.
- * `firstPromptPending` is armed by SessionStart and cleared by SessionEnd, so
- * the final file cannot show it was ever set — only a sample taken while the
- * session was live can.
- *
+ * Build the argv for a headless run. Shared by both runners, so a flag added for
+ * one tier cannot silently drift out of the other.
  * @param {Object} options
- * @param {string} options.projectDir - cwd for the run
- * @param {string} options.prompt
- * @param {string} [options.model]
- * @param {string} [options.pluginDir] - defaults to gutt-core in this repo
- * @param {string[]} [options.disallowedTools]
- * @param {number} [options.timeoutMs]
- * @param {number} [options.pollMs] - state sampling interval
- * @returns {Promise<Object>} the run record
+ * @returns {string[]}
  */
-function runClaude(options) {
-  const {
-    projectDir,
-    prompt,
-    model = DEFAULT_MODEL,
-    pluginDir = PLUGIN_DIR,
-    disallowedTools = DEFAULT_DISALLOWED_TOOLS,
-    timeoutMs = 240000,
-    pollMs = 40,
-  } = options;
-
-  const debugFile = path.join(projectDir, "claude-debug.log");
-  const settingsFile = path.join(projectDir, "settings.json");
-  const args = [
-    "-p",
-    prompt,
-    "--plugin-dir",
-    pluginDir,
+function buildArgs({
+  prompt = null,
+  projectDir,
+  debugFile,
+  model = DEFAULT_MODEL,
+  pluginDirs = [PLUGIN_DIR],
+  disallowedTools = DEFAULT_DISALLOWED_TOOLS,
+  sessionId = null,
+  streamJson = false,
+  extraArgs = [],
+}) {
+  const args = ["-p"];
+  // In stream-json mode the prompts arrive on stdin, so `-p` takes no argument.
+  if (prompt !== null) {
+    args.push(prompt);
+  }
+  if (streamJson) {
+    // --verbose is required for stream-json output to emit per-turn events.
+    args.push("--input-format", "stream-json", "--verbose");
+  }
+  for (const dir of pluginDirs) {
+    args.push("--plugin-dir", dir);
+  }
+  args.push(
     "--settings",
-    settingsFile,
+    path.join(projectDir, "settings.json"),
     "--debug-file",
     debugFile,
     "--output-format",
-    "json",
+    streamJson ? "stream-json" : "json",
     "--model",
-    model,
-  ];
+    model
+  );
+  // Fixing the id up front lets a test plant state keyed to the session it is
+  // about to run, instead of discovering the id only after the run is over.
+  if (sessionId) {
+    args.push("--session-id", sessionId);
+  }
   if (disallowedTools.length > 0) {
     args.push("--disallowed-tools", ...disallowedTools);
   }
+  args.push(...extraArgs);
+  return args;
+}
 
-  // Files present before the run are not ours; only newly appearing session
-  // files get sampled.
+/**
+ * Poll session state so transient fields can be asserted on.
+ *
+ * Several lifecycle fields exist only mid-session: `firstPromptPending` is armed
+ * by SessionStart and cleared by SessionEnd, so the final file cannot show it was
+ * ever set. Only files that appear *during* the run are sampled — anything already
+ * on disk belongs to another session.
+ *
+ * @returns {{sample: () => void, samples: Object[]}}
+ */
+function createSampler() {
   const preexisting = new Set(listSessionFiles());
   const samples = [];
   const seenRevisions = new Map();
@@ -352,6 +362,68 @@ function runClaude(options) {
       samples.push({ at: Date.now(), file, state });
     }
   }
+
+  return { sample, samples };
+}
+
+/** One stream-json user message, as the CLI expects it on stdin. */
+function streamUserMessage(text) {
+  return `${JSON.stringify({
+    type: "user",
+    message: { role: "user", content: [{ type: "text", text }] },
+  })}\n`;
+}
+
+/**
+ * Run one headless Claude Code session against the plugin in this working tree,
+ * sampling session state throughout so mid-session values can be asserted on.
+ *
+ * Sampling matters: several lifecycle fields are transient by design.
+ * `firstPromptPending` is armed by SessionStart and cleared by SessionEnd, so
+ * the final file cannot show it was ever set — only a sample taken while the
+ * session was live can.
+ *
+ * @param {Object} options
+ * @param {string} options.projectDir - cwd for the run
+ * @param {string} options.prompt
+ * @param {string} [options.model]
+ * @param {string} [options.pluginDir] - defaults to gutt-core in this repo
+ * @param {string[]} [options.disallowedTools]
+ * @param {number} [options.timeoutMs]
+ * @param {number} [options.pollMs] - state sampling interval
+ * @param {string} [options.sessionId] - fix the session id up front
+ * @param {string[]} [options.pluginDirs] - load more than one plugin (R23)
+ * @param {string} [options.debugLabel] - debug log filename stem
+ * @returns {Promise<Object>} the run record
+ */
+function runClaude(options) {
+  const {
+    projectDir,
+    prompt,
+    model = DEFAULT_MODEL,
+    pluginDir = PLUGIN_DIR,
+    pluginDirs = [pluginDir],
+    disallowedTools = DEFAULT_DISALLOWED_TOOLS,
+    timeoutMs = 240000,
+    pollMs = 40,
+    sessionId: fixedSessionId = null,
+    debugLabel = "claude-debug",
+    extraArgs = [],
+  } = options;
+
+  const debugFile = path.join(projectDir, `${debugLabel}.log`);
+  const args = buildArgs({
+    prompt,
+    projectDir,
+    debugFile,
+    model,
+    pluginDirs,
+    disallowedTools,
+    sessionId: fixedSessionId,
+    extraArgs,
+  });
+
+  const { sample, samples } = createSampler();
 
   // Built once and returned with the result, so the R36 assertion can inspect
   // the environment the child was actually given rather than re-deriving one.
@@ -425,6 +497,319 @@ function runClaude(options) {
 }
 
 /**
+ * Drive several prompts through **one** session, in one CLI invocation.
+ *
+ * This exists for one reason: `--resume` fires SessionStart again with
+ * `source: "resume"`, and every non-`compact` source re-arms
+ * `firstPromptPending`. A resumed turn is therefore a *first* prompt, not a later
+ * one, so resuming can never demonstrate that later prompts stay silent. Feeding
+ * stream-json messages to a single process is the only way to get two prompts
+ * under one SessionStart.
+ *
+ * Turns are strictly sequential: the next message is written only once the
+ * previous turn's `result` envelope has been seen, so the turn boundaries in the
+ * debug log are unambiguous.
+ *
+ * @param {Object} options
+ * @param {string} options.projectDir
+ * @param {string[]} options.prompts - one per turn, sent in order
+ * @param {string} [options.sessionId]
+ * @param {string} [options.model]
+ * @param {string[]} [options.pluginDirs]
+ * @param {string[]} [options.disallowedTools]
+ * @param {number} [options.timeoutMs]
+ * @param {number} [options.pollMs]
+ * @param {string} [options.debugLabel]
+ * @returns {Promise<Object>} the run record, with one entry per turn in `turns`
+ */
+function runClaudeStream(options) {
+  const {
+    projectDir,
+    prompts,
+    sessionId: fixedSessionId = null,
+    model = DEFAULT_MODEL,
+    pluginDirs = [PLUGIN_DIR],
+    disallowedTools = DEFAULT_DISALLOWED_TOOLS,
+    timeoutMs = 300000,
+    pollMs = 40,
+    debugLabel = "claude-stream",
+  } = options;
+
+  const debugFile = path.join(projectDir, `${debugLabel}.log`);
+  const args = buildArgs({
+    projectDir,
+    debugFile,
+    model,
+    pluginDirs,
+    disallowedTools,
+    sessionId: fixedSessionId,
+    streamJson: true,
+  });
+
+  const { sample, samples } = createSampler();
+  const childEnv = subscriptionSafeEnv();
+
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const child = spawn("claude", args, {
+      cwd: projectDir,
+      env: childEnv,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let buffer = "";
+    const events = [];
+    const turns = [];
+    let sent = 0;
+
+    /**
+     * Send the next prompt when the previous turn has finished, and close stdin
+     * once every prompt has been answered. Closing matters: the CLI keeps the
+     * session (and so SessionEnd) open while stdin is readable.
+     */
+    function pump() {
+      if (sent < prompts.length && turns.length === sent) {
+        child.stdin.write(streamUserMessage(prompts[sent]));
+        sent += 1;
+      } else if (turns.length === prompts.length) {
+        try {
+          child.stdin.end();
+        } catch {
+          /* already closed */
+        }
+      }
+    }
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      buffer += chunk;
+      // Line-buffered: a chunk boundary can land mid-JSON.
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("{")) {
+          continue;
+        }
+        let event;
+        try {
+          event = JSON.parse(trimmed);
+        } catch {
+          continue;
+        }
+        events.push(event);
+        if (event.type === "result") {
+          turns.push(event);
+          pump();
+        }
+      }
+    });
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+
+    const poller = setInterval(sample, pollMs);
+    const killer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+
+    child.on("error", (err) => {
+      clearInterval(poller);
+      clearTimeout(killer);
+      reject(err);
+    });
+
+    child.on("close", (code) => {
+      clearInterval(poller);
+      clearTimeout(killer);
+      // SessionEnd is the last hook to write; give it a beat, then sample again.
+      setTimeout(() => {
+        sample();
+        const sessionId = fixedSessionId || (turns[0] ? turns[0].session_id : null);
+        const stateFile = sessionId ? findSessionStateFile(sessionId) : null;
+        const transcriptFile = sessionId ? findTranscript(sessionId) : null;
+        resolve({
+          code,
+          stdout,
+          stderr,
+          args,
+          childEnv,
+          turns,
+          events,
+          sessionId,
+          durationMs: Date.now() - startedAt,
+          debugFile,
+          debug: fs.existsSync(debugFile) ? fs.readFileSync(debugFile, "utf8") : "",
+          stateFile,
+          state: stateFile ? readJsonQuiet(stateFile) : null,
+          dataDir: stateFile ? path.dirname(path.dirname(stateFile)) : null,
+          transcriptFile,
+          transcript: transcriptFile ? readTranscript(transcriptFile) : [],
+          samples: sessionId
+            ? samples.filter((entry) => path.basename(entry.file) === `${sessionId}.json`)
+            : [],
+          allSamples: samples,
+        });
+      }, 900);
+    });
+
+    pump();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Reading the CLI's own account of what it did, out of the debug log.
+//
+// These parse debug output rather than inferring behaviour from side effects,
+// because for a `type: "prompt"` hook there *are* no side effects: the verdict
+// never touches disk and a hook that was never evaluated is indistinguishable
+// from one that returned ok:true.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every prompt-hook verdict the CLI logged, in order.
+ *
+ * A verdict of `{ok: true}` is logged as "condition was met" — Claude Code wraps
+ * the configured prompt as a *stopping condition*, so `ok:true` means "satisfied,
+ * allow the stop". Any `reason` alongside `ok:true` is discarded by the CLI.
+ *
+ * @param {string} debug
+ * @returns {Array<{raw: string, parsed: Object|null}>}
+ */
+function stopVerdicts(debug) {
+  return debug
+    .split("\n")
+    .filter((line) => line.includes("Hooks: Model response"))
+    .map((line) => {
+      const match = /Model response:\s*(\{.*)$/.exec(line);
+      if (!match) {
+        return { raw: line, parsed: null };
+      }
+      const text = match[1].trim();
+      // The logger can close the payload with a stray quote of its own.
+      for (const candidate of [text, text.replace(/"$/, "")]) {
+        try {
+          return { raw: candidate, parsed: JSON.parse(candidate) };
+        } catch {
+          /* try the next shape */
+        }
+      }
+      return { raw: text, parsed: null };
+    });
+}
+
+/** How many times a prompt hook was evaluated, regardless of verdict. */
+function promptHookEvaluations(debug) {
+  return debug.split("\n").filter((line) => /Hooks: Processing prompt hook/.test(line)).length;
+}
+
+/**
+ * The `stop_hook_active` values the CLI passed to the Stop hook, in order. True
+ * means "you already asked once" — the platform's own loop breaker.
+ * @param {string} debug
+ * @returns {boolean[]}
+ */
+function stopHookActiveStates(debug) {
+  return [...debug.matchAll(/stop_hook_active\\?":\s*(true|false)/g)].map((m) => m[1] === "true");
+}
+
+/** Every `additionalContext` injection the CLI accepted. */
+function additionalContextEvents(debug) {
+  return debug.split("\n").filter((line) => /provided additionalContext \(\d+ chars\)/.test(line));
+}
+
+/**
+ * The SessionStart matchers that fired, one entry per SessionStart event.
+ *
+ * Needed because `hookCompletions()` cannot see this event: the CLI logs a
+ * "completed with status" line for `session-end.cjs` but **never** for the
+ * synchronous `session-start.cjs` — verified across every probe run. The async
+ * sibling's registration line is the only per-event record, and it names the
+ * matcher, which is what distinguishes a fresh start from a resume.
+ *
+ * @param {string} debug
+ * @returns {string[]} e.g. ["startup"] or ["startup", "resume"]
+ */
+function sessionStartEvents(debug) {
+  return [...debug.matchAll(/Registering async hook \S+ \(SessionStart:([a-z]+)\)/g)].map(
+    (m) => m[1]
+  );
+}
+
+/**
+ * Exit statuses the CLI recorded for a given hook script.
+ *
+ * Only hooks the CLI reports on: see sessionStartEvents() for why SessionStart is
+ * not one of them.
+ *
+ * @param {string} debug
+ * @param {string} script - e.g. "session-end.cjs"
+ * @returns {number[]}
+ */
+function hookCompletions(debug, script) {
+  const escaped = script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\[[^\\]]*${escaped}[^\\]]*\\] completed with status (\\d+)`, "g");
+  return [...debug.matchAll(re)].map((m) => Number(m[1]));
+}
+
+/**
+ * Run `fn` with a planted `${CLAUDE_PLUGIN_DATA}/config.json`, then put the file
+ * back exactly as it was.
+ *
+ * config.json is **global** — every Claude Code session on the machine shares the
+ * one file — so a test that plants a snooze is mutating the developer's own
+ * runtime config. Restoring is not politeness; without it a failed run leaves the
+ * user snoozed.
+ *
+ * `fn` receives the file path so it can inspect what the hooks did to the config
+ * before it is restored.
+ *
+ * @param {Object} config
+ * @param {(file: string) => any} fn
+ * @returns {any} whatever `fn` returned (awaited if it is a promise)
+ */
+function withPlantedConfig(config, fn) {
+  const file = path.join(inlineDataDir(), "config.json");
+  const existed = fs.existsSync(file);
+  const backup = existed ? fs.readFileSync(file) : null;
+
+  const restore = () => {
+    try {
+      if (existed) {
+        fs.writeFileSync(file, backup);
+      } else {
+        fs.rmSync(file, { force: true });
+      }
+    } catch {
+      /* best effort — cleanup must not mask the test's own failure */
+    }
+  };
+
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(config));
+
+  let out;
+  try {
+    out = fn(file);
+  } catch (err) {
+    restore();
+    throw err;
+  }
+  if (out && typeof out.then === "function") {
+    return out.then(
+      (value) => {
+        restore();
+        return value;
+      },
+      (err) => {
+        restore();
+        throw err;
+      }
+    );
+  }
+  restore();
+  return out;
+}
+
+/**
  * Hook records Claude Code wrote into the session transcript.
  * @param {Object[]} transcript
  * @returns {Object[]} the attachment payloads for hook events
@@ -444,19 +829,28 @@ module.exports = {
   PLUGIN_DIR,
   PROJECTS_ROOT,
   REPO_ROOT,
+  additionalContextEvents,
+  buildArgs,
   claudeVersion,
   createProject,
   findSessionStateFile,
   findTranscript,
   hookAttachments,
+  hookCompletions,
   inlineDataDir,
   listSessionFiles,
   parseResultJson,
   plantSessionFile,
   pluginName,
+  promptHookEvaluations,
   readJsonQuiet,
   readTranscript,
   removeDir,
   runClaude,
+  runClaudeStream,
+  sessionStartEvents,
+  stopHookActiveStates,
+  stopVerdicts,
   subscriptionSafeEnv,
+  withPlantedConfig,
 };
