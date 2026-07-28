@@ -11,23 +11,51 @@ const ROOT = path.resolve(__dirname, "..");
 
 // Dirs whose .cjs files ship as plugin hooks/libs. shared/ holds the canonical
 // libs; hooks/lib/* are symlinks into it (skipped during the walk, scanned here).
-const SCAN_DIRS = [
-  "shared",
-  "gutt-core/hooks",
-  "auto-lint-plugin/hooks",
-  "plugins/gutt-subagent-hooks-plugin/hooks",
-];
+const SCAN_DIRS = ["shared", "gutt-core/hooks", "auto-lint-plugin/hooks"];
 
 // Sanctioned direct writers, each with a one-line reason (kept short so the list
 // can't rot silently). Everything else must go through shared/plugin-state.cjs.
+//
+// GP-863 removed the previous ~/.claude/settings.json exemption
+// (sessionstart-setup.cjs) and called the ban absolute. GP-895 re-opens it for
+// migrations.cjs alone, and narrowly: that module only ever *deletes* a key a past
+// version of this plugin wrote, only when the file it points at is already gone,
+// once per machine, after backing the original up under ${CLAUDE_PLUGIN_DATA}. The
+// steady-state rule is unchanged — no hook adds to settings.json, and the cleanup
+// is one-shot rather than a standing write path.
 const ALLOW = {
   "shared/plugin-state.cjs":
     "the single sanctioned state writer (writes only under ${CLAUDE_PLUGIN_DATA})",
   "shared/debug.cjs":
     "low-level error log under ${CLAUDE_PLUGIN_DATA}; can't depend on plugin-state (require cycle)",
-  "gutt-core/hooks/sessionstart-setup.cjs":
-    "one-time IDE setup: edits the user's ~/.claude/settings.json, not runtime state (R37 exempt)",
+  "shared/migrations.cjs":
+    "one-shot 2.x cleanup: deletes only provably-dead paths a past version wrote (GP-895)",
 };
+
+// GP-863 AC3, as CI rather than a one-off grep: state locations that 3.0 retired.
+// The fs-write ban above stops code from *writing* outside the data dir; this
+// stops the retired paths from coming back at all, including via plugin-state
+// (whose writers would silently no-op on them rather than fail loudly).
+const BANNED = [
+  {
+    pattern: "PROJECT_STATE_DIR",
+    reason: "repo-tree state dir — runtime state never lives in the project (R37)",
+  },
+  {
+    pattern: ".gutt-statusline-configured",
+    reason: "~/.claude marker from the retired statusline auto-setup (GP-863 removed it)",
+    // Same carve-out as .lessons-prompted below: naming a retired path in order to
+    // delete it is the opposite of reintroducing it. Nothing else may mention it.
+    allow: ["shared/migrations.cjs"],
+  },
+  {
+    pattern: ".lessons-prompted",
+    reason: "retired marker file — the record is a field in sessions/<id>.json (GP-863)",
+    // The one legitimate mention: sweeping leftovers off disk after an upgrade.
+    // Moved with the sweep itself out of session-start.cjs in GP-895.
+    allow: ["shared/session-sweep.cjs"],
+  },
+];
 
 // Matches fs.<write> and fs.promises.<write>, sync and async forms. Bare
 // destructured calls (no fs. prefix) aren't matched — the suite's convention is
@@ -38,10 +66,12 @@ const WRITE_RE =
 const errors = [];
 
 function scanFile(absFile) {
-  const rel = path.relative(ROOT, absFile);
-  if (rel in ALLOW) {
-    return;
-  }
+  // Normalised to forward slashes: ALLOW and the per-path exemptions are keyed
+  // that way, and path.relative yields backslashes on Windows — where this
+  // otherwise fails deterministically on the one file the allowlist exists to
+  // permit. CI is Linux-only, so it would only ever bite a contributor.
+  const rel = path.relative(ROOT, absFile).split(path.sep).join("/");
+  const writesAllowed = rel in ALLOW;
   const lines = fs.readFileSync(absFile, "utf8").split("\n");
   lines.forEach((line, i) => {
     const trimmed = line.trim();
@@ -50,11 +80,23 @@ function scanFile(absFile) {
       return;
     }
     const code = line.replace(/\/\/.*$/, "");
-    const m = code.match(WRITE_RE);
-    if (m) {
-      errors.push(
-        `${rel}:${i + 1} direct ${m[0]} — route runtime-state writes through shared/plugin-state.cjs (R37)`
-      );
+
+    if (!writesAllowed) {
+      const m = code.match(WRITE_RE);
+      if (m) {
+        errors.push(
+          `${rel}:${i + 1} direct ${m[0]} — route runtime-state writes through shared/plugin-state.cjs (R37)`
+        );
+      }
+    }
+
+    for (const banned of BANNED) {
+      if (banned.allow?.includes(rel)) {
+        continue;
+      }
+      if (code.includes(banned.pattern)) {
+        errors.push(`${rel}:${i + 1} retired state path "${banned.pattern}" — ${banned.reason}`);
+      }
     }
   });
 }
@@ -92,5 +134,6 @@ if (errors.length) {
   process.exit(1);
 }
 console.log(
-  `State-location check OK: runtime-state writes route through shared/plugin-state.cjs (${Object.keys(ALLOW).length} sanctioned direct writers).`
+  `State-location check OK: runtime-state writes route through shared/plugin-state.cjs ` +
+    `(${Object.keys(ALLOW).length} sanctioned direct writers, ${BANNED.length} retired paths banned).`
 );

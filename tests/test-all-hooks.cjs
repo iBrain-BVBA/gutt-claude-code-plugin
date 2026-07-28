@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * Automated test script for all gutt-claude-code-plugin hooks
+ * Smoke test for every hook this marketplace ships.
  *
  * Usage: node tests/test-all-hooks.cjs
  *
- * Tests all hooks with realistic JSON inputs
- * Verifies cross-platform path handling
- * Checks configuration file locations
+ * The hook list is **derived from each plugin's hooks.json**, not hardcoded.
+ * The previous version enumerated twelve hooks by hand, which made it the single
+ * point that turned any hook rename or deletion into a red build, and let a hook
+ * added to hooks.json ship with no smoke coverage at all. Discovery keeps the two
+ * in sync by construction.
+ *
+ * Zero-dep and CommonJS on purpose: CI runs this on the oldest Node an end user
+ * is likely to have (see the hook-runtime-compat job), where `npm ci` has not run.
  */
 
 const { execSync } = require("child_process");
@@ -14,217 +19,199 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
-// Get project directory (handles cross-platform path resolution)
 const projectDir = path.resolve(__dirname, "..");
-process.env.CLAUDE_PROJECT_DIR = projectDir;
 
-const results = {
-  passed: [],
-  failed: [],
-  warnings: [],
-  skipped: [],
-};
+/**
+ * Plugins to scan. Missing entries are skipped rather than failed — plugins come
+ * and go, and this file should not need editing when one does.
+ */
+const PLUGIN_DIRS = ["gutt-core", "auto-lint-plugin"];
 
-// Ensure test directories exist
-const stateDir = path.join(projectDir, ".claude", "hooks", ".state");
-const hooksDir = path.join(projectDir, ".claude", "hooks");
-fs.mkdirSync(stateDir, { recursive: true });
-fs.mkdirSync(hooksDir, { recursive: true });
+/**
+ * Hooks are spawned with a throwaway CLAUDE_PLUGIN_DATA so their writes actually
+ * land somewhere. Without it every state write silently no-ops and this suite
+ * degrades to asserting "the process exits 0" — which is precisely what the
+ * Node-18 compat job was doing before.
+ */
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-hook-smoke-"));
 
-// Test helper function
-function testHook(hookName, hookFile, inputJson, options = {}) {
-  const { shouldContain, allowNonZero, pluginDir } = options;
-  const hookPath = pluginDir
-    ? path.join(projectDir, pluginDir, "hooks", hookFile)
-    : path.join(projectDir, "gutt-core", "hooks", hookFile);
+const results = { passed: [], failed: [], warnings: [], skipped: [] };
 
-  console.log(`\n🧪 Testing: ${hookName}`);
-  console.log(`   File: ${hookFile}`);
-
-  if (!fs.existsSync(hookPath)) {
-    results.failed.push(`${hookName}: Hook file not found at ${hookPath}`);
-    console.log(`   ❌ FAILED: Hook file not found`);
-    return false;
+/**
+ * Representative stdin for each event. Anything not listed here still gets a
+ * session_id, which is the one field every hook touches before its guard.
+ */
+function inputFor(event) {
+  const sessionId = `test-session-${Date.now()}-${Math.floor(process.hrtime()[1] / 1000)}`;
+  const transcript = path.join(dataDir, "transcript.jsonl");
+  switch (event) {
+    case "SessionStart":
+      return { session_id: sessionId, source: "startup" };
+    case "SessionEnd":
+      return { session_id: sessionId, reason: "clear" };
+    case "UserPromptSubmit":
+      return { session_id: sessionId, prompt: "Implement an authentication system" };
+    case "Stop":
+    case "SubagentStop":
+      return { session_id: sessionId, transcript_path: transcript, agent_type: "general-purpose" };
+    case "PreToolUse":
+      return {
+        session_id: sessionId,
+        tool_name: "Task",
+        tool_input: { subagent_type: "general-purpose", prompt: "Design the auth system" },
+      };
+    case "PostToolUse":
+      return {
+        session_id: sessionId,
+        tool_name: "Edit",
+        tool_input: { file_path: path.join(dataDir, "nonexistent.py") },
+        tool_response: "ok",
+      };
+    case "SubagentStart":
+      return { session_id: sessionId, agent_type: "general-purpose", agent_id: "test-123" };
+    case "statusLine":
+      return {
+        session_id: sessionId,
+        model: { display_name: "claude-opus" },
+        cost: { total_cost_usd: 0.05 },
+      };
+    default:
+      return { session_id: sessionId };
   }
+}
 
-  try {
-    // Use spawn for cross-platform compatibility
-    const inputStr = JSON.stringify(inputJson);
+/**
+ * Pull the script path out of a hook `command`. Entries look like
+ * `node "${CLAUDE_PLUGIN_ROOT}/hooks/foo.cjs"`; the placeholder is resolved
+ * against the plugin being scanned.
+ * @returns {string|null} absolute path, or null when the command is not a
+ *   plain node invocation we can locate
+ */
+function resolveScript(command, pluginRoot) {
+  const match = /\$\{CLAUDE_PLUGIN_ROOT\}([^"']+)/.exec(String(command || ""));
+  return match ? path.join(pluginRoot, match[1]) : null;
+}
 
-    // Write input to temp file then pipe — avoids shell quoting issues on all platforms
-    let output;
-    const tempFile = path.join(os.tmpdir(), `hook-test-${Date.now()}-${process.pid}.json`);
-    fs.writeFileSync(tempFile, inputStr);
+/** @returns {Array<{label: string, event: string, script: string}>} every command hook shipped */
+function discoverHooks() {
+  const found = [];
+  for (const rel of PLUGIN_DIRS) {
+    const pluginRoot = path.join(projectDir, rel);
+    const manifestPath = path.join(pluginRoot, "hooks", "hooks.json");
+    if (!fs.existsSync(manifestPath)) {
+      continue;
+    }
+    let manifest;
     try {
-      const catCmd = os.platform() === "win32" ? "type" : "cat";
-      output = execSync(`${catCmd} "${tempFile}" | node "${hookPath}"`, {
-        encoding: "utf8",
-        cwd: projectDir,
-        env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
-        shell: true,
-        timeout: 10000,
-      });
-    } finally {
-      try {
-        fs.unlinkSync(tempFile);
-      } catch {
-        /* ignore */
+      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    } catch (err) {
+      results.failed.push(`${rel}/hooks/hooks.json: unparseable (${err.message})`);
+      continue;
+    }
+
+    const consider = (event, handler) => {
+      // Prompt, agent, http and mcp_tool handlers have no script to spawn. They
+      // are still real hooks; they are just not this suite's business.
+      if (!handler || handler.type !== "command") {
+        results.skipped.push(`${rel} ${event} (type: ${handler && handler.type})`);
+        return;
+      }
+      const script = resolveScript(handler.command, pluginRoot);
+      if (!script) {
+        results.warnings.push(`${rel} ${event}: could not resolve script from command`);
+        return;
+      }
+      if (!fs.existsSync(script)) {
+        results.failed.push(`${rel} ${event}: ${path.relative(projectDir, script)} does not exist`);
+        return;
+      }
+      found.push({ label: `${rel} · ${event} · ${path.basename(script)}`, event, script });
+    };
+
+    for (const [event, groups] of Object.entries(manifest.hooks || {})) {
+      for (const group of groups || []) {
+        for (const handler of group.hooks || []) {
+          consider(event, handler);
+        }
       }
     }
-
-    // Check expected output
-    if (shouldContain && output && !output.includes(shouldContain)) {
-      results.warnings.push(
-        `${hookName}: Output does not contain expected text: "${shouldContain}"`
-      );
-      console.log(`   ⚠️  WARNING: Missing expected output`);
+    if (manifest.statusLine) {
+      consider("statusLine", manifest.statusLine);
     }
+  }
+  return found;
+}
 
-    results.passed.push(hookName);
-    console.log(`   ✅ PASSED (exit code 0)`);
+/**
+ * Spawn one hook with JSON on stdin and record the outcome. A hook must exit 0
+ * or 2 — 2 is the documented "block" signal and is legitimate for Stop.
+ */
+function runHook({ label, event, script }) {
+  console.log(`\n🧪 ${label}`);
+  const tempFile = path.join(dataDir, `input-${process.hrtime.bigint()}.json`);
+  fs.writeFileSync(tempFile, JSON.stringify(inputFor(event)));
+  try {
+    const catCmd = os.platform() === "win32" ? "type" : "cat";
+    const output = execSync(`${catCmd} "${tempFile}" | node "${script}"`, {
+      encoding: "utf8",
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        CLAUDE_PROJECT_DIR: projectDir,
+        CLAUDE_PLUGIN_DATA: dataDir,
+      },
+      shell: true,
+      timeout: 10000,
+    });
+    results.passed.push(label);
+    console.log(`   ✅ exit 0`);
     if (output && output.trim()) {
-      const preview = output.trim().substring(0, 100);
-      console.log(`   Output: ${preview}${output.length > 100 ? "..." : ""}`);
+      console.log(`   Output: ${output.trim().slice(0, 100)}${output.length > 100 ? "…" : ""}`);
     }
     return true;
   } catch (err) {
-    // Check if it's just a non-zero exit (which is OK for blocking hooks)
-    if (err.status !== undefined && allowNonZero) {
-      results.passed.push(hookName);
-      console.log(`   ✅ PASSED (exit code ${err.status} - expected for blocking hook)`);
-      if (err.stdout) {
-        const preview = err.stdout.trim().substring(0, 100);
-        console.log(`   Output: ${preview}${err.stdout.length > 100 ? "..." : ""}`);
-      }
+    // Exit 2 is "block", a documented outcome rather than a crash.
+    if (err.status === 2) {
+      results.passed.push(label);
+      console.log(`   ✅ exit 2 (block — documented)`);
       return true;
     }
-
-    results.failed.push(`${hookName}: ${err.message}`);
-    console.log(`   ❌ FAILED: ${err.message}`);
+    results.failed.push(`${label}: ${err.message}`);
+    console.log(`   ❌ ${err.message}`);
     if (err.stderr) {
-      console.log(`   Stderr: ${err.stderr.substring(0, 200)}`);
+      console.log(`   Stderr: ${String(err.stderr).slice(0, 200)}`);
     }
     return false;
+  } finally {
+    try {
+      fs.unlinkSync(tempFile);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 console.log("═══════════════════════════════════════════════════════════");
-console.log("🧪 Testing all gutt-claude-code-plugin hooks");
+console.log("🧪 Hook smoke tests (discovered from hooks.json)");
 console.log("═══════════════════════════════════════════════════════════");
 console.log(`Project dir: ${projectDir}`);
-console.log(`Platform: ${os.platform()}`);
+console.log(`Plugin data: ${dataDir}`);
+console.log(`Node:        ${process.version}`);
+console.log(`Platform:    ${os.platform()}`);
 
-// Test 1: SessionStart
-testHook(
-  "1. SessionStart",
-  "session-start.cjs",
-  {},
-  { shouldContain: null } // May output setup reminder or be silent
-);
+const hooks = discoverHooks();
+console.log(`Discovered:  ${hooks.length} command hook(s)`);
 
-// Test 2: UserPromptSubmit
-testHook(
-  "2. UserPromptSubmit",
-  "user-prompt-submit.cjs",
-  { prompt: "Implement authentication system" },
-  { shouldContain: null } // Output depends on gutt-mcp config
-);
+// An empty run means discovery broke, not that everything passed. Without this
+// a botched refactor of hooks.json would report a clean sweep of zero tests.
+if (hooks.length === 0) {
+  results.failed.push("no hooks discovered — hooks.json parsing or PLUGIN_DIRS is wrong");
+}
 
-// Test 3: Stop (may block - that's expected)
-testHook(
-  "3. Stop (Lessons)",
-  "stop-lessons.cjs",
-  {
-    session_id: "test-session-" + Date.now(),
-    transcript_path: path.join(projectDir, ".claude", "transcript.jsonl"),
-  },
-  { allowNonZero: true } // May block, which is OK
-);
+for (const hook of hooks) {
+  runHook(hook);
+}
 
-// Test 4: PostToolUse - Linting (auto-lint-plugin)
-testHook(
-  "4. PostToolUse (Linting)",
-  "post-tool-lint.cjs",
-  {
-    tool_name: "Edit",
-    tool_input: { file_path: path.join(os.tmpdir(), "nonexistent.py") },
-  },
-  { shouldContain: null, pluginDir: "auto-lint-plugin" } // Silent if file doesn't exist
-);
-
-// Test 5: PostToolUse - Task Lessons (gutt-subagent-hooks-plugin)
-testHook(
-  "5. PostToolUse (Task Lessons)",
-  "post-task-lessons.cjs",
-  {
-    tool_name: "Task",
-    tool_input: {
-      subagent_type: "general-purpose",
-      prompt: "Fix authentication bug",
-    },
-    tool_response:
-      "Fixed the JWT validation issue. The problem was that token expiry was checked incorrectly. This is an important lesson about proper token handling that we should remember for future implementations.",
-  },
-  { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May or may not suggest lesson
-);
-
-// Test 6: PostToolUse - Memory Operations
-testHook(
-  "6. PostToolUse (Memory Ops)",
-  "post-memory-ops.cjs",
-  {
-    tool_name: "mcp__gutt-mcp-remote__search_memory_facts",
-    tool_input: { query: "authentication patterns" },
-    tool_response: '{"result":{"facts":[{"fact":"Use JWT for stateless auth"}]}}',
-  },
-  { shouldContain: null } // Updates state, not stdout
-);
-
-// Test 7: PreToolUse - Task Memory (gutt-subagent-hooks-plugin)
-testHook(
-  "7. PreToolUse (Task Memory)",
-  "pre-task-memory.cjs",
-  {
-    tool_name: "Task",
-    tool_input: {
-      subagent_type: "general-purpose",
-      prompt: "Design the authentication system",
-    },
-  },
-  { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // Silent, updates state
-);
-
-// Test 8: SubagentStart - Memory Injection (gutt-subagent-hooks-plugin)
-testHook(
-  "8. SubagentStart (Memory Injection)",
-  "subagent-start-memory.cjs",
-  { agent_type: "general-purpose", agent_id: "test-123" },
-  { shouldContain: null, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May inject memory or provide fallback
-);
-
-// Test 9: SubagentStop - Plan Review (gutt-subagent-hooks-plugin)
-testHook(
-  "9. SubagentStop (Plan Review)",
-  "subagent-plan-review.cjs",
-  {
-    agent_transcript_path: path.join(projectDir, ".claude", "transcript.jsonl"),
-    agent_type: "general-purpose",
-  },
-  { allowNonZero: true, pluginDir: "plugins/gutt-subagent-hooks-plugin" } // May block if plan detected
-);
-
-// Test 10: StatusLine
-testHook(
-  "10. StatusLine",
-  "statusline.cjs",
-  {
-    model: { display_name: "claude-opus" },
-    cost: { total_cost_usd: 0.05 },
-  },
-  { shouldContain: null } // Should show gutt status
-);
-
-// Report results
 const totalTests = results.passed.length + results.failed.length;
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log("📊 Test Results");
@@ -232,18 +219,27 @@ console.log("══════════════════════�
 console.log(`\n✅ Passed: ${results.passed.length}/${totalTests}`);
 console.log(`❌ Failed: ${results.failed.length}`);
 console.log(`⚠️  Warnings: ${results.warnings.length}`);
+console.log(`⏭️  Skipped (non-command): ${results.skipped.length}`);
 
 if (results.failed.length > 0) {
-  console.log("\n❌ Failed Tests:");
+  console.log("\n❌ Failed:");
   results.failed.forEach((f) => console.log(`   - ${f}`));
 }
-
 if (results.warnings.length > 0) {
   console.log("\n⚠️  Warnings:");
   results.warnings.forEach((w) => console.log(`   - ${w}`));
 }
+if (results.skipped.length > 0) {
+  console.log("\n⏭️  Skipped:");
+  results.skipped.forEach((s) => console.log(`   - ${s}`));
+}
 
 console.log("\n═══════════════════════════════════════════════════════════");
 
-// Exit with appropriate code
+try {
+  fs.rmSync(dataDir, { recursive: true, force: true });
+} catch {
+  /* best effort */
+}
+
 process.exit(results.failed.length > 0 ? 1 : 0);

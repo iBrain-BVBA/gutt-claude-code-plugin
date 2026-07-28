@@ -15,8 +15,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test tests/**/*.test.js tests/**/*.test.cjs",
-    "test:all": "node --test tests/**/*.test.js tests/**/*.test.cjs && node tests/test-all-hooks.cjs && node tests/check-shared-libs.cjs && node tests/check-state-location.cjs && node tests/check-version-sync.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:all": "node --test tests/*.test.cjs && node tests/test-all-hooks.cjs && node tests/check-shared-libs.cjs && node tests/check-state-location.cjs && node tests/check-version-sync.cjs",
+    "test:e2e": "node --test tests/e2e/*.e2e.cjs",
     "check:shared": "node tests/check-shared-libs.cjs",
     "check:state": "node tests/check-state-location.cjs",
     "check:version": "node tests/check-version-sync.cjs",
@@ -37,7 +38,7 @@
     "prettier": "^3.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "docx": "^9.5.3"

@@ -20,8 +20,6 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 │   ├── skills/ agents/ commands/
 │   └── rules/ mcp.json config.json.example
 ├── auto-lint-plugin/       # standalone lint-on-edit plugin (no gutt dependency)
-├── plugins/
-│   └── gutt-subagent-hooks-plugin/  # legacy subagent hooks (retired in a later 3.0 story)
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
 ├── docs/                   # Documentation and assets
@@ -30,11 +28,11 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 
 ## Shared Hook Libraries
 
-Hook libraries have a single source in `shared/*.cjs`. Each plugin's `hooks/lib/<name>.cjs` is a **symlink** into `shared/` (`../../../shared/` from `gutt-core` and `auto-lint-plugin`; `../../../../shared/` from `plugins/gutt-subagent-hooks-plugin`). Edit the file in `shared/` once — every plugin sees it. No manual copying, no propagation table.
+Hook libraries have a single source in `shared/*.cjs`. Each plugin's `hooks/lib/<name>.cjs` is a **symlink** into `shared/` (`../../../shared/` from `gutt-core` and `auto-lint-plugin`). Edit the file in `shared/` once — every plugin sees it. No manual copying, no propagation table.
 
 - **Guard:** `npm run check:shared` (run in CI) fails if any plugin ships a divergent real copy of a shared lib instead of a symlink.
 - **Install-time:** Claude Code dereferences intra-marketplace symlinks when copying a plugin to its cache, so installed plugins get real files and stay self-contained. ([docs](https://code.claude.com/docs/en/plugins-reference#share-files-within-a-marketplace-with-symlinks))
-- **Plugin-local libs** with no `shared/` counterpart (e.g. `gutt-subagent-hooks-plugin/hooks/lib/text-utils.cjs`) stay as real files — allowed by the guard.
+- **Plugin-local libs** with no `shared/` counterpart stay as real files — allowed by the guard.
 - **Local dev:** `--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks. Running from the repo works (the link resolves in place); to exercise a real install, install from the git marketplace source.
 - **Windows:** symlinks need `git config core.symlinks true` (or Developer Mode); without it the links check out as plain text files.
 

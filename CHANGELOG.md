@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING — statusline `passthroughCommand` is gone.** The statusline no
+  longer chains to a user-supplied command, and `gutt.statusline.passthroughCommand`,
+  `showTicker`, and `multiLine` are all ignored. Anyone relying on passthrough
+  loses their custom statusline silently on upgrade and should register that
+  command directly in `~/.claude/settings.json` instead. Chaining ran the command
+  through `spawn(…, {shell: true})`, so a config pointing back at the plugin
+  fork-bombed the machine; it was guarded by a `GUTT_STATUSLINE_DEPTH` counter,
+  and removing the mechanism removes the whole bug class. GP-844 defers all
+  statusline extras (GP-844)
+- **HUD counters (`mem:` / `lessons:`) and the toast ticker.** The `PostToolUse`
+  hooks that fed them (`post-memory-ops.cjs`, `cowork-periodic-capture.cjs`) are
+  removed along with `memory-cache.cjs` and `seed-registry.cjs`; the
+  `/gutt-claude-code-plugin:reset-counters` command is deleted (GP-844)
+- **The subagent hooks plugin** (`plugins/gutt-subagent-hooks-plugin/`), which was
+  never listed in `marketplace.json` and therefore never shipped. Decision O4
+  keeps subagent hooks out of 3.0 (GP-868)
+
 ### Added
 
 - `memory-search` skill (gutt-core): the adaptive, relevance-gated memory-search discipline — rung 1 = one `search_memory_nodes` + `search_memory_facts` pass, judged for relevance and reformulated (not paginated) when weak; a relevance gate that reports "no relevant memory found" rather than stretching a distractor; rung 2 narrowing filters; rung 3 traversal handoff to `graph-traversal`; summary-first episode rules and tool-tier degradation. Rung-1 shape validated on a 50-query live-graph benchmark (top-3 hit-rate 86% vs 58% for a fixed single pass; zero false answers on absent-topic queries). Exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)

@@ -1,102 +1,79 @@
 #!/usr/bin/env node
 /**
- * SessionStart hook script (Node.js - cross-platform)
- * Shows setup reminder if gutt-mcp-remote is not configured
- * Clears memory cache for fresh state each session
+ * SessionStart — the single session-lifecycle hook (GP-863, S3.2).
+ *
+ * Replaces the 2.x pair `session-start.cjs` + `sessionstart-setup.cjs`. It is
+ * matcher-aware (it branches on the payload's `source`) and deliberately narrow:
+ * open the session record, run the R37 TTL sweep, decide whether this machine
+ * still needs the one-time 2.x cleanup, exit. Nothing here touches the network.
+ *
+ * Latency (R25): this is the synchronous path and must stay ≤50ms p95, so it does
+ * exactly one state write and no MCP inspection. The connectivity probe and cache
+ * clears — the only heavy work — moved to session-connectivity.cjs, which
+ * hooks.json runs with `async: true`.
+ *
+ * Never blocks a session: every step is individually guarded and the exit code is
+ * always 0.
  */
 
-const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
-const { clearMemoryCache } = require("./lib/memory-cache.cjs");
-const { clearSeedCache } = require("./lib/seed-registry.cjs");
+const { beginSession, init } = require("./lib/session-state.cjs");
 const {
-  init,
-  getState,
-  updateState,
-  resetCounters,
-  setConnectionStatus,
-} = require("./lib/session-state.cjs");
-const { statePath, sweep } = require("./lib/plugin-state.cjs");
-const { debugLog } = require("./lib/debug.cjs");
+  ttlSweep,
+  SESSION_TTL_MS,
+  LOG_MAX_BYTES,
+  DEBRIS_TTL_MS,
+} = require("./lib/session-sweep.cjs");
+const { needsMigration, announceMigration } = require("./lib/migrations.cjs");
+const { guard } = require("./lib/debug.cjs");
 
-const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Only wire stdin when actually run as a hook. Requiring this file (the latency
+// and sweep-coverage tests do, so they exercise the real ttlSweep instead of a
+// copy of it that can drift) must not leave a stdin listener holding the test
+// process open.
+if (require.main === module) {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    input += chunk;
+  });
+  process.stdin.on("end", () => {
+    let sessionId = "unknown";
+    let source = null;
+    try {
+      const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
+      sessionId = data.session_id || "unknown";
+      source = data.source || null;
+    } catch {
+      // Unparseable payload — still open a session record under the default id.
+    }
+    init(sessionId);
 
-/**
- * Remove stale per-session files and one-shot markers older than 24h.
- * The R37 SessionStart TTL sweep (GP-855) — generalizes the old cleanup and
- * keeps ${CLAUDE_PLUGIN_DATA} tidy without a separate cron job. (Only patterns
- * something actually writes: the old dead gutt-routing-session-/.plan-feedback-
- * prompted/.session-summary-prompted filters matched nothing and were dropped.)
- */
-function cleanupStaleState() {
-  sweep(statePath("sessions"), { maxAgeMs: MAX_AGE_MS, match: (f) => f.endsWith(".json") });
-  sweep(statePath(), { maxAgeMs: MAX_AGE_MS, match: (f) => f.endsWith(".lessons-prompted") });
+    // Sweep before writing: the record this hook is about to create is fresh, so
+    // ordering it first would only make the sweep stat a file it can never expire.
+    ttlSweep();
+
+    guard("SessionStart", "begin session", () => beginSession(sessionId, source));
+
+    // The one-time 2.x cleanup (GP-895), gated here rather than inside the
+    // migration module and deliberately so. Migrating is a lifecycle decision, and
+    // a sibling hook that decided for itself could never be told "not this
+    // session" — siblings run in parallel with no channel between them, so the only
+    // place the choice can actually be made is the script that owns startup.
+    //
+    // The gate is one small JSON read and an integer compare, which is all any
+    // session after the first pays. It runs last so the state write above is
+    // already durable before an upgrade session's filesystem work begins.
+    if (guard("SessionStart", "migration gate", needsMigration)) {
+      guard("SessionStart", "2.x cleanup", announceMigration);
+    }
+
+    // exitCode over process.exit() so any buffered output flushes.
+    process.exitCode = 0;
+  });
 }
 
-// Read JSON input from stdin (required for hooks)
-let input = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  input += chunk;
-});
-process.stdin.on("end", () => {
-  // Parse session_id from hook input and initialise per-session state path
-  let sessionId = "unknown";
-  try {
-    const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
-    sessionId = data.session_id || "unknown";
-  } catch {
-    // Parse error - continue with defaults
-  }
-  init(sessionId);
-
-  // Clean up stale session state files older than 24 hours
-  try {
-    cleanupStaleState();
-  } catch (err) {
-    debugLog("SessionStart", `stale file cleanup: ${err.message || err}`);
-  }
-
-  // Reset carried-over counters if this session id already had activity
-  try {
-    const prevState = getState();
-    if (prevState.memoryQueries > 0 || prevState.lessonsCaptured > 0) {
-      resetCounters();
-    }
-  } catch (err) {
-    debugLog("SessionStart", `counter reset: ${err.message || err}`);
-  }
-
-  // Always reinitialize session identity on new session start
-  try {
-    updateState((state) => {
-      state.sessionId = sessionId;
-      state.startedAt = new Date().toISOString();
-      return state;
-    });
-  } catch (err) {
-    debugLog("SessionStart", `session identity reset: ${err.message || err}`);
-  }
-
-  // Clear caches for fresh state each session
-  try {
-    clearMemoryCache();
-    clearSeedCache();
-  } catch (err) {
-    debugLog("SessionStart", err);
-  }
-
-  // Check gutt MCP configuration status
-  const diag = diagnoseGuttMcp();
-  if (!diag.configured) {
-    console.log(
-      `💡 gutt memory not configured. Run /gutt-claude-code-plugin:setup or /gutt-claude-code-plugin:onboard to get started.`
-    );
-  } else if (diag.url) {
-    const display = diag.url.length > 50 ? diag.url.slice(0, 47) + "..." : diag.url;
-    setConnectionStatus("ok");
-    console.log(`✅ gutt memory connected (${display})`);
-  }
-
-  // Use exitCode instead of process.exit() to allow stdout to flush
-  process.exitCode = 0;
-});
+// Re-exported for the tests that assert the sweep bounds every artifact and stays
+// inside the R25 budget — they must measure the shipped sweep, not a copy. The
+// implementation moved to shared/session-sweep.cjs in GP-895; this keeps the
+// import path those tests already use.
+module.exports = { ttlSweep, SESSION_TTL_MS, LOG_MAX_BYTES, DEBRIS_TTL_MS };

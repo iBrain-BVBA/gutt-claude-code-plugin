@@ -110,15 +110,18 @@ function readJson(absPath, fallback = null) {
 let writeSeq = 0;
 
 /**
- * Atomically write JSON — the one atomic-write idiom for the suite: unique temp
- * name (PID + timestamp + counter) then delete-before-rename (Windows can't
- * overwrite on rename). No non-atomic fallback: a failed write returns false
- * rather than risk a torn file. No-op (false) when unavailable.
+ * Atomically replace a file's contents — the one atomic-write idiom for the
+ * suite: unique temp name (PID + timestamp + counter) then rename *over* the
+ * target. See the inline note at the rename for why it must not unlink first;
+ * only Windows, which cannot always rename onto an existing file, keeps an
+ * unlink fallback. No non-atomic fallback: a failed write returns false rather
+ * than risk a torn file. No-op (false) when unavailable or when the path
+ * escapes ${CLAUDE_PLUGIN_DATA}.
  * @param {string|null} absPath
- * @param {*} data
+ * @param {string} contents
  * @returns {boolean} true if written
  */
-function writeJson(absPath, data) {
+function atomicWrite(absPath, contents) {
   if (!absPath) {
     return false;
   }
@@ -129,14 +132,24 @@ function writeJson(absPath, data) {
   if (!ensureDir(path.dirname(absPath))) {
     return false;
   }
-  const serialized = JSON.stringify(data, null, 2);
   const tempPath = `${absPath}.tmp.${process.pid}.${Date.now()}.${writeSeq++}`;
   try {
-    fs.writeFileSync(tempPath, serialized);
-    if (fs.existsSync(absPath)) {
+    fs.writeFileSync(tempPath, contents);
+    try {
+      // POSIX rename atomically replaces the target: a concurrent reader sees
+      // either the old file or the new one, never a gap. Do NOT unlink first —
+      // hooks run in parallel, and the moment the path is absent a reader falls
+      // back to its defaults and writes those back, wiping live state.
+      fs.renameSync(tempPath, absPath);
+    } catch (renameErr) {
+      // Windows can't rename onto an existing file, so there it has to go. The
+      // gap is unavoidable on that platform; every other platform never sees it.
+      if (!["EEXIST", "EPERM", "EACCES"].includes(renameErr.code)) {
+        throw renameErr;
+      }
       fs.unlinkSync(absPath);
+      fs.renameSync(tempPath, absPath);
     }
-    fs.renameSync(tempPath, absPath);
     return true;
   } catch (err) {
     debugLog("plugin-state", `atomic write failed for ${absPath}: ${err.message}`);
@@ -149,6 +162,178 @@ function writeJson(absPath, data) {
     }
     return false;
   }
+}
+
+/**
+ * Atomically write JSON. No-op (false) when unavailable.
+ * @param {string|null} absPath
+ * @param {*} data
+ * @returns {boolean} true if written
+ */
+function writeJson(absPath, data) {
+  return atomicWrite(absPath, JSON.stringify(data, null, 2));
+}
+
+/** How long to keep trying for a lock before giving up and proceeding anyway. */
+const LOCK_TIMEOUT_MS = 250;
+/** A lock older than this belonged to a process that died holding it. */
+const LOCK_STALE_MS = 5000;
+
+/**
+ * Block this process for `ms` without burning CPU. Hooks are synchronous
+ * top-to-bottom, so there is no event loop to yield to.
+ * @param {number} ms
+ */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Inode from a stat call, or null when it is unavailable or meaningless.
+ *
+ * Windows reports ino as 0 on filesystems with no file index, which is useless
+ * for identity, so callers treat null as "can't tell" and fall back to
+ * path-based behavior rather than guessing.
+ * @param {() => import("fs").Stats} statFn
+ * @returns {number|null}
+ */
+function statIno(statFn) {
+  try {
+    const { ino } = statFn();
+    return typeof ino === "number" && ino > 0 ? ino : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Run `fn` holding an exclusive lock on `absPath`.
+ *
+ * `open(..., "wx")` is an atomic create-if-absent on both POSIX and Windows,
+ * which is the only mutual-exclusion primitive the filesystem actually gives us.
+ * It is needed because read-modify-write on a shared file cannot be made safe by
+ * comparing revisions: every writer can verify its own write landed and still be
+ * overwritten a microsecond later by a writer that started after it.
+ *
+ * Fail-open by design: if the lock can't be taken within LOCK_TIMEOUT_MS, `fn`
+ * runs unlocked. A hook that blocks a session is worse than a rare lost counter.
+ *
+ * @param {string} absPath - the file being guarded
+ * @param {() => *} fn
+ * @returns {*} whatever `fn` returns
+ */
+function withLock(absPath, fn) {
+  // A lock outside the data root would be created (along with its parents) by
+  // the ensureDir below even though the write it guards is going to no-op. Same
+  // containment rule as atomicWrite/appendLine — refuse, and run unlocked.
+  if (!isUnderRoot(absPath)) {
+    debugLog("plugin-state", `refusing to lock outside the data root: ${absPath}`);
+    return fn();
+  }
+
+  const lockPath = `${absPath}.lock`;
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  let fd = null;
+
+  // The lock lives beside the file it guards, so its directory has to exist
+  // before the first write creates it — otherwise the very first (and most
+  // contended) write of a session fails to lock and every writer races.
+  ensureDir(path.dirname(lockPath));
+
+  // The deadline governs the loop itself, and every failure path falls through
+  // to the sleep. Both matter: an early `continue` that skips them turns a lock
+  // that cannot be removed — a directory or dangling symlink left at lockPath,
+  // EACCES on the data dir, a Windows delete-pending handle — into an
+  // unbreakable hot loop. That is the session-blocking hang this function's
+  // fail-open exists to prevent, so it must not be reachable from inside it.
+  while (fd === null && Date.now() < deadline) {
+    try {
+      fd = fs.openSync(lockPath, "wx");
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        debugLog("plugin-state", `lock open failed for ${lockPath}: ${err.message}`);
+        break; // can't lock at all — proceed unlocked
+      }
+      // Reclaim a lock whose holder died before releasing it.
+      //
+      // lstat, not stat: stat follows a symlink, so a *dangling* one at the lock
+      // path throws ENOENT on every pass and is read as "it vanished" — the lock
+      // is never reclaimed and every future call pays the full timeout forever.
+      // rmSync likewise handles a directory left at the path, which unlink
+      // cannot. Neither shape should exist, but both are permanent once they do.
+      try {
+        if (Date.now() - fs.lstatSync(lockPath).mtimeMs > LOCK_STALE_MS) {
+          fs.rmSync(lockPath, { recursive: true, force: true });
+        }
+      } catch (reclaimErr) {
+        // ENOENT just means it vanished under us and the next attempt wins it.
+        // Anything else means we will never remove it — say so once and let the
+        // deadline end this rather than retrying forever.
+        if (reclaimErr.code !== "ENOENT") {
+          debugLog("plugin-state", `lock reclaim failed for ${lockPath}: ${reclaimErr.message}`);
+        }
+      }
+      sleepSync(2);
+    }
+  }
+
+  if (fd === null) {
+    debugLog("plugin-state", `proceeding unlocked: ${lockPath}`);
+  }
+
+  // Which inode we actually hold. Releasing by path alone is wrong once the
+  // stale reclaim above exists: if this holder stalls past LOCK_STALE_MS (a
+  // laptop suspend, heavy swap, an fsync stall on a network HOME), another
+  // writer legitimately reclaims the lock and creates its own. Unlinking by
+  // path would then delete *that* writer's lock and let a third in alongside
+  // it — reintroducing the lost update this whole mechanism exists to stop.
+  // Comparing inodes narrows the window from seconds to microseconds; where
+  // the platform gives no usable inode it degrades to releasing by path.
+  const heldIno = fd === null ? null : statIno(() => fs.fstatSync(fd));
+
+  try {
+    return fn();
+  } finally {
+    if (fd !== null) {
+      try {
+        // Identify *before* closing. An open fd pins the inode, so while it is
+        // held no other file can be allocated the same one and a match here is
+        // proof the file at lockPath is still ours. Closing first would release
+        // the inode for reuse, and a reclaiming writer's lock could be handed
+        // the very number we recorded — an ABA that reads as "still mine" and
+        // deletes their lock, which is the bug this check exists to prevent.
+        // lstat needs no handle, so the reorder is safe on Windows too.
+        const currentIno = statIno(() => fs.lstatSync(lockPath));
+        fs.closeSync(fd);
+        if (heldIno === null || currentIno === null || currentIno === heldIno) {
+          fs.unlinkSync(lockPath);
+        } else {
+          debugLog("plugin-state", `not releasing a reclaimed lock: ${lockPath}`);
+        }
+      } catch {
+        /* best effort — a stale lock is reclaimed by the next writer */
+      }
+    }
+  }
+}
+
+/**
+ * Read-modify-write a JSON state file under an exclusive lock. The one safe way
+ * to mutate state that parallel hooks share; a bare readJson/writeJson pair is
+ * not, because sibling hooks on the same event run concurrently.
+ * @param {string|null} absPath
+ * @param {(current: *) => *} updater
+ * @param {*} [fallback] - value handed to `updater` when the file is absent
+ * @returns {{state: *, written: boolean}}
+ */
+function updateJson(absPath, updater, fallback = null) {
+  if (!absPath) {
+    return { state: updater(fallback), written: false };
+  }
+  return withLock(absPath, () => {
+    const next = updater(readJson(absPath, fallback));
+    return { state: next, written: writeJson(absPath, next) };
+  });
 }
 
 /**
@@ -222,8 +407,13 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
     }
     const p = path.join(dir, name);
     try {
-      if (now - fs.statSync(p).mtimeMs > maxAgeMs) {
-        fs.unlinkSync(p);
+      // lstat + rmSync, matching withLock's reclaim: stat follows symlinks, so a
+      // dangling one throws ENOENT and gets skipped forever, and unlink cannot
+      // remove a directory. This sweep is the backstop for exactly those shapes
+      // — an orphaned lock nothing will ever contend for again — so it has to be
+      // able to remove what it is here to remove.
+      if (now - fs.lstatSync(p).mtimeMs > maxAgeMs) {
+        fs.rmSync(p, { recursive: true, force: true });
         removed++;
       }
     } catch {
@@ -233,13 +423,169 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
   return removed;
 }
 
+/**
+ * Reading a line-oriented file bigger than this to prune it costs more than the
+ * SessionStart budget allows (GP-863, R25), so past this size only the tail is
+ * read and the rest is dropped unread.
+ *
+ * Dropped, not deleted. These files are the user's un-drained captures and the
+ * plugin's only diagnostic log; unlinking one throws away every entry including
+ * the newest, and for `hook-errors.log` it also throws away the note saying it
+ * happened. Keeping the tail bounds the work just as well and normally loses
+ * only the oldest data.
+ *
+ * The exception is a file with no line structure at all in its tail — a single
+ * multi-megabyte "line". `pruneJsonl` still removes that one, because for a
+ * queue of JSON entries an unparseable blob is garbage by the same rule that
+ * drops any other unparseable line, and keeping it would mean re-reading it on
+ * every SessionStart forever.
+ */
+
+/**
+ * Size of a file on disk, or -1 when missing/unstattable.
+ * @param {string|null} absPath
+ * @returns {number}
+ */
+function sizeOf(absPath) {
+  if (!absPath) {
+    return -1;
+  }
+  try {
+    return fs.statSync(absPath).size;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Cut `text` down to at most `maxBytes` UTF-8 bytes, starting at a line
+ * boundary where one is available and always ending in exactly one newline.
+ *
+ * Both traps this avoids shipped as bugs in earlier revisions, so it does the
+ * work in one place rather than as guards bolted onto a slice:
+ *
+ *  - Dropping the leading partial line *unconditionally* empties the result
+ *    whenever the window holds no other newline — which is exactly the case
+ *    when one line is longer than `maxBytes`. That replaced whole logs with a
+ *    single "\n" while still reporting a successful trim.
+ *  - Slicing raw bytes and decoding afterwards turns a split multi-byte
+ *    character into U+FFFD, which re-encodes to *more* bytes than it replaced,
+ *    so the result comes back over the bound. A log that stays over its bound
+ *    is re-read and rewritten on every SessionStart, forever, on a path with a
+ *    50ms budget.
+ *
+ * @param {string} text
+ * @param {number} maxBytes
+ * @returns {string} at most `maxBytes` bytes, newline-terminated
+ */
+function boundToBytes(text, maxBytes) {
+  const budget = Math.max(1, maxBytes - 1); // room for the terminating newline
+  // Strip any replacement characters the cut invented at the front; each stood
+  // for a byte we already counted, so removing them can only shorten the result.
+  let out = Buffer.from(text, "utf8")
+    .subarray(-budget)
+    .toString("utf8")
+    .replace(/^\uFFFD+/, "");
+  const firstBreak = out.indexOf("\n");
+  const rest = firstBreak >= 0 ? out.slice(firstBreak + 1) : "";
+  // Prefer a clean line start, but never at the cost of emptying the result.
+  if (rest.trim() !== "") {
+    out = rest;
+  }
+  return out.endsWith("\n") ? out : `${out}\n`;
+}
+
+/**
+ * Keep a breadcrumb log bounded. Under `maxBytes` this is a single stat and no
+ * write. Over it, the newest `keepLines` survive; absurdly large logs are
+ * dropped outright rather than read into memory.
+ * @param {string|null} absPath
+ * @param {{maxBytes?: number, keepLines?: number}} opts
+ * @returns {{trimmed: boolean, discarded: boolean}}
+ */
+/**
+ * Read at most the last `bytes` of a file without loading the whole thing.
+ * The first line is dropped when the file was truncated, since a tail read
+ * almost always lands mid-line.
+ * @param {string} absPath
+ * @param {number} bytes
+ * @returns {{text: string, truncated: boolean}}
+ */
+const DISCARD_BYTES = 4 * 1024 * 1024;
+
+function readTail(absPath, bytes) {
+  const fd = fs.openSync(absPath, "r");
+  try {
+    const size = fs.fstatSync(fd).size;
+    const length = Math.min(bytes, size);
+    const buf = Buffer.alloc(length);
+    fs.readSync(fd, buf, 0, length, size - length);
+    const truncated = length < size;
+    let text = buf.toString("utf8");
+    if (truncated) {
+      const nl = text.indexOf("\n");
+      // Only drop the partial line if something survives it. A tail with no
+      // newline until its very end — a corrupt or sparse file, or one enormous
+      // line — would otherwise discard the whole read, turning "some data" into
+      // "none", which is exactly the outcome reading the tail exists to avoid.
+      const rest = nl === -1 ? "" : text.slice(nl + 1);
+      if (rest.trim() !== "") {
+        text = rest;
+      }
+    }
+    return { text, truncated };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
+  const size = sizeOf(absPath);
+  if (size < 0 || size <= maxBytes) {
+    return { trimmed: false, discarded: false };
+  }
+  try {
+    // Past the cap, read only the tail rather than unlinking. Deleting the file
+    // takes the newest entries with it, and for hook-errors.log the note saying
+    // it happened is written *into the file being deleted* — the log erasing
+    // exactly the evidence someone would need.
+    let discarded = false;
+    let text;
+    if (size > DISCARD_BYTES) {
+      const tail = readTail(absPath, DISCARD_BYTES);
+      discarded = tail.truncated;
+      text = tail.text;
+      debugLog(
+        "plugin-state",
+        `oversized log (${size}B), keeping the last ${DISCARD_BYTES}B: ${absPath}`
+      );
+    } else {
+      text = fs.readFileSync(absPath, "utf8");
+    }
+    const lines = text.split("\n").filter(Boolean);
+    let out = `${lines.slice(-keepLines).join("\n")}\n`;
+    if (Buffer.byteLength(out) > maxBytes) {
+      // Pathological: a few enormous lines (or one with no newline at all), so
+      // keeping `keepLines` of them doesn't bound anything.
+      out = boundToBytes(out, maxBytes);
+    }
+    return { trimmed: atomicWrite(absPath, out), discarded };
+  } catch (err) {
+    debugLog("plugin-state", `trim failed for ${absPath}: ${err.message}`);
+    return { trimmed: false, discarded: false };
+  }
+}
+
 module.exports = {
   stateRoot,
   statePath,
   exists,
   readJson,
   writeJson,
+  updateJson,
+  withLock,
   appendLine,
   remove,
   sweep,
+  trimLog,
 };

@@ -1,0 +1,251 @@
+# E2E test plan for the rebuilt hook set (GP-844 → GP-892)
+
+The 3.0 rebuild replaced 13 hook scripts and ~3,500 lines of regex judgement with
+**five thin routers plus one model-judged prompt hook**. This plan says what the
+end-to-end tier must prove about that shape, why each claim can only be proven
+there, and what it deliberately does not attempt.
+
+It supersedes the retired `docs/hook-test-plan.md`, which tested hooks that no
+longer exist.
+
+## What changed, and what that does to testability
+
+| 2.x                                               | 3.0                                          | Consequence for testing                                                                      |
+| ------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 13 hook scripts, regex intent extraction          | 5 command routers, behaviour lives in skills | Unit tests can cover routing decisions; they cannot cover whether a skill is reachable       |
+| `stop-lessons.cjs` judged in regex                | `Stop` is a `type: "prompt"` model judge     | **No unit test can run it at all** — the verdict is produced by Claude Code's own model call |
+| Nag on every prompt                               | One-shot, consumed-on-read lifecycle flags   | "Silent on later prompts" is a claim about a live session, not a function                    |
+| Statusline with counters and passthrough chaining | Read-only single line                        | Never rendered in headless mode — see Known gaps                                             |
+
+The unit tier (`tests/session-lifecycle.test.cjs`, 50+ cases) already covers the
+trigger matrix, lock behaviour, TTL sweep, snooze and the R25 latency budget
+in-process. **This plan adds only what the unit tier structurally cannot reach.**
+
+## The three claims only e2e can settle
+
+1. **The anti-nag guarantee.** The redesign's headline promise is that the plugin
+   points at memory once per session start and then shuts up. Row 4 of the trigger
+   matrix is unit-tested against a state file, but the claim users care about — two
+   prompts in one live session produce exactly one injection — needs two prompts
+   under one `SessionStart`.
+2. **The Stop router works and terminates.** `ok:false` feeds the reason back as
+   Claude's next instruction. Whether that fires, whether it stops firing, and what
+   the user ends up seeing are all emergent properties of a model judge inside a
+   turn loop.
+3. **Coexistence (R23).** Hooks must share a session with other plugins without
+   `{{decision:block}}`.
+
+## Environment facts, verified not assumed
+
+Every fact below was established by probe runs against `claude 2.1.220` before
+any test was written. They are the load-bearing assumptions of the suite.
+
+- **The Stop prompt is wrapped, not passed through.** Claude Code prepends
+  _"Based on the conversation transcript above, has the following stopping
+  condition been satisfied? Answer based on transcript evidence only.\n\nCondition:"_.
+  Our prompt is therefore consumed as a **condition**, and `ok:true` means
+  "satisfied → allow the stop". The debug log renders `ok:true` as
+  `Prompt hook condition was met`, including when the payload also carries a
+  `reason` — which is then discarded.
+- **`--resume` re-arms the memory pointer.** A resume fires `SessionStart` with
+  `source: "resume"`, and `beginSession()` treats every non-`compact` source as a
+  restart. The session id and state file are reused, `rev` keeps climbing, and
+  `firstPromptPending` is set again. So a resumed turn is **not** a "later prompt"
+  and cannot demonstrate row 4.
+- **Two prompts can share one SessionStart** via
+  `--input-format stream-json --output-format stream-json --verbose`, writing one
+  user message per turn to stdin. This is the only way to observe row 4 e2e.
+- **`--session-id <uuid>` fixes the state file path up front**, so a test can plant
+  `config.json` keyed to the session it is about to run instead of discovering the
+  id afterwards.
+- **Plugin skills do load under `--plugin-dir`, and they are namespaced.**
+  `skill_listing` in the transcript contains `gutt-claude-code-plugin:memory-search`,
+  `:memory-capture` and the rest, so the routers' targets exist at runtime — but only
+  under the `<plugin>:<stem>` form. The injected text originally named the bare
+  `memory-search`, which is not invocable; it now carries the namespace, and
+  `hook-architecture.test.cjs` asserts both halves resolve. A live Stop evaluation
+  showed why this matters: the judge copied the stem out of the prompt verbatim into
+  the reason it handed Claude as an instruction.
+- **`--plugin-dir` is repeatable**, which is how the coexistence run loads
+  `gutt-core` and `auto-lint-plugin` together.
+- **`config.json` is global.** Every session on the machine shares one file, so any
+  test that plants a snooze must back it up and restore it.
+- **The CLI never logs a completion line for the synchronous `session-start.cjs`.**
+  `session-end.cjs` gets `[...] completed with status 0`; SessionStart gets nothing
+  of the kind. The only per-event record is the async sibling's
+  `Registering async hook ... (SessionStart:<matcher>)` line, which is what
+  `sessionStartEvents()` reads — and it names the matcher, so it also distinguishes a
+  fresh start from a resume.
+- **A fixed session id breaks state sampling on re-runs.** The sampler only samples
+  files that _appear_ during a run, so reusing an id means the state file already
+  exists and is skipped, yielding zero samples. Every run generates a fresh UUID and
+  removes its own record afterwards.
+- **The Stop judge costs 2.5–4.1s of turn-end latency, and that is not a defect.**
+  Measured across three real evaluations: 2.49s (130-message transcript), 3.18s (67
+  messages), 4.07s (86 messages), first byte at 1.1–1.3s, dispatched to
+  `claude-haiku-4-5`. R25 sets a ≤2s target for the prompt hook and the GP-862 spike
+  already recorded that target as unmet (p95 5.4s, max 8.4s over 21–30 runs) — so
+  these numbers corroborate a known finding rather than reporting a new problem. The
+  `timeout: 20` in hooks.json is what actually bounds it; the 30s platform hard
+  timeout is never reached. Part of the cost is structural: `$ARGUMENTS` expands to
+  the transcript-context JSON including the whole `last_assistant_message`.
+- **A prompt hook's model call has no tools.** Every evaluation logs
+  `Tool search disabled: ToolSearchTool is not available`, plus one
+  `Filtering out tool_reference for unavailable tool` warning per MCP tool the main
+  agent had loaded. The forked judge inherits the transcript and nothing else. This
+  is why the Stop prompt must be written against transcript-only capability — it
+  cannot check whether something was already captured, only infer it. Those warnings
+  look like a connectivity fault in the log and are not one.
+
+## Run budget
+
+The tier's discipline is _one `claude -p` call per set of claims, not one per
+assertion_. Five runs, all Haiku, all with tools denied, on the machine's
+subscription (R36):
+
+| Run | File                        | Claims                                                       |
+| --- | --------------------------- | ------------------------------------------------------------ |
+| 1   | `session-lifecycle.e2e.cjs` | startup lifecycle, state contract, AC3, row 2 injection, R36 |
+| 2   | `hook-routing.e2e.cjs`      | **row 4 anti-nag** across two prompts, one SessionStart      |
+| 3   | `hook-routing.e2e.cjs`      | **row 1 snooze** suppresses without burning the flag         |
+| 4   | `hook-routing.e2e.cjs`      | **Stop router fires and terminates**, reply stays clean      |
+| 5   | `hook-routing.e2e.cjs`      | **R23 coexistence** with `auto-lint-plugin`                  |
+
+## Per-run assertions
+
+### Run 2 — the anti-nag guarantee
+
+Two prompts, one invocation, one `--session-id`.
+
+- exactly one `SessionStart` and one `SessionEnd` for two prompts
+- **exactly one** `provided additionalContext` event across both turns
+- the injection carries the first-prompt text, not the compaction text
+- `Stop` is evaluated once per turn (two evaluations, not one, not three)
+- every verdict is parseable `{ok: boolean}`
+- both result envelopes report the same session id and `is_error: false`
+
+### Run 3 — snooze suppresses, and does not consume
+
+A session-scoped snooze is planted for a known session id before launch.
+
+- **zero** `additionalContext` events for the whole run
+- a mid-run state sample still shows `firstPromptPending: true` — the snooze
+  suppressed the pointer without burning the one-shot flag. Asserted from samples
+  because `SessionEnd` clears the flag, so the final file cannot show it.
+- `SessionEnd` removed `snoozeSessionId`/`snoozeUntil` and left `enabled`/`mode`
+  untouched — those keys belong to the config command surface (GP-866)
+- the run still answers the user normally
+
+### Run 4 — the Stop router fires, and stops firing
+
+A turn where the **assistant** produces the durable content (a design decision with
+rationale), since a tools-denied turn cannot discover anything otherwise.
+
+- at least one verdict is `ok:false` — the router reaches `memory-capture` at all
+- **the number of Stop evaluations is bounded (≤ 3)**
+- the user-visible reply is non-empty
+- the reply does not leak the judge protocol (no `{"ok": ...}` / fenced JSON)
+- the session terminates with `is_error: false`
+
+Verdict _direction_ is a characterization check, not a hard contract: it comes from
+a model call. Observed on the probe shapes — design decision 16/16 `ok:false`,
+articulated lesson 2/3 then `ok:true`, plain acknowledgement 0/2. The bound and the
+reply cleanliness are the deterministic parts and the real guards.
+
+### Run 5 — coexistence (R23)
+
+`gutt-core` + `auto-lint-plugin` loaded together, one prompt.
+
+- both plugins' `hooks.json` are read; exactly one gutt plugin loads, from this repo
+- gutt's five handlers still register and the lifecycle still completes
+- no hook emits a blocking decision, and the session is not interrupted
+- `auto-lint-plugin` contributes its `PostToolUse` handler without disturbing gutt
+
+## Unit-tier additions this plan also requires
+
+Free, deterministic, and they close silent-failure holes the thin-router design
+creates:
+
+- **Every skill a hook names must exist.** A router that points at a renamed skill
+  fails silently — the model just gets a pointer to nothing.
+- **The Stop prompt must have a termination condition.** See below.
+
+## Known gaps, and why
+
+- **Row 3 (compaction).** Genuinely triggering a compaction needs a context large
+  enough to overflow, which is neither cheap nor reliable in a headless run. Covered
+  at the unit tier via `SessionStart[compact]`; the e2e path is left uncovered
+  deliberately rather than faked.
+- **The statusline — this is GP-867's open question, and the evidence is now in.**
+  GP-867 exists to "verify empirically whether a plugin-shipped top-level
+  `statusLine` key has any effect in a real Claude Code session". Across seven real
+  sessions driven while building this plan, the CLI debug log contained **zero**
+  occurrences of `statusline` in any form, and reported
+  `Registered 5 hooks from 6 plugins` — exactly gutt-core's five _hook_ handlers,
+  with the `statusLine` block not among them. `statusline.cjs` is never invoked by
+  the platform. Verified separately that the script itself works when run directly
+  (it renders `[gutt⚪!] | [Haiku 4.5] ~$0.01`), so this is a wiring question, not a
+  broken script.
+
+  No e2e assertion is written, because encoding a platform limitation as expected
+  behaviour would freeze it. The finding belongs to GP-867, which should decide
+  whether to drop the key or move to `subagentStatusLine`.
+
+- **MCP-dependent assertions.** Connectivity state is asserted for shape, not for a
+  particular verdict: the probe depends on the developer's real MCP config, and a
+  contributor without gutt configured must not see a red suite.
+- **The ABA lock-inode window** remains untested, as noted in `plugin-state.cjs`.
+
+## Defects this plan found in the Stop router
+
+Writing the plan turned up two real defects in `hooks.json`. Run 4 exists to guard
+both.
+
+### 1. The judge livelocked — 16 model calls, and an empty answer
+
+On a turn that produced a durable design decision, the judge answered `ok:false`
+**16 consecutive times**. `ok:false` feeds the reason back and the turn continues,
+which re-fires Stop, which asks again. `stop_hook_active` was `true` on 15 of those
+16 evaluations — Claude Code passes that flag precisely so a Stop hook can break its
+own loop — and the prompt never mentioned it, so nothing told the judge to relent.
+Sixteen model calls were spent on one turn and the user's reply came back **empty**.
+
+Fixed by adding an explicit stopping rule to the prompt: when `stop_hook_active` is
+true, answer `ok:true` regardless of what the transcript shows. Post-fix the same
+prompt stays inside the 3-evaluation bound and relents on the first re-entry.
+
+### 2. The judge protocol leaked into the user's answer
+
+The fed-back reason pulled the assistant into answering the _hook_ instead of the
+user. Two independent observations, different turn shapes — one reply opened with a
+fenced `{"ok": true}`, another was a complete `{"ok": false, "reason": "..."}`
+object where the user's design answer should have been.
+
+Root cause is the reason's phrasing. The prompt asked for "a short factual note
+naming what is worth recording", which produces a _description_ of a capture rather
+than an instruction to perform one, and the model sometimes continues the pattern by
+emitting the verdict shape itself. Fixed by requiring the reason to be one imperative
+sentence addressed to Claude, and forbidding it from restating the response format.
+
+**Verification limits, stated plainly:** this failure is intermittent — it failed
+once and passed once against the _unfixed_ prompt. A green run after the change is
+therefore consistent with the fix working and also consistent with luck. The bound
+in defect 1 is the deterministic guard; this one is a live-fire check whose value
+accrues over repeated runs.
+
+## Results
+
+Both tiers green on `claude 2.1.220`, Node 24:
+
+| Tier                               | Result                                |
+| ---------------------------------- | ------------------------------------- |
+| `npm test` (unit)                  | 81/81 pass                            |
+| `tests/hook-architecture.test.cjs` | 8/8 pass, including the 2 new guards  |
+| `npm run test:e2e`                 | **34/34 pass across 5 real sessions** |
+| `npm run test:all`                 | pass                                  |
+
+The e2e tier costs five Haiku sessions and roughly 80 seconds of wall clock.
+
+Run 4's bound is known to catch defect 1 rather than assumed to: the pre-fix
+behaviour was _measured_ at 16 evaluations with the identical prompt, against an
+assertion that allows at most 3.
