@@ -26,7 +26,7 @@
 
 const { statePath, appendLine } = require("./lib/plugin-state.cjs");
 const { LOG_FILES } = require("./lib/debug.cjs");
-const { init, consumeFirstPromptPending, consumeCompacted } = require("./lib/session-state.cjs");
+const { init, advanceTurn, isRecallRecent } = require("./lib/session-state.cjs");
 const { isSnoozed } = require("./lib/runtime-config.cjs");
 const { guard } = require("./lib/debug.cjs");
 
@@ -79,20 +79,42 @@ process.stdin.on("end", () => {
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 19);
     appendLine(statePath(LOG_FILES.invocations), `[${timestamp}] Prompt: ${prompt}`);
 
-    // Row 1: snoozed → silent. Checked first and before any flag is consumed, so
-    // a snooze doesn't burn the one-shot flags it suppressed.
+    // Row 1: snoozed → silent. Checked first and before the turn is advanced, so a
+    // snooze neither burns the one-shot flags it suppressed nor counts the turns it
+    // sat out. The counter therefore measures turns the plugin actually saw, which
+    // makes the row-4 window slightly wider across a snooze — accepted, because the
+    // alternative is a second locked write on the hot path to count turns nobody
+    // will act on.
     if (isSnoozed(sessionId)) {
       return;
     }
 
-    // Rows 2 and 3. Both flags are consumed-on-read, so each fires exactly once
-    // per session start / compaction and cannot re-trigger on later prompts.
-    // Compaction wins when both are set: it is the more specific situation.
-    const compacted = consumeCompacted();
-    const firstPrompt = consumeFirstPromptPending();
+    // One locked transaction: advance the recall counter, consume both one-shot
+    // flags. Consumed-on-read means each fires exactly once per session start /
+    // compaction and cannot re-trigger on a later prompt.
+    const { firstPrompt, compacted, turnsSinceSearch } = advanceTurn();
+
+    // Row 4: the agent recalled something within the last few turns, so another
+    // pointer is redundant → silent.
+    //
+    // This row wins over rows 2 and 3, and the flags they read are already spent by
+    // the time it fires — deliberately. Deferring them instead would mean injecting
+    // "this conversation was just compacted" five turns after the compaction, and a
+    // directive that describes a moment which has passed is worse than none.
+    //
+    // Known tension, flagged for GP-890: a compaction is itself what summarizes the
+    // recalled results away, so search recency is weaker evidence of freshness
+    // after a compaction than before one. `beginSession` advances the counter on
+    // compaction to lean against this, but one step does not fully answer it.
+    if (isRecallRecent(turnsSinceSearch)) {
+      return;
+    }
+
+    // Rows 2 and 3. Compaction wins when both are set: it is the more specific
+    // situation.
     const context = compacted ? REGROUND_CONTEXT : firstPrompt ? SEARCH_CONTEXT : null;
 
-    // Row 4: every other prompt → silent. Saying nothing is the common case.
+    // Every other prompt → silent. Saying nothing is the common case.
     if (!context) {
       return;
     }

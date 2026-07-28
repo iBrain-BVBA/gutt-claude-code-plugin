@@ -16,7 +16,7 @@
  */
 "use strict";
 
-const { statePath, sweep, trimLog } = require("./plugin-state.cjs");
+const { statePath, sweep, trimLog, pruneJsonl } = require("./plugin-state.cjs");
 const { clearExpiredSnooze } = require("./runtime-config.cjs");
 const { LOG_FILES, guard } = require("./debug.cjs");
 
@@ -25,6 +25,9 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // sessions/<id>.json
 const LOG_MAX_BYTES = 256 * 1024; // breadcrumb logs
 const LOG_KEEP_LINES = 200; // lines retained when a log is trimmed
 const DEBRIS_TTL_MS = 60 * 60 * 1000; // orphaned .lock / .tmp.* files
+const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // capture-queue.jsonl entries
+const QUEUE_MAX_ENTRIES = 500; // newest entries retained past this many
+const QUEUE_FILE = "capture-queue.jsonl";
 const BREADCRUMB_LOGS = Object.values(LOG_FILES);
 
 /** Lock and atomic-write temp files, which are never legitimately old. */
@@ -70,6 +73,19 @@ function ttlSweep() {
     sweep(statePath(), { maxAgeMs: 0, match: (f) => f.endsWith(".lessons-prompted") })
   );
 
+  // The capture queue has no writer until GP-873, so today this reclaims nothing.
+  // It is here rather than there because the retention policy is R37's and this is
+  // the event the contract names — and because a step that only appears alongside
+  // its first writer is a step nobody notices is missing. `pruneJsonl` reads the
+  // entry timestamps rather than the file's mtime: the queue is append-only, so its
+  // mtime tracks the newest entry and would never expire the oldest.
+  step("queue", () =>
+    pruneJsonl(statePath(QUEUE_FILE), {
+      maxAgeMs: QUEUE_TTL_MS,
+      maxLines: QUEUE_MAX_ENTRIES,
+    })
+  );
+
   step("logs", () => {
     for (const name of BREADCRUMB_LOGS) {
       trimLog(statePath(name), { maxBytes: LOG_MAX_BYTES, keepLines: LOG_KEEP_LINES });
@@ -79,4 +95,13 @@ function ttlSweep() {
   step("snooze", () => clearExpiredSnooze());
 }
 
-module.exports = { ttlSweep, SESSION_TTL_MS, LOG_MAX_BYTES, LOG_KEEP_LINES, DEBRIS_TTL_MS };
+module.exports = {
+  ttlSweep,
+  SESSION_TTL_MS,
+  LOG_MAX_BYTES,
+  LOG_KEEP_LINES,
+  DEBRIS_TTL_MS,
+  QUEUE_TTL_MS,
+  QUEUE_MAX_ENTRIES,
+  QUEUE_FILE,
+};
