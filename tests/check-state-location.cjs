@@ -15,14 +15,21 @@ const SCAN_DIRS = ["shared", "gutt-core/hooks", "auto-lint-plugin/hooks"];
 
 // Sanctioned direct writers, each with a one-line reason (kept short so the list
 // can't rot silently). Everything else must go through shared/plugin-state.cjs.
-// GP-863 removed the last exemption (sessionstart-setup.cjs, which edited the
-// user's ~/.claude/settings.json) — both remaining entries write only under
-// ${CLAUDE_PLUGIN_DATA}, so the ban is now absolute.
+//
+// GP-863 removed the previous ~/.claude/settings.json exemption
+// (sessionstart-setup.cjs) and called the ban absolute. GP-895 re-opens it for
+// migrations.cjs alone, and narrowly: that module only ever *deletes* a key a past
+// version of this plugin wrote, only when the file it points at is already gone,
+// once per machine, after backing the original up under ${CLAUDE_PLUGIN_DATA}. The
+// steady-state rule is unchanged — no hook adds to settings.json, and the cleanup
+// is one-shot rather than a standing write path.
 const ALLOW = {
   "shared/plugin-state.cjs":
     "the single sanctioned state writer (writes only under ${CLAUDE_PLUGIN_DATA})",
   "shared/debug.cjs":
     "low-level error log under ${CLAUDE_PLUGIN_DATA}; can't depend on plugin-state (require cycle)",
+  "shared/migrations.cjs":
+    "one-shot 2.x cleanup: deletes only provably-dead paths a past version wrote (GP-895)",
 };
 
 // GP-863 AC3, as CI rather than a one-off grep: state locations that 3.0 retired.
@@ -37,12 +44,16 @@ const BANNED = [
   {
     pattern: ".gutt-statusline-configured",
     reason: "~/.claude marker from the retired statusline auto-setup (GP-863 removed it)",
+    // Same carve-out as .lessons-prompted below: naming a retired path in order to
+    // delete it is the opposite of reintroducing it. Nothing else may mention it.
+    allow: ["shared/migrations.cjs"],
   },
   {
     pattern: ".lessons-prompted",
     reason: "retired marker file — the record is a field in sessions/<id>.json (GP-863)",
     // The one legitimate mention: sweeping leftovers off disk after an upgrade.
-    allow: ["gutt-core/hooks/session-start.cjs"],
+    // Moved with the sweep itself out of session-start.cjs in GP-895.
+    allow: ["shared/session-sweep.cjs"],
   },
 ];
 

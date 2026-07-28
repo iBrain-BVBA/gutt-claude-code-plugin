@@ -23,16 +23,17 @@ that migration.
 All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
 `${CLAUDE_PLUGIN_DATA}`; no code joins its own `.state` path anymore.
 
-| File                         | Written by                                                         | Notes                                                                                                                                                                                                                             |
-| ---------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions/<session_id>.json` | `session-state.cjs`                                                | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields and the connectivity result the statusline reads. Swept >24h at SessionStart. |
-| `config.json`                | config commands (GP-866); snooze lifecycle by `runtime-config.cjs` | Runtime on/off, mode, snooze. **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads.                                                               |
-| `capture-queue.jsonl`        | _(writer/drain — GP-873)_                                          | Append-only capture queue. GP-863 owns only its TTL: entries >7d, unparseable lines, and overflow past 500 lines are pruned at SessionStart.                                                                                      |
-| `hook-errors.log`            | `debug.cjs`                                                        | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                      |
-| `hook-invocations.log`       | `user-prompt-submit`                                               | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                               |
+| File                                   | Written by                                                                                                  | Notes                                                                                                                                                                                                                                                                                           |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions/<session_id>.json`           | `session-state.cjs`                                                                                         | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                               |
+| `config.json`                          | config commands (GP-866); snooze lifecycle by `runtime-config.cjs`; `migrationsVersion` by `migrations.cjs` | Runtime on/off, mode, snooze, and the integer `migrationsVersion` recording which one-time cleanups this machine has had. **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads.                                 |
+| `capture-queue.jsonl`                  | _(writer/drain — GP-873)_                                                                                   | Append-only capture queue. GP-863 owns only its TTL: entries >7d, unparseable lines, and overflow past 500 lines are pruned at SessionStart.                                                                                                                                                    |
+| `hook-errors.log`                      | `debug.cjs`                                                                                                 | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                    |
+| `hook-invocations.log`                 | `user-prompt-submit`                                                                                        | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                             |
+| `migrations/settings-backup-<ms>.json` | `migrations.cjs` (GP-895)                                                                                   | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover. |
 
 The three artifacts named by the R37 state contract are the first three rows; the
-rest are caches and logs that rebuild themselves.
+rest are caches, logs, and one backup that rebuild themselves or are written once.
 
 ### Retired locations
 
@@ -50,9 +51,53 @@ are now banned outright by `tests/check-state-location.cjs`, not merely discoura
 `settings.json` on first run. Besides violating R37, it wrote the **plugin's
 current cache path**, which for plugin installs is session-scoped and dead as
 soon as that session ends — so the entry it left behind rotted immediately. The
-hook is deleted; re-landing the HUD is **GP-867 (S3.6)**. Users who ran a 2.x
-version keep a stale `statusLine` in their own `settings.json`; nothing removes
-it for them, because doing so would be exactly the write this story bans.
+hook is deleted; re-landing the HUD is **GP-867 (S3.6)**.
+
+### The one-time 2.x cleanup (GP-895)
+
+Deleting the offending code fixed future writes and nothing else. Anyone who ran a
+2.x version still carried its leftovers, and 3.0 had no reason to look at those
+paths — so a stale `statusLine` kept firing on every render, dumping a Node
+`MODULE_NOT_FOUND` stack trace into the debug log for a file that no longer exists.
+
+`shared/migrations.cjs` clears that, gated by `session-start.cjs`:
+
+| Removed                                                    | Only when                                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `statusLine` in the user's `~/.claude/settings.json`       | it names a plugin-owned `statusline.cjs` **and** that file no longer exists |
+| `~/.claude/.gutt-statusline-configured`                    | present                                                                     |
+| `~/.claude/gutt-{memory-cache,seed-registry,session}.json` | present — the `gutt` prefix is the whole attribution rule                   |
+| `{memory-cache,seed-registry,gutt-*}.json` in the data dir | present                                                                     |
+
+Rules this follows, each one because the alternative is worse than leaving the
+damage in place:
+
+- **The gate lives in the hook, not the module.** Migrating is a lifecycle
+  decision. A sibling hook deciding for itself could never be told "not this
+  session" — siblings run in parallel with no channel between them.
+- **An integer version, compared with `>=`.** The retired marker got this wrong
+  twice, first with an existence check that never re-ran on upgrade, then with a
+  semver comparison. A non-numeric recorded value reads as 0, so a machine carrying
+  the old semver string still gets cleaned.
+- **A live target is never touched.** A working status line is someone's working
+  status line, even if this plugin installed it.
+- **Only `gutt`-prefixed names in `~/.claude`.** That directory is shared with
+  Claude Code and every other plugin; an unprefixed 2.x name is not provably ours.
+- **Verbatim backup before any edit**, to `migrations/settings-backup-<ms>.json`.
+- **Never re-run**, even if the damage reappears — that would fight a user who
+  deliberately restored something.
+- **It says what it did, and that it did not do everything.** A clean report with no
+  stated exclusions reads as a claim to have covered everything.
+
+Deliberately **not** covered: state 2.x wrote into a project tree; unprefixed
+caches in `~/.claude`; the inert `gutt: {statusline: {}}` key some `settings.json`
+files carry (no reader, no attribution); data belonging to the separately-installed
+`gutt-subagent-hooks-plugin` (GP-868); and any `statusLine` whose target resolves.
+
+This re-opens the settings.json write ban that GP-863 closed, narrowly and by name
+in `tests/check-state-location.cjs`'s allowlist. The steady-state rule is unchanged
+and is what the e2e tier now asserts: **no hook ever adds a key to the user's
+settings** — the one sanctioned write is a removal of the plugin's own dead key.
 
 ## The shared lib — `shared/plugin-state.cjs`
 

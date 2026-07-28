@@ -61,6 +61,15 @@ function hashFile(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
+/** Parsed settings, or null when absent/unparseable. */
+function readUserSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(USER_SETTINGS, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 /** Every file under a directory tree, as paths relative to it. */
 function walk(dir, base = dir, found = []) {
   let entries = [];
@@ -105,6 +114,7 @@ describe(
     let staleBait;
     let freshBait;
     let userSettingsBefore;
+    let userSettingsKeysBefore;
 
     before(
       async () => {
@@ -120,6 +130,7 @@ describe(
         freshBait = plantSessionFile(dataDir, "e2e-fresh-bait", 0);
 
         userSettingsBefore = hashFile(USER_SETTINGS);
+        userSettingsKeysBefore = readUserSettings();
 
         run = await runClaude({
           projectDir,
@@ -321,14 +332,45 @@ describe(
       );
     });
 
-    it("never touches the user's settings.json (AC3)", () => {
-      // The retired sessionstart-setup.cjs wrote a statusline command into this
-      // file, and stored a session-scoped path that died with the session.
-      assert.equal(
-        hashFile(USER_SETTINGS),
-        userSettingsBefore,
-        "the session modified the user's global settings.json"
-      );
+    // The retired sessionstart-setup.cjs wrote a statusline command into this file,
+    // pointing at a session-scoped path that died with the session. AC3 banned that
+    // write, and this asserted the file came out byte-identical.
+    //
+    // GP-895 makes byte-identical the wrong assertion by construction: the 2.x
+    // cleanup removes exactly that dead statusLine, once per machine, so on a
+    // machine that still carries the damage a correct run *must* change this file.
+    // Weakening the check to "it changed, fine" would throw away the guard, so it
+    // is sharpened instead — the thing AC3 actually protects is that the plugin
+    // never *adds* to the user's settings, and a one-time removal of its own dead
+    // key is the opposite of the violation.
+    describe("the user's settings.json (AC3)", () => {
+      it("is unchanged, or changed only by the one-time 2.x cleanup", () => {
+        if (hashFile(USER_SETTINGS) === userSettingsBefore) {
+          return; // the common case: nothing to migrate, nothing touched
+        }
+        const after = readUserSettings();
+        assert.ok(after, "settings.json became unreadable — a rewrite went wrong");
+        const removed = Object.keys(userSettingsKeysBefore || {}).filter((k) => !(k in after));
+        assert.deepEqual(
+          removed,
+          ["statusLine"],
+          "the only key the migration may remove is a dead statusLine"
+        );
+        const backups = fs.existsSync(path.join(inlineDataDir(), "migrations"))
+          ? fs.readdirSync(path.join(inlineDataDir(), "migrations"))
+          : [];
+        assert.ok(backups.length > 0, "settings.json was rewritten with no backup recorded");
+      });
+
+      // The half that must hold unconditionally, migration or not. Nothing in 3.0
+      // may put a key into someone's global settings — that is the actual AC3 ban,
+      // and unlike the hash it stays meaningful on a machine that migrates.
+      it("never gains a key, migration or not", () => {
+        const after = readUserSettings();
+        assert.ok(after, "settings.json is unreadable after the run");
+        const added = Object.keys(after).filter((k) => !(k in (userSettingsKeysBefore || {})));
+        assert.deepEqual(added, [], `the plugin added keys to the user's settings: ${added}`);
+      });
     });
 
     it("injects the memory pointer as context, not as text the model surfaces", () => {
