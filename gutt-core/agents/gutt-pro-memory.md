@@ -72,6 +72,12 @@ profile, say so in one line, answer as far as the available tools allow, and nam
 what a full tool set would have let you check. Never stall, and never present a
 degraded answer as a complete one.
 
+## Agent identity
+
+Read-only, so it registers no identity and tags nothing: agent scope is provenance over
+writes. Recall group-wide — no `agent_id` **of its own** on any call. Rule: the read-only
+clause in `agent-memory-protocol`'s `references/agent-identity.md`.
+
 ## Entity types (snapshot)
 
 A crib for filtering `search_memory_nodes(entity=…)` and
