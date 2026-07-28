@@ -44,15 +44,26 @@ register_agent(
   explicitly — omitting it targets an unspecified one of your groups, not a fixed
   default. With exactly one group you may omit it.
 - If a later scoped call fails with an unknown-agent error, register again and retry.
+- **Read-only agents don't register.** Agent scope is provenance over _writes_, so an agent
+  that never writes has an empty scope by construction — registering buys it nothing, and
+  step 1 of Recall could only ever answer "No memories found for agent …". Skip registration,
+  skip tagging, recall group-wide only, and say so in one line where the agent describes itself.
 
 ## Write (as this agent): tag every write
 
 - When you act as this registered agent, pass `agent_id="<name>"` on **every** org-graph
   write you make (`add_memory` / `add_memory_to_<group>`). This stamps the episode as yours
   (provenance) and lets you recall it later from your own scope.
-- This rule is about authorship — it applies to writes _an agent_ makes. Memory captured
-  from the main session (e.g. the `memory-capture` skill used directly, with no agent)
+- This rule is about authorship — it applies to writes _an agent_ makes. Memory captured from
+  the main session with no agent involved (e.g. the `memory-capture` skill used directly)
   carries no `agent_id`; there is no agent identity to attach.
+- **When you capture another agent's run, tag that agent instead of yourself.** An episode
+  carries exactly one `agent_id` — a single scalar, with no list and no metadata
+  side-channel — so the choice is exclusive. A capture agent writing on its own account stamps
+  its own name; capturing a `gutt-mentor` run on that agent's behalf, it stamps
+  `agent_id="gutt-mentor"`. Decide **per episode, not per invocation** — one end-of-session run
+  can yield both. The delegating agent names itself in its delegation prompt; default to your
+  own name when it doesn't.
 - Tagging hides nothing: a tagged write is still found by anyone's un-scoped search — the
   tag only _adds_ it to your scope on top. So as an agent, always tag; there is no
   "leave it untagged" case for your own org writes.
@@ -93,8 +104,12 @@ is down.
 
 - **Names are identifiers, not to be reused.** Never adopt a similarly-named existing agent
   node from another context (repo/project) just because the name matches — it pollutes both
-  subgraphs. Create a new anchor. Rule of thumb: if more than ~30–50% of an existing anchor's
-  edges point at a different repo/project, it is not yours — make a new one.
+  subgraphs. Check _before_ you register, because there is no opting out afterwards:
+  registration MERGEs on **name + group**, so the same name in the same group always resolves to
+  the existing node — you cannot ask for a separate one. The only escapes are a different base
+  name or a `--<scope>` suffix, which lives in the name and so changes the merge key. Spotting a
+  foreign anchor: if more than ~30–50% of its edges point at a different repo/project, it isn't
+  yours.
 - **`last_n_episodes=0` on every org-scope write.**
 - **Personal scope stays untagged.** The server supports agent identity in personal scope
   too — don't use it: register in an org group, and keep personal-scope writes untagged.
