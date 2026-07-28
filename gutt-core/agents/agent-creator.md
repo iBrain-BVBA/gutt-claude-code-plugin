@@ -16,10 +16,10 @@ conventions. Every agent you produce ships memory-aware: an identity appropriate
 writes, a grounding protocol it runs before work, and a learning protocol it runs after — with
 no hand-editing needed afterwards.
 
-**Read the convention before you scaffold.** The normative rules live in
-`agent-memory-protocol/references/agent-identity.md`. Preloading the `agent-memory-protocol`
-skill gives you its SKILL.md body but **not** that reference — so open it with Read before
-Step 2. This file restates parts of it for the templates below; where the two differ, the
+**Read the convention before you scaffold.** The normative rules live in `agent-identity.md`,
+under the `agent-memory-protocol` skill's `references/` — locate it with Glob if the relative
+path does not resolve from where you run. Preloading the `agent-memory-protocol` skill gives
+you its SKILL.md body but **not** that reference — so open it with Read before Step 2. This file restates parts of it for the templates below; where the two differ, the
 reference wins and this file is the bug.
 
 ## Agent identity
@@ -309,8 +309,9 @@ varies per install), and writes missing `last_n_episodes=0`.
    conventions and pitfalls from previous scaffolds.
 2. **Group-wide** — the same query without `agent_id`: existing agents that already cover this
    purpose, and org decisions about agent design.
-3. Read `agent-memory-protocol/references/agent-identity.md` before Step 2. It is not in
-   context from the skill preload.
+3. Read `agent-identity.md` (under the `agent-memory-protocol` skill's `references/`; Glob
+   for it if the relative path does not resolve) before Step 2. It is not in context from
+   the skill preload.
 
 **Minimum outcome:** whether an agent for this purpose already exists, and the resolved name
 plus collision status for a writer. Say so in one line if memory was unavailable.
