@@ -23,8 +23,10 @@ Python 3 standard library only — no dependencies, no virtualenv. Each case is 
 `claude -p` call against a fast model, run eight at a time; a 8-variant × 14-case ×
 3-trial matrix is roughly 340 calls and about ten minutes.
 
-Results land in `evals/results/<suite>-<trials>t.json` (gitignored, they are large)
-alongside a committed `report.md`.
+Results land in `evals/results/<suite>-<trials>t-<variants>.json` (gitignored, they are
+large) alongside a committed `report.md`. The variant set is in the name because a run
+keyed on trial count alone overwrote an earlier round's raw records, and rounds are the
+unit of comparison here.
 
 ## Suites
 
@@ -32,14 +34,14 @@ alongside a committed `report.md`.
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | `stop-judge` | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
 
-Two extra probes live beside that suite, because the verdict is not the only thing a
-judge prompt has to get right:
+A verdict is not the only thing a judge prompt has to get right, so `leak_probe.py` sits
+beside that suite and asks whether a _fired_ verdict turns into the user's answer — a
+defect worth more than any accuracy gap in the tables below, and one the suite cannot see:
 
 ```bash
 cd evals
-python3 -m suites.stop_judge.shippable                        # guard violations, no calls
-python3 -m suites.stop_judge.leak_probe V14 --trials 6        # does a fire become the reply?
-python3 -m suites.stop_judge.leak_probe V14 --case trivial    # ... after a false fire
+python3 -m suites.stop_judge.leak_probe V14 --trials 6      # does a fire become the reply?
+python3 -m suites.stop_judge.leak_probe V14 --case trivial  # ... after a false fire
 ```
 
 Planned: `memory-capture` and `memory-search` skill evals — same corpus machinery, but
