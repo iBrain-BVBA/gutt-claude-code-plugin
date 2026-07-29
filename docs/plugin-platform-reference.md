@@ -6,8 +6,8 @@
 provenance, hook events and their output contracts.
 
 Not a transcription of the upstream page. This records the parts that bear on decisions
-already made here, one **correction** we need to verify, and capability we are not using.
-Read the source for anything else.
+already made here, one conflict with our own docs (§3, half resolved), and capability we
+are not using. Read the source for anything else.
 
 ## 1. Confirmed: only two keys work in a plugin's `settings.json`
 
@@ -50,7 +50,10 @@ for plugins that "add cost or scope a user should opt into". Precedence: the use
 `enabledPlugins` entry, then a dependency requirement, then `defaultEnabled`. Relevant to
 the `enabled` config surface.
 
-## 3. ⚠ Correction to verify: symlinks under `--plugin-dir`
+## 3. Symlinks: resolved for directory-source, open for `--plugin-dir`
+
+Confirmed by observation for a directory source; still unverified for `--plugin-dir`. The
+doc-read conflict is kept below because the reasoning is what bounds the resolution.
 
 Upstream, verbatim:
 
