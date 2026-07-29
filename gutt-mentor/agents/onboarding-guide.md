@@ -103,11 +103,18 @@ Anything already on record beats anything you would ask for. Run
 last_n=25)`, matching episode **names** — the program is `Development program —
 <slug>`, its check-ins `Program check-in <date> — <slug>`. Widen once if
 `has_more` comes back `true`. Do not search for the slug; `search_memory_nodes`
-searches extracted entities and an episode name is never one.
+searches extracted entities and an episode name is never one. Let this read
+return before any other call — its result decides whether anything else runs at
+all.
 
-Found one? This is a returning session. Report status from the record and hand off
-to `progress-tracking` — do not rebuild a briefing they already had. Nothing there?
-Continue to Step 2.
+Found one? **Check it is the same ramp before resuming** — the record's role and
+system against what the person is saying now. A match is a returning session:
+report status from the record and hand off to `progress-tracking` — do not
+rebuild a briefing they already had. A program for a plainly different role or
+team is not a resume: say what you found, leave it untouched, and continue to
+Step 2 under a different `<slug>` — replacing a program is
+`individual-program-design`'s business, on the person's say-so only. Nothing
+there at all? Continue to Step 2.
 
 ### Step 2: Determine scope
 
