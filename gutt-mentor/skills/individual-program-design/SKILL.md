@@ -32,7 +32,7 @@ one line.
    org scope only, and that is `agent-memory-protocol`'s business.
 3. **Privacy runs both ways.** Never copy personal-scope content into an
    org-scope write or into an org-memory query string. And every org-scope read
-   you issue while program content is in context must pass explicit `group_ids`
+   issued while program content is in context must pass explicit `group_ids`
    naming only org groups: omit it and the user's personal scope is _already_ in
    the default search scope, so private notes leak into what may become a shared
    briefing. An org write carries nothing personal and passes
@@ -46,9 +46,9 @@ one line.
    naming and skeleton below, and do **not** invent a new typed name prefix — the
    five (`Insight:` through `WorkingAgreement:`) belong to org captures in
    `memory-capture`.
-6. **Bare tool names.** Call `add_personal_memory` etc. by bare name; the
-   `mcp__…__` prefix varies per install — use whatever your tool list surfaces.
-   Never hardcode a prefix or assume a write tool's name.
+6. **Bare tool names.** Call `add_personal_memory`, `get_episodes`, etc. by
+   bare name; the `mcp__…__` prefix varies per install — use whatever your tool
+   list surfaces. Never hardcode a prefix or assume a write tool's name.
 
 ## When to use
 
@@ -76,12 +76,9 @@ than designing over the top of something already there. **Stop rule:** two
 searches and one reformulation is the whole recall — then treat the program as
 absent and design. Never walk a person's personal scope looking for it.
 
-**Anchors** — take each from a read, never hand-build an id:
-
-| Anchor                   | From                                | What it anchors            |
-| ------------------------ | ----------------------------------- | -------------------------- |
-| the program `<slug>`     | the program episode's name          | every search on the thread |
-| the program episode's id | `get_episodes(group_id="personal")` | the first check-in's chain |
+**Anchor:** the program `<slug>`, taken verbatim from the program episode's
+name — every search on the thread carries it. Episode ids are chaining anchors,
+and chaining is `progress-tracking`'s business.
 
 ## The design path
 
@@ -145,8 +142,8 @@ add_personal_memory(
 ## Degradation
 
 Probe with ToolSearch before concluding a tool is missing; `add_personal_memory`
-is `core`-tagged but version `3.0`, so an install pinned below that never shows
-it (`memory-search` → `references/tools.md` maps the gates). If it is hidden, or
+can be hidden by a deployment's version gate (`memory-search` →
+`references/tools.md` maps the gates). If it is hidden, or
 the call is denied for want of a login: **do not drop the program.** Put the
 filled-in skeleton in your reply so the user keeps it, note the degradation in
 one line, and retry when a write tool returns. Never substitute an org-scope

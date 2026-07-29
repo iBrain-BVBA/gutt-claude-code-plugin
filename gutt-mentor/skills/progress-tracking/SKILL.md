@@ -31,21 +31,22 @@ gutt-core plugin. Without it, follow the rules below and note the gap in one lin
    recently in that person's personal scope, not to this program's last check-in.
 3. **No agent identity in personal scope.** Do not pass `agent_id` on a personal
    read or write. The parameter exists and works — leaving it off is a deliberate
-   policy for 3.0, not a server limitation. Identity is org-scope only, and
-   `agent-memory-protocol`'s business.
+   policy for 3.0, not a server limitation. Registration and tagging happen in
+   org scope only, and that is `agent-memory-protocol`'s business.
 4. **Privacy runs both ways.** Never copy personal-scope content into an
    org-scope write or into an org-memory query string. And every org-scope read
    issued while program content is in context must pass explicit `group_ids`
-   naming only org groups: omit it and the personal scope is _already_ in the
-   default search scope, so private notes leak into a shared briefing. An org
-   write carries nothing personal and passes `last_n_episodes=0`.
+   naming only org groups: omit it and the user's personal scope is _already_ in
+   the default search scope, so private notes leak into what may become a shared
+   briefing. An org write carries nothing personal and passes
+   `last_n_episodes=0` (`memory-capture`).
 5. **Report the record; never fill in its gaps.** A milestone is `done` only
    because the record or the user says so — inferring one corrupts every later
    summary. No program found → say so and hand off to
    `individual-program-design`; never rebuild one from what you were just told.
-6. **Bare tool names.** Call `get_episodes` etc. by bare name; the `mcp__…__`
-   prefix varies per install — use whatever your tool list surfaces. Never
-   hardcode a prefix or assume a write tool's name.
+6. **Bare tool names.** Call `add_personal_memory`, `get_episodes`, etc. by
+   bare name; the `mcp__…__` prefix varies per install — use whatever your tool
+   list surfaces. Never hardcode a prefix or assume a write tool's name.
 
 ## When to use
 
@@ -58,8 +59,8 @@ codebase (`memory-search`).
 
 1. **Find the program.**
    `search_memory_nodes(query="development program <focus>", group_ids=["personal"])`.
-   Phrasing and reformulation are `memory-search` rung 1's job; what you need out
-   of it is the `<slug>` every episode in the thread carries.
+   Phrasing and reformulation are `memory-search`'s first-pass job; what you
+   need out of it is the `<slug>` every episode in the thread carries.
 2. **Pull the episodes.** `get_episodes(group_id="personal", last_n=25)`.
    Chronological, not relevance-ranked, so a generous `last_n` beats paging — and
    do not trust position for order: sort on the `## Date` line in each body.
@@ -140,14 +141,15 @@ add_personal_memory(
 
 **Then verify, once.** Success means _queued_, not stored; personal episodes
 process sequentially in arrival order. Read it back once — empty on the first
-look means still processing, so re-check rather than re-write. **A chain cannot
-be batched:** each check-in needs its predecessor's resolved id, so write one,
-verify, then chain the next. Batch only episodes that do not chain.
+look means still processing, so re-check rather than re-write. **Do not batch a
+chain:** take each predecessor id from a read — never mint or pre-assign one —
+so write one check-in, verify, then chain the next. Batch only episodes that do
+not chain.
 
 ## Degradation
 
 Probe with ToolSearch before concluding a tool is missing; `add_personal_memory`
-is version `3.0` and absent on an install pinned below it (`memory-search` →
+can be hidden by a deployment's version gate (`memory-search` →
 `references/tools.md` maps the gates). If reads are unavailable, say plainly that
 you cannot see the program rather than working from what the user just told you.
 If the write is unavailable or denied for want of a login, put the filled-in
