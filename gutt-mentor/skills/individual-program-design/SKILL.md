@@ -46,9 +46,9 @@ one line.
    naming and skeleton below, and do **not** invent a new typed name prefix — the
    five (`Insight:` through `WorkingAgreement:`) belong to org captures in
    `memory-capture`.
-6. **Bare tool names.** Call `add_personal_memory`, `get_episodes`, etc. by
-   bare name; the `mcp__…__` prefix varies per install — use whatever your tool
-   list surfaces. Never hardcode a prefix or assume a write tool's name.
+6. **Never hardcode a tool prefix.** The `mcp__…__` prefix varies per install,
+   so call `add_personal_memory`, `get_episodes`, etc. by whatever name your
+   tool list actually surfaces — and never assume a write tool's name.
 
 ## When to use
 
@@ -61,20 +61,25 @@ status (`progress-tracking`), nor for any org-scope capture (`memory-capture`).
 
 Two passes that ask **different questions** — not one question twice:
 
-1. **Personal — "does this person already have a program?"** Run
-   `progress-tracking`'s read step. If one comes back you are amending, not
-   designing.
+1. **Personal — "does this person already have a program?"**
+   `search_memory_nodes(query="development program <focus>", group_ids=["personal"])`.
+   If one comes back you are amending, not designing — reading the whole thread
+   is `progress-tracking`'s job, not this one's.
 2. **Org — "what does the org know about ramping up in this role?"** Only when
    the org plausibly has a path worth reusing, and only with explicit `group_ids`
    naming org groups (rule 3). Phrase it about the _role_ — "platform on-call
    ramp expectations" — never their name, their gaps, or anything they told you
-   in confidence.
+   in confidence. **Name that org group from something real:** a per-group write
+   tool your list surfaces (`add_memory_to_<group>`), or the user. If you cannot
+   name one, **skip this pass** — a guessed group name is a fabricated
+   identifier, not a search.
 
 **Minimum outcome before you elicit anything:** whether a program already exists,
 and its `<slug>` if it does. Cannot establish that? Say so in one line rather
-than designing over the top of something already there. **Stop rule:** two
-searches and one reformulation is the whole recall — then treat the program as
-absent and design. Never walk a person's personal scope looking for it.
+than designing over the top of something already there. **Stop rule:** one
+personal search, at most one org search, and one reformulation between them is
+the whole recall — then treat the program as absent and design. Never walk a
+person's personal scope looking for it.
 
 **Anchor:** the program `<slug>`, taken verbatim from the program episode's
 name — every search on the thread carries it. Episode ids are chaining anchors,
@@ -88,16 +93,22 @@ and chaining is `progress-tracking`'s business.
 2. **Set milestones.** Default cadence: **day 1 / week 1 / day 30 / day 60 / day
    90**, with check-ins triggered by reaching a milestone rather than by the
    calendar. Offer it and take the user's override — a six-week ramp or a weekly
-   rhythm is fine; keep the shape, move the marks.
+   rhythm is fine; keep the shape, move the marks. Every milestone marks progress
+   toward a goal the person actually stated: filling a cadence slot is never a
+   reason to introduce a goal, a tool, or a person they never mentioned. Fewer
+   rows beats invented ones.
 3. **Record the open questions.** Whatever you could not settle: an undecided
    owner, missing access, an unclear success measure. They belong in the record,
    not in your head.
 4. **Confirm, then write** one episode per the record below. Replacing an
    existing program is a new episode naming what changed — never a silent
    rewrite, never an edit of the old one.
-5. **Verify once.** Success means _queued_, not stored, so read the program back
-   once. Empty on the first look means still processing, not lost — re-check
-   rather than re-write, because a second write is a duplicate.
+5. **Verify once, with a targeted search** — not by paging episodes:
+   `search_memory_nodes(query="<slug>", group_ids=["personal"])`. Success means
+   _queued_, not stored. Two misses look alike and **neither means it was lost**:
+   nothing found at all, or a result set that simply does not carry it yet.
+   Either way re-check once; never re-write, because a second write is a
+   duplicate.
 
 ## The program record
 

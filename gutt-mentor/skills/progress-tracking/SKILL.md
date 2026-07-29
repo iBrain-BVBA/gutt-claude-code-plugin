@@ -44,9 +44,9 @@ gutt-core plugin. Without it, follow the rules below and note the gap in one lin
    because the record or the user says so — inferring one corrupts every later
    summary. No program found → say so and hand off to
    `individual-program-design`; never rebuild one from what you were just told.
-6. **Bare tool names.** Call `add_personal_memory`, `get_episodes`, etc. by
-   bare name; the `mcp__…__` prefix varies per install — use whatever your tool
-   list surfaces. Never hardcode a prefix or assume a write tool's name.
+6. **Never hardcode a tool prefix.** The `mcp__…__` prefix varies per install,
+   so call `add_personal_memory`, `get_episodes`, etc. by whatever name your
+   tool list actually surfaces — and never assume a write tool's name.
 
 ## When to use
 
@@ -61,9 +61,13 @@ codebase (`memory-search`).
    `search_memory_nodes(query="development program <focus>", group_ids=["personal"])`.
    Phrasing and reformulation are `memory-search`'s first-pass job; what you
    need out of it is the `<slug>` every episode in the thread carries.
-2. **Pull the episodes.** `get_episodes(group_id="personal", last_n=25)`.
-   Chronological, not relevance-ranked, so a generous `last_n` beats paging — and
-   do not trust position for order: sort on the `## Date` line in each body.
+2. **Pull the episodes.** `get_episodes(group_id="personal", last_n=25)` —
+   chronological, not relevance-ranked, so a generous `last_n` beats paging.
+   **Never read order off position:** the newest episode can be the _last_ row
+   rather than the first, and a page smaller than the scope can leave a recent
+   write out altogether. Sort on the `## Date` line in each body, and if a
+   check-in you expect is missing, widen `last_n` or search the `<slug>`
+   directly before concluding it is not there.
 3. **Keep the thread** — the program plus the check-ins carrying the same
    `<slug>`. The rest of that person's personal scope is not this skill's
    business.
@@ -74,7 +78,9 @@ codebase (`memory-search`).
 
 An org-scope read is usually unnecessary here. If you make one it asks a
 genuinely different question — "what does the org expect of this role?", never
-"how is this person doing" — with explicit `group_ids` (rule 4).
+"how is this person doing" — with explicit `group_ids` (rule 4), naming a group
+you got from a per-group write tool in your list or from the user. Cannot name
+one? Skip it; a guessed group name is a fabricated identifier, not a search.
 
 **Minimum outcome before you summarize or write:** the goals and milestone table,
 every check-in with its date, and the identifier of the newest one — your
@@ -139,9 +145,12 @@ add_personal_memory(
   previous_episodes=["<the previous check-in, or the program for the first>"])
 ```
 
-**Then verify, once.** Success means _queued_, not stored; personal episodes
-process sequentially in arrival order. Read it back once — empty on the first
-look means still processing, so re-check rather than re-write. **Do not batch a
+**Then verify, once — with a targeted search,** not by paging:
+`search_memory_nodes(query="<slug>", group_ids=["personal"])`. Success means
+_queued_, not stored; personal episodes process sequentially in arrival order.
+Two misses look alike and **neither means the write was lost**: nothing found at
+all, or a result set that comes back without the new episode in it. Both call for
+one re-check, never a second write. **Do not batch a
 chain:** take each predecessor id from a read — never mint or pre-assign one —
 so write one check-in, verify, then chain the next. Batch only episodes that do
 not chain.

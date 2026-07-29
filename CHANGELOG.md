@@ -23,7 +23,25 @@
 
 ### Added
 
-- New `gutt-mentor` plugin with two domain-neutral skills over the **personal** memory scope, for the onboarding agent to consume: `individual-program-design` (elicit goals, set milestones on a default day 1 / week 1 / day 30 / 60 / 90 cadence, persist the program as one self-contained `add_personal_memory` episode with `last_n_episodes=0`) and `progress-tracking` (read the program plus its check-in thread back, reconstruct goals / milestone status / next actions / last check-in date, then write the next check-in chained with an explicit `previous_episodes`). Both forbid `agent_id` in personal scope, and forbid leaking personal content into org writes or org query strings — including inbound, since an org read without explicit `group_ids` already covers the personal scope. Ships no hooks; a worked round-trip lives in `skills/progress-tracking/references/round-trip.md` (GP-883, E7 mentor shared skill base)
+- New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
+  memory scope, for the onboarding agent to consume. Ships no hooks.
+  (GP-883, E7 mentor shared skill base)
+  - `individual-program-design` — elicit goals, set milestones on a default
+    day 1 / week 1 / day 30 / 60 / 90 cadence, and persist the program as one
+    self-contained `add_personal_memory` episode with `last_n_episodes=0`.
+  - `progress-tracking` — read the program plus its check-in thread back,
+    reconstruct goals / milestone status / next actions / last check-in date,
+    then write the next check-in chained with an explicit `previous_episodes`.
+  - Both forbid `agent_id` in personal scope, and forbid leaking personal
+    content into org writes or org query strings — including inbound, since an
+    org read without explicit `group_ids` already covers the personal scope.
+  - Worked round-trip:
+    `gutt-mentor/skills/progress-tracking/references/round-trip.md`.
+- Skill-frontmatter guard covering **every** marketplace plugin, not just
+  gutt-core: each `skills/*/SKILL.md` must carry parseable frontmatter whose
+  `name` matches its directory, and a `description`. Plugin list is read from
+  `marketplace.json`, so a new plugin is covered without editing a second list
+  (`tests/hook-architecture.test.cjs`)
 - `memory-search` skill (gutt-core): the adaptive, relevance-gated memory-search discipline — rung 1 = one `search_memory_nodes` + `search_memory_facts` pass, judged for relevance and reformulated (not paginated) when weak; a relevance gate that reports "no relevant memory found" rather than stretching a distractor; rung 2 narrowing filters; rung 3 traversal handoff to `graph-traversal`; summary-first episode rules and tool-tier degradation. Rung-1 shape validated on a 50-query live-graph benchmark (top-3 hit-rate 86% vs 58% for a fixed single pass; zero false answers on absent-topic queries). Exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)
 
 ### Deprecated
