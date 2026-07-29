@@ -32,9 +32,8 @@ gutt-core plugin. Without it, follow the rules below and note the gap in one lin
    omitted, and its default of `3` chains you to whatever was written most
    recently in that person's personal scope, not to this program's last check-in.
 3. **No agent identity in personal scope.** Do not pass `agent_id` on a personal
-   read or write. The parameter exists and works — leaving it off is a deliberate
-   policy, not a server limitation. Registration and tagging happen in
-   org scope only, and that is `agent-memory-protocol`'s business.
+   read or write. Registration and tagging happen in org scope only, and that is
+   `agent-memory-protocol`'s business.
 4. **Privacy runs both ways.** Never copy personal-scope content into an
    org-scope write or into an org-memory query string. And every org-scope read
    issued while program content is in context must pass explicit `group_ids`
