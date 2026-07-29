@@ -11,9 +11,12 @@ to teammates, to every other project on the machine, and to gutt search. This
 skill moves it across exactly once, and is the only place in the plugin that
 deletes a user's memory files.
 
-It builds on `memory-capture` (how to write) and `memory-search` (how to dedup and
-verify) rather than restating them. Read this file's rules first; they are stricter
-than the general ones because the local copy is destroyed at the end.
+It builds on `memory-capture` (how to write), `memory-search` (how to dedup and
+verify) and `conflict-adjudication` (what to do when a local note and the graph
+disagree) rather than restating them. Migration does not get its own dedup or
+conflict rules — it is a bulk caller of those skills, and a store is the largest
+batch of writes the plugin ever makes. Read this file's rules first; they are
+stricter than the general ones because the local copy is destroyed at the end.
 
 ## Hard rules (non-negotiable — read first)
 
@@ -81,11 +84,26 @@ If `settled` is true, stop and say so — this project has already been answered
    JSON under `${CLAUDE_PLUGIN_DATA}/migrations/`, which is exempt from the session
    sweep and so outlives the session. `ok: false` → stop; without a backup nothing
    may be deleted anyway.
-6. **Dedup, then write, in batches of 5–10.** For each batch: run `memory-search`
-   rung 1 on each fact's `description` and skip anything already in the graph
-   (`memory-capture` rule 1 — a near-match is a reason to write _less_). Write the
-   rest, `last_n_episodes=0` on every org write (rule 3), one episode per fact, a
-   typed `name` prefix per the mapping below.
+6. **Dedup, then write, in batches of 5–10.** For each batch, run `memory-search`
+   rung 1 on each fact's `description` and sort what comes back three ways
+   (`memory-capture` rule 1):
+   - **no match** → write it;
+   - **near-match that agrees** → a reason to write _less_, never to rewrite the
+     older entry: write only the delta, or skip the fact entirely;
+   - **near-match that contradicts** → **not a dedup.** Stop on that fact, take the
+     pair to `conflict-adjudication`, and write only what it recommends. Leave the
+     file in the store meanwhile: an unwritten fact records no episode id, so the
+     deletion gate in step 9 already keeps it without any special handling here.
+
+   The contradicting branch is not a corner case in this skill — a migrating store is
+   where contradictions are _most_ likely. These notes accumulated locally over months
+   while the team kept writing to the graph, and neither side has seen the other.
+   Writing a whole store in batches without checking would let a stale local note
+   land as the newest word on something the team already decided differently.
+
+   Write the rest with `last_n_episodes=0` on every org write (rule 3), one episode
+   per fact, a typed `name` prefix per the mapping below.
+
 7. **Verify.** After each batch, **one** search for the episodes just written.
    Extraction is asynchronous, so an immediate miss may only mean not-yet-processed —
    re-check once before concluding anything is missing.
@@ -180,6 +198,9 @@ TL;DR of that work, last, per `memory-capture`.
 - `memory-capture` — write discipline: tier gate (rule 2), `last_n_episodes=0`
   (rule 3), tool discovery (rule 4), queued-≠-confirmed (rule 6).
 - `memory-search` — rung 1, used here for both dedup and verification.
+- `conflict-adjudication` — for a local fact that _contradicts_ something already in
+  the graph (step 6). It recommends supersede / coexist / escalate and never rewrites
+  memory itself; the approved correction is written back through `memory-capture`.
 - `shared/builtin-memory.cjs` — how the store is located and what counts as a fact.
 - `shared/builtin-memory-store.cjs` — backup, verification record, and the deletion
   gate; also holds the standing note left in `MEMORY.md`.

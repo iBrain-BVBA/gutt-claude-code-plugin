@@ -281,6 +281,41 @@ describe("hook architecture guards", () => {
     );
   });
 
+  // Migration is a bulk *caller* of the memory skills, not a second implementation of
+  // them. It writes a whole store in batches and then deletes the local copy, so any
+  // dedup or conflict rule it fails to honour is multiplied by every fact in the store
+  // and the original is gone. GP-922's flow shipped naming only `memory-capture` and
+  // `memory-search`: a local note that *contradicted* the graph would have been
+  // written as the newest word on its subject, in bulk, rather than going to the
+  // `conflict-adjudication` skill GP-861 exists to provide. Nothing at runtime notices
+  // a missing delegation — the migration just quietly does its own thing.
+  //
+  // The three are asserted as identifiers rather than sentences: dropping a delegation
+  // fails the first assertion, renaming a skill directory fails the second, and
+  // rewording the prose around them fails neither.
+  it("migrate-memory delegates to the memory skills instead of reimplementing them", () => {
+    const skillsDir = path.join(ROOT, "gutt-core", "skills");
+    const body = fs.readFileSync(path.join(skillsDir, "migrate-memory", "SKILL.md"), "utf8");
+    const required = ["memory-capture", "memory-search", "conflict-adjudication"];
+
+    const missing = required.filter((stem) => !body.includes(`\`${stem}\``));
+    assert.deepEqual(
+      missing,
+      [],
+      `migrate-memory names no delegation to: ${missing.join(", ")} — a store is the ` +
+        `largest batch of writes this plugin makes, and these skills are what bound it`
+    );
+
+    const dangling = required.filter(
+      (stem) => !fs.existsSync(path.join(skillsDir, stem, "SKILL.md"))
+    );
+    assert.deepEqual(
+      dangling,
+      [],
+      `migrate-memory delegates to skills that do not exist: ${dangling.join(", ")}`
+    );
+  });
+
   // The Stop judge re-fires every time it answers ok:false, because the reason is
   // fed back and the turn continues. Without an explicit stopping rule it re-asks
   // on every re-entry: measured at 16 consecutive ok:false verdicts on one turn,
