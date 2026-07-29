@@ -45,16 +45,53 @@ const { guard } = require("./lib/debug.cjs");
  */
 const SEARCH_SKILL = "gutt-claude-code-plugin:memory-search";
 
-/** Context for the first prompt of a new session. */
+/**
+ * Context for the first prompt of a new session.
+ *
+ * Firm, and deliberately more so than the first version, which closed with "it is
+ * worth running before non-trivial work when history is likely to matter" and was
+ * observed being read and skipped on a task where history plainly did matter. Two
+ * stacked hedges ("worth running", "likely to matter") leave the agent deciding
+ * whether history matters *before* it has looked — which is the one judgement it
+ * cannot make without running the skill. So the default is inverted here: recall
+ * unless the request visibly carries no history, with the exceptions named so the
+ * out is concrete rather than a matter of taste.
+ *
+ * Firm is not the same as the framing R23/GP-868 rules out. What backfires is
+ * *out-of-band command* framing — the 2.x "MANDATORY REQUIREMENT — YOU MUST" shape
+ * that reads as an injected system directive and trips Claude's prompt-injection
+ * defenses, surfacing the text to the user instead of acting on it. Plain
+ * imperative sentences addressed to Claude are not that; the hooks reference asks
+ * for factual statements over pseudo-system commands, not for hedged ones.
+ *
+ * The closing line is the load-bearing part: it does not add pressure, it makes an
+ * unaccountable skip impossible. Silence was how the weak version failed.
+ *
+ * Note what that line is scoped to, because it is easy to widen by accident. It asks
+ * for a visible reason only on work large enough to have history — so a trivial
+ * prompt still gets a bare answer with no mention of memory in it. The fixture in
+ * `tests/e2e/session-lifecycle.e2e.cjs` depends on exactly that: it sends "Reply with
+ * exactly: pong" and asserts the reply matches none of /memory|gutt|skill|instruction/,
+ * which is how it detects the injection being surfaced to the user instead of consumed.
+ * Asking for a skip note unconditionally would make a compliant model fail that
+ * assertion, and that assertion is the only live detector of the GP-868 failure mode.
+ */
 const SEARCH_CONTEXT =
-  "This session has organizational memory available through gutt. " +
-  `The \`${SEARCH_SKILL}\` skill recalls prior decisions, lessons, and past work on a topic; ` +
-  "it is worth running before non-trivial work when history is likely to matter.";
+  "This session has organizational memory available through gutt, holding context this " +
+  "repository does not: prior decisions and why they were made, lessons already learned, " +
+  `and how earlier attempts went. Run the \`${SEARCH_SKILL}\` skill before starting ` +
+  "substantive work on this request — recall first, then act. It is a fast read-only " +
+  "lookup, and what it returns regularly changes what the right answer is. Going ahead " +
+  "without it is reasonable only when the request carries no history to find: a greeting, " +
+  "a self-contained factual question, or a purely mechanical edit. On anything larger, " +
+  "decide against recalling only out loud — one short line saying why — never silently.";
 
 /** Context for the first prompt after a compaction, where the recap is lossy. */
 const REGROUND_CONTEXT =
-  "This conversation was just compacted, so earlier detail is summarized rather than complete. " +
-  `The \`${SEARCH_SKILL}\` skill can re-ground specifics that the summary dropped.`;
+  "This conversation was just compacted, so earlier detail is summarized rather than " +
+  "complete — including anything recalled from memory before the compaction, which the " +
+  `summary keeps only as conclusions. Run the \`${SEARCH_SKILL}\` skill before continuing ` +
+  "this work to re-ground the specifics it dropped, rather than proceeding from the recap.";
 
 let input = "";
 process.stdin.setEncoding("utf8");
