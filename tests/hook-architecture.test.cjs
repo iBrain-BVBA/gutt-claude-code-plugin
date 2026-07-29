@@ -137,11 +137,11 @@ describe("hook architecture guards", () => {
   });
 
   // Every skill in every marketplace plugin, not just gutt-core's. A skill is
-  // loaded through its frontmatter, so an unparseable block — or a `name` that
-  // disagrees with the directory the loader found it in — leaves the model told
-  // to invoke something that will not resolve. Nothing else in this suite reads a
-  // plugin outside gutt-core, so before this test a whole plugin's skills could
-  // drift with CI green.
+  // loaded through its frontmatter, so a missing or malformed block — or a `name`
+  // that disagrees with the directory the loader found it in — leaves the model
+  // told to invoke something that will not resolve. Nothing else in this suite
+  // reads a plugin outside gutt-core, so before this test a whole plugin's skills
+  // could drift with CI green.
   it("every marketplace plugin's skills have frontmatter naming their directory", () => {
     const defects = [];
     for (const plugin of marketplacePluginDirs()) {

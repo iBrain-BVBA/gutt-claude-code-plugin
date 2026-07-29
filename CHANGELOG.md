@@ -38,10 +38,10 @@
   - Worked round-trip:
     `gutt-mentor/skills/progress-tracking/references/round-trip.md`.
 - Skill-frontmatter guard covering **every** marketplace plugin, not just
-  gutt-core: each `skills/*/SKILL.md` must carry parseable frontmatter whose
-  `name` matches its directory, and a `description`. Plugin list is read from
-  `marketplace.json`, so a new plugin is covered without editing a second list
-  (`tests/hook-architecture.test.cjs`)
+  gutt-core: each `skills/*/SKILL.md` must carry a delimited frontmatter block
+  whose `name` matches its directory, and a `description`. Plugin list is read
+  from `marketplace.json`, so a new plugin is covered without editing a second
+  list (`tests/hook-architecture.test.cjs`)
 - `memory-search` skill (gutt-core): the adaptive, relevance-gated memory-search discipline — rung 1 = one `search_memory_nodes` + `search_memory_facts` pass, judged for relevance and reformulated (not paginated) when weak; a relevance gate that reports "no relevant memory found" rather than stretching a distractor; rung 2 narrowing filters; rung 3 traversal handoff to `graph-traversal`; summary-first episode rules and tool-tier degradation. Rung-1 shape validated on a 50-query live-graph benchmark (top-3 hit-rate 86% vs 58% for a fixed single pass; zero false answers on absent-topic queries). Exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)
 
 ### Deprecated
