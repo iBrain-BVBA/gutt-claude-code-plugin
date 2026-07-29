@@ -23,7 +23,9 @@ gutt-core plugin. Without it, follow the rules below and note the gap in one lin
    `search_personal_memory` tool. Pass `group_ids: ["personal"]` — plural, an
    array — to `search_memory_nodes`, `search_memory_facts`,
    `fetch_lessons_learned` and `list_entities`; `get_episodes` takes singular
-   `group_id: "personal"`.
+   `group_id: "personal"`. That scope is **the authenticated user's own**, derived
+   from the login — so you are always reading and writing your own program, never
+   someone else's.
 2. **Chain the check-in explicitly** with
    `previous_episodes=["<predecessor id>"]` from the read — an episode UUID or a
    semantic ID. `last_n_episodes` applies **only** when `previous_episodes` is
@@ -57,17 +59,23 @@ codebase (`memory-search`).
 
 ## Reading the thread
 
-1. **Find the program.**
-   `search_memory_nodes(query="development program <focus>", group_ids=["personal"])`.
-   Phrasing and reformulation are `memory-search`'s first-pass job; what you
-   need out of it is the `<slug>` every episode in the thread carries.
-2. **Pull the episodes.** `get_episodes(group_id="personal", last_n=25)` —
-   chronological, not relevance-ranked, so a generous `last_n` beats paging.
-   **Never read order off position:** the newest episode can be the _last_ row
-   rather than the first, and a page smaller than the scope can leave a recent
-   write out altogether. Sort on the `## Date` line in each body, and if a
-   check-in you expect is missing, widen `last_n` or search the `<slug>`
-   directly before concluding it is not there.
+1. **Find the program in the episode list — not by searching for it.**
+   `get_episodes(group_id="personal", last_n=25)`, then match episode **names**:
+   the program is `Development program — <slug>`, its check-ins
+   `Program check-in <date> — <slug>`. This is the only locator that works, and
+   the trap is worth stating plainly: `search_memory_nodes` searches **extracted
+   entities**, and a `<slug>` is never an entity — it exists only in an episode
+   name. Searching the slug returns nothing whether or not the program is there,
+   so it can neither find a program nor prove one is absent.
+2. **Read the list carefully.** A generous `last_n` beats paging, because a page
+   smaller than the scope can leave a recent write out altogether. **Never read
+   order off position:** the list is ordered by each episode's _reference time_,
+   which the writer can set, so a backdated episode sorts by its own date rather
+   than by when it arrived — the newest is usually the last row, but not
+   dependably. Sort on the `## Date` line in each body.
+   `search_memory_nodes(query="<the program's subject>", group_ids=["personal"])`
+   is useful for a different question — what the graph has extracted about the
+   work itself — never for locating the thread.
 3. **Keep the thread** — the program plus the check-ins carrying the same
    `<slug>`. The rest of that person's personal scope is not this skill's
    business.
@@ -84,17 +92,17 @@ one? Skip it; a guessed group name is a fabricated identifier, not a search.
 
 **Minimum outcome before you summarize or write:** the goals and milestone table,
 every check-in with its date, and the identifier of the newest one — your
-chaining predecessor. **Stop rule:** one search, one reformulation, one
-`get_episodes`. If the thread is not there, report "no program found" and hand
-off; never sweep a person's personal scope hoping it turns up.
+chaining predecessor. **Stop rule:** one `get_episodes`, widened once if the
+thread looks truncated. If it is still not there, report "no program found" and
+hand off; never sweep a person's personal scope hoping it turns up.
 
 **Anchors** — take each from a read, never hand-build an id:
 
 | Anchor                   | From   | What it anchors                           |
 | ------------------------ | ------ | ----------------------------------------- |
-| the program `<slug>`     | step 1 | every search on the thread                |
-| the newest check-in's id | step 2 | `previous_episodes` for the next check-in |
-| the program episode's id | step 2 | the predecessor for the _first_ check-in  |
+| the program `<slug>`     | step 1 | which episodes belong to the thread       |
+| the newest check-in's id | step 1 | `previous_episodes` for the next check-in |
+| the program episode's id | step 1 | the predecessor for the _first_ check-in  |
 
 ## The status summary
 
@@ -135,7 +143,9 @@ verbatim. Headings stay as written — the next session parses them.
 ```
 
 Status vocabulary and dates are the program record's. Carry an unanswered
-question forward; drop it once it is answered.
+question forward; drop it once it is answered. The `(by <date>)` on a next action
+is **optional** — attach one only if the person gave one, because inventing a
+deadline is inventing a fact (rule 5).
 
 ```
 add_personal_memory(
@@ -145,15 +155,20 @@ add_personal_memory(
   previous_episodes=["<the previous check-in, or the program for the first>"])
 ```
 
-**Then verify, once — with a targeted search,** not by paging:
-`search_memory_nodes(query="<slug>", group_ids=["personal"])`. Success means
-_queued_, not stored; personal episodes process sequentially in arrival order.
-Two misses look alike and **neither means the write was lost**: nothing found at
-all, or a result set that comes back without the new episode in it. Both call for
-one re-check, never a second write. **Do not batch a
-chain:** take each predecessor id from a read — never mint or pre-assign one —
-so write one check-in, verify, then chain the next. Batch only episodes that do
-not chain.
+**Then verify, once,** the same way you found the thread — re-run
+`get_episodes(group_id="personal", last_n=25)` and match the check-in's name.
+Success means _queued_, not stored; personal episodes process sequentially in
+arrival order, so a miss on the first look is ordinary and **never means the write
+was lost**. Two causes look identical; `has_more` tells them apart. Still `true`
+means the page was truncated — widen `last_n`. Already `false` means the page was
+complete and the episode is merely still processing — pause briefly and re-run the
+same call, because widening reaches nothing that is not there yet. Either way: one
+re-check, never a second write. **Do not batch a chain:** take each predecessor id
+from a read — never mint or pre-assign one — so write one check-in, verify, then
+chain the next. Read that id fresh rather than reusing one from earlier in the
+session: these short ids carry a collision suffix, and an episode's id gains one
+(`…:Progr` becoming `…:Progr:0`) as siblings with the same name stem appear.
+Batch only episodes that do not chain.
 
 ## Degradation
 

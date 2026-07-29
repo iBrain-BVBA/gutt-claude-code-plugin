@@ -25,7 +25,11 @@ one line.
    `group_id` at all** — the namespace is derived server-side from the login and
    authorized on every call. Without an OAuth login carrying a stable user id the
    call is **denied, not downgraded**. Never write a person's program to an org
-   group instead; hand the draft back (see Degradation).
+   group instead; hand the draft back (see Degradation). Because the namespace
+   comes from the login, it is **the authenticated user's own** scope — there is
+   no way to write into someone else's. This skill serves whoever is running it,
+   for themselves; run on someone else's behalf it would file their program under
+   your name, so say that rather than doing it.
 2. **No agent identity in personal scope.** Do not pass `agent_id` on a personal
    read or write. The parameter exists and works — leaving it off is a deliberate
    policy for 3.0, not a server limitation. Registration and tagging happen in
@@ -62,9 +66,12 @@ status (`progress-tracking`), nor for any org-scope capture (`memory-capture`).
 Two passes that ask **different questions** — not one question twice:
 
 1. **Personal — "does this person already have a program?"**
-   `search_memory_nodes(query="development program <focus>", group_ids=["personal"])`.
-   If one comes back you are amending, not designing — reading the whole thread
-   is `progress-tracking`'s job, not this one's.
+   `get_episodes(group_id="personal", last_n=25)`, looking for an episode named
+   `Development program — <slug>`. Match the **name**; do not search for the
+   slug. `search_memory_nodes` searches extracted entities, and a `<slug>` is
+   never an entity — it lives only in an episode name, so searching it returns
+   nothing whether or not a program exists. If one comes back you are amending,
+   not designing — reading the whole thread is `progress-tracking`'s job.
 2. **Org — "what does the org know about ramping up in this role?"** Only when
    the org plausibly has a path worth reusing, and only with explicit `group_ids`
    naming org groups (rule 3). Phrase it about the _role_ — "platform on-call
@@ -77,9 +84,8 @@ Two passes that ask **different questions** — not one question twice:
 **Minimum outcome before you elicit anything:** whether a program already exists,
 and its `<slug>` if it does. Cannot establish that? Say so in one line rather
 than designing over the top of something already there. **Stop rule:** one
-personal search, at most one org search, and one reformulation between them is
-the whole recall — then treat the program as absent and design. Never walk a
-person's personal scope looking for it.
+episode list, plus at most one org search — then treat the program as absent and
+design. Never walk a person's personal scope looking for it.
 
 **Anchor:** the program `<slug>`, taken verbatim from the program episode's
 name — every search on the thread carries it. Episode ids are chaining anchors,
@@ -96,19 +102,23 @@ and chaining is `progress-tracking`'s business.
    rhythm is fine; keep the shape, move the marks. Every milestone marks progress
    toward a goal the person actually stated: filling a cadence slot is never a
    reason to introduce a goal, a tool, or a person they never mentioned. Fewer
-   rows beats invented ones.
+   rows beats invented ones. **One condition per row** — a milestone that bundles
+   two ("confirm the reviewer _and_ how access works") cannot be scored later,
+   because the fixed statuses have no way to say half-done.
 3. **Record the open questions.** Whatever you could not settle: an undecided
    owner, missing access, an unclear success measure. They belong in the record,
    not in your head.
 4. **Confirm, then write** one episode per the record below. Replacing an
    existing program is a new episode naming what changed — never a silent
    rewrite, never an edit of the old one.
-5. **Verify once, with a targeted search** — not by paging episodes:
-   `search_memory_nodes(query="<slug>", group_ids=["personal"])`. Success means
-   _queued_, not stored. Two misses look alike and **neither means it was lost**:
-   nothing found at all, or a result set that simply does not carry it yet.
-   Either way re-check once; never re-write, because a second write is a
-   duplicate.
+5. **Verify once,** the same way you looked for it in the first place — re-run
+   `get_episodes(group_id="personal", last_n=25)` and match the program's name.
+   Success means _queued_, not stored, so a miss on the first look is ordinary and
+   **never means it was lost**. Two causes look identical; `has_more` tells them
+   apart. Still `true` means the page was truncated — widen `last_n`. Already
+   `false` means the page was complete and the episode is merely still processing —
+   pause briefly and re-run the same call. One re-check either way; never
+   re-write, because a second write is a duplicate.
 
 ## The program record
 
