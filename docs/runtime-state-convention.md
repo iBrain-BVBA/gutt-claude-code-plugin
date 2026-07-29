@@ -25,7 +25,7 @@ All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
 
 | File                                   | Written by                                                                                                  | Notes                                                                                                                                                                                                                                                                                           |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions/<session_id>.json`           | `session-state.cjs`                                                                                         | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                               |
+| `sessions/<session_id>.json`           | `session-state.cjs`                                                                                         | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                   |
 | `config.json`                          | config commands (GP-866); snooze lifecycle by `runtime-config.cjs`; `migrationsVersion` by `migrations.cjs` | Runtime on/off, mode, snooze, and the integer `migrationsVersion` recording which one-time cleanups this machine has had. **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads.                                 |
 | `capture-queue.jsonl`                  | _(writer/drain — GP-873)_                                                                                   | Append-only capture queue. GP-863 owns only its TTL: entries >7d, unparseable lines, and overflow past 500 lines are pruned at SessionStart.                                                                                                                                                    |
 | `hook-errors.log`                      | `debug.cjs`                                                                                                 | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                    |
@@ -34,6 +34,24 @@ All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
 
 The three artifacts named by the R37 state contract are the first three rows; the
 rest are caches, logs, and one backup that rebuild themselves or are written once.
+
+### Keys in `sessions/<session_id>.json`
+
+| Key                                                                  | Producer                                                                   | Consumer                                    |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------- |
+| `sessionId`, `startedAt`, `rev`, `lastUpdated`                       | `session-state.cjs` on every write                                         | bookkeeping; `rev` counts serialized writes |
+| `source`                                                             | SessionStart (the matcher that fired)                                      | diagnostics                                 |
+| `firstPromptPending`                                                 | SessionStart (`startup`/`resume`/`clear`)                                  | UserPromptSubmit row 2 — consumed on read   |
+| `compacted`                                                          | SessionStart (`compact`)                                                   | UserPromptSubmit row 3 — consumed on read   |
+| `turnsSinceSearch`                                                   | PostToolUse resets to 0; UserPromptSubmit and a compaction each advance it | UserPromptSubmit row 4 — see below          |
+| `connectionStatus`, `mcpConfigured`, `mcpUrl`, `connectionCheckedAt` | `session-connectivity.cjs` (async)                                         | `statusline.cjs`, read-only                 |
+| `endedAt`, `endReason`                                               | SessionEnd                                                                 | the statusline and the next SessionStart    |
+
+`turnsSinceSearch` is `null` until a recall call is seen, and `null` is not the same
+as `0`: it means "nothing recalled in this conversation" and gates nothing, where
+`0` means a recall just happened and gates. A `startup` or `clear` resets it to
+`null` because those begin with an empty context; `resume` and `compact` keep it,
+because they keep the transcript the recall is still sitting in.
 
 ### Retired locations
 
@@ -139,8 +157,9 @@ made it run away.
 
 ## SessionStart TTL sweep (R37, GP-863)
 
-`gutt-core/hooks/session-start.cjs` runs the whole sweep, and its TTL constants are
-the single place the policy is written down (E8-S8.4 / GP-893 verifies them):
+`gutt-core/hooks/session-start.cjs` runs the whole sweep on the synchronous path;
+`shared/session-sweep.cjs` holds the steps and their TTL constants, which are the
+single place the policy is written down (E8-S8.4 / GP-893 verifies them):
 
 | Artifact                     | TTL / bound                    |
 | ---------------------------- | ------------------------------ |
@@ -156,6 +175,15 @@ them, and their own (short) TTL because no legitimate lock is held for more than
 a few hundred milliseconds and no temp outlives its own call. Without it an
 abandoned lock sits there forever: session ids are never reused, so nothing ever
 contends for that lock again to trigger `withLock`'s stale reclamation.
+
+The queue step reclaims nothing today — `capture-queue.jsonl` has no writer until
+GP-873. It is implemented here anyway because the retention policy is R37's and
+SessionStart is the event this contract names, and because a sweep step that only
+appears alongside its first writer is a step nobody notices is missing. `pruneJsonl`
+reads each entry's own timestamp rather than the file's mtime: the queue is
+append-only, so its mtime tracks the newest entry and would never expire the oldest.
+An entry carrying no parseable timestamp is kept, since expiry is for entries proven
+old and a queue entry is somebody's un-drained capture.
 
 Every step is guarded independently: a corrupt queue file must not stop the
 session sweep, and no step may fail the session.

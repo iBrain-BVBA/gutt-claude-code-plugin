@@ -82,6 +82,11 @@ function defaultState() {
     compacted: false,
     endedAt: null,
     endReason: null,
+    // GP-864 row 4. `null` means "no recall call has been seen in this session",
+    // which is not the same as 0 ("one just happened") and must not gate anything
+    // — a fresh session has to be free to inject. Only noteMemorySearch() turns it
+    // into a number.
+    turnsSinceSearch: null,
   };
 }
 
@@ -126,6 +131,132 @@ function updateState(updater) {
 }
 
 // ---------------------------------------------------------------------------
+// Recall recency (GP-864, trigger-matrix row 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * How many turns a recall call keeps the memory pointer suppressed. A search
+ * within this many turns makes another pointer redundant — the whole reason 3.0
+ * exists is that 2.x "searched way too much" (GP-844).
+ */
+const RECENT_SEARCH_TURNS = 5;
+
+/** SessionStart sources that keep the existing transcript, and with it any recall. */
+const KEEPS_TRANSCRIPT = new Set(["resume", "compact"]);
+
+/**
+ * Advance the counter by one, leaving `null` as `null`. `null` means no recall has
+ * been seen in this conversation, and no number of turns turns that into one.
+ * @param {*} current
+ * @returns {number|null}
+ */
+function bumpTurns(current) {
+  return Number.isFinite(current) ? current + 1 : null;
+}
+
+/**
+ * Row 4 of the trigger matrix: is the last recall recent enough to stay silent?
+ *
+ * Reads as a closed interval on purpose. `advanceTurn()` bumps before the row is
+ * evaluated, so the turn immediately after a recall sees 1, and 1…5 are the five
+ * turns the gate covers.
+ *
+ * @param {*} turnsSinceSearch
+ * @returns {boolean}
+ */
+function isRecallRecent(turnsSinceSearch) {
+  return Number.isFinite(turnsSinceSearch) && turnsSinceSearch <= RECENT_SEARCH_TURNS;
+}
+
+/**
+ * Does this tool call put memory *content* into the conversation?
+ *
+ * Prefix-matched rather than enumerated: the gutt MCP surface gains read tools
+ * regularly, and an allowlist of exact names silently stops recognizing recall as
+ * soon as one is added. The failure direction matters — an unrecognized tool means
+ * no reset, so the gate stays open and we risk one redundant pointer, which is far
+ * cheaper than wrongly silencing the search directive.
+ *
+ * The server-name test is re-applied here even though `hooks.json` already matches
+ * on it: the matcher is configuration and can drift, and this is the assertion the
+ * unit test can actually pin down.
+ *
+ * @param {*} toolName
+ * @returns {boolean}
+ */
+function isRecallTool(toolName) {
+  const name = typeof toolName === "string" ? toolName : "";
+  if (!/^mcp__.*gutt.*__./i.test(name)) {
+    return false;
+  }
+  const action = name.split("__").pop() || "";
+  // Schema introspection reads the graph's shape, not anything remembered in it,
+  // so it is the one `get_` that must not count as recall.
+  if (/^get_(available_)?schemas?$/.test(action)) {
+    return false;
+  }
+  return /^(search|fetch|find_|list_|get_)/.test(action);
+}
+
+/**
+ * Record that a recall call just happened — the counter's reset, written by the
+ * PostToolUse hook. 0 rather than 1: no turn has elapsed since it yet.
+ * @returns {Object} the persisted state
+ */
+function noteMemorySearch() {
+  return updateState((state) => {
+    state.turnsSinceSearch = 0;
+    return state;
+  });
+}
+
+/**
+ * Begin a turn: advance the recall counter and consume both one-shot lifecycle
+ * flags in a **single** locked read-modify-write, returning everything the
+ * UserPromptSubmit guard needs to pick its matrix row.
+ *
+ * One transaction rather than three calls for two reasons. It is the ≤50ms hot
+ * path (R25) and each `consumeFlag()` took its own lock. And three separate
+ * transactions can interleave with a concurrent SessionStart, burning one flag
+ * against one revision of the record and reading the other against the next —
+ * leaving the matrix to decide from a state that never existed.
+ *
+ * @returns {{firstPrompt: boolean, compacted: boolean, turnsSinceSearch: number|null}}
+ */
+function advanceTurn() {
+  const idle = { firstPrompt: false, compacted: false, turnsSinceSearch: null };
+  const snapshot = getState();
+  if (
+    !snapshot.firstPromptPending &&
+    !snapshot.compacted &&
+    !Number.isFinite(snapshot.turnsSinceSearch)
+  ) {
+    // Unlocked fast path, kept from consumeFlag(): no flag set and no recall yet
+    // seen means there is nothing to write, which is the shape of every prompt in
+    // a session that has not searched. Skipping cannot lose a flag a SessionStart
+    // sets concurrently — that flag is simply consumed on the next turn instead.
+    return idle;
+  }
+  let result = idle;
+  applyUpdate((state) => {
+    // Decided inside the lock. The snapshot above is unlocked, so it may be used
+    // to skip work and never to report what this caller consumed: two hooks racing
+    // would otherwise both read a flag as set and both claim it, and "true exactly
+    // once" is the entire contract.
+    result = {
+      firstPrompt: Boolean(state.firstPromptPending),
+      compacted: Boolean(state.compacted),
+      turnsSinceSearch: bumpTurns(state.turnsSinceSearch),
+    };
+    state.firstPromptPending = false;
+    state.compacted = false;
+    state.turnsSinceSearch = result.turnsSinceSearch;
+    return state;
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Session lifecycle (GP-863) — SessionStart/SessionEnd own everything below.
 // ---------------------------------------------------------------------------
 
@@ -149,11 +280,23 @@ function beginSession(sessionId, source) {
     state.source = source || null;
     if (compacted) {
       state.compacted = true;
+      // A compaction is distance from the last recall in the same sense a turn is
+      // — it is the event that summarizes those results away — so it advances the
+      // counter rather than leaving it frozen where the last prompt left it.
+      state.turnsSinceSearch = bumpTurns(state.turnsSinceSearch);
     } else {
       state.startedAt = new Date().toISOString();
       state.firstPromptPending = true;
       state.endedAt = null;
       state.endReason = null;
+      if (!KEEPS_TRANSCRIPT.has(source)) {
+        // `startup` and `clear` begin a conversation with no context, so whatever
+        // was recalled before is not in it and must not gate the first prompt.
+        // `resume` and `compact` keep the transcript, so a recent recall is still
+        // there and the gate rightly applies. An unrecognized source resets, which
+        // fails toward injecting a redundant pointer rather than toward silence.
+        state.turnsSinceSearch = null;
+      }
     }
     return state;
   });
@@ -200,51 +343,14 @@ function finalizeSession(reason, dispatchedAt = Date.now()) {
   });
 }
 
-/**
- * Read-and-clear a lifecycle flag. Writes only when the flag was set, so the
- * common case on the UserPromptSubmit guard's hot path is one read and no lock
- * (R25).
- * @param {string} flag
- * @param {*} [clearedValue] - what "consumed" looks like for this field
- * @returns {boolean} whether the flag was set
- */
-function consumeFlag(flag, clearedValue = false) {
-  // Unlocked fast path: not set means nothing to do and no lock to take.
-  if (!getState()[flag]) {
-    return false;
-  }
-  // Whether *this* caller consumed it has to be decided inside the lock. The
-  // read above is unlocked, so with two hooks racing on one event — the premise
-  // this whole module is built around — both would otherwise see the flag set
-  // and both return true, and "true exactly once" is the entire contract.
-  let consumed = false;
-  applyUpdate((state) => {
-    consumed = Boolean(state[flag]);
-    if (consumed) {
-      state[flag] = clearedValue;
-    }
-    return state;
-  });
-  return consumed;
-}
-
-/**
- * Consume `firstPromptPending` — true exactly once per session (re)start.
- * Producer: beginSession(). Consumer: the UserPromptSubmit command guard (GP-864).
- * @returns {boolean}
- */
-function consumeFirstPromptPending() {
-  return consumeFlag("firstPromptPending");
-}
-
-/**
- * Consume `compacted` — true exactly once after each compaction.
- * Producer: beginSession(). Consumer: the UserPromptSubmit command guard (GP-864).
- * @returns {boolean}
- */
-function consumeCompacted() {
-  return consumeFlag("compacted");
-}
+// The per-flag `consumeFlag` / `consumeFirstPromptPending` / `consumeCompacted`
+// trio lived here until GP-864 row 4 landed. `advanceTurn()` above replaced all
+// three: it has to write on every turn anyway to advance the recall counter, so
+// consuming the flags in that same locked transaction is both cheaper than three
+// separate ones and the only version that cannot read the two flags against two
+// different revisions of the record. They are deleted rather than kept for
+// symmetry — nothing called them, and a test suite that exercises code no hook
+// reaches reports coverage of behaviour that cannot occur.
 
 module.exports = {
   init,
@@ -257,6 +363,10 @@ module.exports = {
   // GP-863 session lifecycle
   beginSession,
   finalizeSession,
-  consumeFirstPromptPending,
-  consumeCompacted,
+  // GP-864 recall recency (trigger-matrix row 4)
+  advanceTurn,
+  noteMemorySearch,
+  isRecallRecent,
+  isRecallTool,
+  RECENT_SEARCH_TURNS,
 };

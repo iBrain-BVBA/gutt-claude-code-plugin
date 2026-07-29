@@ -98,7 +98,7 @@ describe("session lifecycle: SessionStart matcher branches", () => {
   it("compact sets compacted without re-arming firstPromptPending", () => {
     sessionState.init("s-compact");
     sessionState.beginSession("s-compact", "startup");
-    sessionState.consumeFirstPromptPending(); // the guard already ran this session
+    sessionState.advanceTurn(); // the guard already ran this session
     const state = sessionState.beginSession("s-compact", "compact");
     assert.equal(state.compacted, true);
     assert.equal(state.firstPromptPending, false, "compact is mid-session, not a restart");
@@ -198,19 +198,27 @@ describe("session lifecycle: flag consumption", () => {
 
   it("firstPromptPending and compacted each fire exactly once", () => {
     sessionState.beginSession("s-flags", "startup");
-    assert.equal(sessionState.consumeFirstPromptPending(), true);
-    assert.equal(sessionState.consumeFirstPromptPending(), false, "second read is false");
+    assert.equal(sessionState.advanceTurn().firstPrompt, true);
+    assert.equal(sessionState.advanceTurn().firstPrompt, false, "second read is false");
 
     sessionState.beginSession("s-flags", "compact");
-    assert.equal(sessionState.consumeCompacted(), true);
-    assert.equal(sessionState.consumeCompacted(), false);
+    assert.equal(sessionState.advanceTurn().compacted, true);
+    assert.equal(sessionState.advanceTurn().compacted, false);
   });
 
-  it("consuming an unset flag does not rewrite the file", () => {
+  it("a turn with nothing to consume and no recall seen does not rewrite the file", () => {
+    // The unlocked fast path on the ≤50ms hot path (R25). It survives only while
+    // both flags are spent *and* no recall has been recorded — once
+    // turnsSinceSearch is a number every turn has to write to advance it.
     sessionState.beginSession("s-flags", "startup");
-    sessionState.consumeCompacted(); // already false
+    sessionState.advanceTurn(); // drains firstPromptPending
+    assert.equal(
+      sessionState.getState().turnsSinceSearch,
+      null,
+      "precondition: no recall recorded, so there is nothing to advance"
+    );
     const before = fs.statSync(path.join(dir, "sessions", "s-flags.json")).mtimeMs;
-    assert.equal(sessionState.consumeCompacted(), false);
+    assert.equal(sessionState.advanceTurn().firstPrompt, false);
     assert.equal(fs.statSync(path.join(dir, "sessions", "s-flags.json")).mtimeMs, before);
   });
 
@@ -223,6 +231,158 @@ describe("session lifecycle: flag consumption", () => {
     // mutation here would show up there.
     assert.equal(sessionState.getState().endReason, null, "defaults must not be shared");
     process.env.CLAUDE_PLUGIN_DATA = saved;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recall recency — trigger-matrix row 4 (GP-864)
+// ---------------------------------------------------------------------------
+
+describe("recall recency: the turnsSinceSearch counter", () => {
+  let dir;
+  before(() => {
+    dir = makeDataDir();
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("stays null until a recall happens, so a fresh session is never gated", () => {
+    sessionState.init("t-null");
+    sessionState.beginSession("t-null", "startup");
+    assert.equal(sessionState.advanceTurn().turnsSinceSearch, null);
+    // null and 0 are easy to conflate and mean opposite things: "no recall in this
+    // conversation" must not gate, "a recall just happened" must.
+    assert.equal(sessionState.isRecallRecent(null), false, "null must gate nothing");
+    assert.equal(sessionState.isRecallRecent(0), true, "0 is a real recall, not an absence");
+  });
+
+  it("counts one per turn from the recall, and reopens the gate on the sixth", () => {
+    sessionState.init("t-count");
+    sessionState.beginSession("t-count", "startup");
+    sessionState.noteMemorySearch();
+
+    const seen = [];
+    for (let i = 0; i < 6; i++) {
+      const { turnsSinceSearch } = sessionState.advanceTurn();
+      seen.push([turnsSinceSearch, sessionState.isRecallRecent(turnsSinceSearch)]);
+    }
+    assert.deepEqual(
+      seen,
+      [
+        [1, true],
+        [2, true],
+        [3, true],
+        [4, true],
+        [5, true],
+        [6, false],
+      ],
+      `the ${sessionState.RECENT_SEARCH_TURNS} turns after a recall are gated; the next is not`
+    );
+  });
+
+  it("a compaction advances the counter the way a turn does", () => {
+    sessionState.init("t-comp");
+    sessionState.beginSession("t-comp", "startup");
+    sessionState.noteMemorySearch();
+    assert.equal(sessionState.beginSession("t-comp", "compact").turnsSinceSearch, 1);
+    assert.equal(sessionState.beginSession("t-comp", "compact").turnsSinceSearch, 2);
+  });
+
+  it("a compaction cannot invent a recall that never happened", () => {
+    sessionState.init("t-comp-null");
+    sessionState.beginSession("t-comp-null", "startup");
+    assert.equal(
+      sessionState.beginSession("t-comp-null", "compact").turnsSinceSearch,
+      null,
+      "advancing 'no recall yet' must not turn it into a number"
+    );
+  });
+
+  it("startup and clear reset the counter; resume keeps it", () => {
+    for (const source of ["startup", "clear"]) {
+      const id = `t-reset-${source}`;
+      sessionState.init(id);
+      sessionState.beginSession(id, "startup");
+      sessionState.noteMemorySearch();
+      assert.equal(
+        sessionState.beginSession(id, source).turnsSinceSearch,
+        null,
+        `${source} starts with an empty context, so an earlier recall must not gate its first prompt`
+      );
+    }
+
+    sessionState.init("t-resume");
+    sessionState.beginSession("t-resume", "startup");
+    sessionState.noteMemorySearch();
+    assert.equal(
+      sessionState.beginSession("t-resume", "resume").turnsSinceSearch,
+      0,
+      "resume keeps the transcript, so the recall still in it still counts"
+    );
+  });
+
+  it("noteMemorySearch resets a counter that had run on", () => {
+    sessionState.init("t-reset-run");
+    sessionState.beginSession("t-reset-run", "startup");
+    sessionState.noteMemorySearch();
+    sessionState.advanceTurn();
+    sessionState.advanceTurn();
+    assert.equal(sessionState.getState().turnsSinceSearch, 2);
+    assert.equal(sessionState.noteMemorySearch().turnsSinceSearch, 0);
+  });
+});
+
+describe("recall recency: which tool calls count as recall", () => {
+  const RECALL = [
+    "mcp__claude_ai_gutt-pro-memory__search",
+    "mcp__claude_ai_gutt-pro-memory__search_memory_nodes",
+    "mcp__claude_ai_gutt-pro-memory__search_memory_facts",
+    "mcp__claude_ai_gutt-pro-memory__fetch_lessons_learned",
+    "mcp__claude_ai_gutt-pro-memory__get_episodes",
+    "mcp__claude_ai_gutt-pro-memory__find_path",
+    "mcp__claude_ai_gutt-pro-memory__list_entities",
+    "mcp__gutt-pro-memory__search_memory_nodes",
+  ];
+
+  const NOT_RECALL = [
+    // Writes. Recording something is not recalling it, and a capture must not
+    // silence the pointer that asks the agent to look things up.
+    "mcp__claude_ai_gutt-pro-memory__add_memory_to_gutt_pro",
+    "mcp__claude_ai_gutt-pro-memory__add_personal_memory",
+    "mcp__claude_ai_gutt-pro-memory__delete_episode",
+    "mcp__claude_ai_gutt-pro-memory__clear_graph",
+    "mcp__claude_ai_gutt-pro-memory__register_agent",
+    // Schema introspection reads the graph's shape, not anything remembered in it.
+    "mcp__claude_ai_gutt-pro-memory__get_schema",
+    "mcp__claude_ai_gutt-pro-memory__get_available_schemas",
+    // A different server, and ordinary tools.
+    "mcp__claude_ai_Atlassian__search",
+    "mcp__claude_ai_Ahrefs__authenticate",
+    "Read",
+    "Grep",
+    "",
+  ];
+
+  for (const name of RECALL) {
+    it(`counts ${name}`, () => {
+      assert.equal(sessionState.isRecallTool(name), true);
+    });
+  }
+
+  for (const name of NOT_RECALL) {
+    it(`ignores ${name || "(an empty tool name)"}`, () => {
+      assert.equal(sessionState.isRecallTool(name), false);
+    });
+  }
+
+  it("survives a tool name that is not a string", () => {
+    // The hook coerces, but this is the one input it reads from an untrusted
+    // payload before any guard, so the classifier has to hold on its own.
+    for (const bad of [undefined, null, 123, {}, []]) {
+      assert.equal(sessionState.isRecallTool(bad), false, `rejected ${JSON.stringify(bad)}`);
+    }
   });
 });
 
@@ -409,7 +569,7 @@ describe("session lifecycle: concurrent writers", () => {
     assert.equal(readSession(dir, "failopen").memoryQueries, 99);
   });
 
-  it("consumeFlag hands the flag to exactly one of two racing readers", () => {
+  it("advanceTurn hands the flag to exactly one of two racing readers", () => {
     // The unlocked fast path decides only "is there anything to do"; whether
     // *this* caller consumed it has to be settled inside the lock, or both
     // hooks on one event return true and a one-shot injection fires twice.
@@ -669,6 +829,97 @@ describe("session lifecycle: TTL primitives", () => {
         assert.ok(size > 1, `${script} pad=${pad}: bounded, but emptied`);
       }
     }
+  });
+
+  it("pruneJsonl expires entries by their own timestamp, not the file's mtime", () => {
+    // The queue is append-only, so its mtime tracks the *newest* entry. Judging age
+    // by mtime would expire a busy queue wholesale and never expire an idle one.
+    const queue = pluginState.statePath("capture-queue.jsonl");
+    const stale = new Date(Date.now() - 8 * 24 * HOUR).toISOString();
+    fs.writeFileSync(
+      queue,
+      [
+        JSON.stringify({ at: stale, text: "expired" }),
+        JSON.stringify({ at: new Date().toISOString(), text: "kept" }),
+      ].join("\n") + "\n"
+    );
+    // Stamped now, so an mtime-based implementation would keep both entries.
+    const now = new Date();
+    fs.utimesSync(queue, now, now);
+
+    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR });
+    assert.equal(res.expired, 1);
+    assert.equal(res.kept, 1);
+    assert.deepEqual(
+      fs
+        .readFileSync(queue, "utf8")
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l).text),
+      ["kept"]
+    );
+  });
+
+  it("pruneJsonl drops what cannot be parsed and keeps what cannot be dated", () => {
+    const queue = pluginState.statePath("capture-queue.jsonl");
+    fs.writeFileSync(
+      queue,
+      [
+        "{ this line is not json",
+        JSON.stringify({ text: "no timestamp field at all" }),
+        JSON.stringify({ at: "not a date", text: "unparseable timestamp" }),
+      ].join("\n") + "\n"
+    );
+
+    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR });
+    assert.equal(res.malformed, 1, "the non-JSON line goes");
+    // An undatable entry is not a provably old one, and a queue entry is somebody's
+    // un-drained capture — dropping it on a missing field would lose real work.
+    assert.equal(res.expired, 0, "an entry with no usable timestamp is not 'old'");
+    assert.equal(res.kept, 2, "both undatable captures survive");
+  });
+
+  it("pruneJsonl keeps the newest maxLines, and rewrites nothing when nothing went", () => {
+    const queue = pluginState.statePath("capture-queue.jsonl");
+    const at = new Date().toISOString();
+    fs.writeFileSync(
+      queue,
+      Array.from({ length: 12 }, (_, n) => JSON.stringify({ at, n })).join("\n") + "\n"
+    );
+
+    assert.equal(pluginState.pruneJsonl(queue, { maxLines: 5 }).overflow, 7);
+    assert.deepEqual(
+      fs
+        .readFileSync(queue, "utf8")
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l).n),
+      [7, 8, 9, 10, 11],
+      "the newest five survive"
+    );
+
+    // Steady state matters: this runs on the ≤50ms SessionStart path every session,
+    // so a queue already inside its bounds must cost one read and no write.
+    const before = fs.statSync(queue).mtimeMs;
+    const second = pluginState.pruneJsonl(queue, { maxLines: 5 });
+    assert.equal(second.pruned, false);
+    assert.equal(second.kept, 5);
+    assert.equal(fs.statSync(queue).mtimeMs, before, "an in-bounds queue is not rewritten");
+  });
+
+  it("pruneJsonl empties a queue that is one enormous unparseable blob", () => {
+    // The documented exception to "keep the tail": for a queue of JSON entries a
+    // multi-megabyte blob with no line structure is garbage by the same rule that
+    // drops any other unparseable line, and keeping it would mean re-reading it on
+    // every SessionStart forever.
+    const queue = pluginState.statePath("capture-queue.jsonl");
+    fs.writeFileSync(queue, "x".repeat(5 * 1024 * 1024));
+    assert.ok(fs.statSync(queue).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
+
+    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR, maxLines: 500 });
+    assert.equal(res.kept, 0);
+    assert.equal(fs.existsSync(queue), true, "the file itself stays, emptied");
+    assert.equal(fs.statSync(queue).size, 0);
   });
 
   it("a long line does not take the short ones with it", () => {
@@ -992,7 +1243,7 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     );
   });
 
-  it("row 4: every later prompt is silent — the flag is consumed once", () => {
+  it("the fall-through: every later prompt is silent — the flag is consumed once", () => {
     runHook(
       "session-start.cjs",
       { session_id: "m-once", source: "startup" },
@@ -1001,6 +1252,76 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     assert.ok(contextOf(submit("m-once")), "first prompt speaks");
     assert.equal(submit("m-once"), null, "second prompt must be silent");
     assert.equal(submit("m-once"), null, "third prompt must be silent");
+  });
+
+  /** Tell the plugin the agent just recalled something, the way PostToolUse does. */
+  function recall(sessionId, toolName = "mcp__claude_ai_gutt-pro-memory__search_memory_nodes") {
+    return runHook(
+      "post-memory-search.cjs",
+      { session_id: sessionId, tool_name: toolName, tool_input: {}, tool_response: "ok" },
+      { dataDir: dir, home }
+    );
+  }
+
+  it("row 4: a recent recall silences the pointer a compaction would inject", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-recent", source: "startup" },
+      { dataDir: dir, home }
+    );
+    submit("m-recent"); // burn the first-prompt flag
+
+    const r = recall("m-recent");
+    assert.equal(r.status, 0, `the recall hook must exit 0: ${r.stderr}`);
+    assert.equal(r.stdout.trim(), "", "PostToolUse runs after the tool — it must emit nothing");
+    assert.equal(readSession(dir, "m-recent").turnsSinceSearch, 0, "the recall was recorded");
+
+    submit("m-recent");
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-recent", source: "compact" },
+      { dataDir: dir, home }
+    );
+    assert.equal(submit("m-recent"), null, "a recall this recent makes the re-ground redundant");
+  });
+
+  it("row 4 opens again once the recall is far enough behind", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-stale", source: "startup" },
+      { dataDir: dir, home }
+    );
+    submit("m-stale");
+    recall("m-stale");
+
+    // Walk out the whole window, so this asserts the gate reopens rather than that
+    // it was never closed.
+    for (let i = 0; i < sessionState.RECENT_SEARCH_TURNS; i++) {
+      assert.equal(submit("m-stale"), null, `turn ${i + 1} after the recall is still gated`);
+    }
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-stale", source: "compact" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-stale"));
+    assert.ok(ctx, "past the window the re-ground pointer must fire again");
+    assert.match(ctx, /compacted/i);
+  });
+
+  it("capturing a memory is not recalling one", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-write", source: "startup" },
+      { dataDir: dir, home }
+    );
+    recall("m-write", "mcp__claude_ai_gutt-pro-memory__add_memory_to_gutt_pro");
+    assert.equal(
+      readSession(dir, "m-write").turnsSinceSearch,
+      null,
+      "a write must not start the recency clock"
+    );
+    assert.ok(contextOf(submit("m-write")), "so the first-prompt pointer still fires");
   });
 
   it("row 3: the first prompt after a compaction asks to re-ground", () => {
@@ -1099,6 +1420,20 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
     fs.writeFileSync(
       path.join(dir, "config.json"),
       JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
+    );
+    // A queue that is both too old and too long, so the sweep's queue step has both
+    // of its bounds to apply. Nothing writes this file until GP-873, but the
+    // retention policy is R37's and SessionStart is where the contract says it runs
+    // — a step that only appears alongside its first writer is a step nobody
+    // notices is missing.
+    const staleAt = new Date(Date.now() - 8 * 24 * HOUR).toISOString();
+    const freshAt = new Date().toISOString();
+    fs.writeFileSync(
+      path.join(dir, "capture-queue.jsonl"),
+      [
+        ...Array.from({ length: 40 }, (_, i) => JSON.stringify({ at: staleAt, n: `stale-${i}` })),
+        ...Array.from({ length: 600 }, (_, i) => JSON.stringify({ at: freshAt, n: `fresh-${i}` })),
+      ].join("\n") + "\n"
     );
     // Debris from hooks killed mid-write: a lock whose session id will never be
     // reused (so nothing ever contends for it to trigger stale reclamation) and
@@ -1219,5 +1554,19 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       30,
       "exactly the 30 backdated files were reclaimed"
     );
+
+    // The capture queue, per the TTL table in docs/runtime-state-convention.md.
+    const queue = fs
+      .readFileSync(path.join(dir, "capture-queue.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    assert.equal(queue.length, 500, "queue bounded to its 500-entry cap");
+    assert.equal(
+      queue.filter((e) => String(e.n).startsWith("stale")).length,
+      0,
+      "every entry past the 7d TTL was dropped"
+    );
+    assert.equal(queue[queue.length - 1].n, "fresh-599", "the newest entry survived");
   });
 });

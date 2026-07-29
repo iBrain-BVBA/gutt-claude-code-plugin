@@ -365,6 +365,172 @@ describe("hook architecture guards", () => {
     );
   });
 
+  // A fired verdict costs the user their view of the turn. Stop runs after the work
+  // is done and the answer is written, so whatever Claude says next is what they are
+  // left looking at — and a continuation spent entirely on memory bookkeeping buries
+  // the work it interrupted, leaving them to scroll back for what they asked for.
+  //
+  // Both halves of the fix live in `memory-capture/SKILL.md`, not in the fired reason.
+  // The reason is read on every firing and is a payload — a skill name and a bullet
+  // per subject — so procedure written there is duplicated by the moment it applies.
+  // These assertions therefore target the skill; the reason's own shape is guarded
+  // separately below.
+  //
+  // Anchored on the terms that carry the meaning rather than the sentences around
+  // them: the artifact is named "TL;DR" and its position is the requirement. Reword
+  // the prose freely; keep those.
+  it("makes a capture hand the turn back with a TL;DR, last", () => {
+    const md = fs.readFileSync(
+      path.join(ROOT, "gutt-core", "skills", "memory-capture", "SKILL.md"),
+      "utf8"
+    );
+    assert.match(
+      md,
+      /TL;DR/,
+      "the skill never asks for a summary of the interrupted work, so the capture becomes the turn"
+    );
+    assert.match(
+      md,
+      /last, after everything|after everything else/i,
+      "a TL;DR that is not required to come last can be buried by the capture account above it"
+    );
+    // The other half of the same problem: a brief TL;DR under a long capture report
+    // is still a buried TL;DR.
+    assert.match(
+      md,
+      /a few lines, not a report/i,
+      "nothing caps the length of the capture account the TL;DR has to follow"
+    );
+  });
+
+  // The reason's shape is the counterpart. It is generated fresh on every firing and
+  // lands in Claude's context ahead of the skill, so it has to stay a payload: which
+  // subjects this turn produced, and nothing the skill already covers. The word cap
+  // is what keeps a judge from re-deriving a briefing in the bullets.
+  it("keeps the fired reason a payload — skill reference plus capped bullets", () => {
+    const stop = ALL.find((h) => h.event === "Stop");
+    assert.ok(stop, "no Stop handler to check");
+    assert.match(
+      stop.prompt,
+      /10 words/,
+      "nothing bounds a bullet, so the reason grows back into the briefing it replaced"
+    );
+    assert.match(
+      stop.prompt,
+      /one bullet per subject|bullet per subject/i,
+      "the reason no longer specifies a bullet per subject, leaving its shape to the judge"
+    );
+  });
+
+  // Both halves of this were live for the length of one commit, and the failure is the
+  // loudest one this hook has: in a `claude -p` run against this repo, "Reply with
+  // exactly: up" returned ```json {"ok": true}``` — the hook's verdict printed as the
+  // user's answer — 4 times out of 4, and once as a full ok:false whose reason carried
+  // the example's own two bullets as though they were findings from that turn.
+  //
+  // Two causes, one commit. The prompt shrink dropped the closing anti-restatement
+  // clause as rationale; it was load-bearing, and it names this exact outcome. And the
+  // shrunk prompt *ended* on a filled-in example of the firing branch, so the last thing
+  // the judge read was a completed fire verdict — which it reproduced, contents and all.
+  //
+  // No unit test covered either property, and `npm run test:all` excludes the e2e tier
+  // where the pong-fixture detector lives, so nothing failed before this shipped.
+  it("stops the judge's own format leaking into the answer", () => {
+    const stop = ALL.find((h) => h.event === "Stop");
+    assert.ok(stop, "no Stop handler to check");
+    assert.match(
+      stop.prompt,
+      /do not restate this response format|quotes the JSON gets echoed/i,
+      "the clause naming the echo failure is gone; the verdict prints as the user's answer"
+    );
+    assert.match(
+      stop.prompt,
+      /format sample, not findings|never carry them/i,
+      "nothing marks the example as a sample, so the judge fires carrying its bullets"
+    );
+    // The example must not be the last thing read: a completed fire verdict in final
+    // position is what the judge copies.
+    const tail = stop.prompt.trim().split("\n").slice(-1)[0];
+    assert.doesNotMatch(
+      tail,
+      /^-\s*(Insight|Incident):/,
+      `the prompt ends on an example bullet, biasing the judge toward firing: "${tail}"`
+    );
+  });
+
+  // NOT guarded here, deliberately: that a fired verdict must not become the user's
+  // answer. It is a real defect — a fire injects this whole template into the main
+  // conversation as `Stop hook feedback:\n[<template>]: <reason>`, and the main agent
+  // reads "respond with exactly {"ok": true}" as an instruction to itself. Measured on
+  // live sessions: 3 of 5 fires returned a reply that was nothing but `{"ok": true}`.
+  //
+  // No wording tested fixes it without costing more than it saves, so asserting the
+  // property here would only make the suite red against the best available prompt. Both
+  // attempts are recorded in evals/suites/stop_judge/FINDINGS.md: a clause in the template
+  // (0/6 leaks, but the judge applied the prohibition to itself and fire rate fell to
+  // 3/15), and a mandated final line in the reason (0/6 leaks, but verdicts stopped
+  // parsing as the judge wrote the line outside the JSON, and a fire began reading as an
+  // R23 block). The live detector is `never leaks the judge protocol into the reply` in
+  // tests/e2e/hook-routing.e2e.cjs, and the deterministic one is
+  // evals/suites/stop_judge/leak_probe.py. Add the guard here with the fix.
+
+  // Measured on the `evals/` bench (see evals/suites/stop_judge/FINDINGS.md): the
+  // prompt that enumerated activities to stay quiet about — "routine edits, answering a
+  // question, reading or searching code, formatting" — missed 11 of 21 turns that had
+  // produced a recorded finding, rejecting them as "routine validation and testing
+  // work". Verifying, testing and debugging are how findings get made, so an activity
+  // list is a list of the routes to the thing being looked for. Stating the property
+  // and disclaiming the route took missed fires to 6 of 21 and accuracy on confidently
+  // labelled cases from 73% to 90%.
+  //
+  // The negative half is the load-bearing one: re-adding any activity enumeration
+  // reinstates the regression, and it reads as a harmless clarification.
+  it("judges the finding rather than the activity that produced it", () => {
+    const stop = ALL.find((h) => h.event === "Stop");
+    assert.ok(stop, "no Stop handler to check");
+    assert.match(
+      stop.prompt,
+      /judge the finding|not what it \*?did\*?/i,
+      "the prompt no longer separates the finding from the activity, so verification reads as routine"
+    );
+    assert.doesNotMatch(
+      stop.prompt,
+      /routine edits|reading or searching code|answering a question/i,
+      "an activity list is back: these describe how findings get made, not what to ignore"
+    );
+  });
+
+  // Also from the bench: the shortest variant left the judge's role implicit, and eight
+  // of its calls stopped judging and started capturing — "the memory server is
+  // unreachable, so per the skill's degradation rule I will surface the episode
+  // drafts". The transcript it scores is often *about* memory capture, so without an
+  // explicit role the judge joins the work instead of scoring it, and emits prose where
+  // a verdict belongs. Anchored on the terms that carry it; reword the sentence freely.
+  it("tells the Stop judge it is scoring the turn, not doing the work", () => {
+    const stop = ALL.find((h) => h.event === "Stop");
+    assert.ok(stop, "no Stop handler to check");
+    assert.match(
+      stop.prompt,
+      /not continuing it|capture nothing yourself|call no tool/i,
+      "nothing states the judge's role, so it can answer as the agent doing the capture"
+    );
+  });
+
+  // The reason has to open by naming the skill, and showing that line in the example is
+  // not enough to get it: variants that only demonstrated it produced it in 14% and 0%
+  // of their fired reasons. Models reproduce the repeated element — the bullets — and
+  // drop the single header line above them. Saying the reason *opens with* the line
+  // took that to 100%.
+  it("asks for the skill line rather than only showing it in the example", () => {
+    const stop = ALL.find((h) => h.event === "Stop");
+    assert.ok(stop, "no Stop handler to check");
+    assert.match(
+      stop.prompt,
+      /opens with the line/i,
+      "the skill reference is only illustrated, so the judge will copy the bullets and drop it"
+    );
+  });
+
   /**
    * The capture types `memory-capture` will write unprompted, and the ones it holds
    * behind an explicit human signal — read out of the skill itself rather than
