@@ -32,7 +32,7 @@ one line.
    your name, so say that rather than doing it.
 2. **No agent identity in personal scope.** Do not pass `agent_id` on a personal
    read or write. The parameter exists and works — leaving it off is a deliberate
-   policy for 3.0, not a server limitation. Registration and tagging happen in
+   policy, not a server limitation. Registration and tagging happen in
    org scope only, and that is `agent-memory-protocol`'s business.
 3. **Privacy runs both ways.** Never copy personal-scope content into an
    org-scope write or into an org-memory query string. And every org-scope read
@@ -67,29 +67,34 @@ Two passes that ask **different questions** — not one question twice:
 
 1. **Personal — "does this person already have a program?"**
    `get_episodes(group_id="personal", last_n=25)`, looking for an episode named
-   `Development program — <slug>`. Match the **name**; do not search for the
-   slug. `search_memory_nodes` searches extracted entities, and a `<slug>` is
-   never an entity — it lives only in an episode name, so searching it returns
-   nothing whether or not a program exists. If one comes back you are amending,
-   not designing — reading the whole thread is `progress-tracking`'s job.
+   `Development program — <slug>`, and widened once if `has_more` comes back
+   `true` — a truncated page can leave the newest episodes out altogether. Match
+   the **name**; do not search for the slug. `search_memory_nodes` searches
+   extracted entities, and a `<slug>` is never an entity — it lives only in an
+   episode name, so searching it surfaces only near-matching extracted entities,
+   never the episode itself: it can neither find a program nor prove one absent.
+   If one comes back you are amending, not designing — reading the whole thread
+   is `progress-tracking`'s job.
 2. **Org — "what does the org know about ramping up in this role?"** Only when
    the org plausibly has a path worth reusing, and only with explicit `group_ids`
    naming org groups (rule 3). Phrase it about the _role_ — "platform on-call
    ramp expectations" — never their name, their gaps, or anything they told you
    in confidence. **Name that org group from something real, and it is there to be
    read:** every node and fact a memory read returns carries its own `group_id`,
-   so take the name off any org result already in the session — otherwise a
-   per-group write tool your list surfaces (`add_memory_to_<group>`), or ask. If
-   you need an unscoped read to learn the name, make it _before_ program content
-   is in play, since an unscoped search covers personal scope too. Only when none
-   of those yields a name do you **skip this pass** — a guessed group name is a
-   fabricated identifier, not a search.
+   so take the name off any org result already in the session, or ask. If you
+   need an unscoped read to learn the name, make it _before_ program content is
+   in play, since an unscoped search covers personal scope too. Never take it
+   from a per-group write tool's name — that suffix is a display alias, not
+   necessarily a group id, and a read scoped to a name that is not a real group
+   is denied outright. Only when none of those yields a name do you **skip this
+   pass** — a guessed group name is a fabricated identifier, not a search.
 
 **Minimum outcome before you elicit anything:** whether a program already exists,
 and its `<slug>` if it does. Cannot establish that? Say so in one line rather
 than designing over the top of something already there. **Stop rule:** one
-episode list, plus at most one org search — then treat the program as absent and
-design. Never walk a person's personal scope looking for it.
+episode list, widened once if `has_more` says it was truncated, plus at most one
+org search — then treat the program as absent and design. Never walk a person's
+personal scope looking for it.
 
 **Anchor:** the program `<slug>`, taken verbatim from the program episode's
 name — every search on the thread carries it. Episode ids are chaining anchors,

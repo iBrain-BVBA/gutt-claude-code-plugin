@@ -33,7 +33,7 @@ gutt-core plugin. Without it, follow the rules below and note the gap in one lin
    recently in that person's personal scope, not to this program's last check-in.
 3. **No agent identity in personal scope.** Do not pass `agent_id` on a personal
    read or write. The parameter exists and works — leaving it off is a deliberate
-   policy for 3.0, not a server limitation. Registration and tagging happen in
+   policy, not a server limitation. Registration and tagging happen in
    org scope only, and that is `agent-memory-protocol`'s business.
 4. **Privacy runs both ways.** Never copy personal-scope content into an
    org-scope write or into an org-memory query string. And every org-scope read
@@ -65,8 +65,9 @@ codebase (`memory-search`).
    `Program check-in <date> — <slug>`. This is the only locator that works, and
    the trap is worth stating plainly: `search_memory_nodes` searches **extracted
    entities**, and a `<slug>` is never an entity — it exists only in an episode
-   name. Searching the slug returns nothing whether or not the program is there,
-   so it can neither find a program nor prove one is absent.
+   name. Searching the slug surfaces only near-matching extracted entities —
+   never the episode itself — so it can neither find a program nor prove one is
+   absent.
 2. **Read the list carefully.** A generous `last_n` beats paging, because a page
    smaller than the scope can leave a recent write out altogether. **Never read
    order off position:** the list is ordered by each episode's _reference time_,
@@ -87,14 +88,16 @@ codebase (`memory-search`).
 An org-scope read is usually unnecessary here. If you make one it asks a
 genuinely different question — "what does the org expect of this role?", never
 "how is this person doing" — with explicit `group_ids` (rule 4), naming a group
-you read off the `group_id` that every returned node and fact carries, or from a
-per-group write tool in your list, or from the user. None of those? Skip it; a
-guessed group name is a fabricated identifier, not a search.
+you read off the `group_id` that every returned node and fact carries, or from
+the user. Never take it from a per-group write tool's name — that suffix is a
+display alias, not necessarily a group id, and a read scoped to a name that is
+not a real group is denied outright. None of those? Skip it; a guessed group
+name is a fabricated identifier, not a search.
 
 **Minimum outcome before you summarize or write:** the goals and milestone table,
 every check-in with its date, and the identifier of the newest one — your
-chaining predecessor. **Stop rule:** one `get_episodes`, widened once if the
-thread looks truncated. If it is still not there, report "no program found" and
+chaining predecessor. **Stop rule:** one `get_episodes`, widened once if
+`has_more` says it was truncated. If it is still not there, report "no program found" and
 hand off; never sweep a person's personal scope hoping it turns up.
 
 **Anchors** — take each from a read, never hand-build an id:
