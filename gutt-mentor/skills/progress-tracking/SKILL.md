@@ -87,8 +87,9 @@ codebase (`memory-search`).
 An org-scope read is usually unnecessary here. If you make one it asks a
 genuinely different question — "what does the org expect of this role?", never
 "how is this person doing" — with explicit `group_ids` (rule 4), naming a group
-you got from a per-group write tool in your list or from the user. Cannot name
-one? Skip it; a guessed group name is a fabricated identifier, not a search.
+you read off the `group_id` that every returned node and fact carries, or from a
+per-group write tool in your list, or from the user. None of those? Skip it; a
+guessed group name is a fabricated identifier, not a search.
 
 **Minimum outcome before you summarize or write:** the goals and milestone table,
 every check-in with its date, and the identifier of the newest one — your

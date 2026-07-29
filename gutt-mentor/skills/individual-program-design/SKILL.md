@@ -76,10 +76,14 @@ Two passes that ask **different questions** — not one question twice:
    the org plausibly has a path worth reusing, and only with explicit `group_ids`
    naming org groups (rule 3). Phrase it about the _role_ — "platform on-call
    ramp expectations" — never their name, their gaps, or anything they told you
-   in confidence. **Name that org group from something real:** a per-group write
-   tool your list surfaces (`add_memory_to_<group>`), or the user. If you cannot
-   name one, **skip this pass** — a guessed group name is a fabricated
-   identifier, not a search.
+   in confidence. **Name that org group from something real, and it is there to be
+   read:** every node and fact a memory read returns carries its own `group_id`,
+   so take the name off any org result already in the session — otherwise a
+   per-group write tool your list surfaces (`add_memory_to_<group>`), or ask. If
+   you need an unscoped read to learn the name, make it _before_ program content
+   is in play, since an unscoped search covers personal scope too. Only when none
+   of those yields a name do you **skip this pass** — a guessed group name is a
+   fabricated identifier, not a search.
 
 **Minimum outcome before you elicit anything:** whether a program already exists,
 and its `<slug>` if it does. Cannot establish that? Say so in one line rather
