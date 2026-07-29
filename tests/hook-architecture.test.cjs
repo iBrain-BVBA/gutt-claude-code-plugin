@@ -199,11 +199,20 @@ describe("hook architecture guards", () => {
     // "not `memory-search`" is documentation, not a pointer, and scanning it flagged
     // correct code. hooks.json is scanned whole: its Stop prompt is prose the model
     // actually receives.
+    // `shared/` is scanned alongside the hooks because GP-922 moved pointer prose
+    // there for the first time: the SessionStart migration offer is policy, so the
+    // thin-router cap above pushed it out of the hook and into
+    // `shared/builtin-memory.cjs`. Scanning only the hook directory would have left
+    // that pointer unguarded — precisely the quiet failure this test exists to catch.
     const hookDir = path.join(ROOT, "gutt-core", "hooks");
-    const sources = fs
-      .readdirSync(hookDir)
-      .filter((f) => f.endsWith(".cjs"))
-      .map((f) => stripComments(fs.readFileSync(path.join(hookDir, f), "utf8")))
+    const sharedDir = path.join(ROOT, "shared");
+    const cjsIn = (dir) =>
+      fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".cjs"))
+        .map((f) => stripComments(fs.readFileSync(path.join(dir, f), "utf8")));
+    const sources = cjsIn(hookDir)
+      .concat(cjsIn(sharedDir))
       .concat(fs.readFileSync(path.join(hookDir, "hooks.json"), "utf8"));
 
     // Three shapes, because one is not enough. This guard was briefly decorative:

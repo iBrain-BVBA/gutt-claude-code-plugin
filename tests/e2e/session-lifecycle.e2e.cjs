@@ -420,6 +420,28 @@ describe(
       );
     });
 
+    // GP-922's negative case, asserted here because this run already *is* it: the
+    // fixture project has no built-in memory store, so SessionStart must say nothing
+    // about migrating one. Paying for a second `claude -p` run to observe the same
+    // silence would buy nothing.
+    //
+    // Note what makes this more than a restatement of the check above. That one reads
+    // the *reply*; this reads what was *injected*, so it still fails if the model
+    // happened to answer "pong" while carrying an offer it should never have been given.
+    it("offers no memory migration in a project with no built-in store", () => {
+      const injected = hookAttachments(run.transcript)
+        .filter((a) => a.type === "hook_additional_context")
+        .flatMap((a) => [].concat(a.content))
+        .join("\n");
+      assert.ok(injected.length > 0, "no additionalContext at all — this asserts nothing");
+      assert.doesNotMatch(
+        injected,
+        /migrate-memory|file-based memory store/i,
+        "a project with no built-in store was offered a migration"
+      );
+      assert.doesNotMatch(String(run.result.result), /migrat/i);
+    });
+
     // There is deliberately no R25 assertion at this tier any more. Claude Code's
     // own per-hook `durationMs` only ever arrived on `hook_success` attachments,
     // and a hook returning additionalContext produces `hook_additional_context`
