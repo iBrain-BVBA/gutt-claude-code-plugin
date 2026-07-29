@@ -78,10 +78,45 @@ Both can be true if `--plugin-dir` loads from disk without a copy step, in which
 > "Installed plugins cannot reference files outside their directory. Paths that traverse
 > outside the plugin root (such as `../shared-utils`) will not work after installation."
 
-**Do not edit `CLAUDE.md` from this doc read alone.** The resolution is an actual
-`--plugin-dir` run against a plugin whose lib symlinks point at `shared/`, checking
-whether the hook loads. `check:shared` guards the _shape_ of the links, not whether the
-platform honours them. Until then treat our sentence as unverified rather than wrong.
+**Do not edit `CLAUDE.md` from this doc read alone.** The resolution is an actual run
+against a plugin whose lib symlinks point at `shared/`, checking whether the hook loads.
+`check:shared` guards the _shape_ of the links, not whether the platform honours them.
+
+### Partially resolved 2026-07-29 — directory-source installs DO resolve them
+
+Observed, not read. In a live interactive session with the repo registered as an
+`extraKnownMarketplaces` entry of `"source": "directory"`:
+
+- `gutt-core/hooks/lib/builtin-memory.cjs` is a symlink to `../../../shared/builtin-memory.cjs`,
+  resolving to the marketplace root — **outside** the plugin directory, the case upstream
+  says is skipped.
+- `session-start.cjs:28` requires `./lib/builtin-memory.cjs`, i.e. that symlink.
+- The GP-922 migration offer fired, carrying text byte-identical to `offerContext(35)`.
+- `installed_plugins.json` records `installPath` as the 3.0.0 cache directory, and **that
+  directory is empty** — it holds no `shared/`, no `gutt-core/`, nothing. Its recorded
+  `gitCommitSha` is `accc4b6`, which predates the offer code entirely.
+
+The offer code therefore cannot have come from the cache; it ran from the working tree,
+through a symlink that resolves outside the plugin directory. **The symlink was honoured.**
+
+Scope this claim carefully — it is narrower than the sentence in `CLAUDE.md`:
+
+- **Proven:** a `"source": "directory"` marketplace entry loads in place, no copy step, and
+  cross-plugin symlinks into `shared/` resolve at runtime.
+- **Still untested:** `--plugin-dir` specifically. It is a different flag and may take a
+  different path. Upstream's "all others are skipped" is stated about the _copy_ into the
+  cache, so it plausibly never applies to an in-place load — but that remains inference.
+- **Unchanged:** the marketplace-install case, where dereferencing is what makes installed
+  plugins self-contained.
+
+So `CLAUDE.md`'s "running from the repo works (the link resolves in place)" is **confirmed
+for directory-source**, and its `--plugin-dir` half is still unverified. The flag in
+`CLAUDE.md` is narrowed to match rather than removed.
+
+An operational consequence worth knowing independently of the symlink question: with a
+directory-source install whose cache directory is empty, **the working tree is what runs**.
+Edits to hooks and skills are live on the next session start with no reinstall — and
+equally, an uncommitted local edit is what executes, not what was pushed.
 
 ## 4. `${CLAUDE_PLUGIN_DATA}` is deletable on uninstall — and holds the GP-922 backup
 
