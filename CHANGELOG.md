@@ -23,6 +23,24 @@
 
 ### Added
 
+- `onboarding-guide` agent moved from gutt-core into `gutt-mentor` and rebased
+  onto dual scope. Reads the org graph for team, architecture, decisions, lessons
+  and experts, then builds the joiner's plan through the S7.1 skills and resumes
+  it across sessions. Self-service — personal scope follows the authenticated
+  login, so the joiner runs it themselves; preparing a brief about someone else
+  stays read-only and writes nothing. **The plan goes to both scopes** (personal
+  where it is tracked, org on confirmation so later joiners in the role benefit);
+  statuses, blockers and open questions stay personal. Registers in org scope only
+  and tags its one org write; the legacy person-named "brief prepared" note is
+  dropped rather than rebased. Also fixes four pre-convention defects carried by
+  the old file: a hardcoded MCP server prefix, an org write missing
+  `last_n_episodes=0`, `center_node_uuid` for `center_node_id`, and unscoped org
+  reads that silently covered personal memory (GP-884, E7-S7.4)
+- `gutt-mentor` declares `gutt-claude-code-plugin` as a plugin dependency — its
+  skills and agent reference gutt-core skills by name, and the agent preloads
+  `agent-memory-protocol` and `memory-search` across the plugin boundary using the
+  namespaced form (`gutt-claude-code-plugin:<skill>`), which resolves
+  deterministically where a bare name does not (GP-884)
 - New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
   memory scope, for the onboarding agent to consume. Ships no hooks.
   (GP-883, E7 mentor shared skill base)

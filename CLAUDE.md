@@ -20,7 +20,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 │   ├── skills/ agents/ commands/
 │   └── rules/ mcp.json config.json.example
 ├── auto-lint-plugin/       # standalone lint-on-edit plugin (no gutt dependency)
-├── gutt-mentor/            # skills-only mentor plugin — personal-scope program design + progress tracking
+├── gutt-mentor/            # mentor plugin (depends on gutt-core) — onboarding agent + personal-scope program design/tracking
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
 ├── docs/                   # Documentation and assets
