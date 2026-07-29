@@ -65,8 +65,55 @@ const IDS = {
   multiPrompt: crypto.randomUUID(),
   snoozed: crypto.randomUUID(),
   stopRouter: crypto.randomUUID(),
+  stopRouterRetry: crypto.randomUUID(),
+  stopRouterRetry2: crypto.randomUUID(),
   coexist: crypto.randomUUID(),
 };
+
+/**
+ * The turn run 4 needs: one that leaves a durable **Insight** behind.
+ *
+ * Every tool is denied in that run, so the assistant cannot discover anything — the
+ * finding has to come out of its own knowledge, which narrows the usable shapes a
+ * lot. Two constraints found by measuring candidates against the live hook:
+ *
+ *   - It cannot be a **Decision**. The previous fixture asked the model to commit to
+ *     a design choice with rationale, which fired 16/16 before GP-844 narrowed
+ *     unprompted capture to Insight and Incident. Afterwards the judge correctly
+ *     refuses it — "this is a Decision, which requires explicit user signal" — so the
+ *     test was asserting against shipped policy.
+ *   - It cannot be about this plugin. A session injects memory context, and the judge
+ *     dedups against it: a fixture about hook loading drew "synthesizes existing
+ *     memory ... already written" and fired 1/4. SQLite is a subject the graph holds
+ *     nothing on.
+ *
+ * The misses are defensible calls rather than bugs — "restates documented SQLite
+ * behaviour, not a novel organizational insight" — which is what `before` allows up to
+ * three attempts for.
+ */
+const DURABLE_TURN =
+  "Work this out from what I give you — do not run anything, and answer from your own " +
+  "knowledge. In a SQLite database with a parent table and a child table declared " +
+  "FOREIGN KEY ... ON DELETE CASCADE, a nightly job that refreshes parent rows with " +
+  "INSERT OR REPLACE keeps losing every child row, even though no DELETE statement " +
+  "appears anywhere in the job. Foreign keys are enabled. Explain the underlying " +
+  "mechanism that makes the child rows disappear, and state what it means for anyone " +
+  "using INSERT OR REPLACE as an upsert against a parent table.";
+
+/**
+ * Run 4 is the one run that cannot use the suite's default Haiku.
+ *
+ * The judge itself is always Haiku — a prompt-hook dispatch is followed immediately by a
+ * `model=claude-haiku-4-5` call even inside a `--model sonnet` session, verified in the
+ * debug log. What changes with the session model is the *turn being judged*: on this
+ * prompt a Haiku assistant writes ~1,850 bytes and a Sonnet assistant ~3,000, and the
+ * thinner answer reads to the judge as less of a finding. Measured on the same fixture and
+ * the same prompt revision: **0/3 fires from Haiku turns, 2/3 from Sonnet turns.**
+ *
+ * So this is not the test buying itself a nicer grader. The assertion is that a turn which
+ * produced a durable Insight gets routed, and it needs a turn that actually produced one.
+ */
+const ROUTER_MODEL = "claude-sonnet-5";
 
 /**
  * Remove the state file this suite's own run created. Each run owns exactly one
@@ -324,28 +371,44 @@ describe(
   { skip, timeout: 480000 },
   () => {
     let projectDir;
+    /** Every session attempted, in order. `runs[0]` is the one the other tests read. */
+    const runs = [];
     let run;
+
+    /** Every ok:false verdict across all attempts. */
+    function routedVerdicts() {
+      return runs
+        .flatMap((r) => stopVerdicts(r.debug))
+        .filter((v) => v.parsed && v.parsed.ok === false);
+    }
 
     before(
       async () => {
         projectDir = createProject("stop-router");
-        // The *assistant* has to produce the durable content, because a turn with
-        // every tool denied cannot discover anything on its own. A design decision
-        // with rationale is the cheapest shape that reliably reads as durable.
-        run = await runClaude({
-          projectDir,
-          sessionId: IDS.stopRouter,
-          prompt:
-            "Decide, and commit to one answer with your reasoning: for a hook that writes shared " +
-            "JSON state from processes that run in parallel, should we use one global lock file or " +
-            "a lock file per record? This is a design decision this project will follow.",
-        });
+        // The verdict is a model call, and on this turn it fired 13 times out of 17
+        // across three prompt revisions (~76%). One session is therefore a ~24%-flaky
+        // basis for an at-least-once assertion; three independent draws take it under
+        // 2%, and the extra sessions are only paid for on a roll that misses. Retrying
+        // is honest here because the claim under test is that the routing path works at
+        // all, not that this exact wording fires every single time.
+        const ids = [IDS.stopRouter, IDS.stopRouterRetry, IDS.stopRouterRetry2];
+        for (const sessionId of ids) {
+          runs.push(
+            await runClaude({ projectDir, sessionId, prompt: DURABLE_TURN, model: ROUTER_MODEL })
+          );
+          run = runs[0];
+          if (routedVerdicts().length) {
+            break;
+          }
+        }
       },
       { timeout: 460000 }
     );
 
     after(() => {
       dropOwnState(IDS.stopRouter);
+      dropOwnState(IDS.stopRouterRetry);
+      dropOwnState(IDS.stopRouterRetry2);
       if (projectDir) {
         removeDir(projectDir);
       }
@@ -358,17 +421,18 @@ describe(
     });
 
     it("routes a durable turn into memory-capture at least once", () => {
-      // Characterization, not contract: the verdict comes from a model call. On the
-      // probe shapes this fired 16/16 for a design decision and 2/3 for an
-      // articulated lesson, and 0/2 for a plain acknowledgement. If this ever starts
-      // failing, the prompt has drifted conservative rather than the code breaking.
-      const verdicts = stopVerdicts(run.debug);
+      // Characterization, not contract: the verdict comes from a model call. Two
+      // independent sessions at a measured 5/6 each, so a failure here means the
+      // prompt has drifted conservative rather than the code breaking — read the
+      // printed reasons, they say why the judge stayed quiet.
+      const verdicts = runs.flatMap((r) => stopVerdicts(r.debug));
       assert.ok(verdicts.length > 0, "the Stop hook was never evaluated");
-      const routed = verdicts.filter((v) => v.parsed && v.parsed.ok === false);
+      const routed = routedVerdicts();
       assert.ok(
         routed.length > 0,
-        `no verdict asked for a capture on a turn that produced a decision:\n` +
-          verdicts.map((v) => v.raw.slice(0, 200)).join("\n")
+        `no verdict asked for a capture across ${runs.length} session(s) on a turn that ` +
+          `produced an Insight:\n` +
+          verdicts.map((v) => v.raw.slice(0, 300)).join("\n")
       );
       assert.match(
         String(routed[0].parsed.reason || ""),
