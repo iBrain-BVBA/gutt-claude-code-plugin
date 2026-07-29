@@ -10,7 +10,8 @@
  * Latency (R25): this is the synchronous path and must stay ≤50ms p95, so it does
  * exactly one state write and no MCP inspection. The connectivity probe and cache
  * clears — the only heavy work — moved to session-connectivity.cjs, which
- * hooks.json runs with `async: true`.
+ * hooks.json runs with `async: true`. The GP-922 offer below adds one small JSON
+ * read and one `readdir` and nothing else.
  *
  * Never blocks a session: every step is individually guarded and the exit code is
  * always 0.
@@ -24,6 +25,7 @@ const {
   DEBRIS_TTL_MS,
 } = require("./lib/session-sweep.cjs");
 const { needsMigration, announceMigration } = require("./lib/migrations.cjs");
+const { migrationOffer } = require("./lib/builtin-memory.cjs");
 const { guard } = require("./lib/debug.cjs");
 
 // Only wire stdin when actually run as a hook. Requiring this file (the latency
@@ -39,12 +41,16 @@ if (require.main === module) {
   process.stdin.on("end", () => {
     let sessionId = "unknown";
     let source = null;
+    let payload = {};
     try {
       const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
       sessionId = data.session_id || "unknown";
       source = data.source || null;
+      payload = data;
     } catch {
-      // Unparseable payload — still open a session record under the default id.
+      // Unparseable payload — still open a session record under the default id. The
+      // migration offer locates a store from `transcript_path`/`cwd`, so with neither
+      // in hand it finds nothing and stays silent.
     }
     init(sessionId);
 
@@ -65,6 +71,24 @@ if (require.main === module) {
     // already durable before an upgrade session's filesystem work begins.
     if (guard("SessionStart", "migration gate", needsMigration)) {
       guard("SessionStart", "2.x cleanup", announceMigration);
+    }
+
+    // The built-in-memory migration offer (GP-922). Stdout on this event is added to
+    // Claude's context, so this is the one place the hook speaks — and it stays
+    // silent in every case but an unsettled decision over a non-empty store.
+    //
+    // Guarded like every other step, and the write happens only on a non-null return:
+    // a detection failure must leave stdout untouched rather than emit half a JSON
+    // object, because this hook's stdout is parsed.
+    const offer = guard("SessionStart", "migration offer", () =>
+      migrationOffer(payload, sessionId)
+    );
+    if (offer) {
+      process.stdout.write(
+        `${JSON.stringify({
+          hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: offer },
+        })}\n`
+      );
     }
 
     // exitCode over process.exit() so any buffered output flushes.
