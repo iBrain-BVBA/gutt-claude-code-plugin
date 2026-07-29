@@ -43,11 +43,11 @@ On reaching each milestone, at day 1 / week 1 / day 30 / day 60 / day 90.
 
 ## Session 2 — first check-in
 
-A new session. It finds the program with
-`search_memory_nodes(query="development program platform onboarding", group_ids=["personal"])`,
-pulls the thread with `get_episodes(group_id="personal", last_n=25)`, and takes
-the program episode's id as the predecessor — this is the first check-in, so
-there is no earlier one to chain to.
+A new session. It pulls `get_episodes(group_id="personal", last_n=25)` and finds
+the program by matching the episode **name** `Development program —
+platform-onboarding`; searching for the slug would not have found it, because a
+slug is never an extracted entity. It then takes the program episode's id as the
+predecessor — this is the first check-in, so there is no earlier one to chain to.
 
 `name`: `Program check-in 2026-03-03 — platform-onboarding`.
 
