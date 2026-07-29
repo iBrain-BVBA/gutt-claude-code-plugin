@@ -8,7 +8,6 @@ completed calls, which is the whole reason for both.
 """
 import concurrent.futures as cf
 import json
-import os
 import re
 import subprocess
 import tempfile
@@ -32,13 +31,17 @@ def judge_cwd():
 
     What this does *not* shed is the user-scope plugin registration in
     `~/.claude/plugins/known_marketplaces.json` — that is inherited whatever the cwd,
-    measured. Hooks are off in these children anyway (`disableAllHooks`), so it does not
-    affect the judge; it is the e2e tier that the registration breaks.
+    measured. Hooks are off in these children anyway, so it does not affect the judge; it
+    is the e2e tier that the registration breaks.
+
+    Hooks are disabled by the inline `--settings` in `ask`, not from here. An earlier
+    version wrote a `settings.json` into this directory, which did nothing twice over:
+    nothing referenced the path, and a bare `./settings.json` is not a file Claude Code
+    loads (project settings live at `.claude/settings.json`). The inline form does work —
+    measured, `--settings '{"disableAllHooks": true}'` gives zero hook completions and
+    zero prompt-hook dispatches where an unflagged run gives one of each.
     """
-    d = tempfile.mkdtemp(prefix="gutt-eval-")
-    with open(os.path.join(d, "settings.json"), "w", encoding="utf-8") as fh:
-        fh.write('{"disableAllHooks": true}\n')
-    return d
+    return tempfile.mkdtemp(prefix="gutt-eval-")
 
 
 # The CLI reports quota and availability problems on stdout with exit 0, so they arrive
