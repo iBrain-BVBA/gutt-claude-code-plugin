@@ -458,6 +458,22 @@ describe("hook architecture guards", () => {
     );
   });
 
+  // NOT guarded here, deliberately: that a fired verdict must not become the user's
+  // answer. It is a real defect — a fire injects this whole template into the main
+  // conversation as `Stop hook feedback:\n[<template>]: <reason>`, and the main agent
+  // reads "respond with exactly {"ok": true}" as an instruction to itself. Measured on
+  // live sessions: 3 of 5 fires returned a reply that was nothing but `{"ok": true}`.
+  //
+  // No wording tested fixes it without costing more than it saves, so asserting the
+  // property here would only make the suite red against the best available prompt. Both
+  // attempts are recorded in evals/suites/stop_judge/FINDINGS.md: a clause in the template
+  // (0/6 leaks, but the judge applied the prohibition to itself and fire rate fell to
+  // 3/15), and a mandated final line in the reason (0/6 leaks, but verdicts stopped
+  // parsing as the judge wrote the line outside the JSON, and a fire began reading as an
+  // R23 block). The live detector is `never leaks the judge protocol into the reply` in
+  // tests/e2e/hook-routing.e2e.cjs, and the deterministic one is
+  // evals/suites/stop_judge/leak_probe.py. Add the guard here with the fix.
+
   // Measured on the `evals/` bench (see evals/suites/stop_judge/FINDINGS.md): the
   // prompt that enumerated activities to stay quiet about — "routine edits, answering a
   // question, reading or searching code, formatting" — missed 11 of 21 turns that had
