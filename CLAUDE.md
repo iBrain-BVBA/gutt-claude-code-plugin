@@ -23,9 +23,21 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── gutt-mentor/            # skills-only mentor plugin — personal-scope program design + progress tracking
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
+├── evals/                  # prompt/skill bench — not shipped, not in test:all (see below)
 ├── docs/                   # Documentation and assets
 └── package.json
 ```
+
+## Evals
+
+`evals/` scores the parts of the plugin whose behaviour is decided by prose rather than
+by code — the Stop judge prompt, the injected pointers, the skills. A unit test can
+assert a prompt contains a clause; only an eval tells you whether the clause changes
+what the model does. Candidate wordings are run against turns lifted from real session
+transcripts and scored against hand-labelled verdicts: `python3 evals/run.py --list`.
+
+Python 3 stdlib, no dependencies. Outside `gutt-core/`, referenced by no hook, and
+deliberately out of `npm run test:all` — the calls cost money and take minutes.
 
 ## Shared Hook Libraries
 
