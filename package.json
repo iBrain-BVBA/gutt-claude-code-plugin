@@ -8,6 +8,7 @@
     "shared",
     "gutt-core",
     "auto-lint-plugin",
+    "gutt-mentor",
     "plugins",
     "docs",
     ".claude-plugin",
