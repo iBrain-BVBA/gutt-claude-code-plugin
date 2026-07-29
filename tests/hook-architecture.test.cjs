@@ -34,6 +34,19 @@ function handlers(pluginDir) {
 const ALL = PLUGIN_DIRS.flatMap(handlers);
 
 /**
+ * Plugin directories as the marketplace actually lists them, so adding a plugin
+ * there covers it here without editing a second list. `PLUGIN_DIRS` above stays
+ * hand-written on purpose — it drives the hook-shape guards, and a plugin that
+ * ships no hooks has no hook shape to constrain.
+ * @returns {string[]}
+ */
+function marketplacePluginDirs() {
+  const file = path.join(ROOT, ".claude-plugin", "marketplace.json");
+  const { plugins = [] } = JSON.parse(fs.readFileSync(file, "utf8"));
+  return plugins.map((p) => String(p.source || "").replace(/^\.\//, "")).filter(Boolean);
+}
+
+/**
  * Lines that are neither blank nor comment. Total line count is the wrong
  * metric for this codebase — the house style is comment-heavy on purpose, and a
  * cap on it would push explanation out of the files that most need it.
@@ -121,6 +134,48 @@ describe("hook architecture guards", () => {
       [],
       `behavior belongs in a skill, not a hook: ${JSON.stringify(oversized)}`
     );
+  });
+
+  // Every skill in every marketplace plugin, not just gutt-core's. A skill is
+  // loaded through its frontmatter, so an unparseable block — or a `name` that
+  // disagrees with the directory the loader found it in — leaves the model told
+  // to invoke something that will not resolve. Nothing else in this suite reads a
+  // plugin outside gutt-core, so before this test a whole plugin's skills could
+  // drift with CI green.
+  it("every marketplace plugin's skills have frontmatter naming their directory", () => {
+    const defects = [];
+    for (const plugin of marketplacePluginDirs()) {
+      const skillsDir = path.join(ROOT, plugin, "skills");
+      if (!fs.existsSync(skillsDir)) {
+        continue;
+      }
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        const where = `${plugin}/skills/${entry.name}`;
+        const file = path.join(skillsDir, entry.name, "SKILL.md");
+        if (!fs.existsSync(file)) {
+          defects.push(`${where}: no SKILL.md`);
+          continue;
+        }
+        const front = fs.readFileSync(file, "utf8").match(/^---\n([\s\S]*?)\n---/);
+        if (!front) {
+          defects.push(`${where}: no frontmatter block`);
+          continue;
+        }
+        const declared = front[1].match(/^name:[ \t]*(.+)$/m);
+        if (!declared) {
+          defects.push(`${where}: frontmatter has no name`);
+        } else if (declared[1].trim().replace(/^["']|["']$/g, "") !== entry.name) {
+          defects.push(`${where}: frontmatter name is "${declared[1].trim()}"`);
+        }
+        if (!/^description:/m.test(front[1])) {
+          defects.push(`${where}: frontmatter has no description`);
+        }
+      }
+    }
+    assert.deepEqual(defects, [], `skill frontmatter defects: ${defects.join("; ")}`);
   });
 
   // A thin router's whole output is a pointer at a skill. If the skill is renamed

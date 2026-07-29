@@ -120,6 +120,15 @@ longer edits that file for you — see
 | `memory-keeper`    | Autonomous lesson capture after significant work  |
 | `config-discovery` | Scan repos for Claude Code config drift           |
 
+### Mentoring (gutt-mentor plugin)
+
+Individual development programs in the **personal** memory scope, shipped as a
+separate skills-only plugin: `individual-program-design` writes the program
+(goals, milestones, check-in cadence) as one self-contained episode, and
+`progress-tracking` reads it back, reports status from the record alone, and
+chains the next check-in — so a fresh session picks up where the person stands
+without re-explaining. No hooks.
+
 ## Usage
 
 ### Memory Search
@@ -156,7 +165,7 @@ Capture learnings using one of 4 patterns:
 ```
 gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── .claude-plugin/
-│   └── marketplace.json           # lists gutt-core + auto-lint-plugin
+│   └── marketplace.json           # lists gutt-core + auto-lint-plugin + gutt-mentor
 ├── shared/                         # single source for hook libs; plugins symlink these
 ├── gutt-core/                      # core plugin — name: gutt-claude-code-plugin, displayName: gutt-core
 │   ├── .claude-plugin/plugin.json
@@ -168,6 +177,7 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   ├── mcp.json                    # MCP config template
 │   └── config.json.example
 ├── auto-lint-plugin/               # standalone lint-on-edit plugin (no gutt dependency)
+├── gutt-mentor/                    # mentor plugin — personal-scope program design + progress tracking (no hooks)
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide
 ├── tests/
 ├── package.json

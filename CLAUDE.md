@@ -12,7 +12,7 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 
 ```
 gutt-plugins/               # marketplace repo (root is NOT a plugin)
-├── .claude-plugin/         # marketplace.json — lists gutt-core + auto-lint-plugin
+├── .claude-plugin/         # marketplace.json — lists gutt-core + auto-lint-plugin + gutt-mentor
 ├── shared/                 # single source for hook libs; plugins symlink these (GP-853)
 ├── gutt-core/              # core plugin (name: gutt-claude-code-plugin, displayName: gutt-core)
 │   ├── .claude-plugin/     # plugin.json
@@ -20,6 +20,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 │   ├── skills/ agents/ commands/
 │   └── rules/ mcp.json config.json.example
 ├── auto-lint-plugin/       # standalone lint-on-edit plugin (no gutt dependency)
+├── gutt-mentor/            # skills-only mentor plugin — personal-scope program design + progress tracking
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
 ├── docs/                   # Documentation and assets
