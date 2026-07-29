@@ -107,6 +107,26 @@ re-check after a moment before concluding anything was lost, and re-queue only
 what's still missing — re-queueing a still-processing write manufactures the
 duplicate rule 1 forbids.
 
+## Reporting back after a capture
+
+Say little about the capture itself — a few lines, not a report. What was written,
+its type, and anything the user still has to decide. Skip the procedure you just
+followed: nobody needs the dedup search narrated back to them.
+
+Then, when the capture interrupted work that was already finished — a Stop-hook
+verdict is the usual way that happens — end the reply with a brief TL;DR of that
+work, placed last, after everything else. The interruption arrives once the turn's
+answer is already written, so whatever comes next is what the user is left looking
+at; a reply given over to memory bookkeeping buries the work it interrupted and
+leaves them scrolling back for what they actually asked for. The capture is a
+footnote to the turn, not its subject, and the TL;DR is what hands the turn back.
+
+These two rules live here rather than in the Stop hook's fired reason on purpose.
+That reason is a payload — a skill name and a bullet per subject — and it is read
+before this file is loaded; anything procedural written there is repeated on every
+firing and duplicated by the moment it matters. This file is in context by the time
+either rule applies.
+
 ## Degradation
 
 If no write tool is visible (fail-closed auth with no writable group) or the
