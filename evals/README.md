@@ -62,8 +62,19 @@ accuracy does not.
   on purpose — a cut mid-sentence reads to the judge as work left unfinished, which
   every candidate prompt treats as a reason to stay quiet, so sloppy clipping
   manufactures the verdict being measured.
-- **System prompt.** `--system-prompt` replaces the default, but `CLAUDE.md`
-  auto-discovery still applies. Constant across variants.
+- **Inherited instructions.** `--system-prompt` replaces the default but does not stop
+  `CLAUDE.md` discovery, so judge calls run from a temp directory outside the repo
+  (`lib/runner.judge_cwd`) to shed the project `CLAUDE.md` and project settings. That is
+  a partial isolation and the limit is measured: asked what its instructions mention, a
+  judge run from the repo cites this project's `CLAUDE.md`, and one run from the temp
+  directory cites the **plugin's own skills and agents** instead — those come from the
+  user-scope registration in `~/.claude/plugins/known_marketplaces.json` and are
+  inherited whatever the cwd. `~/.claude/CLAUDE.md` loads in both. Shedding the rest
+  needs the plugin disabled for the child, and `enabledPlugins` in a `--settings` file
+  does not do it (measured; same wall as the e2e double-load). Constant across variants
+  either way.
+- **Round comparability.** Rounds 1–3 ran from the repo, with the project `CLAUDE.md` in
+  the judge's context. Later rounds do not. Compare within a round, not across that line.
 - **Labels.** Ground truth for "should fire" is not a reconstruction: each of those
   turns is one whose finding was actually written to the graph or the memory directory
   at the time. Labels held less firmly are flagged `confident: False` and reported

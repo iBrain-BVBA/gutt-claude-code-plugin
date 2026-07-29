@@ -8,15 +8,37 @@ completed calls, which is the whole reason for both.
 """
 import concurrent.futures as cf
 import json
+import os
 import re
 import subprocess
+import tempfile
 import threading
 
 FAST_MODEL = "claude-haiku-4-5-20251001"
 # A prompt hook is a single-turn JSON call, so the harness keeps the system prompt to
 # that and nothing more. Note that --system-prompt replaces the default but does not
-# suppress CLAUDE.md auto-discovery.
+# suppress CLAUDE.md auto-discovery — which is what `judge_cwd` below is for.
 JUDGE_SYS = "You evaluate a hook condition for Claude Code and reply with a single JSON object."
+
+
+def judge_cwd():
+    """A scratch directory outside the repo to run judge calls from.
+
+    CLAUDE.md is discovered from the working directory upward, so a call made from the
+    repo hands the judge this project's instructions on top of the prompt under test.
+    Running from a temp directory sheds the project CLAUDE.md and the project
+    `.claude/settings.json`; the user-level `~/.claude/CLAUDE.md` still loads and is the
+    same for every variant.
+
+    What this does *not* shed is the user-scope plugin registration in
+    `~/.claude/plugins/known_marketplaces.json` — that is inherited whatever the cwd,
+    measured. Hooks are off in these children anyway (`disableAllHooks`), so it does not
+    affect the judge; it is the e2e tier that the registration breaks.
+    """
+    d = tempfile.mkdtemp(prefix="gutt-eval-")
+    with open(os.path.join(d, "settings.json"), "w", encoding="utf-8") as fh:
+        fh.write('{"disableAllHooks": true}\n')
+    return d
 
 
 # The CLI reports quota and availability problems on stdout with exit 0, so they arrive
@@ -34,7 +56,7 @@ BLOCKED = (
 )
 
 
-def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=180):
+def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=180, cwd=None):
     """One `claude -p` call. Returns stdout, or a `<marker>` string on failure."""
     cmd = ["claude", "-p", "--model", model, "--strict-mcp-config",
            "--settings", '{"disableAllHooks": true}']
@@ -43,7 +65,8 @@ def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=1
     if not allow_tools:
         cmd += ["--allowedTools", ""]
     try:
-        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
+                           timeout=timeout, cwd=cwd)
     except subprocess.TimeoutExpired:
         return "<timeout>"
     out = r.stdout.strip()
@@ -76,6 +99,8 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
     print(f"{len(jobs)} calls — {len(variants)} variants x {len(cases)} cases x {trials} trials")
     results, lock = [], threading.Lock()
     halted = threading.Event()
+    run_dir = judge_cwd()
+    print(f"judge cwd: {run_dir}")
 
     def work(job):
         vname, case, trial = job
@@ -84,7 +109,8 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
             rec.update({"error": "skipped — run halted", "skipped": True})
             return rec
         try:
-            raw = ask(build_prompt(variants[vname], case), model=model, allow_tools=allow_tools)
+            raw = ask(build_prompt(variants[vname], case), model=model,
+                      allow_tools=allow_tools, cwd=run_dir)
             rec["raw"] = raw[:3000]
             if raw.startswith("<blocked"):
                 halted.set()
