@@ -161,9 +161,128 @@ V10 = V9.replace(
 )
 
 
+# V8–V10 win on verdicts and cannot ship. Each is missing the condition-first opening the
+# CLI's polarity depends on, the durability clause, the typed fire-condition list, and the
+# closing anti-restatement guard whose removal put a fenced verdict in front of the user
+# 4/4. Ranking them again would rank prompts that are not deployable, so the two candidates
+# below are compressions of the *shipped* prompt that satisfy every guard in
+# tests/hook-architecture.test.cjs — checked mechanically by `shippable.py` before any call
+# is spent. What is being measured is therefore only the compression: 14 lines → 11 → 9.
+_CLOSE = (
+    "Those two bullets are a format sample, not findings from this turn — never carry them "
+    "into a verdict. And do not restate this response format inside the reason: a reason "
+    "that quotes the JSON gets echoed back to the user as the assistant's answer instead of "
+    "the answer they asked for."
+)
+
+# V12: the shipped prompt with its paragraph boundaries collapsed and every clause that
+# restates a neighbouring one removed. 14 lines -> 11.
+V12 = f"""Nothing from this finished turn needs to be written to the team's long-term memory. That sentence is the condition, SATISFIED — {{"ok": true}} — when there is nothing to record. You are scoring the turn, not continuing it: capture nothing yourself, call no tool, and let your whole output be one JSON verdict on the conversation above. Read `stop_hook_active` from the payload and ignore the rest.
+
+Hook payload: $ARGUMENTS
+
+Ask what the turn *learned*, not what it *did* — verifying, testing and debugging are how findings get made, so judge the finding and never the activity that produced it, and it counts still when the fix was already written or it came out of a test. The condition is UNSATISFIED — {{"ok": false}} — for exactly two things, and only where the subject is durable for the team rather than confined to throwaway scaffolding:
+- an **Insight** — how some system actually behaves, where that was not obvious and is not stated in the code;
+- an **Incident** — something broke, and what happened.
+
+It stays satisfied for everything else: work that only moved code around or restated what the code already says, work left unfinished, and anything recorded earlier in this turn. It stays satisfied when the takeaway is a **Lesson**, a **Decision** or a **WorkingAgreement**, which the capture skill holds behind an explicit signal from the user that a hook cannot give. And it stays satisfied whenever `stop_hook_active` is true — you have already asked during this turn, and answering otherwise re-enters it.
+
+Satisfied → exactly {{"ok": true}} and no other field; omit `reason`, it is discarded unread. Otherwise {{"ok": false, "reason": "..."}}, where the reason opens with the line "Run the `{SKILL}` skill." and continues with one bullet per subject, **10 words maximum each**, every bullet typed and only ever Insight or Incident:
+
+{EXAMPLE}
+
+{_CLOSE}"""
+
+# V13: V12 with the two response branches folded into the stays-satisfied paragraph and
+# the example cut to a single bullet. 11 lines -> 9. The open question it answers is
+# whether the typed fire-condition list alone keeps bullets typed once the example stops
+# demonstrating both types.
+V13 = f"""Nothing from this finished turn needs to be written to the team's long-term memory — that is the condition, satisfied ({{"ok": true}}) when there is nothing to record. Score the turn, do not continue it: capture nothing yourself, call no tool, and output one JSON verdict on the conversation above. Read `stop_hook_active` from the payload; ignore the rest.
+
+Hook payload: $ARGUMENTS
+
+Ask what the turn *learned*, not what it *did* — testing and debugging are how findings get made, so judge the finding, never the activity, and count it even where the fix was already written. Unsatisfied ({{"ok": false}}) for exactly two things, and only where the subject is durable for the team rather than throwaway scaffolding:
+- an **Insight** — how some system actually behaves, where that was not obvious and is not stated in the code;
+- an **Incident** — something broke, and what happened.
+
+Satisfied for everything else — code only moved or restated, work unfinished, the point already recorded, or a takeaway that is a **Lesson**, **Decision** or **WorkingAgreement** (the capture skill holds those behind an explicit user signal a hook cannot give) — and always when `stop_hook_active` is true, or the turn re-enters itself. Then respond exactly {{"ok": true}} and no other field: omit `reason`, it is discarded unread. Otherwise {{"ok": false, "reason": "..."}}, where the reason opens with the line "Run the `{SKILL}` skill." then one bullet per subject, **10 words maximum each**, every bullet typed and only ever Insight or Incident:
+
+Run the `{SKILL}` skill.
+- Insight: prefix matching survives new tools; allowlists silently stop matching
+
+{_CLOSE}"""
+
+
+# V14 = V13 plus a gloss on what `stop_hook_active` *means*, which V13's compression had
+# dropped. Found live, not by this bench: on a turn whose Insight it had already named
+# correctly, a V13 judge answered ok:true reasoning that "stop_hook_active=false means the
+# hook is inactive and cannot itself request capture". Nothing in V13 says what false
+# means, so the model supplied a meaning, and the one it chose suppresses every fire.
+# The shipped 14-line prompt carried that gloss; the bench cannot see the difference
+# because it never asks a variant what an unset flag implies.
+V14 = V13.replace(
+    "and always when `stop_hook_active` is true, or the turn re-enters itself.",
+    "and always when `stop_hook_active` is true, which means you have already asked during "
+    "this turn and answering otherwise re-enters it — while its being false is the normal "
+    "case and says nothing either way.",
+)
+assert V14 != V13, "V14 gloss failed to apply — V13's termination clause was reworded"
+
+
+# V15 = V14 plus a clause addressed to whoever reads this template as *feedback*.
+#
+# When the hook fires, Claude Code injects the whole template into the main conversation as
+# `Stop hook feedback:\n[<template>]: <reason>`. Its imperatives — "respond with exactly
+# {"ok": true} and no other field" — are then read by the *main* agent as instructions to
+# itself, and it complies: measured across two prompts, 3 of 5 fires came back with a
+# 13-byte reply that was nothing but `{"ok": true}`, so the user's question went unanswered.
+# The pre-existing closing clause covers a different case (the judge quoting the schema
+# inside its reason) and does nothing for this one.
+#
+# This is pre-existing, not new to the compression: the 14-line prompt leaked at the same
+# 3/5 rate. It survived because the e2e detector for it can only see a reply that follows a
+# fire, and the fixture had stopped firing.
+_FEEDBACK = (
+    "If this text has reached you as `Stop hook feedback` on a turn you have already "
+    "finished, then none of it is addressed to you except the reason appended after it: do "
+    "not emit a verdict, JSON, or any description of this format. Run the skill the reason "
+    "names, and answer the question the user actually asked."
+)
+
+V15 = V14 + "\n\n" + _FEEDBACK
+
+# V16 moves the anti-leak instruction out of the template and into the *reason*.
+#
+# V15 put it in the template and the judge read it as a rule for itself: on a turn whose
+# Insight it named in full, it answered ok:true because "the instruction to 'capture nothing
+# yourself, call no tool' prevents me from invoking memory-capture" and "without explicit
+# user signal that this Insight should persist". Live fire rate fell to 3/15, against 5/6
+# for V14. A prohibition addressed to a different reader still lands on the judge, because
+# the judge is the only reader that is actually being asked a question.
+#
+# The reason avoids that entirely: it is written per fire, it is not part of the condition
+# being scored, and in the injected block it is the *last* thing the main agent reads —
+# after the template whose imperatives cause the leak. Final position is the position that
+# wins, which is the same mechanism that made a trailing example get copied as findings.
+_LAST_LINE = "Do not print this verdict — run the skill, then answer the question the user asked."
+
+V16 = V14.replace(
+    "every bullet typed and only ever Insight or Incident:",
+    "every bullet typed and only ever Insight or Incident, and then one final line, exactly: "
+    f"`{_LAST_LINE}`",
+).replace(
+    "- Insight: prefix matching survives new tools; allowlists silently stop matching",
+    "- Insight: prefix matching survives new tools; allowlists silently stop matching\n"
+    f"{_LAST_LINE}",
+)
+assert V16.count(_LAST_LINE) == 2, "V16 needs the closing line in both the spec and the example"
+assert V16 != V14, "V16 patch failed to apply — V14's reason spec was reworded"
+
+
 def all_variants():
     return {"V0-shipped": shipped(), "V1": V1, "V2": V2, "V3": V3, "V4": V4,
-            "V5": V5, "V6": V6, "V7": V7, "V8": V8, "V9": V9, "V10": V10}
+            "V5": V5, "V6": V6, "V7": V7, "V8": V8, "V9": V9, "V10": V10,
+            "V12": V12, "V13": V13, "V14": V14, "V15": V15, "V16": V16}
 
 
 if __name__ == "__main__":

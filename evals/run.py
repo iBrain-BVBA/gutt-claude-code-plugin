@@ -55,7 +55,13 @@ def main():
 
     out_dir = HERE / "results"
     out_dir.mkdir(exist_ok=True)
-    raw_path = out_dir / f"{args.suite}-{args.trials}t.json"
+    # Key the raw file on the variant set as well as the trial count. Keyed on trials
+    # alone, a second run at the same depth silently overwrote the first — which is how a
+    # V0-vs-V13 comparison was lost to a later V13-vs-V14 run at 5 trials, leaving only
+    # the printed table. Rounds are the unit of comparison here (see README), so losing
+    # one is losing the ability to check a claim.
+    tag = "-".join(sorted(variant_map)) if len(variant_map) <= 4 else f"{len(variant_map)}v"
+    raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}.json"
 
     results = run_matrix(variant_map, case_list, suite.build_prompt, suite.evaluate,
                          trials=args.trials, workers=args.workers, out_path=str(raw_path))

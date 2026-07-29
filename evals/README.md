@@ -32,9 +32,38 @@ alongside a committed `report.md`.
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | `stop-judge` | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
 
+Two extra probes live beside that suite, because the verdict is not the only thing a
+judge prompt has to get right:
+
+```bash
+cd evals
+python3 -m suites.stop_judge.shippable                        # guard violations, no calls
+python3 -m suites.stop_judge.leak_probe V14 --trials 6        # does a fire become the reply?
+python3 -m suites.stop_judge.leak_probe V14 --case trivial    # ... after a false fire
+```
+
 Planned: `memory-capture` and `memory-search` skill evals — same corpus machinery, but
 the runner needs tool access so the transcript can be scored on which tools the skill
 actually led the model to call. `lib/runner.py` takes `allow_tools` for that.
+
+## Screen candidates before spending calls on them
+
+`suites/stop_judge/shippable.py` checks a candidate against the guards in
+`tests/hook-architecture.test.cjs` and prints what it violates:
+
+```bash
+cd evals && python3 -m suites.stop_judge.shippable
+```
+
+This exists because a whole round was spent ranking prompts that could not be deployed.
+V8 and V9 topped the accuracy table at 8 and 6 lines; they carry ten and eleven guard
+violations respectively, and every guard encodes a live failure — inverted polarity,
+a fired verdict printed to the user as the answer, a fire on a human-gated tier. A
+number attached to an unshippable prompt is not a result. Run the screen first and
+compare only what could actually ship.
+
+The checker is a deliberate mirror of the `.cjs` assertions, not a shared source: the
+tests are the contract. If the two drift, this file is the one that is wrong.
 
 ## How a suite is put together
 
@@ -75,10 +104,36 @@ accuracy does not.
   either way.
 - **Round comparability.** Rounds 1–3 ran from the repo, with the project `CLAUDE.md` in
   the judge's context. Later rounds do not. Compare within a round, not across that line.
+- **Noise floor.** Re-run one variant unchanged before believing any ranking. The same
+  9-line prompt scored 81.0%, 73% and 70% on three rounds under identical conditions —
+  an 11-point spread, wider than every gap the bench has been used to choose between.
+  Sample sizes here are 42–70 calls per variant; that buys a direction, not a decimal.
 - **Labels.** Ground truth for "should fire" is not a reconstruction: each of those
   turns is one whose finding was actually written to the graph or the memory directory
   at the time. Labels held less firmly are flagged `confident: False` and reported
   separately, so a variant is not marked down for a call the author is unsure of.
+
+## What this bench cannot decide
+
+Two defects in a shipped prompt were found by probing the live hook, and neither was
+visible here. The bench feeds a variant one turn and reads one verdict, so it never asks
+a variant what an _unset_ field implies, and it never sees the fired reason arrive back
+in a real conversation:
+
+- A judge that had correctly named the turn's Insight answered `ok: true` anyway,
+  reasoning that "`stop_hook_active=false` means the hook is inactive and cannot itself
+  request capture". The prompt said what `true` means and left `false` undefined, so the
+  model supplied a meaning — and the one it chose suppresses every fire.
+- A prompt that dropped its closing anti-restatement clause put a fenced `{"ok": true}`
+  in front of the user as the assistant's answer, 4 times out of 4.
+
+So finish with a live probe, not a green table: run the candidate through
+`claude -p --plugin-dir <repo>/gutt-core --debug-file <log>` and read the verdicts out of
+the log. Note that `--debug` prints nothing at all in `-p` mode — only `--debug-file`
+works — and that a clean reply proves nothing unless the log also shows the judge ran.
+Grep `Processing prompt hook` for invocations and `condition was (not )?met` for
+verdicts; the count of `Read hooks.json for plugin` lines is **not** a proxy for either
+(two reads of the same path still registered and fired once).
 
 ## Reading the report
 

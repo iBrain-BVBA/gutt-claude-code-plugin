@@ -1,14 +1,35 @@
-# stop-judge — round 3 was VOID
+# stop-judge — 5 trial(s) per case
 
-Round 3 (`--trials 4 --variants V8 V9 V10`) hit the org monthly spend limit partway
-through. The CLI returns that notice on stdout with exit 0, so 52 of V9's 56 calls and
-55 of V10's were scored as wrong answers rather than as failures: V9 was reported at 5%
-having measured 81% on the identical prompt twenty minutes earlier. V8 ran first and
-completed legitimately (84% overall, 100% on confidently-labelled cases, 5/28 fires
-missed), which corroborates its round-2 numbers but does not rank it against V9 or V10.
+14 cases, 2 variants, 140 calls.
 
-`lib/runner.py` now detects the quota notice, halts the matrix and prints RUN VOID, so
-this cannot be misread again.
+```
+VERDICT ACCURACY
+variant      lines  chars      all  confident  missed fire  false fire  livelock  errors
+----------------------------------------------------------------------------------------
+V14              9   2112     64%        74%      20/35        5/35      0/5          0
+V15             10   2421     70%        82%      16/35        5/35      0/5          0
 
-**The standing result is round 2** — see `stop-judge-round2-report.md`. Round 1, taken
-before two corpus labels were corrected, is in `stop-judge-round1-report.md`.
+REASON SHAPE ON TURNS THAT SHOULD FIRE
+variant        n   chars  names skill  all typed  >10 words  gated type  json echo
+----------------------------------------------------------------------------------
+V14           15     184        100%      100%        0%         0%        0%
+V15           19     185        100%      100%        0%         5%        0%
+
+PER CASE — trials correct
+       case   want        V14        V15
+----------------------------------------
+        c01   FIRE         5/5        3/5
+        c02   FIRE         4/5        5/5
+        c03   FIRE         1/5        4/5
+        c04   FIRE         1/5        2/5
+        c05   FIRE~        2/5        3/5
+        c06   FIRE~        1/5        0/5
+        c07   FIRE         1/5        2/5
+        c08  quiet         5/5        5/5
+        c09  quiet         5/5        5/5
+        c10  quiet~        0/5        0/5
+        c11  quiet         5/5        5/5
+        c12  quiet         5/5        5/5
+        c13  quiet~        5/5        5/5
+ c14-active  quiet         5/5        5/5
+```
