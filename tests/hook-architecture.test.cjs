@@ -422,6 +422,42 @@ describe("hook architecture guards", () => {
     );
   });
 
+  // Both halves of this were live for the length of one commit, and the failure is the
+  // loudest one this hook has: in a `claude -p` run against this repo, "Reply with
+  // exactly: up" returned ```json {"ok": true}``` — the hook's verdict printed as the
+  // user's answer — 4 times out of 4, and once as a full ok:false whose reason carried
+  // the example's own two bullets as though they were findings from that turn.
+  //
+  // Two causes, one commit. The prompt shrink dropped the closing anti-restatement
+  // clause as rationale; it was load-bearing, and it names this exact outcome. And the
+  // shrunk prompt *ended* on a filled-in example of the firing branch, so the last thing
+  // the judge read was a completed fire verdict — which it reproduced, contents and all.
+  //
+  // No unit test covered either property, and `npm run test:all` excludes the e2e tier
+  // where the pong-fixture detector lives, so nothing failed before this shipped.
+  it("stops the judge's own format leaking into the answer", () => {
+    const stop = ALL.find((h) => h.event === "Stop");
+    assert.ok(stop, "no Stop handler to check");
+    assert.match(
+      stop.prompt,
+      /do not restate this response format|quotes the JSON gets echoed/i,
+      "the clause naming the echo failure is gone; the verdict prints as the user's answer"
+    );
+    assert.match(
+      stop.prompt,
+      /format sample, not findings|never carry them/i,
+      "nothing marks the example as a sample, so the judge fires carrying its bullets"
+    );
+    // The example must not be the last thing read: a completed fire verdict in final
+    // position is what the judge copies.
+    const tail = stop.prompt.trim().split("\n").slice(-1)[0];
+    assert.doesNotMatch(
+      tail,
+      /^-\s*(Insight|Incident):/,
+      `the prompt ends on an example bullet, biasing the judge toward firing: "${tail}"`
+    );
+  });
+
   // Measured on the `evals/` bench (see evals/suites/stop_judge/FINDINGS.md): the
   // prompt that enumerated activities to stay quiet about — "routine edits, answering a
   // question, reading or searching code, formatting" — missed 11 of 21 turns that had
