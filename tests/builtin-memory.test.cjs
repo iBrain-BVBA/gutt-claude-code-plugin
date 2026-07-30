@@ -336,10 +336,22 @@ describe("builtin-memory: the SessionStart offer", () => {
 
   // The scoping sentence is load-bearing: without it the offer reads as "migrate
   // now" and a session opened to ask one question gets a migration run instead.
-  it("scopes itself to a one-line mention rather than an immediate run", () => {
+  it("scopes itself to an offer rather than an immediate run", () => {
     const offer = mem.offerContext(2);
     assert.match(offer, /only if they accept/);
     assert.match(offer, /do not interrupt/);
+  });
+
+  // Collecting the answer in prose leaves accept/decline to be inferred from free
+  // text, and `record declined` suppresses the offer permanently on that inference.
+  // Both halves are asserted: naming the tool, and ruling out the text-only form the
+  // clause replaced — the wording regressed once by keeping the tool name while
+  // still saying "in one line at the end of your next reply".
+  it("collects the answer with AskUserQuestion rather than in reply text", () => {
+    const offer = mem.offerContext(2);
+    assert.match(offer, /AskUserQuestion/);
+    assert.match(offer, /rather than only mentioning it in your reply text/);
+    assert.doesNotMatch(offer, /in one line/);
   });
 
   it("stays silent once the decision is migrated or declined", () => {
@@ -454,17 +466,33 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
     assert.deepEqual(result.rejected, ["a.md"]);
   });
 
-  it("removes only the verified facts and keeps the rest, leaving no note yet", () => {
-    const { memoryDir, payload } = seed("-p-partial");
+  it("removes only the verified facts, prunes their pointers, and notes on top", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-partial", {
+      "MEMORY.md": "- [A](a.md) — hook\n- [B](b.md) — hook\n",
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
     store.backupStore(payload);
     store.recordVerified(mem.projectKey(payload), { "a.md": "ep-1" });
     const outcome = store.deleteVerified(payload);
     assert.deepEqual(outcome.deleted, ["a.md"]);
     assert.deepEqual(outcome.kept, ["b.md"]);
-    assert.equal(outcome.note, false, "a half-finished migration must not look finished");
+    assert.equal(outcome.note, true, "a partial migration still needs the redirect");
     assert.equal(fs.existsSync(path.join(memoryDir, "a.md")), false);
     assert.equal(fs.existsSync(path.join(memoryDir, "b.md")), true);
-    assert.match(fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8"), /- \[A\]/);
+
+    const index = fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8");
+    // A pointer to a deleted fact is loaded into context every session, advertising a
+    // note nobody can open — so the deletion has to take its index line with it.
+    assert.doesNotMatch(index, /a\.md/, "the migrated fact's pointer must be gone");
+    assert.match(index, /\n\n- \[B\]\(b\.md\)/, "a fact left behind stays listed, as a list");
+    assert.ok(
+      index.indexOf("gutt is the store of record") < index.indexOf("- [B]"),
+      "the note belongs above the surviving pointers, not buried under them"
+    );
+    // The note must not be what makes the store look finished: facts remain, so the
+    // offer has to return.
+    assert.equal(mem.hasMigratableStore(payload), true);
   });
 
   it("leaves the standing note once every fact has gone", () => {
@@ -480,6 +508,23 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
     assert.match(note, /gutt is the store of record/);
     // And the store it leaves behind must read as empty, or the offer returns forever.
     assert.equal(mem.hasMigratableStore(payload), false);
+  });
+
+  // The case this shipped broken: a partial run had already orphaned 30 pointers, and
+  // they outlived it because the rewrite never fired. Survivors are therefore decided by
+  // what is on disk, not by what this particular run deleted.
+  it("repairs pointers orphaned by an earlier run", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-orphans", {
+      "MEMORY.md": "- [Gone](gone.md) — hook\n- [A](a.md) — hook\n- [B](b.md) — hook\n",
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
+    store.backupStore(payload);
+    store.recordVerified(mem.projectKey(payload), { "a.md": "ep-1" });
+    store.deleteVerified(payload);
+    const index = fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8");
+    assert.doesNotMatch(index, /gone\.md/, "a pointer this run never deleted is still dead");
+    assert.match(index, /- \[B\]\(b\.md\)/, "the surviving fact keeps its pointer");
   });
 
   it("keeps the backup readable after the local files are gone", () => {
@@ -520,6 +565,57 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
       assert.equal(fs.existsSync(path.join(memoryDir, "a.md")), true);
     } finally {
       process.env.CLAUDE_PLUGIN_DATA = dataDir;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The invocation contract the skill documents
+//
+// Anchored on the shape of the commands, not on the prose around them: the prose gets
+// reworded and a guard that greps for a sentence goes green while asserting nothing.
+// What must hold is that every documented invocation is one a Bash tool can actually
+// run — no reliance on env it doesn't inherit.
+// ---------------------------------------------------------------------------
+
+describe("migrate-memory SKILL.md: the documented commands must be runnable", () => {
+  const SKILL = path.join(__dirname, "..", "gutt-core", "skills", "migrate-memory", "SKILL.md");
+
+  /** Bash-fence lines invoking the CLI, with `\`-continuations joined. */
+  function documentedInvocations() {
+    const text = fs.readFileSync(SKILL, "utf8");
+    const blocks = [...text.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]);
+    return blocks
+      .flatMap((b) => b.replace(/\\\n\s*/g, " ").split("\n"))
+      .filter((line) => line.includes("store-cli.cjs"));
+  }
+
+  it("documents at least one invocation, so the assertions below can fail", () => {
+    assert.ok(documentedInvocations().length >= 2, "expected the status and verified calls");
+  });
+
+  it("never asks the shell for env the Bash tool does not inherit", () => {
+    for (const line of documentedInvocations()) {
+      assert.doesNotMatch(
+        line,
+        /\$\{?CLAUDE_PLUGIN_ROOT\}?/,
+        `CLAUDE_PLUGIN_ROOT is unset in the Bash tool, so this cannot find the script: ${line}`
+      );
+      assert.doesNotMatch(
+        line,
+        /\$\{?CLAUDE_PLUGIN_DATA\}?/,
+        `CLAUDE_PLUGIN_DATA is unset in the Bash tool, so this silently loses the data dir: ${line}`
+      );
+    }
+  });
+
+  it("passes the data dir explicitly on every call", () => {
+    for (const line of documentedInvocations()) {
+      assert.match(
+        line,
+        /--plugin-data=/,
+        `without --plugin-data this reports pluginDataAvailable: false and the skill stops: ${line}`
+      );
     }
   });
 });
@@ -642,5 +738,67 @@ describe("store-cli: the interface the skill calls", () => {
       env: { ...process.env, CLAUDE_CONFIG_DIR: configDir, CLAUDE_PLUGIN_DATA: "" },
     });
     assert.equal(JSON.parse(out).pluginDataAvailable, false);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Reproducing the *real* caller (GP-922 follow-up)
+  //
+  // `cli()` above hands the child CLAUDE_PLUGIN_DATA. The skill can't: it shells out
+  // through the Bash tool, which inherits neither that nor CLAUDE_PLUGIN_ROOT. So
+  // every test in this file passed while every real run of the skill reported
+  // `pluginDataAvailable: false`, hit its own "degrade by stopping" rule and could
+  // never migrate anything. These run with the var *absent* from the child env —
+  // deleted, not blanked — which is the condition the suite was missing.
+  // ---------------------------------------------------------------------------
+
+  /** Run a subcommand with no CLAUDE_PLUGIN_DATA at all, as the Bash tool would. */
+  function cliNoEnv(...args) {
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: configDir };
+    delete env.CLAUDE_PLUGIN_DATA;
+    delete env.CLAUDE_PLUGIN_ROOT;
+    return JSON.parse(execFileSync(process.execPath, [CLI, ...args], { encoding: "utf8", env }));
+  }
+
+  it("without the flag, says the dir is missing AND why — a bare false reads as the platform's fail-safe", () => {
+    seedForCli({ "a.md": "fact" });
+    const result = cliNoEnv("status", cwdFlag());
+    assert.equal(result.pluginDataAvailable, false);
+    assert.match(result.hint, /--plugin-data/);
+    assert.match(result.hint, /does not inherit/);
+  });
+
+  it("--plugin-data supplies the dir the Bash tool cannot inherit", () => {
+    seedForCli({ "a.md": "fact" });
+    const result = cliNoEnv("status", cwdFlag(), `--plugin-data=${dataDir}`);
+    assert.equal(result.pluginDataAvailable, true);
+    assert.equal(result.hint, undefined, "hint is for the failure case only");
+  });
+
+  // Availability is only the symptom. This asserts the flag reaches the writers, so
+  // the whole skill-driven path works from a shell that has no plugin env at all.
+  it("--plugin-data makes the state writers work, not just the status report", () => {
+    seedForCli({ "MEMORY.md": "- [A](a.md)\n", "a.md": "fact a" });
+    const flag = `--plugin-data=${dataDir}`;
+
+    assert.equal(cliNoEnv("backup", cwdFlag(), flag).ok, true);
+    assert.equal(cliNoEnv("record", cwdFlag(), flag, "later").ok, true);
+    assert.equal(cliNoEnv("status", cwdFlag(), flag).decision, "later");
+
+    assert.deepEqual(cliNoEnv("verified", cwdFlag(), flag, "a.md=ep-1").recorded, ["a.md"]);
+    assert.deepEqual(cliNoEnv("delete", cwdFlag(), flag).deleted, ["a.md"]);
+  });
+
+  it("ignores an empty --plugin-data rather than blanking a working env var", () => {
+    seedForCli({ "a.md": "fact" });
+    assert.equal(cli("status", cwdFlag(), "--plugin-data=").pluginDataAvailable, true);
+  });
+
+  it("takes the flag over inherited env, so the skill's value wins", () => {
+    seedForCli({ "a.md": "fact" });
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-cli-other-"));
+    // cli() injects dataDir; the flag names `other`, and the decision must land there.
+    assert.equal(cli("record", cwdFlag(), `--plugin-data=${other}`, "declined").ok, true);
+    assert.equal(cli("status", cwdFlag(), `--plugin-data=${other}`).decision, "declined");
+    assert.equal(cli("status", cwdFlag()).decision, null, "dataDir must be untouched");
   });
 });

@@ -49,6 +49,10 @@ const BACKUP_PREFIX = "builtin-memory-";
  * primary gate, being terminal, would never re-offer them. The note is what redirects
  * future writes into the graph instead.
  *
+ * It goes at the top of the index rather than replacing it, so a migration that left
+ * facts behind still installs the redirect — that partial case is precisely where the
+ * store is both unredirected and, the decision being terminal, never re-offered.
+ *
  * Detection never reads this text (`listFacts` excludes the index by name), so
  * rewording it cannot break the gate.
  */
@@ -60,8 +64,9 @@ const MARKER_NOTE = [
   "skill — so they are visible to teammates, to your other projects, and to gutt search.",
   "",
   "This local store is a fallback for when the gutt MCP server is unreachable. Its",
-  "previous contents were migrated into the graph; anything recorded here in the",
-  "meantime should be moved across and removed once MCP is back.",
+  "migrated contents have been removed; anything still listed below has not been",
+  "migrated yet, and anything recorded here in the meantime should be moved across",
+  "and removed once MCP is back.",
   "",
 ].join("\n");
 
@@ -220,8 +225,59 @@ function isDeletableFact(dir, name) {
 }
 
 /**
+ * Rewrite `MEMORY.md` as the standing note followed by only those pointers that still
+ * resolve to a fact on disk.
+ *
+ * This used to be one all-or-nothing step gated on the store having emptied, which left
+ * a partial migration with an index full of pointers to files it had just deleted. That
+ * is not cosmetic: Claude Code loads the index into context every session, so each dead
+ * pointer re-injects a one-line description of a note nobody can open, indefinitely.
+ *
+ * Installing the note unconditionally is safe for the reason the old gate doubted. The
+ * concern was that an early note would be "the sole survivor of a half-finished
+ * migration and would read as a completed one" — true of a full-file overwrite, but not
+ * of a note placed above the surviving pointers, where the store still visibly lists
+ * facts that have not moved. Detection is untouched either way: `listFacts` excludes the
+ * index by name, so the note can never make a non-empty store look empty.
+ *
+ * Survivors are decided by what is on disk, not by what this run deleted, so pointers
+ * already orphaned by an earlier partial run are repaired rather than preserved.
+ *
+ * @param {string} dir
+ * @returns {boolean} whether the index was written
+ */
+function rewriteIndex(dir) {
+  const target = path.join(dir, INDEX_FILE);
+  let existing = "";
+  try {
+    existing = fs.readFileSync(target, "utf8");
+  } catch {
+    // No index, or one we cannot read. The note alone is still worth leaving.
+  }
+
+  // Bare `.md` names only — a pointer carrying a separator does not address a fact in
+  // this store, and is dropped for the same reason `isDeletableFact` refuses one.
+  const survivors = existing.split(/\r?\n/).filter((line) => {
+    const pointer = /]\(([^)/\\]+\.md)\)/.exec(line);
+    return pointer !== null && exists(path.join(dir, pointer[1]));
+  });
+
+  try {
+    fs.writeFileSync(
+      target,
+      // The blank line matters: a list butted straight against the closing paragraph is
+      // not a list to a strict markdown parser, and this file is read by both.
+      survivors.length ? `${MARKER_NOTE}\n${survivors.join("\n")}\n` : MARKER_NOTE
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Remove exactly those facts with a recorded verification, then leave the standing
- * note in `MEMORY.md`.
+ * note in `MEMORY.md` above whatever pointers still resolve.
  *
  * Deletes nothing at all when there is no backup, or when nothing has been verified.
  * That is the whole safety property: an unverified write leaves `verified` empty and
@@ -258,17 +314,12 @@ function deleteVerified(payload) {
     }
   }
 
-  // The note goes in only once the facts are actually gone. Written before, it would
-  // be the sole survivor of a half-finished migration and would read as a completed
-  // one to anybody — including a future session whose recorded decision was lost.
-  if (outcome.deleted.length && !outcome.kept.length) {
-    try {
-      fs.writeFileSync(path.join(dir, INDEX_FILE), MARKER_NOTE);
-      outcome.note = true;
-    } catch {
-      // The facts are safely in the graph either way; a missing note only means
-      // Claude Code may keep writing locally, which the next session can fix.
-    }
+  // Only once something was actually removed — a run that deleted nothing has no
+  // business rewriting the user's index as a side effect. The facts are safely in the
+  // graph either way; a failed write only means Claude Code may keep writing locally,
+  // which the next session can fix.
+  if (outcome.deleted.length) {
+    outcome.note = rewriteIndex(dir);
   }
   return outcome;
 }
