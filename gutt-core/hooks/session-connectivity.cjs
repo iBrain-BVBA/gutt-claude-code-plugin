@@ -19,6 +19,14 @@
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { init, updateState } = require("./lib/session-state.cjs");
 const { guard } = require("./lib/debug.cjs");
+const { isNestedRun } = require("./lib/nested-run.cjs");
+
+// A judge subprocess's MCP reachability is not the user's, and this hook is the
+// sole writer of the connectivity fields the HUD reads — letting a child write
+// them would show the user a probe result from a session they never started.
+if (isNestedRun()) {
+  process.exit(0);
+}
 
 let input = "";
 process.stdin.setEncoding("utf8");

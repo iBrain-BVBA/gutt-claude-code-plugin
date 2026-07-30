@@ -18,6 +18,14 @@
 const { init, finalizeSession } = require("./lib/session-state.cjs");
 const { clearSessionSnooze } = require("./lib/runtime-config.cjs");
 const { guard } = require("./lib/debug.cjs");
+const { isNestedRun } = require("./lib/nested-run.cjs");
+
+// A judge subprocess is not a session of the user's. It reaches here on SIGTERM,
+// which runs SessionEnd hooks in the child on the way out, and finalizing on its
+// behalf would stamp `endedAt` on a record the real session is still using.
+if (isNestedRun()) {
+  process.exit(0);
+}
 
 // Stamped at module load, the earliest moment this process can observe — before
 // stdin, before the lock. finalizeSession() refuses to close a record that was

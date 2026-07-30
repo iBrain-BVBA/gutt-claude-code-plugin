@@ -39,6 +39,14 @@ const { init, advanceTurn, isRecallRecent } = require("./lib/session-state.cjs")
 const { isSuppressed } = require("./lib/runtime-config.cjs");
 const { configCommandResult } = require("./lib/config-command.cjs");
 const { guard } = require("./lib/debug.cjs");
+const { isNestedRun } = require("./lib/nested-run.cjs");
+
+// Nothing to do inside a judge subprocess: its prompt is ours, not the user's, so a
+// pointer would be injected into a conversation no human is reading, and
+// `advanceTurn()` would spend the real session's first-prompt budget on it.
+if (isNestedRun()) {
+  process.exit(0);
+}
 
 /**
  * Skills are namespaced by their plugin at runtime, so the bare stem is not

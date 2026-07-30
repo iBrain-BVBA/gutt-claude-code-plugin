@@ -27,12 +27,19 @@ const {
 const { needsMigration, announceMigration } = require("./lib/migrations.cjs");
 const { migrationOffer } = require("./lib/builtin-memory.cjs");
 const { guard } = require("./lib/debug.cjs");
+const { isNestedRun } = require("./lib/nested-run.cjs");
 
 // Only wire stdin when actually run as a hook. Requiring this file (the latency
 // and sweep-coverage tests do, so they exercise the real ttlSweep instead of a
 // copy of it that can drift) must not leave a stdin listener holding the test
 // process open.
 if (require.main === module) {
+  // The nested-run guard sits *inside* this branch, unlike the other hooks, for
+  // the same reason the branch exists: this module is required by tests, and a
+  // top-level `process.exit(0)` would end the test run rather than the hook.
+  if (isNestedRun()) {
+    process.exit(0);
+  }
   let input = "";
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk) => {
