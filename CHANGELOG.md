@@ -175,6 +175,13 @@
   Step 6 at length, now an observable-and-response table. An agent body is a system
   prompt with no staged loading, so a restatement competes with the original and
   can drift from it
+- `memory-capture`'s degradation note no longer promises a durable
+  `capture-queue.jsonl` "coming with the background pipeline". No queue is coming:
+  the Stop judge runs inline and fails open, so there is no deferred work to hold,
+  and GP-873 is closed as not needed. What the note described as a stopgap — hold
+  the drafts, retry when a write tool returns, surface them to the user if the
+  session ends first — is the permanent answer, and the surrounding sentences
+  already specify it (GP-873)
 
 ### Deprecated
 

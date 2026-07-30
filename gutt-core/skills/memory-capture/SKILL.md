@@ -162,9 +162,7 @@ If no write tool is visible (fail-closed auth with no writable group) or the
 memory server is absent, **do not drop the capture.** Hold the full episode
 draft(s) — name, body, type, intended scope — in your working notes and retry
 when a write tool returns; if the write can't complete this session, surface the
-drafts to the user so they aren't lost. State the degradation in one line. (A
-durable capture queue — `capture-queue.jsonl` — is coming with the background
-pipeline; until it lands, retry in-session.)
+drafts to the user so they aren't lost. State the degradation in one line.
 
 ## References
 
