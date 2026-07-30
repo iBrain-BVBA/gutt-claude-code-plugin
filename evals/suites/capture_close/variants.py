@@ -50,9 +50,16 @@ def shipped():
 
     A silent fallback here would report the ablations against an empty baseline and look
     like a result, so this raises instead.
+
+    The end marker is searched for *after* the begin marker, matching `readStyleBlock` in
+    `shared/stop-judge.cjs`. Unanchored, an `INJECTED:END` appearing earlier in the file —
+    quoted in commentary, or in an example of the markers themselves — would slice a region
+    the hook never reads, and the baseline every variant is scored against would silently
+    stop being the shipped text.
     """
     text = SKILL.read_text(encoding="utf-8")
-    start, end = text.find(BEGIN), text.find(END)
+    start = text.find(BEGIN)
+    end = text.find(END, start + len(BEGIN)) if start != -1 else -1
     if start == -1 or end == -1:
         raise SystemExit(
             f"{SKILL} has no {BEGIN}/{END} pair — the shipped block cannot be read, so "
