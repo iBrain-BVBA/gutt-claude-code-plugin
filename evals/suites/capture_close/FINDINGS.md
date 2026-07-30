@@ -1,139 +1,173 @@
-# capture-close — rounds 1–3
+# capture-close — rounds 1–4
 
 What happens to the user's answer once a Stop capture has fired and been written. GP-927.
 
-Three rounds on `claude-haiku-4-5-20251001`, at 2, 4 and 2 trials per (variant, case) — 40,
-80 and 40 calls. Rounds 1–2 ran before the shipped block was shortened and round 3 after, so
-two variant _labels_ changed meaning between them; the tables below are keyed on character
-counts where that matters. Raw records in `results/capture-close-{2t,4t}-5v.json` — note round
-3 overwrote round 1's file, since both are 2-trial 5-variant runs.
+Four rounds on `claude-haiku-4-5-20251001` at 2, 4, 2 and 6 trials per (variant, case) — 40,
+80, 40 and 168 calls. `suite.py` and `corpus.py` have not changed since the first of them and
+the harness has not either, so all four pool. Round 4 is a prompt-tuning round: three new
+candidates (`W1`–`W3`) built to match the longest wording's quality at or below the shipped
+block's length.
+
+**One hazard when reading the older rounds.** Variant _labels_ changed meaning after round 2,
+when the shipped block was shortened from 1213 to 878 characters — `V4-terse` became
+`V0-shipped` and the old `V0-shipped` became `V5-plus-style`. Every table here is keyed on
+character count for that reason. Raw records are in `results/capture-close-{4t-5v,2t-5v,6t-7v}.json`
+for rounds 2–4; round 3 overwrote round 1's file (both are 2-trial 5-variant runs), so round 1
+survives only as the numbers recorded here at the time.
 
 ## Headline
 
-**An injected closing rule beats both the no-instruction baseline and the rule it replaced, by
-18+ points pooled and in every round. Which of the two candidate wordings ships is not
-resolvable on this bench.** Rounds 1–2, under the labels those rounds used:
+**The shipped 878-character block is the best wording measured, and the longer one it replaced
+is worse rather than merely more expensive.** Pooled over all four rounds:
 
-| variant                   | chars | r1+r2 pooled | round 1 (n=8) | round 2 (n=16) |
-| ------------------------- | ----: | -----------: | ------------: | -------------: |
-| `V4-terse` → **now `V0`** |   878 |          92% |           75% |           100% |
-| `V3-no-negatives`         |  1054 |          92% |           88% |            94% |
-| `V0-shipped` → now `V5`   |  1213 |      **88%** |           88% |            88% |
-| `V2-summary-only`         |   312 |          67% |           62% |            69% |
-| `V1-none`                 |     0 |          54% |           62% |            50% |
+| wording                      | chars |  pooled |  r1 |    r2 |  r3 |    r4 |
+| ---------------------------- | ----: | ------: | --: | ----: | --: | ----: |
+| **878-char block — shipped** |   878 | **89%** | 6/8 | 16/16 | 5/8 | 23/24 |
+| 1213-char block (`V5`)       |  1213 |     80% | 7/8 | 14/16 | 8/8 | 16/24 |
+| `memory-capture`'s old rule  |   312 |     66% | 5/8 | 11/16 | 5/8 |     — |
+| no instruction at all        |     0 |     62% | 5/8 |  8/16 | 6/8 | 16/24 |
 
-### Round 3 flipped the ordering — read this before trusting the row above
+Two things this settles.
 
-A third round (2 trials, n=8) ran after the swap, to validate the re-labelled variant set. It
-ranked the two candidate blocks the other way round. Pooled over all three rounds, n=32 per
-wording:
+**An injected closing rule earns its place.** 89% against 62% for the fired reason alone and
+66% for the rule that used to sit in `memory-capture/SKILL.md` — which was already in context
+on this path, so if it had matched, GP-927's premise would have been wrong. It lost in all
+three rounds it ran in.
 
-| wording                            | chars | pooled |  r1 |   r2 |   r3 |
-| ---------------------------------- | ----: | -----: | --: | ---: | ---: |
-| block minus the negatives sentence |   719 |    94% | 88% |  94% | 100% |
-| **1213-char block** (now `V5`)     |  1213 |    91% | 88% |  88% | 100% |
-| **878-char block** (now `V0`)      |   878 |    84% | 75% | 100% |  62% |
-| `memory-capture`'s old rule        |   312 |    66% | 62% |  69% |  62% |
-| no instruction at all              |     0 |    59% | 62% |  50% |  75% |
+**Round 3's caveat is retracted.** Round 3 (n=8) put the shorter block behind and this file
+previously recorded that it shipped "on cost, not on measured performance", with a note that
+what would settle it is a round at 8+ trials. Round 4 is that round: at n=24 the shorter block
+takes 23/24 and the longer one 16/24, and pooled it now leads by 9 points. The shorter block is
+the better wording on the evidence, not just the cheaper one. Round 3 was an 8-trial sample of
+a metric with a wide tail, and the lesson is the one `evals/README.md` already states, learned
+again at cost.
 
-Two things follow, and they point in different directions.
+## Round 4 — the tuning round
 
-**The premise is robust.** Both candidate blocks beat the no-instruction baseline and the rule
-they replaced, in every round, by 18 points or more pooled. That is the finding GP-927 rests
-on and three rounds have not shaken it.
+| variant           | chars | acc | closed | unreported |
+| ----------------- | ----: | --: | -----: | ---------: |
+| `V0-shipped`      |   878 | 96% |  24/24 |       1/24 |
+| `W3-presend`      |   700 | 88% |  21/24 |       0/24 |
+| `W2-omission`     |   798 | 83% |  21/24 |       1/24 |
+| `V3-no-negatives` |   719 | 83% |  23/24 |       3/24 |
+| `V5-plus-style`   |  1213 | 67% |  19/24 |       4/24 |
+| `V1-none`         |     0 | 67% |  23/24 |       7/24 |
+| `W1-numbered`     |   773 | 62% |  22/24 |       8/24 |
 
-**The choice between the two blocks is not resolvable on this bench, and the shorter one is
-now behind.** The 878-char form has scored 75%, 100% and 62% on the same wording and cases —
-a 38-point spread, worse than the 11 points `evals/README.md` documents elsewhere. Its pooled
-84% against the longer form's 91% is a 7-point gap in the direction opposite to the round that
-motivated adopting it. Neither number is a measurement of anything; the honest statement is
-that this suite cannot separate these two wordings at any n it has been run at, and that the
-argument for the shorter one is now _only_ that it costs 335 fewer characters per fire — not
-that it performs as well. It is still shipped, because that was a deliberate call and one
-noisy round is not grounds to reverse it either. What would settle it is a round at 8+ trials
-on those two wordings alone; until then, treat the shipped block as chosen on cost.
+`acc` is the conjunction — closed on the work _and_ reported the capture _and_ no preamble,
+pleasantry, apology or echo — so it is not the two columns added up; a trial can fail both.
 
-### Labels
+**No candidate beat the shipped block, so nothing changed.** All three are kept in
+`variants.py` as documented negatives: each is a lever that looked obviously right and was not.
 
-**Labels in the round-1/2 table are the ones those rounds were run under, and two of them have
-since moved.** The 878-char `V4-terse` was adopted as the shipped block, so it is now `V0-shipped`;
-the 1213-char form it replaced is now `V5-plus-style`. `V3-no-negatives`'s 1054 was an
-ablation of the old baseline and will read differently next round. Re-running this suite
-today produces the same wordings under different names — compare wordings and character
-counts, not labels, across that line.
+### Only one axis moves
 
-`V1-none` is the capture path before this story: the fired reason alone. `V2-summary-only`
-is the rule that used to live in `memory-capture/SKILL.md` and asked for "a short summary of
-that work, placed last" — it was already in context on this path, so if it had scored the same
-as an injected block, GP-927's premise would have been wrong. It does not: 66% pooled against
-84% and 91% for the two candidate blocks, and it lost in all three rounds.
+Across all 288 calls with raw records: `echoed` 0, `apology` 0, `pleasantry` 0, `preamble` 2.
+Every difference between wordings is on `unreported` (the reply never mentions the capture) and
+`closed` (the tail is the bookkeeping rather than the work). The clauses about echoes,
+pleasantries and preamble are not doing measurable work _here_ — read "What this does not
+establish" before concluding they are useless.
 
-The dominant failure in both baselines is **`unreported`** — the reply never tells the user
-a capture happened at all; round 2 gave 5/16 with no instruction and 3/16 for the old rule,
-against 2/16 for the 1213-char block and 0/16 for the 878-char one. That is the
-failure mode the two-part demand was added for, and it is not the one the story predicted.
-The predicted failure was burying the work under the bookkeeping; `closed` is 13/16 at worst
-and 16/16 for three of five variants, so on this corpus the model rarely ends on the capture
-unprompted. It just silently drops the capture instead. Both leave the user misinformed;
-only one was anticipated.
+That is what the candidates were designed from. Reading the dropped replies makes the failure
+concrete: they continue the technical discussion as though the capture result had never been
+handed to them.
 
-`echoed` and `apology` are 0 everywhere, across 120 calls. Either those failures need a
-longer or more conversational turn than this corpus provides, or the model does not reach for
-them. Not evidence that the clauses forbidding them are unnecessary — evidence that this
-bench cannot see them. Treat those two columns as unmeasured, not as passed.
+### W1: an explicit permission to omit gets taken
+
+`W1-numbered` turned the two parts into a numbered list and added a skip condition — "Omit
+this part only if the turn did none of it". It is the **worst variant in the round at 62%**,
+with 8/24 replies dropping the capture entirely: a higher omission rate than giving the model
+**no instruction at all** (7/24), and spread evenly over all four cases rather than concentrated
+in one.
+
+The one thing `W1` adds that no other variant has is explicit permission to omit. That is
+correlation with a plausible mechanism, not demonstrated causation — the failing replies simply
+have no capture in them, and none of the 24 contains any language about skipping, omitting or
+parts. Stated at that strength deliberately. The clean follow-up is `W1` minus that single
+sentence, which separates the numbered structure from the permission.
+
+The practical warning stands either way, and it generalises past this suite: **a conditional
+escape clause is read more eagerly than the instruction it qualifies.** Note that the shipped
+block's opener is also conditional — "Where the turn did something on the way" — and drops 1
+in 24, so what costs is not conditionality but naming omission as a permitted option.
+
+### W2 and W3: fixing the targeted axis cost the other one
+
+`W3-presend` replaced a declarative rule with a pre-send check, the mechanism the baseline
+skill used and this one dropped. It **worked on exactly what it targeted** — `unreported` fell
+to 0/24, the best of any variant including the shipped block — and then lost 3 on `closed`. Net
+88%.
+
+`W2-omission`, which names the omission failure outright ("Saying the first part happened is
+not optional"), did the same thing from a different angle: 1/24 unreported, 3 lost on `closed`.
+Two independent attempts at the presence axis both paid for it in position. Worth knowing
+before a third: on this corpus the two halves trade against each other, and the shipped wording
+is the one that happens to hold both.
+
+### Longer is worse, not neutral
+
+`V5-plus-style` is the shipped block plus the whole-reply style list, 335 characters more.
+Rounds 1–3 read it as neutral-to-better; at n=24 it scores 67% with 5/24 failing `closed` —
+level with no instruction at all, and its 5 not-closed is the worst on that axis of any variant
+in the round. A plausible reading is that more instruction text dilutes the closing demand, but
+this suite cannot separate that from the style list being actively confusing. Either way
+moving the list out of the injected region did not cost anything, which is the decision it was
+kept alive to check.
+
+### The negatives ablation still cannot be separated
+
+`V3-no-negatives` is the shipped block minus the sentence excluding a verbatim echo and a
+recap. Over the two rounds where it was an ablation of the _current_ block (719 chars, r3–r4)
+it scores 28/32 — exactly what the shipped block scores over the same two rounds. This bench
+cannot tell the sentence apart from its absence, and the reasons to keep it are that the
+corpus cannot reach the failure it addresses (below) and that `tests/hook-architecture.test.cjs`
+guards it.
 
 ## What this does not establish
 
-**That the shipped wording is the best of the three that work.** Pooled over three rounds the
-three effective wordings sit at 94%, 91% and 84% — a 10-point band across n=32, against a
-documented noise floor of 11 points on identical rounds elsewhere and a 38-point spread
-observed here on a single wording. Nothing in that band is a result.
+**That the always-zero clauses are dead weight.** `echoed` and `apology` are 0 across 288
+calls. This corpus cannot _reach_ those failures — the turns are not long or conversational
+enough — so 0 means unmeasured, not passed. Cutting the "not a verbatim echo" sentence or the
+"not an interruption" clause on this evidence would be reasoning from a blank instrument. All
+three `W` candidates keep the interruption clause for that reason, even though dropping it
+would have bought ~160 characters against the round's own length target.
 
-The shape that prompted acting anyway: the 878-char block is the 1213-char one with the
-whole-reply style list removed, and in rounds 1–2 it did not score worse.
+**That 96% beats 88%.** `V0-shipped` over `W3-presend` is 23/24 against 21/24, inside noise.
+The claim that survives is that no candidate beat the shipped block — not that it is measurably
+better than `W3`.
 
-**Adopted anyway, on the author's call, and the reasoning is worth being honest about.** The
-eval does not show `V4` is better; it showed it was not detectably worse while being 28%
-shorter, and those characters are paid on every fire. That is a decision under uncertainty
-rather than a measured win: the cost is certain and the benefit was unmeasurable, so the
-shorter form carried the burden of proof and did not fail. **Round 3 then put it behind — see
-the round-3 section above.** The decision stands on cost, not on performance, and that section
-says so rather than letting this paragraph be the last word. What the bench _does_ establish is
-the
-part that matters most here — the closing rule and the two-part demand in paragraphs 1–3
-carry the effect against `V1` and `V2`; the style list was riding along.
+**That `unreported` is exactly right.** The detector requires a concrete word about the write
+(`captur|episode|memory|dedup|graph|Insight:|record(ed|ing)`). Four of the round's 24
+unreported replies say something softer instead — "I've logged the insight", with no mention of
+what was written. Counting those as reported would move `W1` from 8 to 7 and leave `V0` at 1,
+so the ordering holds; and a reply that tells the user something was logged without saying what
+is arguably the failure anyway.
 
-The list did not stop being the style. It moved out of the injected region to the
-`## Style for the whole reply` section of the skill, where anyone loading the skill still
-reads it. `tests/hook-architecture.test.cjs` now guards that it is present there and absent
-from the block, because nothing at runtime reads it any more and deleting it would otherwise
-break no test.
+**Anything about whether the capture actually ran.** Tools are off and the capture is presented
+as already complete. A discarded pilot round (20 calls, `results/capture-close-1t-5v.json`) did
+_not_ do that — it told the model to run `memory-capture` with tools disabled, so no capture
+appeared in any reply, nothing was buried, `unreported` was 4/4 even on the shipped wording,
+and all five variants scored alike for reasons unrelated to their wording, with the shipped
+wording looking _worse_ than saying nothing. That failure is the more transferable lesson than
+any table here: **a suite that instructs the model to use a tool it does not have measures the
+harness.** Its numbers are excluded from every table above.
 
-The variant set inverted to match: `V5-plus-style` re-adds the list to the new, shorter
-baseline and reconstitutes the old 1213-character block exactly. So the question stays open
-and answerable in a later round instead of being settled by having been forgotten. Both
-halves are read out of `SKILL.md` rather than pasted, so neither can drift from what ships.
-
-**Anything about whether the capture actually ran.** Tools are off; the capture is presented
-to the model as already complete. See the suite docstring — the first version of this suite
-did _not_ do that, and measured nothing: with no capture in the reply there was nothing to
-bury, `unreported` was 4/4 even on the shipped wording, and all five variants scored
-identically for a reason that had nothing to do with their wording. That result is recorded
-here because it is the more useful lesson than the table above. A suite that instructs the
-model to use a tool it does not have measures the harness.
-
-**Per-case numbers.** The denominators are 2 and 4. The 1213-char block scoring 2/4 on
-`flaky-test` in round 2 while the 878-char one scored 4/4 is not a finding about `flaky-test`,
-and round 3 duly reversed it.
+**Per-case numbers.** Denominators are 2–6. Round 2 had the 1213-char block at 2/4 on
+`flaky-test` and the 878-char one at 4/4; round 3 reversed it. Those are not findings about
+`flaky-test`.
 
 ## Running it
 
 ```bash
-python3 evals/run.py capture-close --trials 4
-# the run that would settle which block ships — the two candidates, nothing else, deep
-python3 evals/run.py capture-close --variants V0-shipped V5-plus-style --trials 8
+python3 evals/run.py capture-close --trials 6
+# the tuning round as run
+python3 evals/run.py capture-close --trials 6 \
+  --variants V0-shipped V5-plus-style V3-no-negatives W1-numbered W2-omission W3-presend V1-none
 ```
 
-`V0-shipped` is read out of `gutt-core/skills/output-style/SKILL.md` between its injection
-markers rather than copied here, so it cannot drift from what ships; `variants.py` raises if
-the markers are gone rather than silently measuring against an empty baseline.
+`V0-shipped` and the style half of `V5-plus-style` are both read out of
+`gutt-core/skills/output-style/SKILL.md` rather than pasted into `variants.py`, so neither can
+drift from what ships; the module raises if the markers or the style section are gone rather
+than silently measuring against an empty baseline, and it raises if a `W` candidate exceeds the
+shipped length — the round's premise is "at or below", and a candidate that had quietly grown
+past it could win on the extra words instead of on its idea.

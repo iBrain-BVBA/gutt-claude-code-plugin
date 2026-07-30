@@ -25,7 +25,11 @@ The ablations exist to answer specific questions rather than to fill a table:
                    is the inversion that keeps the question open: it re-adds the list, so a
                    later pooled round can still find out whether it earns its place. Dropping
                    the comparison instead would have made the decision permanent by
-                   forgetting it was made.
+                   forgetting it was made. Round 4 answered it: 67% against 96%, so the list
+                   inside the markers is not free.
+  W1/W2/W3         the round-4 tuning candidates, kept as documented negatives. See the block
+                   above their text for what each one was trying to fix and FINDINGS.md for
+                   what happened. None of them beat V0; W1 lost to saying nothing at all.
 """
 import pathlib
 import re
@@ -108,12 +112,83 @@ V2_TEXT = (
 )
 
 
+# The tuning round (W1–W3). Target: match V5-plus-style's quality at or below the shipped
+# block's 878 characters.
+#
+# Designed from the failure data, not from taste. Across rounds 2 and 3 every single failure
+# of either candidate block was `reported` — the reply writes a perfectly good work summary
+# and never mentions the capture at all — plus one `closed_on_work`. `preamble`,
+# `pleasantry`, `apology` and `echoed` were 0 across all 120 calls. So V5's extra 335
+# characters of style list cannot be what earns its score; nothing in that list mentions
+# reporting a capture. The lever is the first half of the two-part demand.
+#
+# Reading the dropped replies makes the mechanism concrete: they continue the technical
+# discussion as though the capture result had not been handed to them. The shipped block's
+# opener is conditional — "Where the turn did something on the way" — which gives the model
+# an out it takes, and the three examples after it are abstract enough not to catch.
+#
+# Each candidate attacks that differently, so a win is attributable:
+#
+#   W1-numbered    structural. The two parts become a numbered list with an explicit
+#                  skip condition, rather than prose the model can read past.
+#   W2-omission    names the measured failure outright: saying it happened is not optional.
+#   W3-presend     a pre-send check instead of another declarative rule — the baseline
+#                  skill's own mechanism, which we dropped. Different lever from W1/W2.
+#
+# Outcome, round 4 at n=24 (FINDINGS.md has the tables): none of the three beat V0's 96%.
+# W3 88%, W2 83%, W1 62%. They are kept because each result is worth more than the candidate
+# was. W1 is the sharpest: its one distinguishing sentence is permission to omit, and it
+# omitted more often (8/24) than the variant with no instruction at all (7/24) — so the
+# structural rewrite is not what cost it. W2 and W3 both fixed the axis they aimed at and
+# lost the other one, which says the two halves of the demand trade against each other on
+# this corpus and V0 is the wording that holds both. Do not re-derive these from scratch;
+# a fourth attempt on the presence axis should expect to pay on `closed`.
+#
+# All three keep the "not an interruption" clause. Dropping it would buy ~160 characters and
+# the corpus shows 0 apologies in 120 calls — but FINDINGS.md records that this bench cannot
+# *reach* that failure, so cutting the clause on those grounds is the exact error the file
+# warns about. It also has a guard in tests/hook-architecture.test.cjs.
+
+W1_NUMBERED = """The reply ends in two parts, in this order.
+
+1. What the turn did on the way — recorded a finding, migrated a store, changed a setting. A few lines: what happened, and anything the user still has to decide. Omit this part only if the turn did none of it.
+2. The closing summary of the turn: what was delivered, what it means for the user, and what is still open.
+
+Whatever sits at the bottom is what the user is left looking at, and it is part 2, never part 1.
+
+Part 2 is not a verbatim echo of text already written above it, and not an account of what you just did — those are the two ways it goes wrong. Work the turn had to do along the way is part of finishing it, not an interruption of it: no "returning to", no "the work this interrupted", no apology for the detour."""
+
+W2_OMISSION = """The reply ends in two parts, in this order. Where the turn did something on the way — recorded a finding, migrated a store, changed a setting — account for it first, in a few lines: what happened, and anything the user still has to decide. Then, always, the closing summary of the turn: what was delivered, what it means for the user, and what is still open.
+
+Saying the first part happened is not optional: a reply that omits it leaves the user believing nothing was written. Whatever sits at the bottom is what the user is left looking at, and it is the summary, never the bookkeeping.
+
+The summary is not a verbatim echo of text above it, and not an account of what you just did. Work the turn had to do is part of finishing it, not an interruption: no "returning to", no apology for the detour."""
+
+W3_PRESEND = """The reply ends in two parts, in this order. Where the turn did something on the way — recorded a finding, migrated a store, changed a setting — account for it first, in a few lines: what happened, and anything the user still has to decide. Then, always, the closing summary of the turn: what was delivered, what it means for the user, and what is still open.
+
+Work the turn had to do along the way is part of finishing it, not an interruption of it: no "returning to", no apology for the detour.
+
+Before sending, check three things. Both parts are there. The summary is last. Its first line is substance rather than an announcement of what you are about to say, and its last line is not a pleasantry."""
+
+
 def all_variants():
     block = shipped()
-    return {
+    variants = {
         "V0-shipped": block,
         "V1-none": "",
         "V2-summary-only": V2_TEXT,
         "V3-no-negatives": _drop_paragraph(block, "verbatim echo"),
         "V5-plus-style": f"{block}\n\n{style_paragraph()}",
+        "W1-numbered": W1_NUMBERED,
+        "W2-omission": W2_OMISSION,
+        "W3-presend": W3_PRESEND,
     }
+    # The round's own premise is "at or below the shipped length". A candidate that quietly
+    # grew past it would still be scored and might well win on the extra words, which is not
+    # the question being asked.
+    over = {k: len(v) for k, v in variants.items() if k.startswith("W") and len(v) > len(block)}
+    if over:
+        raise SystemExit(
+            f"tuning candidates must not exceed the shipped block's {len(block)} chars: {over}"
+        )
+    return variants
