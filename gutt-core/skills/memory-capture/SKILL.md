@@ -135,26 +135,20 @@ Say little about the capture itself — a few lines, not a report. What was writ
 its type, and anything the user still has to decide. Skip the procedure you just
 followed: nobody needs the dedup search narrated back to them.
 
-Then, when the capture followed work that was already finished — a Stop-hook
-verdict is the usual way that happens — close the reply with a short summary of
-that work, placed last, after everything else. Writing down what a turn learned is
-part of finishing it, not an interruption of it, so don't frame it as one: no
-"returning to", no "the work this interrupted", no apology for the detour. Give
-the summary a plain heading that names the work — "Summary", or better, what the
-work actually was ("The eval suite", "What shipped") — and write it as the closing
-account of the turn rather than as a recovery from a digression.
+What comes _after_ that account — how the reply closes, and on what — belongs to the
+`output-style` skill and is deliberately **not** restated here. When a Stop-hook
+verdict is what brought you to this file, that rule is already in front of you: the
+hook injects it into the same reason that named this skill. Otherwise, invoke
+`output-style` to read it.
 
-Keep it to what the user needs to carry forward: what was delivered, anything that
-did not survive verification, and what is still open. It comes last because the
-capture is a footnote to the turn and the work is its subject — whatever sits at
-the bottom of the reply is what the user is left looking at, and it should be the
-work, not the bookkeeping.
-
-These two rules live here rather than in the Stop hook's fired reason on purpose.
-That reason is a payload — a skill name and a bullet per subject — and it is read
-before this file is loaded; anything procedural written there is repeated on every
-firing and duplicated by the moment it matters. This file is in context by the time
-either rule applies.
+Why the split, since this file used to argue against any procedure reaching the
+fired reason: that argument is about **duplication**. The reason is a payload — a
+skill name and a bullet per subject — read before this file loads, so a rule written
+in both places is paid for twice and the second copy is the one that lands. It holds,
+and it is why the capture account above stays here. It does not reach text that
+exists in exactly one place and is loaded on no other path. The closing style is
+exactly that: nothing on the capture path loads `output-style`, so injecting it
+duplicates nothing, and not injecting it means the rule is never read at all.
 
 ## Degradation
 
@@ -173,5 +167,10 @@ drafts to the user so they aren't lost. State the degradation in one line.
 - Deciding which of two contradicting memories should stand:
   `conflict-adjudication`. It recommends only — the approved correction is
   written back through this skill.
+- How the reply closes once the capture is reported: `output-style`. It owns
+  where the account sits and everything below it; this file owns what the account
+  says and how long it runs. The block `output-style` injects deliberately stops
+  short of specifying either, so the two do not state one rule twice on the path
+  where both are in context.
 - Autonomous end-of-session capture is done by the **memory-keeper** agent (being
   brought in line with these rules).

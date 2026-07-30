@@ -200,8 +200,12 @@ describe("stop-judge: deciding what to feed back", () => {
   });
 
   it("appends the confirmation instruction only in hitl", () => {
-    const auto = judge.judgeTurn({ transcript_path: file }, "auto", { spawn: stub(fired) }).reason;
-    const hitl = judge.judgeTurn({ transcript_path: file }, "hitl", { spawn: stub(fired) }).reason;
+    // `styleBlock: ""` isolates the mode difference. GP-927 appends the output-style block
+    // *after* HITL_TAIL, so with it present the two reasons share a head and a tail and
+    // differ only in the middle — and `startsWith` would stop asserting anything.
+    const deps = { spawn: stub(fired), styleBlock: "" };
+    const auto = judge.judgeTurn({ transcript_path: file }, "auto", deps).reason;
+    const hitl = judge.judgeTurn({ transcript_path: file }, "hitl", deps).reason;
     assert.doesNotMatch(auto, /AskUserQuestion/, "auto must be what shipped before hitl existed");
     assert.match(hitl, /AskUserQuestion/);
     assert.ok(hitl.startsWith(auto), "hitl must add to the verdict, not rewrite it");
@@ -270,7 +274,9 @@ describe("stop-judge: deciding what to feed back", () => {
 
   it("truncates an over-long reason rather than injecting it whole", () => {
     // The ten-words-per-bullet bound lives only in the prompt, so a judge that ignores it
-    // hands back an arbitrarily long payload for the platform to inject.
+    // hands back an arbitrarily long payload for the platform to inject. `styleBlock: ""`
+    // keeps this on the judge's half, which is what MAX_REASON_CHARS bounds; the composed
+    // total has its own cap, measured in the suite below.
     const long = {
       status: 0,
       stdout: JSON.stringify({
@@ -278,7 +284,10 @@ describe("stop-judge: deciding what to feed back", () => {
         reason: `Run the skill.\n- Insight: ${"y".repeat(5000)}`,
       }),
     };
-    const out = judge.judgeTurn({ transcript_path: file }, "auto", { spawn: stub(long) });
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", {
+      spawn: stub(long),
+      styleBlock: "",
+    });
     assert.equal(out.outcome, judge.OUTCOMES.FIRED);
     assert.ok(
       out.reason.length <= judge.MAX_REASON_CHARS + 1,
@@ -341,6 +350,291 @@ describe("stop-judge: deciding what to feed back", () => {
     // Not --bare: bare never reads OAuth or the keychain, so on a subscription install the
     // child cannot authenticate and the judge fails silently forever.
     assert.doesNotMatch(argv, /--bare/);
+  });
+});
+
+/**
+ * The output-style block appended to a fired reason (GP-927).
+ *
+ * The judge decides *what* to capture; this decides what the user is left looking at once
+ * the capture is done. The text is not held here — it is a delimited region of the
+ * output-style skill, so that the bytes an agent receives on the capture path and the bytes
+ * a human reads in the skill cannot drift apart. These tests cover the reading, the
+ * composition order, the failure mode, and the budget the story asked to be measured rather
+ * than assumed.
+ */
+describe("stop-judge: the injected output style", () => {
+  let dir;
+  let file;
+  before(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-stopjudge-s-"));
+    file = transcript(dir, [{ role: "assistant", text: "a turn that found something" }]);
+  });
+  after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const stub = (result) => () => result;
+  const REASON = "Run the skill.\n- Insight: x";
+  const fired = { status: 0, stdout: JSON.stringify({ ok: false, reason: REASON }) };
+  const STYLE_DIR = judge.STYLE_SKILL_DIR;
+
+  it("reads the block out of the skill that owns it", () => {
+    const block = judge.readStyleBlock();
+    assert.ok(block.length > 0, "no style block — the markers or the skill file have moved");
+    assert.doesNotMatch(
+      block,
+      /INJECTED:(BEGIN|END)/,
+      "the markers are being injected along with the text they delimit"
+    );
+    assert.equal(block, block.trim(), "the slice carries the markers' surrounding whitespace");
+  });
+
+  it("prefers CLAUDE_PLUGIN_ROOT, and still resolves without it", () => {
+    // `__dirname` is not stable across layouts: installed, this is a real file under
+    // hooks/lib/, so `../..` is the plugin root; in local development it is reached through
+    // a symlink and Node resolves `__dirname` to shared/, which puts `../..` outside the
+    // repo. The env var is the only candidate that is right in both, hence the order — and
+    // the fallbacks have to work, because a wrong root must not cost the style.
+    const before = process.env.CLAUDE_PLUGIN_ROOT;
+    process.env.CLAUDE_PLUGIN_ROOT = path.join(dir, "no-such-root");
+    try {
+      assert.equal(
+        judge.styleBlockPaths()[0],
+        path.join(dir, "no-such-root", "skills", STYLE_DIR, "SKILL.md"),
+        "the plugin root is not consulted first"
+      );
+      assert.ok(judge.readStyleBlock().length > 0, "a wrong root must fall back, not give up");
+    } finally {
+      if (before === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = before;
+      }
+    }
+  });
+
+  it("closes a fired reason on the block, with the verdict still leading", () => {
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", { spawn: stub(fired) });
+    assert.equal(out.outcome, judge.OUTCOMES.FIRED);
+    assert.ok(out.reason.startsWith(REASON), "the verdict must still be read first");
+    assert.ok(
+      out.reason.endsWith(judge.readStyleBlock()),
+      "the block must be last — it governs the end of the reply, and a middle position is " +
+        "where an instruction in a system message gets lost"
+    );
+    assert.equal(out.detail, null, "a healthy fire logs no complaint");
+  });
+
+  it("puts the block after the hitl confirmation, in the order the two apply", () => {
+    const out = judge.judgeTurn({ transcript_path: file }, "hitl", { spawn: stub(fired) });
+    const ask = out.reason.indexOf("AskUserQuestion");
+    const style = out.reason.indexOf(judge.readStyleBlock());
+    assert.ok(ask > -1, "hitl lost its confirmation instruction");
+    assert.ok(style > -1, "hitl lost the style block");
+    assert.ok(ask < style, "confirm, then close on the work — the reverse reads as backwards");
+  });
+
+  it("still fires when the block cannot be read, and says so in the detail", () => {
+    // Fail-open. This hook sits between the user and the end of their turn, so a deleted
+    // marker or a moved skill costs the style and never the capture. Silent to the user,
+    // not to the log: without the detail, a feature that had stopped working entirely would
+    // be indistinguishable from one working fine.
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", {
+      spawn: stub(fired),
+      styleBlock: "",
+    });
+    assert.equal(out.outcome, judge.OUTCOMES.FIRED);
+    assert.equal(out.reason, REASON, "an empty block must not leave a dangling separator");
+    assert.match(out.detail, /style block/i, "nothing in the log would name the failure");
+    assert.ok(!judge.BROKEN_OUTCOMES.has(out.outcome), "a fire without the style is still a fire");
+  });
+
+  it("separates the verdict from the block, so the two never run together", () => {
+    // `endsWith(block)` and an index comparison are both blind to a lost separator: dropping
+    // the "\n\n" ships `- Insight: xThe reply ends in two parts…` and satisfies each of them.
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", { spawn: stub(fired) });
+    assert.ok(
+      out.reason.includes(`\n\n${judge.readStyleBlock()}`),
+      "the block is glued to the text above it"
+    );
+  });
+
+  it("screens the judge's half only, so a verdict-shaped constant cannot drop a fire", () => {
+    // The screen runs before composition on purpose. Over the composed string it would also
+    // test our own constants, where a match could only ever be our bug — and it would discard
+    // a healthy verdict in order to report it.
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", {
+      spawn: stub(fired),
+      styleBlock: '{"ok": false}',
+    });
+    assert.match(
+      '{"ok": false}',
+      judge.VERDICT_SHAPE,
+      "this fixture no longer matches VERDICT_SHAPE, so the test below proves nothing"
+    );
+    assert.equal(
+      out.outcome,
+      judge.OUTCOMES.FIRED,
+      "a verdict-shaped constant dropped a real fire"
+    );
+  });
+
+  it("keeps the whole verdict, and the cap, when the block is oversized", () => {
+    // The block's length is data, not a constant: it is read from a file at fire time, so an
+    // edited cache or a CLAUDE_PLUGIN_ROOT on another version can hand this a block the
+    // repo's guards never saw. Clamping the budget to fit one used to cut the verdict — skill
+    // name and every bullet — down to a bare "…", and still overshoot the cap.
+    const long = "s".repeat(3000);
+    const out = judge.composeReason(REASON, "hitl", long);
+    assert.ok(out.styleDropped, "the style must yield here, because the capture cannot");
+    assert.ok(out.text.startsWith(REASON), "the verdict is the part the capture acts on");
+    assert.ok(!out.text.includes(long), "the block was kept and the judge's half paid for it");
+    assert.ok(
+      out.text.length <= judge.MAX_COMPOSED_REASON_CHARS,
+      `composed ${out.text.length} against a cap of ${judge.MAX_COMPOSED_REASON_CHARS}`
+    );
+  });
+
+  it("charges the truncation ellipsis to the budget instead of adding it afterwards", () => {
+    // At the cap's own boundary and every length above it, appending the ellipsis to a slice
+    // already the budget's full width put the composed reason exactly one char over the cap.
+    const boundary =
+      judge.MAX_COMPOSED_REASON_CHARS - judge.MAX_REASON_CHARS - judge.HITL_TAIL.length - 2;
+    const out = judge.composeReason("y".repeat(5000), "hitl", "s".repeat(boundary));
+    assert.equal(out.styleDropped, false, "the boundary block still fits, so it must be kept");
+    assert.equal(
+      out.text.length,
+      judge.MAX_COMPOSED_REASON_CHARS,
+      "the widest composed reason must land on the cap, not one past it"
+    );
+    assert.equal(out.truncatedTo, judge.MAX_REASON_CHARS, "the judge did not keep its full cap");
+  });
+
+  it("reads past a root whose skill lost its markers, and names it in the detail", () => {
+    // Returning early on a marker-less file lost the feature outright whenever
+    // CLAUDE_PLUGIN_ROOT pointed at a copy predating the markers — while a good copy sat
+    // further down the candidate chain, unconsulted. Still reported, no longer fatal.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-nomarkers-"));
+    const skill = path.join(root, "skills", STYLE_DIR);
+    fs.mkdirSync(skill, { recursive: true });
+    fs.writeFileSync(path.join(skill, "SKILL.md"), "# Output style\n\nno markers here\n");
+    const before = process.env.CLAUDE_PLUGIN_ROOT;
+    process.env.CLAUDE_PLUGIN_ROOT = root;
+    try {
+      const result = judge.readStyleBlockResult();
+      assert.ok(result.text.length > 0, "a marker-less root must not cost the block");
+      assert.match(result.cause, /markers missing/i, "nothing names the root that was skipped");
+      const out = judge.judgeTurn({ transcript_path: file }, "auto", { spawn: stub(fired) });
+      assert.match(out.detail, /read past a defect/i, "the log would not show the broken root");
+    } finally {
+      if (before === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = before;
+      }
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves the block in the installed layout, where the lib is a real file", () => {
+    // The candidate a marketplace install actually uses — a real `hooks/lib/stop-judge.cjs`,
+    // so `../..` is the plugin root — is unreachable from this checkout: Node realpaths the
+    // symlink to `shared/`, so an in-repo candidate always wins first. Corrupting that
+    // candidate therefore failed no test, which is why the layout is built here explicitly.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-installed-"));
+    const before = process.env.CLAUDE_PLUGIN_ROOT;
+    try {
+      const lib = path.join(root, "hooks", "lib");
+      fs.mkdirSync(lib, { recursive: true });
+      const shared = path.join(__dirname, "..", "shared");
+      for (const entry of fs.readdirSync(shared).filter((e) => e.endsWith(".cjs"))) {
+        fs.copyFileSync(path.join(shared, entry), path.join(lib, entry));
+      }
+      const skill = path.join(root, "skills", STYLE_DIR);
+      fs.mkdirSync(skill, { recursive: true });
+      fs.copyFileSync(
+        path.join(__dirname, "..", "gutt-core", "skills", STYLE_DIR, "SKILL.md"),
+        path.join(skill, "SKILL.md")
+      );
+      // A real install has its manifest, and `styleBlockPaths` now requires one before it will
+      // read a `../..` candidate — that check is what keeps a stray sibling file in the dev
+      // layout from being injected. Writing it here keeps the fixture an install rather than
+      // just a directory shaped like one.
+      fs.mkdirSync(path.join(root, ".claude-plugin"), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "gutt-claude-code-plugin" })
+      );
+      delete process.env.CLAUDE_PLUGIN_ROOT;
+      const installed = require(path.join(lib, "stop-judge.cjs"));
+      assert.equal(
+        installed.readStyleBlock(),
+        judge.readStyleBlock(),
+        "the installed layout cannot find its own skill without CLAUDE_PLUGIN_ROOT"
+      );
+    } finally {
+      if (before === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = before;
+      }
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds the composed reason, and leaves the judge's half its full cap", () => {
+    // MAX_REASON_CHARS was applied to the judge's reason before anything was appended to
+    // it, so nothing bounded what the platform was actually asked to inject. Worst case is
+    // `hitl`: an over-long verdict plus both constants.
+    const long = {
+      status: 0,
+      stdout: JSON.stringify({
+        ok: false,
+        reason: `Run the skill.\n- Insight: ${"y".repeat(5000)}`,
+      }),
+    };
+    const out = judge.judgeTurn({ transcript_path: file }, "hitl", { spawn: stub(long) });
+    assert.ok(
+      out.reason.length <= judge.MAX_COMPOSED_REASON_CHARS,
+      `composed reason was ${out.reason.length} chars against a cap of ` +
+        `${judge.MAX_COMPOSED_REASON_CHARS}`
+    );
+    assert.match(out.reason, /^Run the skill\./, "the actionable first line must survive");
+    // Asserting the slack, not only the total. A total under the cap is also what you get
+    // when the constants have grown enough to start eating the judge's bullets — the
+    // composed length alone cannot tell those apart, and the second is a silent
+    // regression in what the capture is told to record.
+    const constants = judge.HITL_TAIL.length + judge.readStyleBlock().length + 2;
+    const room = judge.MAX_COMPOSED_REASON_CHARS - constants;
+    assert.ok(
+      room >= judge.MAX_REASON_CHARS,
+      `the constants total ${constants} chars, leaving the judge ${room} of its ` +
+        `${judge.MAX_REASON_CHARS} — shorten the style block, or raise ` +
+        `MAX_COMPOSED_REASON_CHARS deliberately`
+    );
+  });
+
+  it("keeps the composed reason clear of the screen that drops a leaked verdict", () => {
+    // GP-921 route 1 in reverse: VERDICT_SHAPE screens the judge's half before the
+    // constants go on, so a constant that happened to be verdict-shaped would sail past it
+    // and reach the user as the assistant's answer.
+    for (const mode of ["auto", "hitl"]) {
+      const out = judge.judgeTurn({ transcript_path: file }, mode, { spawn: stub(fired) });
+      assert.doesNotMatch(
+        out.reason,
+        judge.VERDICT_SHAPE,
+        `the composed ${mode} reason is verdict-shaped, which is the echo that screen exists for`
+      );
+    }
+  });
+
+  it("composes nothing unless the judge fired", () => {
+    // The block is an instruction about how to close a reply that is about to continue. On
+    // a pass the turn ends, so there is nothing to instruct and no reason to spend the
+    // context — and emitting one would block a turn the judge cleared.
+    const passed = { status: 0, stdout: '{"ok": true}' };
+    const out = judge.judgeTurn({ transcript_path: file }, "hitl", { spawn: stub(passed) });
+    assert.equal(out.outcome, judge.OUTCOMES.PASS);
+    assert.equal(out.reason, null);
   });
 });
 

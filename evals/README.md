@@ -34,6 +34,7 @@ unit of comparison here.
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `stop-judge`     | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
 | `prompt-pointer` | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious          |
+| `capture-close`  | After a fired capture has been written: does the reply report it _and_ close on the work, or drop one of the two              |
 
 A suite is no longer confined to scoring verdicts. `run_matrix` takes a `system` argument
 and `run.py` passes a suite's own `SYSTEM` when it defines one, so a suite can frame the
@@ -56,6 +57,21 @@ python3 -m suites.migrate_offer.variants                 # diff the wordings, sp
 ceiling (24/24), and the eleven words `in one line at the end of your next reply` are the
 whole mechanism — removing them costs 24/24 → 4/24. It defaults to `claude-sonnet-5`, not
 `FAST_MODEL`, because the offer is largely a property of the session model (25% on Haiku).
+
+`suites/capture_close/FINDINGS.md` has rounds 1–4 of the closing suite. Headline: an injected
+closing rule beats both the reason-only baseline (62% pooled) and the `memory-capture` rule it
+replaced (66%) by 20+ points, in every round, and the shipped 878-char wording is now the best
+measured — 89% pooled against 80% for the 1213-char form it replaced, after a 24-trial round
+settled a ranking that three shallower rounds had flipped in both directions. Round 4 was a
+tuning round: three candidates at or below the shipped length, designed from the failure data,
+and none of them beat it. The most transferable of those negatives is that an explicit
+permission to omit ("omit this part only if…") produced a **higher** omission rate than giving
+no instruction at all. The dominant failure throughout is not the predicted one — the reply
+drops the capture silently rather than closing on it. Its other lesson is methodological and
+cost a whole pilot round: the first version told the model to run a tool it did not have, so no
+capture appeared in any reply, nothing was buried, and all five variants scored the same for
+reasons unrelated to their wording. Presenting the capture as already complete is what made the
+property measurable.
 
 `suites/prompt_pointer/FINDINGS.md` has round 1 of the pointer suite. Headline: the retired
 2.x "MANDATORY / SYSTEM-LEVEL DIRECTIVE" framing is measurably the failure GP-868 predicted —
