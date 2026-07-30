@@ -466,7 +466,11 @@ describe("stop-judge: the injected output style", () => {
       spawn: stub(fired),
       styleBlock: '{"ok": false}',
     });
-    assert.match('{"ok": false}', judge.VERDICT_SHAPE, "this block is not the shape under test");
+    assert.match(
+      '{"ok": false}',
+      judge.VERDICT_SHAPE,
+      "this fixture no longer matches VERDICT_SHAPE, so the test below proves nothing"
+    );
     assert.equal(
       out.outcome,
       judge.OUTCOMES.FIRED,
@@ -550,6 +554,15 @@ describe("stop-judge: the injected output style", () => {
       fs.copyFileSync(
         path.join(__dirname, "..", "gutt-core", "skills", STYLE_DIR, "SKILL.md"),
         path.join(skill, "SKILL.md")
+      );
+      // A real install has its manifest, and `styleBlockPaths` now requires one before it will
+      // read a `../..` candidate — that check is what keeps a stray sibling file in the dev
+      // layout from being injected. Writing it here keeps the fixture an install rather than
+      // just a directory shaped like one.
+      fs.mkdirSync(path.join(root, ".claude-plugin"), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "gutt-claude-code-plugin" })
       );
       delete process.env.CLAUDE_PLUGIN_ROOT;
       const installed = require(path.join(lib, "stop-judge.cjs"));

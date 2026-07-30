@@ -205,7 +205,16 @@ function styleBlockPaths() {
     paths.push(path.join(process.env.CLAUDE_PLUGIN_ROOT, rel));
   }
   paths.push(path.resolve(__dirname, "..", "gutt-core", rel));
-  paths.push(path.resolve(__dirname, "..", "..", rel));
+  // The installed layout's candidate, admitted only when that directory really is a plugin
+  // root. Ordering it last stops it *winning* over the plugin's own copy; it does not stop it
+  // being read when nothing else matched, and in the dev layout it resolves to the parent of
+  // the checkout — the directory every sibling repo shares. A stray
+  // `skills/output-style/SKILL.md` there would be injected verbatim into a fired reason, so
+  // the manifest check is what makes that structurally impossible rather than merely unlikely.
+  const up = path.resolve(__dirname, "..", "..");
+  if (fs.existsSync(path.join(up, ".claude-plugin", "plugin.json"))) {
+    paths.push(path.join(up, rel));
+  }
   return paths;
 }
 

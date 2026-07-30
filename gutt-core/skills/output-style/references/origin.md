@@ -29,9 +29,14 @@ one path.
 
 Adapted from [`ayghri/i-have-adhd`](https://github.com/ayghri/i-have-adhd)
 (`skills/i-have-adhd/SKILL.md`), MIT licensed, © 2026 Ayoub Ghriss. This repo is MIT too, so
-the licences are compatible. What was taken is mechanics rather than protected expression, so
-no notice obligation attaches and none is reproduced here; the credit below is offered as a
-courtesy, which is the honest description of it.
+the licences are compatible.
+
+The upstream copyright line is reproduced above deliberately. This file makes no claim about
+what the licence does or does not require — that is not ours to assert — so the operating rule
+is the conservative one: **if you copy substantial wording from the upstream skill into this
+repo, carry the MIT copyright and permission notice with it.** What was taken here is the
+mechanics rather than the wording (see below), and the credit is given regardless of whether
+anything obliged it.
 
 **Adapted, not copied.** Taken: the mechanics that solve the problem above — lead with
 substance rather than framing, restate state each turn instead of assuming the reader
