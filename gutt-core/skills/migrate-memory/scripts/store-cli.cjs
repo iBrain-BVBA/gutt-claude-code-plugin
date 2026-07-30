@@ -88,8 +88,11 @@ try {
         settled: config.isMigrationSettled(key),
         backup: store.latestBackup(key),
         pluginDataAvailable,
-        // Distinguishes "genuinely unavailable" from "you forgot the flag". Without
-        // it a false reads as the platform's fail-safe and the skill stops for good.
+        // `pluginDataAvailable` is computed after the flag has been applied, so a false
+        // here has exactly one cause: the flag was missing or empty. The hint says so
+        // outright rather than distinguishing two cases — there is no second case. Without
+        // it a bare false reads as the platform's fail-safe and the skill stops for good.
+        // A dir that is set but unwritable reports true and surfaces at `backup` instead.
         ...(pluginDataAvailable
           ? {}
           : {

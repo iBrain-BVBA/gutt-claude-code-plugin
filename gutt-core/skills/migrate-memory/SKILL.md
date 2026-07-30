@@ -87,9 +87,15 @@ node "<SKILL_DIR>/scripts/store-cli.cjs" --plugin-data="<DATA_DIR>" <subcommand>
 
 Substitute both before running; do not pass `$CLAUDE_PLUGIN_ROOT` or
 `$CLAUDE_PLUGIN_DATA` through to the shell and do not `export` them. If `status`
-returns `pluginDataAvailable: false` **with** a `hint` field, you dropped the flag —
-that is not the platform's fail-safe and not grounds to stop. Rule 5 applies only
-when the flag was passed correctly and the dir is still unavailable.
+returns `pluginDataAvailable: false`, **you dropped the flag** — that is the only way
+it can be false, since the field is computed after the flag is applied. It is never the
+platform's fail-safe and never grounds to stop: re-run the call correctly. A `hint`
+field accompanies every such `false`, so treat the two as one signal rather than
+looking to the hint to tell them apart.
+
+A data dir that is set but unusable — wrong path, not writable — reports
+`pluginDataAvailable: true`. It surfaces at step 5 instead, as `backup` returning
+`ok: false`, which is where rule 5 actually bites.
 
 Run `status` first — it reports the store path, the fact files, and any decision
 already recorded:
@@ -109,7 +115,7 @@ If `settled` is true, stop and say so — this project has already been answered
    anything the user would not want written anywhere.
 3. **Ask.** One **AskUserQuestion** covering both decisions:
    - _Migrate these N notes into gutt?_ — migrate / not now / never
-   - _Scope?_ — org group (default) / personal / decide per note
+   - _Scope?_ — org group (default) / personal / decide batch by batch
 
    Show the count and name a few examples so the choice is informed. On "never"
    → `record declined` and stop. On "not now" → `record later` and stop.
@@ -154,17 +160,34 @@ If `settled` is true, stop and say so — this project has already been answered
    Only pass a file whose episode a search actually returned. This is the gate on
    deletion, so guessing here defeats the entire safety property.
 
-9. **Delete.** `store-cli.cjs delete`. It removes only verified facts, then rewrites
-   `MEMORY.md` as the standing note — gutt is the store of record, local memory is the
-   fallback for when MCP is unreachable — followed by whichever pointers still resolve
-   to a fact on disk. Both halves run whenever anything was deleted, not only on a
-   clean finish: a pointer to a migrated fact would otherwise be injected into every
-   later session describing a file nobody can open, and a partial migration would be
-   left with no redirect at all while Claude Code carried on writing locally.
-   Anything still listed in `kept` did not land — say which, and leave them.
-10. **Record the decision.** `record migrated` — but only if `kept` is empty. With
-    facts left behind the job is unfinished, so leave the decision unset and the
-    offer returns.
+9. **Delete.** `store-cli.cjs delete`. It removes only verified facts, then puts the
+   standing note at the top of `MEMORY.md` — gutt is the store of record, local memory is
+   the fallback for when MCP is unreachable — and drops the pointers whose target files
+   have gone. **It does not rewrite the rest of the file.** Headings, hand-written prose,
+   plain bullets and links to anything outside the store are all left alone; a line is
+   removed only when it points at a fact in this store and every fact it points at is
+   gone. Both halves run whenever anything was deleted, not only on a clean finish: a
+   pointer to a migrated fact would otherwise be injected into every later session
+   describing a file nobody can open, and a partial migration would be left with no
+   redirect at all while Claude Code carried on writing locally.
+
+   Read three fields, not one:
+   - `kept` — these facts did not land. Say which, and leave them.
+   - `note` — `false` means the index could **not** be rewritten. It still lists deleted
+     facts and carries no redirect. Report it with the path.
+   - `reason` — present when something went wrong; quote it rather than paraphrasing.
+
+10. **Record the decision.** `record migrated` — but only when `kept` is empty **and**
+    `note` is `true`. With facts left behind the job is unfinished, so leave the decision
+    unset and the offer returns.
+
+    The `note` half matters because `migrated` is terminal and the two failures are not
+    symmetric. A partial migration comes back on its own — the decision stays unset and
+    the offer fires again. But a run that empties the store and fails to write the index
+    is the one state nothing can reach again: record `migrated` there and the store reads
+    as empty, both gates fall silent, and the index keeps pointing at deleted files with
+    no redirect, permanently. So on `note: false`, leave the decision unset and tell the
+    user the index needs a look.
 
 ## Mapping `metadata.type` onto gutt tiers
 
@@ -218,8 +241,13 @@ Route to **personal** regardless of what the user picked for the batch:
 
 The asymmetry is deliberate: a fact wrongly kept personal can be re-published later,
 while one wrongly published cannot be recalled. So when a note is genuinely ambiguous,
-that is a reason to ask rather than to guess in either direction. If the user picks
-"decide per note", ask once per batch, not once per file.
+that is a reason to ask rather than to guess in either direction.
+
+The third option is named "decide batch by batch" rather than "per note" because that is
+the granularity actually offered: one question per batch of 5–10 (step 6), not one per
+file. Thirty files would otherwise mean thirty questions, and the option would be a
+promise the flow does not keep. Per-note control is still available — it is what the
+routing rules above do without being asked.
 
 ## Degradation
 
@@ -231,15 +259,22 @@ that is a reason to ask rather than to guess in either direction. If the user pi
   any id here is invented, and step 8's gate is the whole safety property.
 - **`backup` returns `ok: false`** → stop. `delete` is a no-op without a backup, so
   continuing would write to the graph while leaving the local copy in place, which is
-  the one state that later looks like a completed migration but is not.
+  the one state that later looks like a completed migration but is not. This is also
+  where a data dir that exists but is unwritable shows up, so do not read it as "the
+  store was empty".
 - **Some episodes never confirmed** → keep those files, delete the rest, report the
   gap by name, leave the decision unset.
-- **`pluginDataAvailable: false` _with_ a `hint` field** → you omitted
-  `--plugin-data`. Not a degradation: re-run the call correctly. Stopping here reports
-  a platform limit that isn't there and leaves 30-odd facts stranded for good.
-- **`pluginDataAvailable: false` with the flag correctly passed** (genuinely no data
-  dir, e.g. local `--plugin-dir` dev) → no decision can be persisted and no backup
-  taken, so do not migrate; say that plugin state is unavailable.
+- **`verified` returns a name in `rejected`, or a `reason`** → that fact is not
+  authorised for deletion. A `reason` mentioning the backup means nothing was recorded at
+  all: do **not** re-write the episodes, which may well have landed — re-run verification
+  and fix the backup problem it names.
+- **`delete` returns `note: false`** → the facts went, but `MEMORY.md` was not rewritten.
+  Report it with the path and **do not** `record migrated`; see step 10 for why that
+  particular failure is the unrecoverable one.
+- **`pluginDataAvailable: false`** → you omitted `--plugin-data`. Not a degradation:
+  re-run the call correctly. Stopping here reports a platform limit that isn't there and
+  leaves 30-odd facts stranded for good. There is no second case to distinguish it from —
+  the field cannot be false for any other reason.
 
 ## Reporting back
 
