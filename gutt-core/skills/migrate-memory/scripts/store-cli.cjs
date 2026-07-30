@@ -15,6 +15,20 @@
  *
  * `status`/`backup`/`delete` locate the store from `--cwd` (default `process.cwd()`),
  * since a skill runs in the project rather than being handed a hook payload.
+ *
+ * `--plugin-data=<abs>` supplies the data dir for the same reason (GP-922 follow-up).
+ * A skill shells out through the **Bash tool, which inherits neither
+ * `CLAUDE_PLUGIN_ROOT` nor `CLAUDE_PLUGIN_DATA`** — only hooks get those. Without the
+ * flag every skill-driven run reported `pluginDataAvailable: false` and the skill hit
+ * its own "degrade by stopping" branch, so the migration could never complete: the
+ * logic was fine and the invocation contract was not. The unit suite missed it by
+ * injecting `CLAUDE_PLUGIN_DATA` into the child env, i.e. by supplying what the real
+ * caller cannot.
+ *
+ * Setting the env var here is safe *after* the requires below because
+ * `plugin-state.stateRoot()` reads `process.env` live on every call rather than
+ * caching it at module load. No implicit fallback is introduced — absent both the
+ * flag and the env var, paths still resolve to null and every write stays a no-op.
  */
 "use strict";
 
@@ -23,19 +37,23 @@ const { projectKey, storeDir, listFacts } = require(`${LIB}/builtin-memory.cjs`)
 const store = require(`${LIB}/builtin-memory-store.cjs`);
 const config = require(`${LIB}/runtime-config.cjs`);
 
-/** @returns {{payload: Object, rest: string[]}} */
+/** @returns {{payload: Object, rest: string[], pluginData: string|null}} */
 function parseArgs(argv) {
   const rest = [];
   let cwd = process.cwd();
+  let pluginData = null;
   for (const arg of argv) {
-    const flag = arg.match(/^--cwd=(.*)$/);
-    if (flag) {
-      cwd = flag[1];
+    const cwdFlag = arg.match(/^--cwd=(.*)$/);
+    const dataFlag = arg.match(/^--plugin-data=(.*)$/);
+    if (cwdFlag) {
+      cwd = cwdFlag[1];
+    } else if (dataFlag) {
+      pluginData = dataFlag[1];
     } else {
       rest.push(arg);
     }
   }
-  return { payload: { cwd }, rest };
+  return { payload: { cwd }, rest, pluginData };
 }
 
 function emit(obj) {
@@ -45,7 +63,15 @@ function emit(obj) {
 // Flags are stripped from the whole argv *before* the subcommand is read, so
 // `--cwd=… status` works as well as `status --cwd=…`. Reading argv[2] first made a
 // leading flag look like the command and reported it as unknown.
-const { payload, rest } = parseArgs(process.argv.slice(2));
+const { payload, rest, pluginData } = parseArgs(process.argv.slice(2));
+
+// An explicitly-passed dir wins over inherited env; an empty value is ignored so
+// `--plugin-data=` cannot blank out a working env var. See the header note on why
+// this must be settable from argv at all.
+if (pluginData) {
+  process.env.CLAUDE_PLUGIN_DATA = pluginData;
+}
+
 const [command, ...operands] = rest;
 const key = projectKey(payload);
 
@@ -53,6 +79,7 @@ try {
   switch (command) {
     case "status": {
       const dir = storeDir(payload);
+      const pluginDataAvailable = Boolean(config.configPath());
       emit({
         projectKey: key,
         storeDir: dir,
@@ -60,7 +87,16 @@ try {
         decision: config.readMigrationState(key),
         settled: config.isMigrationSettled(key),
         backup: store.latestBackup(key),
-        pluginDataAvailable: Boolean(config.configPath()),
+        pluginDataAvailable,
+        // Distinguishes "genuinely unavailable" from "you forgot the flag". Without
+        // it a false reads as the platform's fail-safe and the skill stops for good.
+        ...(pluginDataAvailable
+          ? {}
+          : {
+              hint:
+                "no data dir: pass --plugin-data=<${CLAUDE_PLUGIN_DATA} from the skill " +
+                "body>. The Bash tool does not inherit CLAUDE_PLUGIN_DATA from the session.",
+            }),
       });
       break;
     }
