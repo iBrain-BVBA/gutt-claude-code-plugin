@@ -1,8 +1,8 @@
 # Hook platform capabilities (upstream)
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
-**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Method:** `WebFetch` passes plus one
-live CLI run for §5 (see [Provenance](#provenance))
+**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Measured:** 2026-07-30 (§6, §7) ·
+**Method:** `WebFetch` passes plus live CLI runs for §5–§7 (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
 docs, tests and recorded memory assume, and one of our recorded findings is now false.
 
@@ -140,6 +140,61 @@ judge outright while every unit test stays green — `tests/test-all-hooks.cjs` 
 the Stop entry (`type: prompt`), and the e2e verdict assertions only bite in a run
 that got as far as producing a verdict. Worth a guard if we keep pinning a model.
 
+## 6. The prompt `prompt` field takes one substitution, not shell expansion
+
+**Measured 2026-07-30** against `claude` 2.1.220, prompted by the question "could the
+judge read `config.json` if the field ran a script, the way a slash command body does?"
+
+A throwaway plugin registered one Stop prompt hook whose field was
+``!`cat <file>`\n\nHook payload: $ARGUMENTS``, with the entire judging instruction — and a
+token appearing nowhere else — inside that file. The instruction was deliberately kept out
+of `hooks.json` so that an instruction obeyed from literal text could not read as success.
+
+Result: **the backtick call is not expanded.** It survived verbatim into the prompt the
+judge received (visible on the `Hooks: Processing prompt hook with prompt: …` lines), the
+token never appeared, and `cat` never ran. The judge instead read the literal text as the
+condition it was asked to evaluate, answering `ok:false` with "the transcript contains no
+evidence of executing `cat …`". Its fed-back reason then drove the main model to keep
+_trying_ to run the command until the sandbox blocked it: **four evaluations in one turn,
+16 turns, $0.13** — an incidental live reproduction of the re-fire failure mode in §3.
+
+By contrast `$ARGUMENTS` **was** substituted: zero literal occurrences survived, and the
+payload's `stop_hook_active` is present in the sent prompt. So the field goes through
+exactly one narrow substitution and no shell. There is no route from a prompt hook to
+anything on disk.
+
+Consequence: a `type: "prompt"` hook cannot read plugin config, so it can be neither gated
+on `enabled`/snooze nor varied in wording by `mode`. And `$ARGUMENTS` is no way in either —
+the payload is constructed by the platform, with no plugin-facing field to add to it.
+
+## 7. A command Stop hook cannot gate a prompt sibling
+
+**Measured 2026-07-30**, same method. This is the sibling half of Follow-up 2. Our own
+notes say siblings "run in parallel with no channel between them"
+(`docs/runtime-state-convention.md:162`, `gutt-core/hooks/session-start.cjs:65`) — but that
+sentence is about two hooks racing to write state, and says nothing about whether one
+hook's output can suppress another's _dispatch_. Untested, and load-bearing.
+
+One plugin, two Stop handlers — a command hook and a prompt hook — run twice, differing
+only in what the command hook returned:
+
+| Command hook returns     | Gate ran | Prompt-hook evaluations |
+| ------------------------ | -------- | ----------------------- |
+| exit 0, no output        | yes      | 1                       |
+| `{"continue": false, …}` | yes      | 1                       |
+
+**No suppression.** The prompt judge is evaluated regardless. `continue: false` is not
+inert — it suppressed the turn's final answer, which came back empty — but it does not stop
+the sibling. So the two hooks are independent in dispatch, not merely in state.
+
+**Taken with §6 this closes the design space** for gating Stop on config: the handler cannot
+stay a prompt hook (§6) and cannot be gated by a sibling (§7), so it must _become_ a command
+hook, and the dedicated `claude-sonnet-5` judge is removed rather than gated — a command hook
+cannot invoke a model. Recorded on GP-866, whose new ACs turn on exactly this.
+
+Still open from Follow-up 2: whether a command Stop hook's `additionalContext` reaches the
+model **non-blocking**. Not tested here — these runs only counted dispatches.
+
 ## Implications for this plugin
 
 **Already relied on and now confirmed:**
@@ -174,6 +229,10 @@ None of these are done; recorded so they are not lost.
    `memory-capture` rule 1 the pair goes through `conflict-adjudication` first.
 2. Answer §3: can a **command** Stop hook return non-blocking `additionalContext` under
    our hook set? This is testable in the e2e tier and would need a real run, not a doc read.
+   **Partly answered 2026-07-30 — see §7.** The sibling-dispatch half is settled: a command
+   hook cannot suppress a prompt sibling. The `additionalContext` half is still open, and it
+   is now the one that matters, because §6 + §7 force the Stop handler to a command hook and
+   the non-blocking channel is what would keep it from re-entering the turn.
 3. Decide whether `CwdChanged` should re-evaluate the GP-922 migration offer.
 4. Guard the pinned `model` value in §5. A typo silently disables the Stop judge and no
    tier catches it: the unit tier skips prompt hooks, the e2e tier asserts on verdicts
@@ -199,4 +258,11 @@ builds on this:
   confidence in the file. The two passes disagreed on whether `model` is a config field at
   all (one pass found only the SessionStart _input_ field of the same name); the live run
   settled it — it is both.
+- **§6 and §7 are not doc reads at all** — both were measured against `claude` 2.1.220 on
+  2026-07-30 with throwaway single-hook plugins loaded via `--plugin-dir`, reading
+  `--debug-file`. Each was designed so the negative result could not be faked: §6 keeps the
+  judging instruction out of `hooks.json` entirely, so text obeyed from the literal field
+  could not pass as expansion; §7 has the command hook touch a marker file, so "0 prompt
+  evaluations" could be distinguished from "neither hook ran". Highest confidence in the
+  file, alongside §5.
 - **§ "Implications" and "Follow-ups" are our inference**, not upstream text.
