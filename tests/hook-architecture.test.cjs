@@ -584,13 +584,7 @@ describe("hook architecture guards", () => {
   // stood for quietly leaves.
   describe("closing the reply on the work rather than the bookkeeping", () => {
     const CAPTURE_MD = path.join(ROOT, "gutt-core", "skills", "memory-capture", "SKILL.md");
-    const STYLE_MD = path.join(
-      ROOT,
-      "gutt-core",
-      "skills",
-      STOP_JUDGE.STYLE_SKILL.split(":")[1],
-      "SKILL.md"
-    );
+    const STYLE_MD = path.join(ROOT, "gutt-core", "skills", STOP_JUDGE.STYLE_SKILL_DIR, "SKILL.md");
 
     it("caps the capture account, where that rule still lives", () => {
       // A brief closing block under a long capture report is still a buried one, so the
@@ -647,9 +641,39 @@ describe("hook architecture guards", () => {
       );
     });
 
+    // Every assertion above matches a *phrase*, and a phrase cannot tell an instruction from
+    // its own inverse. Rewriting "it is the summary, never the bookkeeping" the other way
+    // round leaves all six matching while the block now prescribes exactly the defect GP-927
+    // exists to fix. This is the hazard named further down this file — a guard whose string
+    // survives a rewrite while the property it stood for quietly leaves — so the two
+    // orderings that carry the meaning are asserted as relations instead.
+    it("orders the two parts, and gives the bottom of the reply to the summary", () => {
+      const block = STOP_JUDGE.readStyleBlock().toLowerCase();
+      const account = block.indexOf("account for it first");
+      const summary = block.indexOf("closing summary of the turn");
+      assert.ok(
+        account !== -1 && summary !== -1,
+        "neither part is named in the words this guard can locate — reword the guard with the block"
+      );
+      assert.ok(
+        account < summary,
+        "the block puts the closing summary before the bookkeeping account, which buries the answer"
+      );
+      // "Whatever sits at the bottom … is the summary, never the bookkeeping" — whichever of
+      // the two words comes first after that clause is the one being assigned to the bottom.
+      const bottom = block.slice(block.indexOf("whatever sits at the bottom"));
+      const claimsSummary = bottom.indexOf("summary");
+      const claimsBookkeeping = bottom.indexOf("bookkeeping");
+      assert.ok(
+        claimsSummary !== -1 && claimsSummary < claimsBookkeeping,
+        "the bottom of the reply is assigned to the bookkeeping rather than the closing summary"
+      );
+    });
+
     // The whole-reply style list sits *outside* the markers: `capture_close` measured it at
-    // 335 characters on every fire for no detectable gain, so it is stated for whoever loads
-    // the skill instead of shipped in a payload. That makes it the easiest thing in this
+    // 335 characters on every fire and scoring worse with them than without (67% against 96%
+    // at n=24), so it is stated for whoever loads the skill instead of shipped in a payload.
+    // Round 4 retracted the earlier reading of it as merely a cost. That makes it the easiest thing in this
     // change to lose by accident — nothing at runtime reads it, so deleting it breaks no
     // test and no hook, and the skill would quietly stop stating the style AC1 asks for.
     it("keeps the whole-reply style in the skill, outside the injected region", () => {
@@ -690,7 +714,7 @@ describe("hook architecture guards", () => {
       // the one file the capture path does load.
       assert.match(
         capture,
-        new RegExp(`\`${STOP_JUDGE.STYLE_SKILL.split(":")[1]}\``),
+        new RegExp(`\`${STOP_JUDGE.STYLE_SKILL_DIR}\``),
         "memory-capture no longer points at the skill that owns how the reply closes"
       );
       // And the rule must not have been left behind as a second copy. These are the
@@ -719,10 +743,14 @@ describe("hook architecture guards", () => {
       // bullets. Expressed as the slack the composed cap leaves once both constants are
       // present, which is the `hitl` worst case.
       const block = STOP_JUDGE.readStyleBlock();
+      // The `- 2` is the "\n\n" `composeReason` puts between the tail and the block. Omitting
+      // it made this guard permit 1261 where the other one permitted 1259, so a block of
+      // either intervening length passed here and failed there.
       const room =
         STOP_JUDGE.MAX_COMPOSED_REASON_CHARS -
         STOP_JUDGE.MAX_REASON_CHARS -
-        STOP_JUDGE.HITL_TAIL.length;
+        STOP_JUDGE.HITL_TAIL.length -
+        2;
       assert.ok(
         block.length <= room,
         `the injected region is ${block.length} chars and only ${room} fit beside a full ` +

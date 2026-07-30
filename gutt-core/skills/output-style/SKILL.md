@@ -12,7 +12,7 @@ summary that closes a turn — the part the user actually reads and carries away
 
 <!-- INJECTED:BEGIN -->
 
-The reply ends in two parts, in this order. Where the turn did something on the way — recorded a finding, migrated a store, changed a setting — account for it first, in a few lines: what happened, and anything the user still has to decide. Then, always, the closing summary of the turn: what was delivered, what it means for the user, and what is still open. Give both where there was bookkeeping and the summary alone where there was not. Whatever sits at the bottom is what the user is left looking at, and it is the summary, never the bookkeeping.
+The reply ends in two parts, in this order. Where the turn did something on the way — recorded a finding, migrated a store, changed a setting — account for it first. Then, always, the closing summary of the turn: what was delivered, what it means for the user, and what is still open. Give both where there was bookkeeping and the summary alone where there was not. Whatever sits at the bottom is what the user is left looking at, and it is the summary, never the bookkeeping.
 
 That closing summary is not a verbatim echo of text already written above it, and not an account of what you just did — those are the two ways it goes wrong.
 
@@ -29,9 +29,11 @@ next action small enough to start now, where anything is still open.
 
 These sit outside the markers deliberately, and it is the same one source either way — the
 rules are stated here, not duplicated. `evals/suites/capture_close` measured them as costing
-335 characters on every fire without buying an improvement it could detect, so they are
-stated for whoever loads this skill rather than shipped in a payload. `FINDINGS.md` records
-what that measurement does and does not support.
+335 characters on every fire and scoring _worse_ with them than without — 67% against 96% at
+n=24 — so they are stated for whoever loads this skill rather than shipped in a payload.
+`FINDINGS.md` records what that measurement does and does not support; in particular it
+cannot separate dilution from the list being actively confusing, so "worse" is the finding
+and the mechanism is not.
 
 ## Writing the closing summary
 
@@ -59,9 +61,11 @@ not what they came for, and it arrives last, which is the worst position for it.
 reply carries both accounts, in this order, and neither substitutes for the other:
 
 1. **What the turn did on the way.** A few lines: what happened, and anything the user still
-   has to decide. Where a skill owns that account it also bounds its length —
-   `memory-capture` does. Omitting this is not an improvement; the user is entitled to know
-   a capture was written.
+   has to decide. The injected block deliberately does not say that — whichever skill owns
+   the work also bounds its account, and `memory-capture` states this same sentence almost
+   verbatim, so injecting it too would pay for one clause twice on the one path where the
+   other file is guaranteed to be loaded already. Omitting the account itself is not an
+   improvement; the user is entitled to know a capture was written.
 2. **The closing summary.** Last, per the rules above. This is the answer.
 
 Dropping either one is a failure of a different kind: without the first the write is

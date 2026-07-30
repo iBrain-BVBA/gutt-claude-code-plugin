@@ -8,6 +8,16 @@ the harness has not either, so all four pool. Round 4 is a prompt-tuning round: 
 candidates (`W1`–`W3`) built to match the longest wording's quality at or below the shipped
 block's length.
 
+> **The shipped block changed after round 4 and has not been re-measured.** A PR review found
+> that one clause of it — the one bounding the capture account's length — restated
+> `memory-capture/SKILL.md` almost verbatim, on the one path where that file is always loaded
+> already. Removing it took the block from 878 to **804 characters**. Every `V0-shipped` number
+> below therefore describes the 878-character text, not what ships now. The edit only deletes a
+> clause the surrounding rules do not depend on, and shorter has won every comparison this
+> suite has run — but that is an argument for expecting no regression, not a measurement of
+> one. A round 5 at n≥24 would settle it, and `R1-reanchor` in `variants.py` is a second
+> candidate waiting on the same round.
+
 **One hazard when reading the older rounds.** Variant _labels_ changed meaning after round 2,
 when the shipped block was shortened from 1213 to 878 characters — `V4-terse` became
 `V0-shipped` and the old `V0-shipped` became `V5-plus-style`. Every table here is keyed on

@@ -171,6 +171,34 @@ Work the turn had to do along the way is part of finishing it, not an interrupti
 Before sending, check three things. Both parts are there. The summary is last. Its first line is substance rather than an announcement of what you are about to say, and its last line is not a pleasantry."""
 
 
+def _reanchor(block):
+    """The shipped block, re-anchored on the skill invocation that sits above it.
+
+    A different question from W1-W3. Those asked whether a better wording exists at or below
+    the shipped length. This asks whether the block should name the skill invocation above it
+    as a precondition instead of opening on a capture in the past tense.
+
+    The review that raised it read "recorded a finding" as presupposing a write that has not
+    happened yet, and read the block's deliberate recency position as demoting the skill line
+    to the slot the same argument calls lossy. The counter-argument, which looks the stronger
+    of the two: the block governs the *reply*, and the reply is composed after the skill has
+    run, so the tense is correct at the point the instruction applies -- and the skill name
+    holds first position, which is not a weak one either.
+
+    Unresolved in both directions by this corpus, which hands the model a completed capture
+    and therefore cannot see whether one ran at all (see FINDINGS.md, "What this does not
+    establish"). Kept here so the question is settled by measurement when a corpus that can
+    reach it exists, rather than by whichever reading sounds better.
+
+    Exempt from the W length gate on purpose: length is not the variable, and a prefix can
+    only make the candidate longer than the block it modifies.
+    """
+    opener = "The reply ends in two parts"
+    if not block.startswith(opener):
+        raise SystemExit(f"{SKILL}: the block no longer opens with the sentence R1 re-anchors")
+    return f"After running the skill named above, t{block[1:]}"
+
+
 def all_variants():
     block = shipped()
     variants = {
@@ -182,6 +210,7 @@ def all_variants():
         "W1-numbered": W1_NUMBERED,
         "W2-omission": W2_OMISSION,
         "W3-presend": W3_PRESEND,
+        "R1-reanchor": _reanchor(block),
     }
     # The round's own premise is "at or below the shipped length". A candidate that quietly
     # grew past it would still be scored and might well win on the extra words, which is not

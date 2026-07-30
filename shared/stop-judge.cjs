@@ -162,9 +162,18 @@ const STYLE_SKILL_DIR = STYLE_SKILL.split(":")[1];
  * place and is loaded on no other path, which is this. The capture *procedure* stays in
  * that file; the closing style is injected, because otherwise it arrives nowhere.
  *
- * Cost is one small file read per fire. Stop is not the ≤50ms path (R25 bounds the guard
- * and the prompt hook), and this hook already spawns a `claude -p` child, so a 1KB read is
- * not the term that matters.
+ * The block earns that claim rather than merely asserting it: it used to also specify the
+ * length of the capture account, in almost the words `memory-capture` uses, and
+ * `memory-capture` is loaded on every path this block is injected on. That clause was the one
+ * part genuinely paid for twice, so it was removed from the injected region — the account's
+ * shape belongs to whichever skill owns the work, and the injected text only says where the
+ * account goes.
+ *
+ * Cost is one small file read per fire. R25's latency budget is on the UserPromptSubmit
+ * path, not this one — and note that the repo states it inconsistently, as 50ms in
+ * `shared/runtime-config.cjs` against ≤2s in `docs/e2e-hook-test-plan.md` §R25, unresolved
+ * either way. Stop is on neither reading the tight path, and this hook already spawns a
+ * `claude -p` child, so a 1KB read is not the term that matters.
  */
 const STYLE_BEGIN = "<!-- INJECTED:BEGIN -->";
 const STYLE_END = "<!-- INJECTED:END -->";
@@ -175,10 +184,17 @@ const STYLE_END = "<!-- INJECTED:END -->";
  * `${CLAUDE_PLUGIN_ROOT}` first because it is what the platform sets for a hook process
  * and the only one that is right in every layout. The two fallbacks exist because
  * `__dirname` is not stable across them: installed, this file is a real file at
- * `<root>/hooks/lib/`, so `../..` is the plugin root; in local development it is
- * `shared/stop-judge.cjs` reached through a symlink, and Node resolves `__dirname` to the
- * realpath, which puts `../..` outside the repo entirely. Hence the explicit `gutt-core`
- * candidate rather than one more `..`.
+ * `<root>/hooks/lib/`, so `../..` is the plugin root (documented behaviour, not measured —
+ * see `docs/plugin-platform-reference.md` §3 on symlink dereferencing at install); in local
+ * development it is `shared/stop-judge.cjs` reached through a symlink, and Node resolves
+ * `__dirname` to the realpath, which puts `../..` outside the repo entirely. Hence the
+ * explicit `gutt-core` candidate, which names the directory instead of walking up to it.
+ *
+ * The `gutt-core` candidate is tried **before** `../..` even though only the installed
+ * layout needs `../..`, because in the dev layout `../..` resolves to the parent of the
+ * checkout — the directory every sibling repo also lives in. Tried first, any stray
+ * `skills/output-style/SKILL.md` there would outrank this plugin's own copy. Ordered this
+ * way the out-of-tree path is reachable only when nothing inside the plugin matched.
  *
  * @returns {string[]}
  */
@@ -188,38 +204,72 @@ function styleBlockPaths() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
     paths.push(path.join(process.env.CLAUDE_PLUGIN_ROOT, rel));
   }
-  paths.push(path.resolve(__dirname, "..", "..", rel));
   paths.push(path.resolve(__dirname, "..", "gutt-core", rel));
+  paths.push(path.resolve(__dirname, "..", "..", rel));
   return paths;
+}
+
+/**
+ * The injected region of the style skill, with a diagnosis when something was wrong.
+ *
+ * Fails open and silently to the turn: a missing or malformed block must cost the style,
+ * never the capture, because this sits between the user and the end of their turn. It is
+ * not silent to the log — `judgeTurn` puts `cause` in the fired outcome's detail, so a
+ * marker someone deleted shows up as a line in the invocations log rather than as replies
+ * that quietly stopped closing on the work.
+ *
+ * `cause` exists because `""` alone was one channel for five failures with five different
+ * fixes: reinstall, restore a deleted marker, `chmod`, correct `CLAUDE_PLUGIN_ROOT`, remove
+ * a directory sitting at the path. `shared/plugin-state.cjs`'s `readJsonOrUnreadable` draws
+ * the same distinction for the same reason, and this is the second caller that needs it.
+ *
+ * Two rules decide what is worth reporting. A candidate that is simply absent
+ * (`ENOENT`/`ENOTDIR`) is a layout miss and says nothing — that is the mechanism by which
+ * the fallbacks work. Any other errno is a defect at a path that was meant to resolve, so it
+ * is named even when a later candidate then succeeds. Markers missing is likewise non-fatal
+ * to the search: an install whose `SKILL.md` predates the markers should fall through to a
+ * copy that has them rather than lose the feature while a good copy sits further down the
+ * chain, which is what returning early here used to do.
+ *
+ * @returns {{text: string, cause: string|null}}
+ */
+function readStyleBlockResult() {
+  const defects = [];
+  for (const file of styleBlockPaths()) {
+    let text;
+    try {
+      text = fs.readFileSync(file, "utf8");
+    } catch (err) {
+      if (err.code !== "ENOENT" && err.code !== "ENOTDIR") {
+        defects.push(`${err.code || "read failed"} at ${file}`);
+      }
+      continue; // not this layout, or not readable; either way try the next candidate
+    }
+    const start = text.indexOf(STYLE_BEGIN);
+    const end = start === -1 ? -1 : text.indexOf(STYLE_END, start + STYLE_BEGIN.length);
+    if (end === -1) {
+      defects.push(`markers missing in ${file}`);
+      continue;
+    }
+    const block = text.slice(start + STYLE_BEGIN.length, end).trim();
+    if (!block) {
+      defects.push(`injected region empty in ${file}`);
+      continue;
+    }
+    return { text: block, cause: defects.length ? defects.join("; ") : null };
+  }
+  return { text: "", cause: defects.length ? defects.join("; ") : "no candidate readable" };
 }
 
 /**
  * The injected region of the style skill, or `""` if it cannot be read.
  *
- * Fails open and silently to the turn: a missing or malformed block must cost the style,
- * never the capture, because this sits between the user and the end of their turn. It is
- * not silent to the log — `judgeTurn` records it in the fired outcome's detail, so a
- * marker someone deleted shows up as a line in the invocations log rather than as replies
- * that quietly stopped closing on the work.
+ * The text on its own, for callers that want the block rather than the diagnosis.
  *
  * @returns {string}
  */
 function readStyleBlock() {
-  for (const file of styleBlockPaths()) {
-    let text;
-    try {
-      text = fs.readFileSync(file, "utf8");
-    } catch {
-      continue; // not this layout; try the next candidate
-    }
-    const start = text.indexOf(STYLE_BEGIN);
-    const end = text.indexOf(STYLE_END, start + 1);
-    if (start === -1 || end === -1) {
-      return ""; // the file is there and the markers are not — a defect, not a layout miss
-    }
-    return text.slice(start + STYLE_BEGIN.length, end).trim();
-  }
-  return "";
+  return readStyleBlockResult().text;
 }
 
 /**
@@ -229,26 +279,28 @@ function readStyleBlock() {
  * whole reason. With `HITL_TAIL` and the style block appended by this script there was no
  * guard on the total at all, so this caps what actually reaches the conversation.
  *
- * Enforced by giving the judge's half whatever the constants leave rather than by
- * truncating the composed string: the constants are fixed text that has been measured, and
- * chopping the end off the block would remove the closing instruction — the one part of
- * the reason this story exists to deliver. The variable-length half is the judge's, so
- * that is the half that yields. `tests/stop-capture.test.cjs` measures the worst case
- * (`hitl`, both constants present) and asserts the slack is real, so growing the block
- * past the budget fails a test instead of silently squeezing the judge's bullets.
+ * Enforced by dropping the style block whole, not by truncating it and not by chopping the
+ * composed string: the block's last clause is the closing instruction — the one part of the
+ * reason this story exists to deliver — so half a block is worse than none. The judge's
+ * bullets are what the capture acts on, so they are never the half that yields.
+ * `tests/stop-capture.test.cjs` measures the worst case (`hitl`, both constants present) and
+ * asserts the slack is real, so growing the block past the budget fails a test instead of
+ * silently costing the block at runtime.
  *
  * Measured 2026-07-30, worst case: style block 878 + `HITL_TAIL` 339 + 2 separators = 1219
- * of constants, plus the judge's 800 and a truncation ellipsis, for 2018. The value below is
- * that measurement plus room to reword the block — comfortably more than a third of its
- * length — and not a round number chosen first.
+ * of constants, plus the judge's 800 — the truncation ellipsis is charged against that 800
+ * rather than added to it — for 2019. The value below is that measurement plus room to
+ * reword the block, comfortably more than a third of its length, and not a round number
+ * chosen first.
  *
- * It has moved twice, and both moves are the same lesson. At 2400 against a 1213-char block
- * the slack was 45 characters, so every edit to the skill would have failed a test; the
- * guard is meant to catch a block that has doubled, not one that gained a clause. Then
- * `evals/suites/capture_close` measured the whole-reply style list as 335 of those characters
- * for no gain it could detect, the list moved out of the injected region, and the block fell
- * to 878 — so the cap came back down with it rather than being left loose at 2800. A cap
- * that no longer tracks what it bounds is not a cap.
+ * It was raised to 2800 partway through GP-927 and brought back down (`deaec86`, then
+ * `eae3246`), and both moves are the same lesson. At 2400 against a 1213-char block the slack
+ * was 46 characters by the guard's own formula, so every edit to the skill would have failed
+ * a test; the guard is meant to catch a block that has doubled, not one that gained a clause.
+ * Then `evals/suites/capture_close` measured the whole-reply style list as 335 of those
+ * characters and scoring *worse* with them than without, the list moved out of the injected
+ * region, and the block fell to 878 — so the cap came back down with it rather than being
+ * left loose at 2800. A cap that no longer tracks what it bounds is not a cap.
  */
 const MAX_COMPOSED_REASON_CHARS = 2400;
 
@@ -260,16 +312,48 @@ const MAX_COMPOSED_REASON_CHARS = 2400;
  * last because it governs the end of the reply and is the instruction most easily lost in
  * the middle of a system message.
  *
+ * ## Which half yields, and why the ellipsis is charged to the budget
+ *
+ * Two things this got wrong while the shipped block was small enough that neither showed.
+ *
+ * The judge's half now keeps its full `MAX_REASON_CHARS` and the **block** is what gives way,
+ * matching the policy stated throughout this file: the style may cost, the capture never
+ * does. Clamping the budget instead let an oversized block drive it to zero, which reduced
+ * the whole verdict — skill name and every subject bullet — to a bare `…`, leaving the agent
+ * told to close a reply on subjects it could no longer see.
+ *
+ * The ellipsis is charged against the budget rather than appended after it. Adding it to a
+ * slice already the budget's full width made the composed length `MAX_COMPOSED_REASON_CHARS
+ * + 1` for every block from 1259 characters up, so the cap was not a bound in the one regime
+ * it exists for.
+ *
+ * Both are diagnostics as well as fixes: a dropped block and a truncated verdict are each
+ * reported back so they reach the invocations log instead of showing up only as a reply that
+ * quietly stopped closing on the work.
+ *
  * @param {string} reason the judge's reason, already screened
  * @param {string} mode one of runtime-config's MODES
  * @param {string} style the injected style block, or `""`
- * @returns {string}
+ * @returns {{text: string, styleDropped: boolean, truncatedTo: number|null}} `styleDropped`
+ *   and `truncatedTo` are diagnostics for the fired outcome's detail, never content
  */
 function composeReason(reason, mode, style) {
-  const tail = `${mode === "hitl" ? HITL_TAIL : ""}${style ? `\n\n${style}` : ""}`;
+  const hitl = mode === "hitl" ? HITL_TAIL : "";
+  const block = style ? `\n\n${style}` : "";
+  // Measured against `MAX_REASON_CHARS`, not against this verdict's actual length, so the
+  // decision does not turn on how verbose one judge call happened to be.
+  const styleDropped =
+    Boolean(style) && MAX_COMPOSED_REASON_CHARS - (hitl.length + block.length) < MAX_REASON_CHARS;
+  const tail = styleDropped ? hitl : `${hitl}${block}`;
   const budget = Math.max(0, Math.min(MAX_REASON_CHARS, MAX_COMPOSED_REASON_CHARS - tail.length));
-  const head = reason.length > budget ? `${reason.slice(0, budget).trimEnd()}…` : reason;
-  return `${head}${tail}`;
+  const truncated = reason.length > budget;
+  // `budget - 1` leaves room for the ellipsis, so a truncated head is at most `budget`.
+  const head = truncated ? `${reason.slice(0, Math.max(0, budget - 1)).trimEnd()}…` : reason;
+  return {
+    text: `${head}${tail}`,
+    styleDropped,
+    truncatedTo: truncated ? head.length : null,
+  };
 }
 
 /**
@@ -583,14 +667,32 @@ function judgeTurn(payload, mode, deps = {}) {
   if (VERDICT_SHAPE.test(reason)) {
     return quiet(OUTCOMES.RESTATED_FORMAT, reason.slice(0, 200));
   }
-  const style = deps.styleBlock === undefined ? readStyleBlock() : deps.styleBlock;
+  const read =
+    deps.styleBlock === undefined ? readStyleBlockResult() : { text: deps.styleBlock, cause: null };
+  const style = read.text;
+  const composed = composeReason(reason, mode, style);
+  // A fire is not a failure, so none of these reach the error log. But each is the difference
+  // between the capture path closing on the work and trailing off into bookkeeping, and this
+  // log line is the only place any of them would show. Joined rather than ranked: they are
+  // independent, and a fire that hit two of them should say so.
+  const notes = [];
+  if (!style) {
+    notes.push(read.cause ? `style block unreadable: ${read.cause}` : "style block unreadable");
+  } else if (read.cause) {
+    // Read successfully, but not from the first candidate that should have worked. Worth a
+    // line: it is how a broken `CLAUDE_PLUGIN_ROOT` shows up while the feature still works.
+    notes.push(`style block read past a defect: ${read.cause}`);
+  }
+  if (composed.styleDropped) {
+    notes.push(`style block over budget at ${style.length} chars, dropped`);
+  }
+  if (composed.truncatedTo !== null) {
+    notes.push(`judge reason truncated to ${composed.truncatedTo} chars`);
+  }
   return {
     outcome: OUTCOMES.FIRED,
-    reason: composeReason(reason, mode, style),
-    // A fire is not a failure, so this never reaches the error log. But an unreadable
-    // style block is the difference between the capture path closing on the work and
-    // trailing off into bookkeeping, and this log line is the only place it would show.
-    detail: style ? null : "style block unreadable",
+    reason: composed.text,
+    detail: notes.length ? notes.join("; ") : null,
   };
 }
 
@@ -656,6 +758,7 @@ module.exports = {
   MAX_REASON_CHARS,
   MAX_COMPOSED_REASON_CHARS,
   STYLE_SKILL,
+  STYLE_SKILL_DIR,
   STYLE_BEGIN,
   STYLE_END,
   AGENT_TASK_TYPES,
@@ -665,6 +768,7 @@ module.exports = {
   parseVerdict,
   styleBlockPaths,
   readStyleBlock,
+  readStyleBlockResult,
   composeReason,
   judgeTurn,
 };

@@ -168,6 +168,9 @@ drafts to the user so they aren't lost. State the degradation in one line.
   `conflict-adjudication`. It recommends only — the approved correction is
   written back through this skill.
 - How the reply closes once the capture is reported: `output-style`. It owns
-  everything below the capture account; this file owns the account itself.
+  where the account sits and everything below it; this file owns what the account
+  says and how long it runs. The block `output-style` injects deliberately stops
+  short of specifying either, so the two do not state one rule twice on the path
+  where both are in context.
 - Autonomous end-of-session capture is done by the **memory-keeper** agent (being
   brought in line with these rules).

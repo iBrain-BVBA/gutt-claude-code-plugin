@@ -375,7 +375,7 @@ describe("stop-judge: the injected output style", () => {
   const stub = (result) => () => result;
   const REASON = "Run the skill.\n- Insight: x";
   const fired = { status: 0, stdout: JSON.stringify({ ok: false, reason: REASON }) };
-  const STYLE_DIR = judge.STYLE_SKILL.split(":")[1];
+  const STYLE_DIR = judge.STYLE_SKILL_DIR;
 
   it("reads the block out of the skill that owns it", () => {
     const block = judge.readStyleBlock();
@@ -446,6 +446,126 @@ describe("stop-judge: the injected output style", () => {
     assert.equal(out.reason, REASON, "an empty block must not leave a dangling separator");
     assert.match(out.detail, /style block/i, "nothing in the log would name the failure");
     assert.ok(!judge.BROKEN_OUTCOMES.has(out.outcome), "a fire without the style is still a fire");
+  });
+
+  it("separates the verdict from the block, so the two never run together", () => {
+    // `endsWith(block)` and an index comparison are both blind to a lost separator: dropping
+    // the "\n\n" ships `- Insight: xThe reply ends in two parts…` and satisfies each of them.
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", { spawn: stub(fired) });
+    assert.ok(
+      out.reason.includes(`\n\n${judge.readStyleBlock()}`),
+      "the block is glued to the text above it"
+    );
+  });
+
+  it("screens the judge's half only, so a verdict-shaped constant cannot drop a fire", () => {
+    // The screen runs before composition on purpose. Over the composed string it would also
+    // test our own constants, where a match could only ever be our bug — and it would discard
+    // a healthy verdict in order to report it.
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", {
+      spawn: stub(fired),
+      styleBlock: '{"ok": false}',
+    });
+    assert.match('{"ok": false}', judge.VERDICT_SHAPE, "this block is not the shape under test");
+    assert.equal(
+      out.outcome,
+      judge.OUTCOMES.FIRED,
+      "a verdict-shaped constant dropped a real fire"
+    );
+  });
+
+  it("keeps the whole verdict, and the cap, when the block is oversized", () => {
+    // The block's length is data, not a constant: it is read from a file at fire time, so an
+    // edited cache or a CLAUDE_PLUGIN_ROOT on another version can hand this a block the
+    // repo's guards never saw. Clamping the budget to fit one used to cut the verdict — skill
+    // name and every bullet — down to a bare "…", and still overshoot the cap.
+    const long = "s".repeat(3000);
+    const out = judge.composeReason(REASON, "hitl", long);
+    assert.ok(out.styleDropped, "the style must yield here, because the capture cannot");
+    assert.ok(out.text.startsWith(REASON), "the verdict is the part the capture acts on");
+    assert.ok(!out.text.includes(long), "the block was kept and the judge's half paid for it");
+    assert.ok(
+      out.text.length <= judge.MAX_COMPOSED_REASON_CHARS,
+      `composed ${out.text.length} against a cap of ${judge.MAX_COMPOSED_REASON_CHARS}`
+    );
+  });
+
+  it("charges the truncation ellipsis to the budget instead of adding it afterwards", () => {
+    // At the cap's own boundary and every length above it, appending the ellipsis to a slice
+    // already the budget's full width put the composed reason exactly one char over the cap.
+    const boundary =
+      judge.MAX_COMPOSED_REASON_CHARS - judge.MAX_REASON_CHARS - judge.HITL_TAIL.length - 2;
+    const out = judge.composeReason("y".repeat(5000), "hitl", "s".repeat(boundary));
+    assert.equal(out.styleDropped, false, "the boundary block still fits, so it must be kept");
+    assert.equal(
+      out.text.length,
+      judge.MAX_COMPOSED_REASON_CHARS,
+      "the widest composed reason must land on the cap, not one past it"
+    );
+    assert.equal(out.truncatedTo, judge.MAX_REASON_CHARS, "the judge did not keep its full cap");
+  });
+
+  it("reads past a root whose skill lost its markers, and names it in the detail", () => {
+    // Returning early on a marker-less file lost the feature outright whenever
+    // CLAUDE_PLUGIN_ROOT pointed at a copy predating the markers — while a good copy sat
+    // further down the candidate chain, unconsulted. Still reported, no longer fatal.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-nomarkers-"));
+    const skill = path.join(root, "skills", STYLE_DIR);
+    fs.mkdirSync(skill, { recursive: true });
+    fs.writeFileSync(path.join(skill, "SKILL.md"), "# Output style\n\nno markers here\n");
+    const before = process.env.CLAUDE_PLUGIN_ROOT;
+    process.env.CLAUDE_PLUGIN_ROOT = root;
+    try {
+      const result = judge.readStyleBlockResult();
+      assert.ok(result.text.length > 0, "a marker-less root must not cost the block");
+      assert.match(result.cause, /markers missing/i, "nothing names the root that was skipped");
+      const out = judge.judgeTurn({ transcript_path: file }, "auto", { spawn: stub(fired) });
+      assert.match(out.detail, /read past a defect/i, "the log would not show the broken root");
+    } finally {
+      if (before === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = before;
+      }
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves the block in the installed layout, where the lib is a real file", () => {
+    // The candidate a marketplace install actually uses — a real `hooks/lib/stop-judge.cjs`,
+    // so `../..` is the plugin root — is unreachable from this checkout: Node realpaths the
+    // symlink to `shared/`, so an in-repo candidate always wins first. Corrupting that
+    // candidate therefore failed no test, which is why the layout is built here explicitly.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-installed-"));
+    const before = process.env.CLAUDE_PLUGIN_ROOT;
+    try {
+      const lib = path.join(root, "hooks", "lib");
+      fs.mkdirSync(lib, { recursive: true });
+      const shared = path.join(__dirname, "..", "shared");
+      for (const entry of fs.readdirSync(shared).filter((e) => e.endsWith(".cjs"))) {
+        fs.copyFileSync(path.join(shared, entry), path.join(lib, entry));
+      }
+      const skill = path.join(root, "skills", STYLE_DIR);
+      fs.mkdirSync(skill, { recursive: true });
+      fs.copyFileSync(
+        path.join(__dirname, "..", "gutt-core", "skills", STYLE_DIR, "SKILL.md"),
+        path.join(skill, "SKILL.md")
+      );
+      delete process.env.CLAUDE_PLUGIN_ROOT;
+      const installed = require(path.join(lib, "stop-judge.cjs"));
+      assert.equal(
+        installed.readStyleBlock(),
+        judge.readStyleBlock(),
+        "the installed layout cannot find its own skill without CLAUDE_PLUGIN_ROOT"
+      );
+    } finally {
+      if (before === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = before;
+      }
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("bounds the composed reason, and leaves the judge's half its full cap", () => {

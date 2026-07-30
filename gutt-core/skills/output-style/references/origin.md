@@ -17,25 +17,48 @@ to whatever the turn happened to end on.
 The rules are nonetheless written for **any** closing summary, not for the capture path
 alone, and that is deliberate. A style that only described how to recover from a capture
 would be a patch on one hook rather than an account of how a turn should end, and it would
-say nothing about the ~90% of turns where the judge passes — which want the same shape for a
-cheaper reason: it is the right shape anyway. Where the rules are injected automatically is
-a narrower question than what they cover, and the answer to it today is the one path.
+say nothing about the majority of turns, where the judge passes and nothing is injected —
+which want the same shape for a cheaper reason: it is the right shape anyway. (No pass rate is
+quoted because this repo does not measure one. The nearest figure,
+`evals/suites/stop_judge/FINDINGS.md`, reports a false-fire rate on a labelled corpus, which
+is a different quantity from how often real turns pass.) Where the rules are injected
+automatically is a narrower question than what they cover, and the answer to it today is the
+one path.
 
 ## Attribution
 
 Adapted from [`ayghri/i-have-adhd`](https://github.com/ayghri/i-have-adhd)
-(`skills/i-have-adhd/SKILL.md`), MIT licensed, © 2026 Ayoub Ghriss. This repo is MIT too,
-so the licences are compatible; the attribution is owed regardless.
+(`skills/i-have-adhd/SKILL.md`), MIT licensed, © 2026 Ayoub Ghriss. This repo is MIT too, so
+the licences are compatible. What was taken is mechanics rather than protected expression, so
+no notice obligation attaches and none is reproduced here; the credit below is offered as a
+courtesy, which is the honest description of it.
 
 **Adapted, not copied.** Taken: the mechanics that solve the problem above — lead with
 substance rather than framing, restate state each turn instead of assuming the reader
 carried it, make finished work visible rather than burying it in a recap, cap and rank
 lists, close on one concrete next action, stay matter-of-fact, prefer concrete estimates.
 
+Narrowed: upstream has both "lead with action, not context" and "end with one concrete next
+action". Only the second survives here — the first is about where a turn's _substance_ goes,
+which the rules above already cover from the other end.
+
+**Inverted, and this is the largest divergence.** Upstream's tenth rule forbids a closing
+recap outright: "No preamble, recap, or closing pleasantries. Start with the answer. End when
+the answer is done." This skill _mandates_ a closing summary, which is the whole point of
+GP-927. The disagreement is real and the resolution is that the two are solving different
+problems. Upstream addresses a reply nobody interrupted, where a recap is pure redundancy and
+the answer is still the last thing on screen. Here a hook interposes between the answer and
+the end of the turn, so without a closing summary the last thing on screen is bookkeeping.
+Both rules serve the same goal — leave the user looking at the answer — and land opposite
+because the hook changed what sits at the bottom. Note that "no preamble" and "no closing
+pleasantry" were taken unchanged; it is only the recap that flips.
+
 Dropped: the ADHD framing and its neurocognitive argument. There the reason to lead with
 substance is a reader's working-memory load. Here it is the interposing hook. The mechanics
 survive the change of cause; the rationale does not, and inheriting it would leave this
-repo asserting a premise it has no evidence for.
+repo asserting a premise it has no evidence for. Also dropped: the persistent
+on-until-cancelled mode (upstream's `~/.claude/.i-have-adhd-always`), which has no analogue
+here — the Stop hook decides when the rules apply.
 
 ## Two decisions taken rather than inherited
 
