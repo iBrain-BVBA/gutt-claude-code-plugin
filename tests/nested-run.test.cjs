@@ -3,9 +3,19 @@
  *
  * The judge subprocess is non-bare, so it loads this plugin and re-enters these
  * hooks. These tests spawn each hook for real with the guard set and assert it
- * produces nothing and touches nothing — the unit-tier half of the claim. The
- * recursion itself needs an installed plugin to reproduce and is asserted in the
- * e2e tier; see `docs/headless-cli-reference.md` §2.
+ * produces nothing and touches nothing — the unit-tier half of the claim.
+ *
+ * The other half — that the env var actually survives into a non-bare child which
+ * really would re-enter these hooks — needs an *installed* plugin to reproduce and
+ * is **not asserted anywhere yet**. This comment previously said it was covered in
+ * the e2e tier; it is not, and `docs/headless-cli-reference.md` Follow-up 2 says as
+ * much ("Still untested"). A reader who checked the reference found reassurance
+ * instead of the gap, which is worse than no citation. The run that would settle it
+ * is sketched as run 7 in `docs/e2e-hook-test-plan.md`.
+ *
+ * Note the trap that makes this easy to fake: under `--plugin-dir` the child has no
+ * copy of the hook to re-enter, so the guard never fires and a test built that way
+ * passes while asserting nothing.
  */
 
 const { test, describe, it, before, after } = require("node:test");

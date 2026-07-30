@@ -2,13 +2,17 @@
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
 **Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Measured:** 2026-07-30 (§5 argv, §6, §7) ·
+**Reported:** 2026-07-30 (§8, by the maintainer — not yet re-read from source) ·
 **Method:** `WebFetch` passes plus live CLI runs for §5–§7 (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
 docs, tests and recorded memory assume, and one of our recorded findings is now false.
 
-This is a snapshot of what the platform offers, not a design. Nothing here has been
-implemented; the [Implications](#implications-for-this-plugin) section marks what is
-merely _now possible_ versus what we already rely on.
+Mostly a snapshot of what the platform offers rather than a design, but no longer
+uniformly so: **§1–§4 describe capabilities we have not built on, while §5–§8 drove
+GP-866 and are relied on in shipped code.** The
+[Implications](#implications-for-this-plugin) section marks which is which. Note the three
+provenance tiers, weakest last — **Measured** (a real run) outranks **Read** (a doc fetch),
+which outranks **Reported** (told to us, unverified).
 
 ## 1. `additionalContext` is no longer a two-event field
 
@@ -141,10 +145,15 @@ gave up:
 model (sonnet). It may not exist or you may not have access to it.
 ```
 
-That text reaches `--debug-file` only. So a typo in this field disables the Stop
-judge outright while every unit test stays green — `tests/test-all-hooks.cjs` skips
-the Stop entry (`type: prompt`), and the e2e verdict assertions only bite in a run
-that got as far as producing a verdict. Worth a guard if we keep pinning a model.
+That text reaches `--debug-file` only. So a typo in this field disabled the Stop judge
+outright while every unit test stayed green.
+
+**Both halves of that blind spot are now closed** (2026-07-30, same change as §8). The Stop
+entry is a command hook, so `tests/test-all-hooks.cjs` no longer skips it — it reports
+`Skipped (non-command): 0` — and the e2e tier reads the hook's own outcome log rather than
+verdicts a dead judge never emits, so a broken judge now fails a test instead of being
+invisible. `tests/hook-architecture.test.cjs` also asserts the judge is passed an explicit
+model, with no "not applicable" escape hatch.
 
 ### The hazard is confined to the manifest field — argv resolves aliases
 
@@ -239,6 +248,56 @@ model **non-blocking**. Not tested here — these runs only counted dispatches, 
 converted handler deliberately uses `decision: "block"` so the channel question stays
 separable from the conversion.
 
+## 8. The Stop payload says whether background work is still in flight
+
+**Reported 2026-07-30 by the maintainer, not yet re-read from upstream** — see Follow-up 5.
+This is the weakest provenance tier in this file and the fields are load-bearing in
+`gutt-core/hooks/stop-capture.cjs`, so treat the shape as unconfirmed even though the
+behaviour it drives is unit-tested against it.
+
+Stop's stdin carries two arrays, from Claude Code **2.1.145** onward, that let a hook tell
+"the session is done" apart from "the session is paused, waiting for background work to
+wake it back up". Both are **present whenever the task registry is reachable** and **empty
+when nothing is in flight or scheduled** — so an absent array means an older CLI or an
+unreachable registry, and is not the same statement as an empty one.
+
+`background_tasks`, one entry per in-flight task:
+
+| Field             | Notes                                                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | Task identifier                                                                                                                                                 |
+| `type`            | Friendly label — `shell`, `subagent`, `monitor`, `workflow`, `teammate`, `cloud session`, `MCP task`. Falls back to the raw discriminant for unrecognized types |
+| `status`          | Current task status                                                                                                                                             |
+| `description`     | Free text, capped at 1000 chars with a `… [+N chars]` marker when clipped                                                                                       |
+| `command`         | `shell` tasks only                                                                                                                                              |
+| `agent_type`      | `subagent` tasks only                                                                                                                                           |
+| `server` / `tool` | `monitor` and `MCP task` only                                                                                                                                   |
+| `name`            | `workflow` tasks only                                                                                                                                           |
+
+`session_crons`, one entry per session-scoped scheduled wakeup (`CronCreate`,
+`ScheduleWakeup`, `/loop`): `id`, `schedule`, `recurring`, `prompt`.
+
+### What we do with it, and the two traps
+
+`stop-judge.pendingAgentTasks()` filters `background_tasks` to an **allowlist** of
+agent-shaped types and the Stop router defers when it is non-empty. Three decisions worth
+recording, because each is a failure mode avoided rather than a preference:
+
+1. **Allowlist, not denylist.** `type` falls back to the raw discriminant for types this
+   CLI version does not name, so a denylist would defer the judge on anything new —
+   potentially for the life of the session, with nothing saying so. An unrecognised agent
+   type instead judges early and may score partial work, which is recoverable.
+2. **Never gate on `session_crons`.** A `recurring: true` entry never drains, so gating on
+   it would silence capture for the rest of the session. Even a one-shot `ScheduleWakeup`
+   can be an hour out. The array is useful for a HUD or a log line, not for a gate.
+3. **Absent must judge, not defer.** Reading an absent array as "nothing pending" is
+   correct; reading it as "wait" would disable capture on every pre-2.1.145 install.
+
+Why it matters beyond tidiness: each background agent completion re-invokes the main loop
+and produces another Stop, so before this the judge ran once per completion on a fan-out
+turn — every one of them scoring a summary whose findings had not arrived. Deferring
+collapses that to one judgement per turn.
+
 ## Implications for this plugin
 
 **Already relied on and now confirmed:**
@@ -255,9 +314,13 @@ separable from the conversion.
 
 **Now in use:**
 
-- The Stop judge pins `"model": "claude-sonnet-5"` (§5) rather than taking the platform
-  default fast model. Judge quality is the whole value of that hook, and the default was
-  never chosen — it was inherited.
+- The Stop judge pins its model as `--model claude-sonnet-5` in the child's argv (§5)
+  rather than taking the platform default fast model. Judge quality is the whole value of
+  that hook, and the default was never chosen — it was inherited. Note the spelling: this
+  is no longer a manifest `model` field, and §5 is about why that distinction retired a
+  failure mode rather than moving it.
+- The Stop router defers while `background_tasks` names an in-flight agent (§8), so a
+  fan-out turn is judged once, after the last agent drains, instead of once per completion.
 
 **Stale as a result:**
 
@@ -278,10 +341,16 @@ None of these are done; recorded so they are not lost.
    is now the one that matters, because §6 + §7 force the Stop handler to a command hook and
    the non-blocking channel is what would keep it from re-entering the turn.
 3. Decide whether `CwdChanged` should re-evaluate the GP-922 migration offer.
-4. Guard the pinned `model` value in §5. A typo silently disables the Stop judge and no
-   tier catches it: the unit tier skips prompt hooks, the e2e tier asserts on verdicts
-   that a dead judge never emits. The cheap version is a structural assertion that the
-   value matches a known-id shape; the honest version asserts a verdict was produced.
+4. ~~Guard the pinned `model` value in §5.~~ **Done 2026-07-30.**
+   `tests/hook-architecture.test.cjs` asserts `--model` is in the judge's argv and that
+   `JUDGE_MODEL` matches a known-id shape, with no early return; the smoke tier now
+   executes the Stop hook, and the e2e tier asserts on recorded outcomes rather than on
+   verdicts a dead judge never emits.
+5. Confirm §8's `background_tasks` / `session_crons` fields against the upstream doc. They
+   were supplied by the maintainer and are relied on by `stop-capture.cjs`, but this file
+   has not re-read the source since, so they are **Reported**, not **Read** or
+   **Measured** — the weakest tier in this file, and the one thing in §8 a reviewer should
+   not yet trust.
 
 ## Provenance
 

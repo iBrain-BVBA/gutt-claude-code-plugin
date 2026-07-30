@@ -1,7 +1,7 @@
 # E2E test plan for the rebuilt hook set (GP-844 → GP-892)
 
 The 3.0 rebuild replaced 13 hook scripts and ~3,500 lines of regex judgement with
-**five thin routers plus one model-judged prompt hook**. This plan says what the
+**six thin routers**, one of which shells out to `claude -p` for a model judgement. This plan says what the
 end-to-end tier must prove about that shape, why each claim can only be proven
 there, and what it deliberately does not attempt.
 
@@ -86,7 +86,8 @@ any test was written. They are the load-bearing assumptions of the suite.
   `claude-haiku-4-5`. R25 sets a ≤2s target for the prompt hook and the GP-862 spike
   already recorded that target as unmet (p95 5.4s, max 8.4s over 21–30 runs) — so
   these numbers corroborate a known finding rather than reporting a new problem. The
-  `timeout: 20` in hooks.json is what actually bounds it; the 30s platform hard
+  `timeout: 45` in hooks.json is what actually bounds it (it must outlive the judge
+  child's own 30s cap); the 30s platform hard
   timeout is never reached. Part of the cost is structural: `$ARGUMENTS` expands to
   the transcript-context JSON including the whole `last_assistant_message`.
 - **A prompt hook's model call has no tools.** Every evaluation logs
@@ -160,7 +161,7 @@ reply cleanliness are the deterministic parts and the real guards.
 `gutt-core` + `auto-lint-plugin` loaded together, one prompt.
 
 - both plugins' `hooks.json` are read; exactly one gutt plugin loads, from this repo
-- gutt's five handlers still register and the lifecycle still completes
+- gutt's six handlers still register and the lifecycle still completes
 - no hook emits a blocking decision, and the session is not interrupted
 - `auto-lint-plugin` contributes its `PostToolUse` handler without disturbing gutt
 
@@ -192,6 +193,32 @@ rather than flagged. Both were unverified anywhere in the repo before GP-866 —
 first was established by reading a real `hook-invocations.log`, and this run is what
 keeps it true.
 
+### Run 7 — the nested-run guard, against an installed plugin (not yet written)
+
+The one claim the unit tier structurally cannot make. `tests/nested-run.test.cjs` proves
+each hook stays inert **when the env var is already set**; it cannot prove the var survives
+into a real `claude -p` child, because that needs a child that actually loads this plugin.
+
+The trap that makes a fake version of this test easy to write, and which a first attempt
+already fell into: under `--plugin-dir` the child has **no copy of the hooks to re-enter**,
+so the guard never fires, nothing recurses, and the test passes while asserting nothing.
+Only an _installed_ plugin reproduces the shape. CLAUDE.md records a `"source":
+"directory"` marketplace entry as confirmed to load in place, which makes it the cheapest
+honest setup.
+
+One prompt, one turn, durable enough that the judge fires:
+
+- `hook-invocations.log` holds **exactly one** `Stop:` line for the turn — a second would
+  mean the child re-entered the Stop hook and judged its own judging
+- **no** SessionStart or UserPromptSubmit record attributable to the child, i.e. no
+  `sessions/<id>.json` beyond the one the real session owns — the child fires those events
+  too, and without the guard it would write a judge subprocess's lifecycle into the user's
+  session state
+- the run terminates on its own, with no depth limit needed to stop it
+
+Until this exists, `docs/headless-cli-reference.md` Follow-up 2 stands: the recursion guard
+is reasoned and unit-tested at one end, and unobserved end to end.
+
 ## Unit-tier additions this plan also requires
 
 Free, deterministic, and they close silent-failure holes the thin-router design
@@ -212,7 +239,7 @@ creates:
   `statusLine` key has any effect in a real Claude Code session". Across seven real
   sessions driven while building this plan, the CLI debug log contained **zero**
   occurrences of `statusline` in any form, and reported
-  `Registered 5 hooks from 6 plugins` — exactly gutt-core's five _hook_ handlers,
+  `Registered 6 hooks from 6 plugins` — exactly gutt-core's six _hook_ handlers,
   with the `statusLine` block not among them. `statusline.cjs` is never invoked by
   the platform. Verified separately that the script itself works when run directly
   (it renders `[gutt⚪!] | [Haiku 4.5] ~$0.01`), so this is a wiring question, not a
@@ -275,7 +302,7 @@ Both tiers green on `claude 2.1.220`, Node 24:
 | `npm run test:e2e`                 | **34/34 pass across 5 real sessions** |
 | `npm run test:all`                 | pass                                  |
 
-The e2e tier costs five Haiku sessions and roughly 80 seconds of wall clock.
+The e2e tier costs six sessions (Haiku except run 4) and roughly 100 seconds of wall clock.
 
 Run 4's bound is known to catch defect 1 rather than assumed to: the pre-fix
 behaviour was _measured_ at 16 evaluations with the identical prompt, against an
