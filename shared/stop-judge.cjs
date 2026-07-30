@@ -287,20 +287,26 @@ function readStyleBlock() {
  * asserts the slack is real, so growing the block past the budget fails a test instead of
  * silently costing the block at runtime.
  *
- * Measured 2026-07-30, worst case: style block 878 + `HITL_TAIL` 339 + 2 separators = 1219
- * of constants, plus the judge's 800 — the truncation ellipsis is charged against that 800
- * rather than added to it — for 2019. The value below is that measurement plus room to
- * reword the block, comfortably more than a third of its length, and not a round number
- * chosen first.
+ * The value is the composed worst case — `HITL_TAIL`, the block, their separators and the
+ * judge's full `MAX_REASON_CHARS`, with the truncation ellipsis charged against that cap
+ * rather than added to it — plus room to reword the block by comfortably more than a third
+ * of its length. Not a round number chosen first.
  *
- * It was raised to 2800 partway through GP-927 and brought back down (`deaec86`, then
- * `eae3246`), and both moves are the same lesson. At 2400 against a 1213-char block the slack
- * was 46 characters by the guard's own formula, so every edit to the skill would have failed
- * a test; the guard is meant to catch a block that has doubled, not one that gained a clause.
- * Then `evals/suites/capture_close` measured the whole-reply style list as 335 of those
- * characters and scoring *worse* with them than without, the list moved out of the injected
- * region, and the block fell to 878 — so the cap came back down with it rather than being
- * left loose at 2800. A cap that no longer tracks what it bounds is not a cap.
+ * **No character counts are quoted here on purpose.** They were, and they went stale inside
+ * this very story: the block was shortened twice while this paragraph named the old length
+ * each time, so the one number a maintainer would recompute from was the one that lied. The
+ * counts are derived where they are enforced instead — `tests/stop-capture.test.cjs` composes
+ * the real worst case and asserts the slack, and `tests/hook-architecture.test.cjs` derives
+ * the largest block that fits from these constants. Both fail loudly rather than drift, which
+ * is the property a comment cannot have.
+ *
+ * The cap was raised to 2800 partway through GP-927 and brought back down (`deaec86`, then
+ * `eae3246`), and both moves are the same lesson. Set once so tightly that the slack was a few
+ * dozen characters, every edit to the skill would have failed a test — the guard is meant to
+ * catch a block that has doubled, not one that gained a clause. Then the whole-reply style
+ * list moved out of the injected region, on `evals/suites/capture_close` measuring the block
+ * as scoring *worse* with it than without, and the cap came back down with the block rather
+ * than being left loose at 2800. A cap that no longer tracks what it bounds is not a cap.
  */
 const MAX_COMPOSED_REASON_CHARS = 2400;
 

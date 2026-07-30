@@ -673,9 +673,12 @@ describe("hook architecture guards", () => {
     // The whole-reply style list sits *outside* the markers: `capture_close` measured it at
     // 335 characters on every fire and scoring worse with them than without (67% against 96%
     // at n=24), so it is stated for whoever loads the skill instead of shipped in a payload.
-    // Round 4 retracted the earlier reading of it as merely a cost. That makes it the easiest thing in this
-    // change to lose by accident — nothing at runtime reads it, so deleting it breaks no
-    // test and no hook, and the skill would quietly stop stating the style AC1 asks for.
+    // Round 4 retracted the earlier reading of it as merely a cost.
+    //
+    // That position also made it the easiest thing in this change to lose by accident: no hook
+    // reads it, so deleting it would break nothing at runtime and — before the test below
+    // existed — no test either, and the skill would quietly stop stating the style AC1 asks
+    // for. The test below is what closes that gap; the hazard is past tense because of it.
     it("keeps the whole-reply style in the skill, outside the injected region", () => {
       const md = fs.readFileSync(STYLE_MD, "utf8");
       const outside = md.split(STOP_JUDGE.STYLE_END)[1] || "";
