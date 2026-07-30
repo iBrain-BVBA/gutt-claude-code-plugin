@@ -101,6 +101,17 @@
 
 ### Changed
 
+- A second round of blind runs closed six more gaps in the onboarding agent. More
+  than one org group discovered is now treated as a question rather than a list,
+  because a graph can hold a sandbox or fixture group that looks like an org group
+  and reads as fact; with nobody to ask, each claim is attributed to the group it
+  came from. The role is never inferred to keep the workflow moving — a guessed role
+  goes into query strings and returns a briefing about the wrong job. Each row's
+  first pass now shows its uncentered fact search in the table rather than only in
+  prose, since a run followed the table and missed it. The briefing's final section
+  states what it holds on each path — stored, draft, or a brief about someone else.
+  And the org-group note no longer carries a worked example drawn from one
+  deployment's own group names
 - The onboarding agent no longer restates guidance its preloaded skills own —
   degradation, the personal-scope locator rationale, the program cadence and status
   vocabulary, and a failure-modes list that repeated Agent identity, Step 3 and

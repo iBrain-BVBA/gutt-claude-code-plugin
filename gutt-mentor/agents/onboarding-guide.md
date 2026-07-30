@@ -128,10 +128,13 @@ not a resume, say why you did not use it, and continue to Step 2.
 | Domain  | Concepts, terminology, related projects, experts       |
 | Full    | All of the above                                       |
 
-Nothing stated narrows it → Full.
+Nothing stated narrows it → Full, and a stated focus spanning several rows → Full.
 
 Also establish the **role** they are ramping into. It is what Step 3 searches for
-and what the published plan is filed under.
+and what the published plan is filed under. **Never infer one to keep moving** — a
+guessed role goes into query strings and comes back as a briefing about the wrong
+job. Not stated? Ask. Nobody to ask: search on the system instead if you have one,
+say plainly that the role is unknown and what that costs, and do not publish.
 
 ### Step 3: Read what the org already knows
 
@@ -139,11 +142,17 @@ Open with **one unscoped discovery read** — `search_memory_nodes(query="<team 
 role>")`, no `group_ids` — solely to learn the group names: every node and fact a
 read returns carries its own `group_id`, personal hits labelled `personal`. Take
 the org group names from that **`group_id` field** — never off a node's readable id
-prefix, which is an alias and can differ from the group (a node id reading
-`gutt_pro:…` can belong to group `gutt_pro_v2`), never off a write tool's name
-suffix, and never guessed. Then register (see Agent identity) and run the reads
-below. If it surfaces no org group and nobody can name one, skip the org reads and
-say so — see Failure modes.
+prefix, which is an alias that need not match the group it belongs to, never off a
+write tool's name suffix, and never guessed. Then register — unless this run writes
+nothing, which needs no identity (see the opening) — and run the reads below. If it
+surfaces no org group and nobody can name one, skip the org reads and say so — see
+Failure modes.
+
+**More than one org group is a question, not a list.** A graph can hold a sandbox
+or fixture group that looks exactly like an org group and reads as fact, so say
+which ones you found and ask which is authoritative. With nobody to ask, read them
+all but attribute every claim to the group it came from — a reader who can see
+where a claim lives can discount it, and one who cannot, cannot.
 
 Every call below is an **org read**. `<org>` stands for the org group names that
 discovery read returned — pass them on every call, because omitting `group_ids`
@@ -156,26 +165,30 @@ the middle column, judge what came back, and reach into the right column only
 where the first pass left the question open — a rung-2 call needs a node id the
 first pass returned, which is why it cannot come first.
 
+Every row's first pass ends with an **uncentered** fact search, because
+`memory-search`'s first rule runs nodes and facts together — a fact often carries
+the answer and outranks the entity summary. The right-hand column is the _centered_
+refinement, never the row's only fact search.
+
 | Focus area                        | Rung 1 — first pass                                                                                               | Rung 2 — only if that left a gap                                                                                |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Prior plans for this role, always | `search_memory_nodes(query="onboarding plan <role>", group_ids=[<org>])`                                          | —                                                                                                               |
+| Prior plans for this role, always | `search_memory_nodes(query="onboarding plan <role>", group_ids=[<org>])` — skip the row if no role is known yet   | —                                                                                                               |
+|                                   | `search_memory_facts(query="onboarding plan <role>", group_ids=[<org>])`                                          |                                                                                                                 |
 | People, roles, agreements         | `search_memory_nodes(query="<team/project>", entity="Team", group_ids=[<org>])` — also the id rung 2 centers on   | `search_memory_facts(query="role responsibility works on", center_node_id="<team node id>", group_ids=[<org>])` |
 |                                   | `search_memory_nodes(query="<team/project> members roles", entity="Person", group_ids=[<org>])`                   |                                                                                                                 |
 |                                   | `search_memory_nodes(query="<team> working agreement process", entity="WorkingAgreement", group_ids=[<org>])`     |                                                                                                                 |
+|                                   | `search_memory_facts(query="<team/project> roles responsibilities", group_ids=[<org>])`                           |                                                                                                                 |
 | Architecture, and how it connects | `search_memory_nodes(query="<project/system> architecture component", entity="SystemConcept", group_ids=[<org>])` | `search_memory_facts(query="depends on integrates with", center_node_id="<system node id>", group_ids=[<org>])` |
 |                                   | `search_memory_nodes(query="<project/system> component service", entity="CodeComponent", group_ids=[<org>])`      |                                                                                                                 |
 |                                   | `search_memory_nodes(query="<project/system> architecture decision", entity="Decision", group_ids=[<org>])`       |                                                                                                                 |
+|                                   | `search_memory_facts(query="<project/system> architecture component decision", group_ids=[<org>])`                |                                                                                                                 |
 | Current work                      | `search_memory_nodes(query="<team/project> current work", entity="Project", group_ids=[<org>])`                   | —                                                                                                               |
 |                                   | `search_memory_nodes(query="<team/project> active sprint", entity="WorkItem", group_ids=[<org>])`                 |                                                                                                                 |
+|                                   | `search_memory_facts(query="<team/project> current work sprint status", group_ids=[<org>])`                       |                                                                                                                 |
 | Lessons and pitfalls              | `fetch_lessons_learned(query="<project/system/team>", group_ids=[<org>])`                                         | —                                                                                                               |
 |                                   | `fetch_lessons_learned(query="<project> pitfall avoid mistake", group_ids=[<org>])`                               |                                                                                                                 |
 | Experts and documentation         | `search_memory_nodes(query="<project/system> documentation runbook", entity="Document", group_ids=[<org>])`       | `search_memory_facts(query="expertise knowledge owner", center_node_id="<system node id>", group_ids=[<org>])`  |
-
-**Pair each row with facts, not just nodes.** `memory-search`'s first rule runs
-node and fact searches together, because a fact often carries the answer and
-outranks the entity summary — so the first pass includes one **uncentered**
-`search_memory_facts` on the row's own phrasing. The right-hand column is the
-_centered_ refinement, not the row's only fact search.
+|                                   | `search_memory_facts(query="<project/system> documentation runbook owner", group_ids=[<org>])`                    |                                                                                                                 |
 
 The prior-plans row is the highest-value read and the reason Step 6 publishes: a
 published plan is found by searching its content, which is why Step 6 names it in
@@ -433,6 +446,12 @@ why the dependency lines below are the one place a `uuid` belongs.
 
 [Goals, milestones and cadence as confirmed, and where it was stored]
 ```
+
+The last section changes with the path. Stored plan → goals, milestones, cadence as
+confirmed, and where it went. Nobody present → the same shape marked a draft, with
+milestones proposed from the org grounding and the goal criteria left blank rather
+than invented, and a line saying nothing was stored. Step 7 → drop the section and
+close with that step's one-line pointer instead.
 
 On a returning session, replace everything above with `progress-tracking`'s status
 summary — goals, milestones done versus open, next actions, last check-in date —
