@@ -37,11 +37,13 @@ and injection; the skill suite covers the flow that runs after the user accepts.
 completes a migration, because a completed one writes episodes to the real graph that no
 test can retract, and its verify step races asynchronous extraction — so the write,
 prune and note mechanics live in the mutation-checked unit tier instead. The skill suite
-allowlists only `Bash` and `Read`, which is what makes that boundary structural: with no
-MCP write tool in the session it _cannot_ reach the graph.
+allowlists only `Bash` and `Read`, which is what holds that boundary: with no MCP write
+tool in the session there is nothing for the flow to reach the graph with. (`Bash` is
+allowed, so this is an argument about the absent tools, not a sandbox.)
 
-See `docs/e2e-hook-test-plan.md` for what each run asserts and why, and for the two
-Stop-router defects this tier found.
+See `docs/e2e-hook-test-plan.md` for what the first two suites assert and why, and for the
+two Stop-router defects this tier found. It does not yet cover the two GP-922 suites; what
+each of those asserts is documented in its own file header instead.
 
 **Not part of `npm test`.** These files are named `*.e2e.cjs`, not `*.test.cjs`,
 so the `node --test tests/**/*.test.cjs` glob does not pick them up. Keep it that

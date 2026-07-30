@@ -46,8 +46,10 @@
  *
  * The allowlist is what makes that split safe rather than merely intended: with only
  * `Bash` and `Read` permitted, no MCP write tool exists in the session at all, so this
- * suite *cannot* reach the graph even if the model tried. Consent is therefore given
- * freely in the prompt — it buys depth through the flow at no risk.
+ * suite has no write tool to reach the graph with. Not quite "cannot" — `Bash` is
+ * allowed, and the claim is about the absence of MCP tools rather than a sandbox — but
+ * the flow this suite drives has no route to a write. Consent is therefore given freely
+ * in the prompt: it buys depth through the flow at no risk.
  *
  * Cost: one run of a few cents on Haiku. Not part of `npm test`; see tests/e2e/README.md.
  *
@@ -77,9 +79,13 @@ const { projectKey, storeDir, MIGRATE_SKILL } = require("../../shared/builtin-me
 const { PROJECTS_KEY } = require("../../shared/runtime-config.cjs");
 
 /**
- * Three facts in the shape Claude Code's own memory writer produces, mixing the tiers
- * on purpose: `project` maps to an auto-write Insight, `feedback` to a gated Lesson.
- * A single-tier fixture would let a skill that ignores the gate look correct.
+ * Two facts plus the index, in the shape Claude Code's own memory writer produces. The
+ * index is deliberately not a fact — `SKILL.md` says so and the suite filters it out when
+ * counting — so this object has three entries and two migratable notes.
+ *
+ * The two mix the tiers on purpose: `project` maps to an auto-write Insight, `feedback` to
+ * a gated Lesson. A single-tier fixture would let a skill that ignores the gate look
+ * correct.
  */
 const FACTS = {
   "MEMORY.md": [
@@ -153,8 +159,12 @@ describe(
         await withPlantedConfig({}, async (file) => {
           run = await runClaude({
             projectDir,
-            // The slash-command form, and the plugin `name` namespace, are the subject
-            // of assertion 1 — not incidental syntax.
+            // The slash-command form is how a user would really invoke this, but it is
+            // NOT pinned by this suite — see the file header: dropping it for plain prose
+            // left every assertion green, because the SessionStart offer names the skill
+            // and the model reaches it from that pointer alone. The `name` namespace is
+            // pinned in tests/builtin-memory.test.cjs and hook-architecture.test.cjs, not
+            // here.
             prompt:
               `/${MIGRATE_SKILL} Yes — migrate all of them, org group, ` +
               `treat this as consent for the whole batch.`,
@@ -292,10 +302,14 @@ describe(
       );
     });
 
-    // Hard rule 5 / step 10: with facts left behind the job is unfinished, so the
-    // decision stays unset and the offer returns next session. A `migrated` recorded
-    // here would silence the offer permanently for a store that never moved — the one
-    // failure mode of this feature that the user cannot discover.
+    // Hard rule 5 / step 10: with facts left behind the job is unfinished, so the offer
+    // must return next session. A `migrated` recorded here would silence it permanently
+    // for a store that never moved — the one failure mode of this feature the user cannot
+    // discover.
+    //
+    // The assertion accepts `later` as well as unset, so what it pins is "not settled",
+    // slightly weaker than "no decision recorded". Both satisfy the property that matters,
+    // and `later` is a legitimate outcome of a model that stopped and offered to resume.
     it("records no decision, so the offer returns", () => {
       // Without this, a null key makes the lookup below find nothing and pass while
       // asserting nothing at all — the failure mode where absence is also the default.
