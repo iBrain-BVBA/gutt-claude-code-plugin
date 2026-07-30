@@ -75,11 +75,18 @@ function localStamp(ms) {
 
 /**
  * Enough of a session id to recognise, not enough to fill a line.
- * @param {string} id
+ *
+ * Coerced rather than assumed to be a string: `config.json` is hand-editable, so
+ * `snoozeSessionId` can arrive as a number or a boolean. Every caller is on the
+ * rendering path, where throwing would turn `/gutt config` — the one command whose
+ * job is to explain a broken config — into a hard failure that explains nothing.
+ *
+ * @param {unknown} id
  * @returns {string}
  */
 function shortId(id) {
-  return id.length > 8 ? `${id.slice(0, 8)}…` : id;
+  const text = typeof id === "string" ? id : JSON.stringify(id);
+  return text.length > 8 ? `${text.slice(0, 8)}…` : text;
 }
 
 /**

@@ -27,6 +27,18 @@ const SESSION = "sess-abcdef123456";
 const NOW = Date.parse("2026-07-30T09:00:00.000Z");
 const MINUTE = 60 * 1000;
 
+/**
+ * The `YYYY-MM-DD` a timestamp falls on **in the runner's own timezone**, which is
+ * what `localStamp` renders. Hard-coding "2026-07-30" here would pass in Europe and
+ * fail west of UTC-10, where 09:00Z is still the 29th — a CI flake that tells you
+ * nothing about the code.
+ */
+function localDate(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 const ORIGINAL_DATA_DIR = process.env.CLAUDE_PLUGIN_DATA;
 
 function restoreEnv() {
@@ -358,7 +370,12 @@ describe("config command: rendering", () => {
 
   it("distinguishes every snooze state", () => {
     plant({ snoozeUntil: new Date(NOW + 24 * MINUTE).toISOString() });
-    assert.match(render(), /snooze: in force for 24 minutes more, until 2026-07-30 \d\d:\d\d/);
+    assert.match(
+      render(),
+      new RegExp(
+        `snooze: in force for 24 minutes more, until ${localDate(NOW + 24 * MINUTE)} \\d\\d:\\d\\d`
+      )
+    );
     assert.match(render(), /survives a restart/);
 
     plant({ snoozeSessionId: SESSION });
@@ -374,6 +391,18 @@ describe("config command: rendering", () => {
     plant({ snoozeUntil: "not-a-date" });
     assert.match(render(), /unreadable deadline \("not-a-date"\)/);
     assert.match(render(), /treated as lapsed/);
+  });
+
+  it("renders a non-string session id instead of throwing on it", () => {
+    // `config.json` is hand-editable, so the id is not guaranteed to be a string.
+    // `/gutt config` is the command someone runs *because* their config looks wrong;
+    // a TypeError from the renderer would be the one failure mode it must not have.
+    for (const corrupt of [12345, true, { id: "x" }, ["x"]]) {
+      plant({ snoozeSessionId: corrupt });
+      const text = render();
+      assert.match(text, /snooze: set by another session/);
+      assert.match(text, /in force right now: active/, "a corrupt id is never ours");
+    }
   });
 
   it("leaves the non-preference keys out of the block", () => {
