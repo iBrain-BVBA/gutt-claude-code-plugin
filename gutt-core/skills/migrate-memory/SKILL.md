@@ -21,8 +21,12 @@ stricter than the general ones because the local copy is destroyed at the end.
 ## Hard rules (non-negotiable — read first)
 
 1. **Ask before anything.** Use **AskUserQuestion** for consent and for scope
-   before the first write. This skill is often reached from a session-start offer
-   the user has not yet responded to — an offer is not an answer.
+   before the first write. The session-start offer also asks with AskUserQuestion, so
+   arriving here usually means consent to _run_ is already given — that answer covers
+   starting the skill, not the writes. Scope is still unasked, and so is anything you
+   only discovered by reading the files. Where you got here some other way (the user
+   named the skill, or the offer was answered in prose), treat consent as unasked:
+   an offer is not an answer.
 2. **Back up before you write, verify before you delete.** The order is
    fixed: back up → write episodes → **search to confirm they landed** → record the
    confirmations → delete. `memory-capture` rule 6: a write is _queued, not
@@ -36,9 +40,12 @@ stricter than the general ones because the local copy is destroyed at the end.
 5. **Degrade by stopping.** No write tool visible, or MCP unreachable → write
    nothing, delete nothing, say so in one line, and leave the decision **unset** so
    the offer returns next session. A partial migration is worse than none.
-6. **The store is the user's, not the team's.** Default every fact to **personal**
-   scope. Publishing someone's working notes to the org group because it was the
-   easier default is the one failure here that cannot be undone by restoring a file.
+6. **Default to the org group; screen for what must stay personal.** Visibility to
+   teammates is the whole point of migrating, so the group is the default. But
+   publishing is the one failure here that restoring a file cannot undo, so read every
+   fact before it goes: anything sensitive — a credential, PII, a note about a named
+   person, or personal preference data — goes to **personal** scope regardless of what
+   the user picked for the batch.
 
 ## What the store looks like
 
@@ -53,12 +60,42 @@ stricter than the general ones because the local copy is destroyed at the end.
 - **`[[wikilinks]]`** between facts. The graph builds its own edges from content, so
   resolve each link into a plain reference naming the other memory ("relates to the
   lesson about …") rather than carrying `[[…]]` syntax into an episode.
+- **facts with no frontmatter at all** — observed in a real store, so not hypothetical.
+  A plain markdown note, often already shaped as a report and self-titled
+  (`# Incident: …`, `# Insight: …`). It is still a fact; classify it from that title
+  and its content per `memory-capture` rather than skipping it, and note that
+  `metadata.type` is only a hint the store sometimes carries, never a precondition.
+  Watch the frontmatter you _do_ parse: the nested key is `metadata.type`, and
+  `metadata.node_type` sits above it holding the constant `memory` — a loose match for
+  `type:` reads that instead and types the entire store identically.
+
+## How to invoke the CLI (get this right before step 1)
+
+**The Bash tool inherits neither `CLAUDE_PLUGIN_ROOT` nor `CLAUDE_PLUGIN_DATA`.** Only
+hooks are given those; a command you run is a different process with a different
+environment, and both expand to nothing there. So resolve them yourself, from two
+values you have been handed directly:
+
+- **`<SKILL_DIR>`** — the "Base directory for this skill" line in your skill preamble.
+- **`<DATA_DIR>`** — `${CLAUDE_PLUGIN_DATA}`, interpolated into this sentence for you.
+
+Every call in this file is then:
+
+```bash
+node "<SKILL_DIR>/scripts/store-cli.cjs" --plugin-data="<DATA_DIR>" <subcommand>
+```
+
+Substitute both before running; do not pass `$CLAUDE_PLUGIN_ROOT` or
+`$CLAUDE_PLUGIN_DATA` through to the shell and do not `export` them. If `status`
+returns `pluginDataAvailable: false` **with** a `hint` field, you dropped the flag —
+that is not the platform's fail-safe and not grounds to stop. Rule 5 applies only
+when the flag was passed correctly and the dir is still unavailable.
 
 Run `status` first — it reports the store path, the fact files, and any decision
 already recorded:
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/skills/migrate-memory/scripts/store-cli.cjs" status
+node "<SKILL_DIR>/scripts/store-cli.cjs" --plugin-data="<DATA_DIR>" status
 ```
 
 If `settled` is true, stop and say so — this project has already been answered.
@@ -72,7 +109,7 @@ If `settled` is true, stop and say so — this project has already been answered
    anything the user would not want written anywhere.
 3. **Ask.** One **AskUserQuestion** covering both decisions:
    - _Migrate these N notes into gutt?_ — migrate / not now / never
-   - _Scope?_ — personal (default) / org group / decide per note
+   - _Scope?_ — org group (default) / personal / decide per note
 
    Show the count and name a few examples so the choice is informed. On "never"
    → `record declined` and stop. On "not now" → `record later` and stop.
@@ -110,16 +147,20 @@ If `settled` is true, stop and say so — this project has already been answered
 8. **Record what landed.** For each confirmed fact:
 
    ```bash
-   node "$CLAUDE_PLUGIN_ROOT/skills/migrate-memory/scripts/store-cli.cjs" \
+   node "<SKILL_DIR>/scripts/store-cli.cjs" --plugin-data="<DATA_DIR>" \
      verified "some-fact.md=<episode-id-from-the-search>"
    ```
 
    Only pass a file whose episode a search actually returned. This is the gate on
    deletion, so guessing here defeats the entire safety property.
 
-9. **Delete.** `store-cli.cjs delete`. It removes only verified facts and, once the
-   store holds none, rewrites `MEMORY.md` with the standing note that gutt is the
-   store of record and local memory is the fallback for when MCP is unreachable.
+9. **Delete.** `store-cli.cjs delete`. It removes only verified facts, then rewrites
+   `MEMORY.md` as the standing note — gutt is the store of record, local memory is the
+   fallback for when MCP is unreachable — followed by whichever pointers still resolve
+   to a fact on disk. Both halves run whenever anything was deleted, not only on a
+   clean finish: a pointer to a migrated fact would otherwise be injected into every
+   later session describing a file nobody can open, and a partial migration would be
+   left with no redirect at all while Claude Code carried on writing locally.
    Anything still listed in `kept` did not land — say which, and leave them.
 10. **Record the decision.** `record migrated` — but only if `kept` is empty. With
     facts left behind the job is unfinished, so leave the decision unset and the
@@ -136,6 +177,7 @@ side — so this is stated rather than left to judgement:
 | `project`       | **Insight**, or **Decision** when it records a choice _and_ its rationale | Insight auto, Decision gated |
 | `reference`     | **Insight** — a pointer to a resource                                     | auto                         |
 | `user`          | **Insight** about the user's preferences — personal scope                 | auto                         |
+| _absent_        | classify from the note's own title and body (`# Incident:` → Incident)    | per the type you land on     |
 
 **The gated tiers, and why approval covers them.** `memory-capture` rule 2 holds
 Lesson, Decision and WorkingAgreement behind an explicit human signal, and most of a
@@ -156,35 +198,48 @@ That reading is bounded, and the bounds are the point:
   named person, anything sensitive), surface it and ask again rather than leaning on
   the earlier yes.
 
-## Scope: personal by default
+## Scope: the org group by default
 
-`add_personal_memory` writes to the user's private scope;
-`add_memory_to_<group>` publishes to the team. A real store mixes both kinds —
-working-style notes about how the agent should behave sit next to project facts a
-team would want.
+`add_memory_to_<group>` publishes to the team; `add_personal_memory` writes to the
+user's private scope. A real store mixes both kinds — working-style notes about how
+the agent should behave sit next to project facts a team would want.
 
-Default to **personal**, and treat these as personal regardless of what the user
-picked for the batch:
+Default to the **org group**. A note left in personal scope is invisible to teammates
+and to org search, which is the condition migration exists to end, so keeping the
+store's project knowledge private by default would move the facts without delivering
+the benefit.
 
-- anything `metadata.type: user` — preference data about one person;
-- anything `feedback` phrased as how the agent should behave with this user.
+Route to **personal** regardless of what the user picked for the batch:
 
-Offer **org** for `project` and `reference` facts, which are the ones a teammate
-could act on. If the user picks "decide per note", ask once per batch, not once per
-file.
+- anything sensitive — a credential, a token, PII, or a note about a named person;
+- anything `metadata.type: user` — preference data about one individual;
+- anything `feedback` phrased as how the agent should behave with _this_ user, as
+  opposed to a practice a teammate could adopt.
+
+The asymmetry is deliberate: a fact wrongly kept personal can be re-published later,
+while one wrongly published cannot be recalled. So when a note is genuinely ambiguous,
+that is a reason to ask rather than to guess in either direction. If the user picks
+"decide per note", ask once per batch, not once per file.
 
 ## Degradation
 
 - **No write tool / MCP unreachable** → nothing written, nothing deleted, one line
-  saying so, decision left unset.
+  saying so, decision left unset. Having already taken the backup is fine and needs no
+  undoing — it authorises nothing on its own, because `verified` is empty and that is
+  the only gate `delete` consults. What must not happen is recording a verification to
+  make progress look real: with nothing written there is no episode to have found, so
+  any id here is invented, and step 8's gate is the whole safety property.
 - **`backup` returns `ok: false`** → stop. `delete` is a no-op without a backup, so
   continuing would write to the graph while leaving the local copy in place, which is
   the one state that later looks like a completed migration but is not.
 - **Some episodes never confirmed** → keep those files, delete the rest, report the
   gap by name, leave the decision unset.
-- **`${CLAUDE_PLUGIN_DATA}` unset** (local `--plugin-dir` dev) → `status` reports
-  `pluginDataAvailable: false`. No decision can be persisted and no backup taken, so
-  do not migrate; say that plugin state is unavailable.
+- **`pluginDataAvailable: false` _with_ a `hint` field** → you omitted
+  `--plugin-data`. Not a degradation: re-run the call correctly. Stopping here reports
+  a platform limit that isn't there and leaves 30-odd facts stranded for good.
+- **`pluginDataAvailable: false` with the flag correctly passed** (genuinely no data
+  dir, e.g. local `--plugin-dir` dev) → no decision can be persisted and no backup
+  taken, so do not migrate; say that plugin state is unavailable.
 
 ## Reporting back
 
