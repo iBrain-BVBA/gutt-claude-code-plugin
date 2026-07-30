@@ -1,7 +1,8 @@
 # Hook platform capabilities (upstream)
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
-**Read:** 2026-07-29 · **Method:** two `WebFetch` passes (see [Provenance](#provenance))
+**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Method:** `WebFetch` passes plus one
+live CLI run for §5 (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
 docs, tests and recorded memory assume, and one of our recorded findings is now false.
 
@@ -106,6 +107,39 @@ Ones with plausible relevance here, and why — all speculative:
   enabled config surface.
 - **`FileChanged`** + `watchPaths` — a store that changes on disk during a session.
 
+## 5. `model` is a prompt-hook config field — and a bad value fails silently
+
+The "Prompt and agent hook fields" table, quoted verbatim:
+
+| Field    | Required | Description                                                           |
+| -------- | -------- | --------------------------------------------------------------------- |
+| `prompt` | yes      | Prompt text to send to the model. `$ARGUMENTS` is the hook input JSON |
+| `model`  | no       | Model to use for evaluation. **Defaults to a fast model**             |
+
+Plus the common fields: `type`, `if` (permission-rule filter, e.g. `"Bash(git *)"`),
+`timeout` (**default 30s** for prompt hooks), `statusMessage`, `once` (skill frontmatter
+only).
+
+**The value must be a full model id, not a CLI alias — verified live 2026-07-30.**
+`"model": "sonnet"` is passed straight through to the API, which answers `404
+not_found_error {"message": "model: sonnet"}`. `"claude-sonnet-5"` works.
+
+**The failure mode is silence, and it is the dangerous part.** With an unresolvable
+model, the observed run gave: exit 0, `Hooks: Processing prompt hook` logged **once**,
+**zero** `condition was (not )?met` lines, a normal answer to the user, and no
+user-visible sign of any kind. The judge simply did not run. Retried 11 times, then
+gave up:
+
+```
+[ERROR] Hooks: prompt-hook evaluator API error: There's an issue with the selected
+model (sonnet). It may not exist or you may not have access to it.
+```
+
+That text reaches `--debug-file` only. So a typo in this field disables the Stop
+judge outright while every unit test stays green — `tests/test-all-hooks.cjs` skips
+the Stop entry (`type: prompt`), and the e2e verdict assertions only bite in a run
+that got as far as producing a verdict. Worth a guard if we keep pinning a model.
+
 ## Implications for this plugin
 
 **Already relied on and now confirmed:**
@@ -119,6 +153,12 @@ Ones with plausible relevance here, and why — all speculative:
 - A non-blocking Stop context channel — pending the prompt-vs-command question in §3.
 - `reloadSkills`, `sessionTitle`, `watchPaths` on `SessionStart`.
 - Roughly twenty events we neither handle nor model in `tests/hook-architecture.test.cjs`.
+
+**Now in use:**
+
+- The Stop judge pins `"model": "claude-sonnet-5"` (§5) rather than taking the platform
+  default fast model. Judge quality is the whole value of that hook, and the default was
+  never chosen — it was inherited.
 
 **Stale as a result:**
 
@@ -135,11 +175,16 @@ None of these are done; recorded so they are not lost.
 2. Answer §3: can a **command** Stop hook return non-blocking `additionalContext` under
    our hook set? This is testable in the e2e tier and would need a real run, not a doc read.
 3. Decide whether `CwdChanged` should re-evaluate the GP-922 migration offer.
+4. Guard the pinned `model` value in §5. A typo silently disables the Stop judge and no
+   tier catches it: the unit tier skips prompt hooks, the e2e tier asserts on verdicts
+   that a dead judge never emits. The cheap version is a structural assertion that the
+   value matches a known-id shape; the honest version asserts a verdict was produced.
 
 ## Provenance
 
-Two `WebFetch` passes against the URL above on 2026-07-29. `WebFetch` renders the page
-and answers via a small fast model, so it summarizes rather than returning raw markdown.
+Two `WebFetch` passes against the URL above on 2026-07-29, two more on 2026-07-30 for §5.
+`WebFetch` renders the page and answers via a small fast model, so it summarizes rather
+than returning raw markdown.
 
 Confidence differs by section, and the difference is worth respecting before anyone
 builds on this:
@@ -148,4 +193,10 @@ builds on this:
   agreed with each other where they overlapped. Treat as reliable.
 - **§4's event list came from a single pass** and was not cross-checked. Re-read the
   source before designing against any individual event name here.
+- **§5's field table is quoted**, and its two claims that matter — full-id-only, and the
+  silent-failure mode — are **not doc reads at all**: they were measured against `claude`
+  2.1.220 on 2026-07-30 by running the hook both ways and reading `--debug-file`. Highest
+  confidence in the file. The two passes disagreed on whether `model` is a config field at
+  all (one pass found only the SessionStart _input_ field of the same name); the live run
+  settled it — it is both.
 - **§ "Implications" and "Follow-ups" are our inference**, not upstream text.

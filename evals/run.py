@@ -17,7 +17,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from lib.runner import run_matrix  # noqa: E402
+from lib.runner import FAST_MODEL, run_matrix  # noqa: E402
 
 SUITES = {"stop-judge": "suites.stop_judge.suite"}
 
@@ -30,6 +30,12 @@ def main():
     ap.add_argument("--variants", nargs="*", help="limit to these variant labels")
     ap.add_argument("--cases", nargs="*", help="limit to these case ids")
     ap.add_argument("--workers", type=int, default=8)
+    # The judge model is part of the result, not a detail of how it was produced: the
+    # shipped Stop hook pins `model` in hooks.json, so a table measured on a different
+    # model does not describe what ships. Default stays FAST_MODEL for continuity with
+    # every round already in results/.
+    ap.add_argument("--model", default=FAST_MODEL,
+                    help=f"judge model (default {FAST_MODEL}); pass the full id, not an alias")
     ap.add_argument("--list", action="store_true", help="list suites and exit")
     args = ap.parse_args()
 
@@ -61,21 +67,27 @@ def main():
     # the printed table. Rounds are the unit of comparison here (see README), so losing
     # one is losing the ability to check a claim.
     tag = "-".join(sorted(variant_map)) if len(variant_map) <= 4 else f"{len(variant_map)}v"
-    raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}.json"
+    # A non-default model gets its own filenames for the same reason: a sonnet round and a
+    # haiku round at the same depth and variant set are different measurements, and the one
+    # written second would otherwise be the only one left.
+    slug = "" if args.model == FAST_MODEL else f"-{args.model.replace('.', '')}"
+    raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}{slug}.json"
 
     results = run_matrix(variant_map, case_list, suite.build_prompt, suite.evaluate,
-                         trials=args.trials, workers=args.workers, out_path=str(raw_path))
+                         trials=args.trials, workers=args.workers, model=args.model,
+                         out_path=str(raw_path))
 
     text, summary = suite.report(results, case_list, variant_map)
     print("\n" + text)
-    report = out_dir / f"{args.suite}-report.md"
+    report = out_dir / f"{args.suite}-report{slug}.md"
     report.write_text(
         f"# {args.suite} — {args.trials} trial(s) per case\n\n"
+        f"Judge model: `{args.model}`.\n\n"
         f"{len(case_list)} cases, {len(variant_map)} variants, {len(results)} calls.\n\n"
         f"```\n{text}\n```\n",
         encoding="utf-8",
     )
-    (out_dir / f"{args.suite}-summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    (out_dir / f"{args.suite}-summary{slug}.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(f"\n-> {report}")
     return 0
 

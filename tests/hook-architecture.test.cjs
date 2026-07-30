@@ -119,6 +119,26 @@ describe("hook architecture guards", () => {
     assert.equal(stop[0].type, "prompt");
   });
 
+  // A prompt hook's `model` is passed straight to the API, so a CLI alias is not a
+  // model id: `"sonnet"` answers 404 `not_found_error {"message": "model: sonnet"}`.
+  // Measured, and the failure is silent — the hook dispatches, the evaluator retries
+  // 11 times, no verdict is ever produced, the turn ends normally, and the only trace
+  // is in --debug-file. That disables the judge outright with every tier green: the
+  // command-hook runner skips this entry (type: prompt) and the e2e verdict
+  // assertions need a verdict to bite on. Hence a shape check here.
+  // See docs/hook-platform-capabilities.md §5.
+  it("pins the Stop judge to a full model id, never a CLI alias", () => {
+    const [stop] = ALL.filter((h) => h.event === "Stop");
+    if (stop.model === undefined) {
+      return; // unpinned is valid — the platform picks a fast default
+    }
+    assert.match(
+      stop.model,
+      /^claude-[a-z]+-\d/,
+      `"${stop.model}" is not a model id; an alias 404s and silently kills the judge`
+    );
+  });
+
   // The whole point of the rebuild: procedure lives in skills, hooks only route.
   // 60 is set just above session-start.cjs, the largest surviving router — tight
   // enough that behavior creeping back into a hook trips it.
