@@ -139,55 +139,54 @@ display alias, and never guessed), register (see Agent identity), then run the
 reads below. If it surfaces no org group and nobody can name one, skip the org
 reads and say so — see Failure modes.
 
-Every call below is an **org read**. Pass explicit `group_ids` naming only org
-groups — omit it and the person's personal scope is already in the default
-search scope, on the fact searches just as much as the node searches.
+Every call below is an **org read**. `<org>` stands for the org group names that
+discovery read returned — pass them on every call, because omitting `group_ids`
+leaves the person's personal scope in the default search scope, on the fact
+searches just as much as the node searches. Phrase every query about the **role or
+the system**, never about the person.
 
-Phrase every query about the **role or the system**, never about the person.
+Run the rows matching Step 2's focus areas; the prior-plans row always runs. Work
+the middle column, judge what came back, and reach into the right column only
+where the first pass left the question open — a rung-2 call needs a node id the
+first pass returned, which is why it cannot come first.
 
-```
-# Prior onboarding plans for this role — the highest-value read, and the reason
-# Step 6 publishes. A published plan is found by searching its content, which is
-# why Step 6 names it in prose.
-search_memory_nodes(query="onboarding plan <role>", group_ids=[<org group>])
+| Focus area                        | Rung 1 — first pass                                                                                               | Rung 2 — only if that left a gap                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Prior plans for this role, always | `search_memory_nodes(query="onboarding plan <role>", group_ids=[<org>])`                                          | —                                                                                                               |
+| People, roles, agreements         | `search_memory_nodes(query="<team/project> team members", entity="Person", group_ids=[<org>])`                    | `search_memory_facts(query="role responsibility works on", center_node_id="<team node id>", group_ids=[<org>])` |
+|                                   | `search_memory_nodes(query="<team> working agreement process", entity="WorkingAgreement", group_ids=[<org>])`     |                                                                                                                 |
+| Architecture, and how it connects | `search_memory_nodes(query="<project/system> architecture component", entity="SystemConcept", group_ids=[<org>])` | `search_memory_facts(query="depends on integrates with", center_node_id="<system node id>", group_ids=[<org>])` |
+|                                   | `search_memory_nodes(query="<project/system> component service", entity="CodeComponent", group_ids=[<org>])`      |                                                                                                                 |
+|                                   | `search_memory_nodes(query="<project/system> architecture decision", entity="Decision", group_ids=[<org>])`       |                                                                                                                 |
+| Current work                      | `search_memory_nodes(query="<team/project> current work", entity="Project", group_ids=[<org>])`                   | —                                                                                                               |
+|                                   | `search_memory_nodes(query="<team/project> active sprint", entity="WorkItem", group_ids=[<org>])`                 |                                                                                                                 |
+| Lessons and pitfalls              | `fetch_lessons_learned(query="<project/system/team>", group_ids=[<org>])`                                         | —                                                                                                               |
+|                                   | `fetch_lessons_learned(query="<project> pitfall avoid mistake", group_ids=[<org>])`                               |                                                                                                                 |
+| Experts and documentation         | `search_memory_nodes(query="<project/system> documentation runbook", entity="Document", group_ids=[<org>])`       | `search_memory_facts(query="expertise knowledge owner", center_node_id="<system node id>", group_ids=[<org>])`  |
 
-# People, roles, working agreements
-search_memory_nodes(query="<team/project> team members", entity="Person", group_ids=[...])
-search_memory_facts(query="role responsibility works on", center_node_id="<team node id>", group_ids=[...])
-search_memory_nodes(query="<team> working agreement process", entity="WorkingAgreement", group_ids=[...])
+The prior-plans row is the highest-value read and the reason Step 6 publishes: a
+published plan is found by searching its content, which is why Step 6 names it in
+prose. `fetch_lessons_learned` is the one exception `memory-search` allows itself
+— it says to skip that tool on a first pass unless the task is explicitly about
+lessons and pitfalls, and a ramp is.
 
-# Architecture and how it connects
-search_memory_nodes(query="<project/system> architecture component", entity="SystemConcept", group_ids=[...])
-search_memory_nodes(query="<project/system> component service", entity="CodeComponent", group_ids=[...])
-search_memory_facts(query="depends on integrates with", center_node_id="<system node id>", group_ids=[...])
-search_memory_nodes(query="<project/system> architecture decision", entity="Decision", group_ids=[...])
+Each cell is one pass in `memory-search`'s sense, not a call to fire and forget:
+best phrasing first, judge, reformulate at most twice, `max_nodes≈10`. Go specific
+before broad and stop a row once results repeat. An entity-filtered search that
+comes back empty is usually a schema mismatch, not an absence: retry once without
+the `entity` filter, or check `get_available_schemas` — the labels above are a
+convenience, the graph is authoritative.
 
-# Current work
-search_memory_nodes(query="<team/project> current work", entity="Project", group_ids=[...])
-search_memory_nodes(query="<team/project> active sprint", entity="WorkItem", group_ids=[...])
-
-# Lessons and pitfalls
-fetch_lessons_learned(query="<project/system/team>", group_ids=[...])
-fetch_lessons_learned(query="<project> pitfall avoid mistake", group_ids=[...])
-
-# Experts and documentation
-search_memory_facts(query="expertise knowledge owner", center_node_id="<system node id>", group_ids=[...])
-search_memory_nodes(query="<project/system> documentation runbook", entity="Document", group_ids=[...])
-```
-
-The block is a menu keyed to Step 2, not a script: run the groups matching the
-chosen scope's focus areas (the prior-plans read always runs), go specific before
-broad, and stop a group early once results repeat. `memory-search`'s discipline —
-best phrasing first, judge, reformulate at most twice, `max_nodes≈10` — governs
-each call. An entity-filtered search that comes back empty is usually a schema
-mismatch, not an absence: retry once without the `entity` filter, or check
-`get_available_schemas`; the labels above are a convenience, the graph is
-authoritative.
+**Rung 2 is the ceiling for a briefing.** Centered fact searches return current
+facts only, so they cannot hand a joiner a superseded relationship; the
+`graph-traversal` tools can, without warning, and they can fail outright on a hub
+— which is exactly what a team or a busy person node is. Hand a genuine multi-hop
+question to the `gutt-pro-memory` agent instead of traversing inside this run.
 
 These are org questions, so they run group-wide — no `agent_id` on any of them
 (`search_memory_facts` takes none anyway; facts are scoped by centering on a
-node). What previous runs learned is the Grounding Protocol's scoped pass, done
-once before this step — never re-run this battery with `agent_id` on top.
+node). The scoped pass belongs to the Grounding Protocol and runs once, right
+after the registration above — never re-run these rows with `agent_id` on top.
 
 Apply `memory-search`'s relevance gate. A weak hit reported as context is worse
 than saying the graph is thin here — a new joiner cannot tell the difference and
@@ -365,6 +364,10 @@ record of itself. Beyond it:
 
 ## Output Format
 
+Cite a node by its readable `id` (`alias:Label:slug`) — that is what the person can
+carry into a follow-up question. Only facts and episodes are raw UUIDs, which is
+why the dependency lines below are the one place a `uuid` belongs.
+
 ```markdown
 # Onboarding Brief: [Team/Project/System]
 
@@ -374,12 +377,12 @@ record of itself. Beyond it:
 
 ## Team Structure
 
-| Name | Role | Key Responsibilities | UUID |
-| ---- | ---- | -------------------- | ---- |
+| Name | Role | Key Responsibilities | ID  |
+| ---- | ---- | -------------------- | --- |
 
 ### Working Agreements
 
-- [Agreement] (uuid: xxx)
+- [Agreement] (id: xxx)
 
 ## Architecture
 
@@ -387,8 +390,8 @@ record of itself. Beyond it:
 
 ### Key Components
 
-| Component | Purpose | Owner | UUID |
-| --------- | ------- | ----- | ---- |
+| Component | Purpose | Owner | ID  |
+| --------- | ------- | ----- | --- |
 
 ### System Dependencies
 
@@ -396,23 +399,23 @@ record of itself. Beyond it:
 
 ## Key Decisions
 
-| Decision | Rationale | Date | Status | UUID |
-| -------- | --------- | ---- | ------ | ---- |
+| Decision | Rationale | Date | Status | ID  |
+| -------- | --------- | ---- | ------ | --- |
 
 ## Current Work
 
-| Work Item | Status | Assignee | UUID |
-| --------- | ------ | -------- | ---- |
+| Work Item | Status | Assignee | ID  |
+| --------- | ------ | -------- | --- |
 
 ## Lessons & Pitfalls
 
 ### Things That Work Well
 
-- [Lesson] (uuid: xxx)
+- [Lesson] (id: xxx)
 
 ### Common Pitfalls to Avoid
 
-- [Pitfall] (uuid: xxx)
+- [Pitfall] (id: xxx)
 
 ## Who to Talk To
 
