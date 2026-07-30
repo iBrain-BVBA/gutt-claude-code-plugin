@@ -26,6 +26,9 @@ const COMMAND_HOOKS = [
   "session-end.cjs",
   "user-prompt-submit.cjs",
   "post-memory-search.cjs",
+  // Stop became a command hook in GP-866. It is the hook the guard exists for: it is the
+  // one that spawns the child, so an unguarded copy of it in the child spawns another.
+  "stop-capture.cjs",
 ];
 
 describe("nested-run: the predicate", () => {

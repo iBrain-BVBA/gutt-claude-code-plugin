@@ -23,6 +23,18 @@
 
 ### Added
 
+- **`/gutt off` now silences the capture judge too, and `mode` finally does
+  something.** The `Stop` handler moved from a `type: "prompt"` hook to a command
+  hook (`hooks/stop-capture.cjs`) that shells out to `claude -p` for the verdict.
+  A prompt hook's `prompt` field takes one substitution and no shell expansion, so
+  it could not read `config.json` — it dispatched on every turn regardless of your
+  settings, which is why `/gutt off` used to stop recall while the judge kept
+  asking for captures. Off or snoozed now returns before any child is spawned, and
+  `mode: hitl` appends an instruction to confirm each subject with you through
+  `AskUserQuestion` before anything is written. `mode: auto` is unchanged, and the
+  judge's wording is byte-identical to what it replaces, so the only difference on
+  the default path is where the model runs.
+
 - **The `/gutt` settings command** — `/gutt config`, `/gutt on`,
   `/gutt off [minutes|session]`, `/gutt mode auto|hitl`. The direct power-user ask
   (R24): a timed snooze that expires on its own, plus a durable off that survives

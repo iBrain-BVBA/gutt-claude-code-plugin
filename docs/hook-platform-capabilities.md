@@ -1,7 +1,7 @@
 # Hook platform capabilities (upstream)
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
-**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Measured:** 2026-07-30 (§6, §7) ·
+**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Measured:** 2026-07-30 (§5 argv, §6, §7) ·
 **Method:** `WebFetch` passes plus live CLI runs for §5–§7 (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
 docs, tests and recorded memory assume, and one of our recorded findings is now false.
@@ -73,12 +73,18 @@ Verbatim:
 > a system reminder at the end of the turn. The conversation continues normally — Claude
 > can respond to your feedback or let the turn complete."
 
-**This is a channel we do not have today, and the distinction is subtle.** Our Stop
-handler is a `prompt` hook, not a command hook. The GP-862 spike established that a
-native prompt hook's only output is `{ok, reason}` and that any context it emits is
-stripped — that finding is about **prompt** hooks and is not contradicted by the table
-above, which describes **command** hooks. Whether a command Stop hook can give us a
-non-blocking context channel is therefore an open question, not a settled capability.
+**This is a channel we do not have today, and the distinction is subtle.** The GP-862
+spike established that a native prompt hook's only output is `{ok, reason}` and that any
+context it emits is stripped — that finding is about **prompt** hooks and is not
+contradicted by the table above, which describes **command** hooks. Whether a command Stop
+hook can give us a non-blocking context channel is therefore an open question, not a
+settled capability.
+
+Since GP-866 our Stop handler _is_ a command hook (§7), so the table above now describes
+our own handler and the question is directly testable rather than hypothetical — but it is
+still untested, and `gutt-core/hooks/stop-capture.cjs` deliberately uses `decision:
+"block"` to reproduce the prompt hook's routing exactly. Swapping the channel is a separate
+change, so that a regression in it cannot be confused with a regression in the conversion.
 
 Why it matters: every current Stop fire is a `ok:false` that re-enters the turn. A
 non-blocking channel would let a suggestion reach the model _without_ re-entering, which
@@ -140,6 +146,30 @@ judge outright while every unit test stays green — `tests/test-all-hooks.cjs` 
 the Stop entry (`type: prompt`), and the e2e verdict assertions only bite in a run
 that got as far as producing a verdict. Worth a guard if we keep pinning a model.
 
+### The hazard is confined to the manifest field — argv resolves aliases
+
+**Measured 2026-07-30.** `claude -p --model sonnet` and `claude -p --model claude-sonnet-5`
+both returned a clean reply, exit 0. So the 404 above is a property of the prompt hook's
+`model` **field**, which is handed to the API unmodified — not of naming a model by alias.
+On a command line the CLI resolves the alias before the API sees it.
+
+This matters more than a footnote because of what it did to the guard. GP-866 moved the
+Stop handler to a command hook (§6, §7), which put the model in argv and **retired** this
+failure mode rather than relocating it. The old guard was written as:
+
+```js
+if (stop.model === undefined) {
+  return; // unpinned is valid — the platform picks a fast default
+}
+```
+
+A command hook has no `model` field, so that early return would have made the guard pass
+while asserting nothing — the guard would have survived the change and the property it
+stood for would not. It is now replaced by one asserting the judge is passed a model at
+all, with no escape hatch (`tests/hook-architecture.test.cjs`). Note the shape rather than
+the specifics: a guard with a "not applicable" branch silently becomes vacuous exactly
+when the thing it guards is restructured, which is when you need it most.
+
 ## 6. The prompt `prompt` field takes one substitution, not shell expansion
 
 **Measured 2026-07-30** against `claude` 2.1.220, prompted by the question "could the
@@ -189,11 +219,25 @@ the sibling. So the two hooks are independent in dispatch, not merely in state.
 
 **Taken with §6 this closes the design space** for gating Stop on config: the handler cannot
 stay a prompt hook (§6) and cannot be gated by a sibling (§7), so it must _become_ a command
-hook, and the dedicated `claude-sonnet-5` judge is removed rather than gated — a command hook
-cannot invoke a model. Recorded on GP-866, whose new ACs turn on exactly this.
+hook. Recorded on GP-866, whose new ACs turn on exactly this.
+
+> **Correction, 2026-07-30.** This section previously closed "and the dedicated
+> `claude-sonnet-5` judge is removed rather than gated — a command hook cannot invoke a
+> model." **That was wrong**, and it was inference rather than measurement: a command hook
+> can invoke a model by shelling out to `claude -p`, which is what
+> `shared/stop-judge.cjs` now does. The conversion therefore kept the model judge instead
+> of dropping it, and R11 is intact.
+>
+> Worth noting how the error was made, since the shape recurs. Two things were measured
+> here — a prompt hook cannot read config, a sibling cannot gate a sibling — and a third
+> was appended in the same breath without being tested. It read as equally established
+> because it sat in the same paragraph as two real results. The measured claims stand; only
+> the unmeasured rider was false.
 
 Still open from Follow-up 2: whether a command Stop hook's `additionalContext` reaches the
-model **non-blocking**. Not tested here — these runs only counted dispatches.
+model **non-blocking**. Not tested here — these runs only counted dispatches, and the
+converted handler deliberately uses `decision: "block"` so the channel question stays
+separable from the conversion.
 
 ## Implications for this plugin
 
