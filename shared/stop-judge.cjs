@@ -27,6 +27,14 @@
  * template reached the main agent as instructions to itself and 3 of 5 fires returned a
  * bare `{"ok": true}` in place of the user's answer.
  *
+ * What it did **not** buy: GP-921 records two routes to "the user gets a verdict instead
+ * of an answer", and this move closes only the first. The template no longer has two
+ * readers, but the *reason* still does — `stop-capture.cjs` feeds it back as
+ * `decision: "block"`, so a judge that quotes the response format inside its reason still
+ * reaches the user, which is what commit 46bd22f fixed in prose. That clause is therefore
+ * still load-bearing and is **not** one of the ones this conversion stranded. It is also
+ * now defended in code: the reason is screened before it is emitted.
+ *
  * Cost: a process spawn on every Stop, and an authentication dependency. The child is
  * deliberately **not** `--bare`: bare never reads OAuth or the keychain, so on a
  * subscription install it cannot authenticate at all
@@ -43,6 +51,7 @@
  */
 
 const fs = require("node:fs");
+const os = require("node:os");
 const { spawnSync } = require("node:child_process");
 const { childEnv } = require("./nested-run.cjs");
 
@@ -66,20 +75,31 @@ const JUDGE_TIMEOUT_MS = 30_000;
 const TAIL_BYTES = 192 * 1024;
 
 /**
- * The stopping condition, verbatim from the `type: "prompt"` entry it replaces.
+ * The stopping condition, from the `type: "prompt"` entry it replaces.
  *
- * Kept byte-identical on purpose: the mechanism changed in this commit and the wording
- * did not, so a behaviour change here would be indistinguishable from a mechanism
- * regression. Several clauses now defend against something that can no longer happen —
- * "do not restate this response format inside the reason" existed because the template
- * was echoed to the main agent, and a command hook never echoes it — but pruning them is
- * a separate change with its own eval round (`evals/` suite `stop-judge`).
+ * Held as close to the original as the new mechanism allows: the mechanism changed and
+ * the wording should not, or a behaviour change here would be indistinguishable from a
+ * mechanism regression. Two deliberate differences, both forced:
  *
- * `$ARGUMENTS` is gone with the prompt hook that interpolated it; `buildJudgePrompt`
- * substitutes the payload explicitly.
+ * 1. `$ARGUMENTS` is gone with the prompt hook that interpolated it. `buildJudgePrompt`
+ *    substitutes `__PAYLOAD__` explicitly.
+ * 2. "on the conversation above" is now "on the turn quoted below". A prompt hook was
+ *    evaluated with the transcript genuinely above the condition; `buildJudgePrompt`
+ *    puts the condition first and appends the turn, so "above" pointed the judge at
+ *    nothing but the condition's own opening sentence. Retaining it verbatim would have
+ *    been faithful to the bytes and wrong about the prompt — the one place where
+ *    byte-identity and correctness disagreed.
+ *
+ * Beyond those two the text is unchanged, which `tests/hook-architecture.test.cjs`
+ * pins against a committed fixture of the old manifest prompt.
+ *
+ * One clause is now vestigial: `stop_hook_active` is checked in code before the judge is
+ * convened (`stop-capture.cjs`), so the prompt-side instruction is a second opinion
+ * rather than the only guard. It stays — a second opinion costs one clause. The
+ * "do not restate this response format" clause is **not** vestigial; see the header.
  */
 const JUDGE_CONDITION = [
-  'Nothing from this finished turn needs to be written to the team\'s long-term memory — that is the condition, satisfied ({"ok": true}) when there is nothing to record. Score the turn, do not continue it: capture nothing yourself, call no tool, and output one JSON verdict on the conversation above. Read `stop_hook_active` from the payload; ignore the rest.',
+  'Nothing from this finished turn needs to be written to the team\'s long-term memory — that is the condition, satisfied ({"ok": true}) when there is nothing to record. Score the turn, do not continue it: capture nothing yourself, call no tool, and output one JSON verdict on the turn quoted below. Read `stop_hook_active` from the payload; ignore the rest.',
   "",
   "Hook payload: __PAYLOAD__",
   "",
@@ -173,6 +193,19 @@ function lastAssistantMessage(transcriptPath) {
     } catch {
       continue; // truncated head of the tail, or a line we do not understand
     }
+    // Stop at the turn boundary. A genuine user prompt ends the current turn, so
+    // walking past it returns the *previous* turn's answer — which would be judged
+    // again, with `stop_hook_active` false because it is a different turn, i.e. the
+    // duplicate-fire shape next door to the livelock. Tool results also arrive as
+    // `user` records and must not stop the walk.
+    if (record?.type === "user") {
+      const content = record?.message?.content;
+      const parts = Array.isArray(content) ? content : [];
+      if (!parts.some((part) => part?.type === "tool_result")) {
+        return "";
+      }
+      continue;
+    }
     if (record?.type !== "assistant") {
       continue;
     }
@@ -207,19 +240,120 @@ function buildJudgePrompt(payload, summary) {
 }
 
 /**
- * Run the judge. Returns `null` for "stay quiet" — including every failure, since a
- * judge that cannot answer must not block the user's turn.
+ * Background task types that mean an *agent* is still working, and could still produce
+ * something worth capturing.
+ *
+ * `shell`, `monitor` and `MCP task` are deliberately absent: a background build, a log
+ * tail or an MCP monitor will not add a finding to the turn, and some of them run for the
+ * length of the session, so waiting on one would mean never judging.
+ *
+ * An allowlist rather than a denylist, on purpose. `type` falls back to the raw
+ * discriminant for a type this CLI version does not name, so a denylist would defer the
+ * judge on anything new — potentially for the whole session, invisibly. An unrecognised
+ * agent type instead judges early and may score partial work, which is the recoverable
+ * failure of the two, and the same fail-open choice `judgeTurn` makes everywhere else.
+ */
+const AGENT_TASK_TYPES = new Set(["subagent", "workflow", "teammate", "cloud session"]);
+
+/**
+ * The in-flight agent tasks a Stop payload names (Claude Code ≥ 2.1.145).
+ *
+ * An absent array is **not** an empty one. Both arrays are present whenever the task
+ * registry is reachable and empty when nothing is in flight, so absent means the registry
+ * could not be read or the CLI predates the field — and both of those must judge rather
+ * than defer.
+ *
+ * `session_crons` is deliberately not consulted. A `recurring: true` entry — any `/loop`,
+ * any `CronCreate` — never drains, so gating on it would silence capture for the rest of
+ * the session; even a one-shot `ScheduleWakeup` can be an hour out.
+ *
+ * @param {object} payload the Stop hook's stdin, already parsed
+ * @returns {Array<Object>} the entries worth waiting for, in payload order
+ */
+function pendingAgentTasks(payload) {
+  const tasks = payload?.background_tasks;
+  if (!Array.isArray(tasks)) {
+    return [];
+  }
+  return tasks.filter((task) => AGENT_TASK_TYPES.has(task?.type));
+}
+
+/**
+ * Every way the judge can end, as a loggable label.
+ *
+ * The point of naming these is that the hook stays quiet to the *user* on all of them
+ * while still saying which one happened in the log. Before this existed, nine failures
+ * and one healthy pass all logged the single word `quiet`, so a judge that had been dead
+ * since an OAuth token expired was indistinguishable from a month of unremarkable turns —
+ * and this project's Stop defects have historically survived precisely by being
+ * unmeasurable.
+ */
+const OUTCOMES = {
+  NO_SUMMARY: "no-closing-prose",
+  SPAWN_FAILED: "spawn-failed",
+  TIMEOUT: "timeout",
+  EXIT_NONZERO: "exit-nonzero",
+  NO_OUTPUT: "no-output",
+  UNPARSEABLE: "unparseable-verdict",
+  RESTATED_FORMAT: "reason-restated-format",
+  NO_REASON: "fired-without-reason",
+  PASS: "pass",
+  FIRED: "fired",
+};
+
+/** Outcomes that mean the judge did not answer, as opposed to answering "nothing here". */
+const BROKEN_OUTCOMES = new Set([
+  OUTCOMES.SPAWN_FAILED,
+  OUTCOMES.TIMEOUT,
+  OUTCOMES.EXIT_NONZERO,
+  OUTCOMES.NO_OUTPUT,
+  OUTCOMES.UNPARSEABLE,
+  OUTCOMES.RESTATED_FORMAT,
+  OUTCOMES.NO_REASON,
+]);
+
+/**
+ * A reason that quotes the verdict format is dropped rather than fed back.
+ *
+ * This is GP-921 route 1 in code. The prompt asks the judge not to restate the response
+ * format inside its reason, because the reason is fed back and surfaces to the user as
+ * the assistant's answer; a prompt-side rule is the right first line but it is advice to
+ * a model, and this one is cheap to enforce. Dropping beats sanitising: a reason that
+ * came back shaped like a verdict is evidence the judge misunderstood its task, so its
+ * content is not worth trusting either.
+ */
+const VERDICT_SHAPE = /"ok"\s*:\s*(?:true|false)/;
+
+/**
+ * Reasons are one line plus a few ten-word bullets, so this is generous. The bullet
+ * bound lives only in the prompt, which means a judge that ignores it can hand back an
+ * arbitrarily long payload for the platform to inject into the conversation.
+ */
+const MAX_REASON_CHARS = 800;
+
+/** Last of stderr, for the log. Auth failures and quota walls announce themselves here. */
+function stderrTail(result) {
+  const text = String(result?.stderr || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  return text ? `stderr: ${text.slice(-300)}` : "";
+}
+
+/**
+ * Run the judge. Never throws, and never asks the platform to block on a judge that
+ * could not answer — a Stop hook sits between the user and the end of their turn.
  *
  * @param {object} payload
  * @param {string} mode one of runtime-config's MODES
  * @param {{ spawn?: Function, cwd?: string }} [deps] seam for tests; nothing else injects
- * @returns {string|null} the reason to feed back, or null to allow the stop
+ * @returns {{outcome: string, reason: string|null, detail: string|null}} `reason` is
+ *   non-null only for `FIRED`; `detail` carries the diagnostic for the log
  */
 function judgeTurn(payload, mode, deps = {}) {
   const spawn = deps.spawn || spawnSync;
   const summary = lastAssistantMessage(payload?.transcript_path);
   if (!summary) {
-    return null; // nothing to score
+    return quiet(OUTCOMES.NO_SUMMARY);
   }
 
   const args = [
@@ -227,8 +361,8 @@ function judgeTurn(payload, mode, deps = {}) {
     "--model",
     JUDGE_MODEL,
     "--strict-mcp-config",
-    // Platform-level recursion guard, alongside the env var. Measured in
-    // evals/lib/runner.py: zero hook dispatches with it, one without.
+    // Platform-level recursion guard, alongside the env var. Recorded in
+    // evals/lib/runner.py:40-42: zero hook dispatches with it, one without.
     "--settings",
     '{"disableAllHooks": true}',
     "--allowedTools",
@@ -244,26 +378,82 @@ function judgeTurn(payload, mode, deps = {}) {
       encoding: "utf8",
       timeout: JUDGE_TIMEOUT_MS,
       env: childEnv(),
-      cwd: deps.cwd,
+      // A neutral cwd, not the user's project. The child is non-bare, so it discovers
+      // CLAUDE.md from the working directory upward — running it in the repo hands the
+      // judge that project's instructions on top of the prompt under test, which is the
+      // same bias `evals/lib/runner.py` avoids with a temp dir and the reason its scores
+      // would otherwise not describe production. Everything the judge needs is passed
+      // inline on stdin, so it wants nothing from the project tree.
+      cwd: deps.cwd || os.tmpdir(),
     });
-  } catch {
-    return null;
+  } catch (err) {
+    // Reached only for a developer bug — a malformed argv, a throw inside childEnv().
+    // A missing binary does not come through here; see result.error below.
+    return quiet(OUTCOMES.SPAWN_FAILED, `threw: ${err?.message ?? err}`);
   }
-  if (!result || result.status !== 0 || !result.stdout) {
-    return null;
+  if (!result) {
+    return quiet(OUTCOMES.SPAWN_FAILED, "spawn returned nothing");
+  }
+  // spawnSync reports a missing binary and a killed child in `error`/`signal` rather
+  // than by throwing, so reading `status` alone collapsed the two most likely
+  // production failures — `claude` absent from a hook's PATH (ENOENT), and the 30s
+  // timeout — into the generic non-zero branch, with the diagnostic discarded.
+  if (result.error) {
+    const code = result.error.code ?? "error";
+    return quiet(
+      code === "ETIMEDOUT" || result.signal ? OUTCOMES.TIMEOUT : OUTCOMES.SPAWN_FAILED,
+      `${code}: ${result.error.message}`
+    );
+  }
+  if (result.signal) {
+    return quiet(OUTCOMES.TIMEOUT, `killed by ${result.signal}`);
+  }
+  if (result.status !== 0) {
+    return quiet(
+      OUTCOMES.EXIT_NONZERO,
+      [`exit ${result.status}`, stderrTail(result)].filter(Boolean).join("; ")
+    );
+  }
+  if (!result.stdout) {
+    return quiet(OUTCOMES.NO_OUTPUT, stderrTail(result) || null);
   }
 
   const verdict = parseVerdict(result.stdout);
-  if (!verdict || verdict.ok !== false) {
-    return null;
+  if (!verdict) {
+    return quiet(
+      OUTCOMES.UNPARSEABLE,
+      String(result.stdout).trim().replace(/\s+/g, " ").slice(0, 200)
+    );
   }
-  const reason = String(verdict.reason || "").trim();
+  if (verdict.ok !== false) {
+    return quiet(OUTCOMES.PASS);
+  }
+  let reason = String(verdict.reason || "").trim();
   if (!reason) {
     // ok:false with no reason is not actionable — there is nothing to tell the agent to
     // capture, and blocking on it would re-enter the turn with an empty instruction.
-    return null;
+    return quiet(OUTCOMES.NO_REASON);
   }
-  return mode === "hitl" ? `${reason}${HITL_TAIL}` : reason;
+  if (VERDICT_SHAPE.test(reason)) {
+    return quiet(OUTCOMES.RESTATED_FORMAT, reason.slice(0, 200));
+  }
+  if (reason.length > MAX_REASON_CHARS) {
+    reason = `${reason.slice(0, MAX_REASON_CHARS).trimEnd()}…`;
+  }
+  return {
+    outcome: OUTCOMES.FIRED,
+    reason: mode === "hitl" ? `${reason}${HITL_TAIL}` : reason,
+    detail: null,
+  };
+}
+
+/**
+ * @param {string} outcome
+ * @param {string|null} [detail]
+ * @returns {{outcome: string, reason: null, detail: string|null}}
+ */
+function quiet(outcome, detail = null) {
+  return { outcome, reason: null, detail };
 }
 
 /**
@@ -313,6 +503,11 @@ module.exports = {
   HITL_TAIL,
   VERDICT_SCHEMA,
   TAIL_BYTES,
+  OUTCOMES,
+  BROKEN_OUTCOMES,
+  MAX_REASON_CHARS,
+  AGENT_TASK_TYPES,
+  pendingAgentTasks,
   lastAssistantMessage,
   buildJudgePrompt,
   parseVerdict,

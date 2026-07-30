@@ -442,6 +442,49 @@ describe("hook architecture guards", () => {
   // correct ok:false that reached Claude and once as a fire-shaped reason attached
   // to ok:true, which the CLI discarded unread. Accurate reasoning, inverted field,
   // silent dropped capture. This asserts the polarity is stated, not the wording.
+  it("deviates from the prompt-hook wording only in the two documented ways", () => {
+    // GP-866 claimed the condition text was carried over byte-identically and verified it
+    // by hand at review time, so nothing pinned it: the claim would have decayed the first
+    // time the prompt was reworded, silently. This is that check, committed.
+    //
+    // The fixture is the `prompt` field of the `type: "prompt"` Stop entry as it stood on
+    // release/3.0. Exactly two deviations are allowed, and both are forced by the new
+    // mechanism rather than chosen:
+    //   1. `$ARGUMENTS` → `__PAYLOAD__`, substituted by buildJudgePrompt instead of by the
+    //      platform.
+    //   2. "on the conversation above" → "on the turn quoted below", because
+    //      buildJudgePrompt puts the condition first and appends the turn, so "above"
+    //      pointed the judge at nothing but the condition's own opening sentence.
+    // A third difference fails here and has to be argued for — which is the point.
+    const fixture = path.join(__dirname, "fixtures", "stop-judge-condition-prompt-hook.txt");
+    const original = fs.readFileSync(fixture, "utf8");
+    const rebuilt = JUDGE_CONDITION.replace("__PAYLOAD__", "$ARGUMENTS").replace(
+      "on the turn quoted below",
+      "on the conversation above"
+    );
+    assert.equal(
+      rebuilt,
+      original,
+      "the judge condition drifted from the prompt-hook text in a way GP-866 did not document"
+    );
+  });
+
+  it("points the judge at the turn in the direction the prompt actually places it", () => {
+    // The retained "conversation above" wording was true of a prompt hook, where the
+    // transcript preceded the condition. buildJudgePrompt appends the turn, so the phrase
+    // has to follow the text it describes or the judge is told to score nothing.
+    const assembled = require(STOP_JUDGE_LIB).buildJudgePrompt(
+      { stop_hook_active: false },
+      "THE-TURN"
+    );
+    const pointer = assembled.indexOf("quoted below");
+    assert.ok(pointer > -1, "the condition no longer says where the turn is");
+    assert.ok(
+      assembled.indexOf("THE-TURN") > pointer,
+      "the condition points at the turn in the wrong direction"
+    );
+  });
+
   it("states the stopping condition in the direction the CLI reads it", () => {
     assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     // The opening sentence — everything before the first blank line — is what the
