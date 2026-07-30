@@ -27,10 +27,15 @@ gutt-core plugin. Without it, follow the rules below and note the gap in one lin
    from the login — so you are always reading and writing your own program, never
    someone else's.
 2. **Chain the check-in explicitly** with
-   `previous_episodes=["<predecessor id>"]` from the read — an episode UUID or a
-   semantic ID. `last_n_episodes` applies **only** when `previous_episodes` is
-   omitted, and its default of `3` chains you to whatever was written most
-   recently in that person's personal scope, not to this program's last check-in.
+   `previous_episodes=["<predecessor id>"]` from the read — an **episode** UUID
+   or semantic ID, never an entity id. `last_n_episodes` applies **only** when
+   `previous_episodes` is omitted — a list you supply is used as given, and
+   `last_n_episodes` is then not read at all — and its default of `3` chains you
+   to whatever was written most recently in that person's personal scope, not to
+   this program's last check-in. Pass only
+   an id the read actually returned — resolution happens before the write, so a
+   wrong or ambiguous id fails the whole check-in rather than just losing the
+   chain.
 3. **No agent identity in personal scope.** Do not pass `agent_id` on a personal
    read or write. Registration and tagging happen in org scope only, and that is
    `agent-memory-protocol`'s business.

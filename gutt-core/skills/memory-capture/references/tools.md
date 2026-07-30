@@ -1,8 +1,8 @@
 # Memory write-tool reference
 
-Exact contracts for the gutt-pro-memory MCP **write** tools, verified against the
-server source (`gutt_pro_mcp/`), not the tool descriptions (which are stale in
-places — noted below). Read/search tools live in the `memory-search`
+Exact contracts for the gutt-pro-memory MCP **write** tools. Where these
+disagree with the MCP tool descriptions, trust these — the descriptions are
+stale in places, noted below. Read/search tools live in the `memory-search`
 `references/tools.md`; deletes are out of scope (see end). Call tools by **bare
 name**; the `mcp__…__` prefix varies per install.
 
@@ -34,28 +34,63 @@ your tool list is the practical source of truth for what you can target.
 | param              | type          | default | notes                                                                                            |
 | ------------------ | ------------- | ------- | ------------------------------------------------------------------------------------------------ |
 | name               | str           | —       | required; typed prefix + concise title                                                           |
-| episode_body       | str           | —       | required; hard cap 15,000 chars (`MAX_CONTENT_CHARS`, rejected above it — split, don't truncate) |
+| episode_body       | str           | —       | required; hard cap 15,000 chars (rejected above it — split, don't truncate)                      |
 | group_id           | str           | None    | see group targeting above; often ignored/overwritten                                             |
 | source             | str           | `text`  | `text` \| `message` \| `json`; unknown value silently → text                                     |
 | source_description | str           | `""`    | provenance, e.g. `"memory-capture skill"`                                                        |
 | uuid               | str           | None    | **don't** use as an idempotency key — see caveats                                                |
-| previous_episodes  | list[str]     | None    | UUIDs or semantic IDs; leave unset when `last_n_episodes=0`                                      |
-| last_n_episodes    | int           | 3       | **pass `0` for all org/group writes** (keeps them self-contained)                                |
+| previous_episodes  | list[str]     | None    | **episode** UUIDs or semantic IDs; supplying it overrides `last_n_episodes` — see below          |
+| last_n_episodes    | int           | 3       | **pass `0` for all org/group writes** (self-contained); unread when `previous_episodes` is given |
 | reference_time     | ISO8601 \| dt | now     | use tz-aware ISO 8601 when backdating                                                            |
 | agent_id           | str           | None    | must be `register_agent`-registered or the call errors                                           |
 
 The per-group `add_memory_to_<alias>` tools take the **same params minus
 `group_id`** (it's fixed to that group).
 
+### `previous_episodes` vs `last_n_episodes` — precedence, not composition
+
+These two are **not** independent inputs. They are two ways to fill the _same_
+thing — the set of previous episodes handed to extraction — and an explicit list
+wins.
+
+Three consequences worth knowing before you pass either:
+
+- **Supplying `previous_episodes` means `last_n_episodes` is not read at all** (a
+  negative value is still rejected). Passing `last_n_episodes=0` alongside it is
+  harmless and redundant. Hard rule 3 still says to pass it, because a rule that
+  holds unconditionally is cheaper to follow than one with a carve-out — and it
+  is what keeps the write self-contained on the paths where you pass no
+  predecessors at all.
+- **`last_n_episodes=0` alone means genuinely no context** — an empty set, not
+  "unspecified". That distinction is the whole point of the rule: left
+  unspecified, the server falls back to fetching its own recent window of 10.
+- **It is fail-loud.** Ids are resolved _before_ the episode is queued, so a bad
+  id costs you the **whole write**, not just the link: missing → an error saying
+  "not found"; ambiguous semantic id → "Ambiguous" plus the alternatives; a
+  partial failure stops early and nothing is written. Pass only ids a search
+  actually handed you.
+
+**They must be _episode_ ids.** Resolution only looks at episodes, so an entity
+id like `gutt_pro:Lesson:Some-Lesson` is invalid and will fail the write. This
+matters because of where the ids come from: `search_memory_nodes` returns **no**
+episode ids at all (`attributes._original_uuid` is a _node_ uuid).
+Episode ids come from `search_memory_facts`, in each fact's `episodes` array —
+so on a rung-1 dedup it is the **facts** half of the pass that gives you
+something you can pass here.
+
 ## add_personal_memory (v3.0, `core`)
 
 Same params as `add_memory` **minus `group_id`** — the personal group is derived
 server-side from your OAuth identity and can't be supplied. Same entity/edge
 schema as org memory (not a different shape). This is the one place
-`last_n_episodes` > 0 is meaningful (chaining personal check-ins). Gated by
+`last_n_episodes` > 0 is policy-permitted at all (chaining personal check-ins) —
+though even there an explicit `previous_episodes` is the better chain, since
+`last_n_episodes` links you to whatever was written most recently in that
+person's personal scope rather than to the thing you mean. `gutt-mentor`'s
+`progress-tracking` chains check-ins that way for exactly this reason. Gated by
 personal scope being enabled and a resolvable login.
 
-## Caveats (verified in source)
+## Caveats
 
 - **Queued ≠ persisted.** A success response means the episode was _enqueued_.
   Background extraction (entity/edge, LLM, DB) can fail and is only logged
