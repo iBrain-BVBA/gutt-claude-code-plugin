@@ -19,7 +19,10 @@ sys.path.insert(0, str(HERE))
 
 from lib.runner import FAST_MODEL, run_matrix  # noqa: E402
 
-SUITES = {"stop-judge": "suites.stop_judge.suite"}
+SUITES = {
+    "stop-judge": "suites.stop_judge.suite",
+    "prompt-pointer": "suites.prompt_pointer.suite",
+}
 
 
 def main():
@@ -73,9 +76,12 @@ def main():
     slug = "" if args.model == FAST_MODEL else f"-{args.model.replace('.', '')}"
     raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}{slug}.json"
 
+    # A suite may declare its own system prompt; the Stop judge's framing is wrong for
+    # any suite measuring what an agent does with injected context.
+    kwargs = {"system": suite.SYSTEM} if hasattr(suite, "SYSTEM") else {}
     results = run_matrix(variant_map, case_list, suite.build_prompt, suite.evaluate,
                          trials=args.trials, workers=args.workers, model=args.model,
-                         out_path=str(raw_path))
+                         out_path=str(raw_path), **kwargs)
 
     text, summary = suite.report(results, case_list, variant_map)
     print("\n" + text)

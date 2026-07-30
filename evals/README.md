@@ -30,15 +30,20 @@ unit of comparison here.
 
 ## Suites
 
-| Suite        | What it measures                                                                                                              |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `stop-judge` | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
+| Suite            | What it measures                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `stop-judge`     | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
+| `prompt-pointer` | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious          |
 
-Not every prose behaviour is a verdict, and `run.py` can only score verdicts — `run_matrix`
-calls `ask()` without a `system` argument, so every suite call inherits `JUDGE_SYS` ("reply
-with a single JSON object"). Behaviour belonging to the **main agent** has to be probed
-directly with `ask(system=None)`, which is what `leak_probe.py` and the offer probe below
-both do:
+A suite is no longer confined to scoring verdicts. `run_matrix` takes a `system` argument
+and `run.py` passes a suite's own `SYSTEM` when it defines one, so a suite can frame the
+model as an ordinary agent rather than as a judge replying with one JSON object —
+`prompt-pointer` does exactly that, and has to: framing the model as a judge would be the
+largest thing in the prompt and would decide the result. Suites that define no `SYSTEM`
+still inherit `JUDGE_SYS`, which is right for `stop-judge`.
+
+Some main-agent behaviour is still easier to probe directly with `ask(system=None)`, which
+is what `leak_probe.py` and the offer probe below both do:
 
 ```bash
 cd evals
@@ -51,6 +56,14 @@ python3 -m suites.migrate_offer.variants                 # diff the wordings, sp
 ceiling (24/24), and the eleven words `in one line at the end of your next reply` are the
 whole mechanism — removing them costs 24/24 → 4/24. It defaults to `claude-sonnet-5`, not
 `FAST_MODEL`, because the offer is largely a property of the session model (25% on Haiku).
+
+`suites/prompt_pointer/FINDINGS.md` has round 1 of the pointer suite. Headline: the retired
+2.x "MANDATORY / SYSTEM-LEVEL DIRECTIVE" framing is measurably the failure GP-868 predicted —
+it is the only variant that ever leaked, and four of five greetings came back discussing the
+directive instead of saying good morning. Cutting the rationale to one sentence costs recall.
+The shipped wording, the hedged wording it replaced, and the wording plus GP-866's summary
+clause are indistinguishable from each other at n=120. One constraint did fall out: the
+summary clause is free to append and expensive to prepend (58% recall misses against 27%).
 
 A verdict is not the only thing a judge prompt has to get right, so `leak_probe.py` sits
 beside that suite and asks whether a _fired_ verdict turns into the user's answer — a
