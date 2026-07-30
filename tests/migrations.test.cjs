@@ -193,10 +193,11 @@ describe("running the migration", () => {
   });
 
   // The live R37 artifacts sit in the same directory as the orphans. Deleting one
-  // of these would drop un-drained captures or the user's own config.
+  // of these would drop the user's own config or the only diagnostic record of what
+  // the hooks did.
   it("never touches the live state artifacts", () => {
     const live = {
-      "capture-queue.jsonl": '{"kind":"insight"}\n',
+      "hook-errors.log": "[2026-07-28 10:00:00] plugin-state: trim failed\n",
       "hook-invocations.log": "[2026-07-28 10:00:00] Prompt: hi\n",
     };
     for (const [name, body] of Object.entries(live)) {
@@ -258,7 +259,7 @@ describe("running the migration", () => {
     }
     for (const name of [
       "config.json",
-      "capture-queue.jsonl",
+      "hook-invocations.log",
       "settings-backup-1700000000000.json",
       "not-gutt-session-abc.json", // prefix must be anchored
       "gutt-session-abc.json.bak", // suffix must be anchored

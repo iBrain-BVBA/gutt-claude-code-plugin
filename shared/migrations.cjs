@@ -71,8 +71,8 @@ const VERSION_KEY = "migrationsVersion";
  * to `${CLAUDE_PLUGIN_DATA}`. The `gutt-` prefixed spellings are from an earlier
  * era that shared a directory; both spellings shipped, so both are cleaned.
  *
- * Deliberately excludes `config.json`, `sessions/`, and `capture-queue.jsonl` —
- * those are the live R37 artifacts.
+ * Deliberately excludes `config.json` and `sessions/` — those are the live R37
+ * artifacts.
  */
 const ORPHANED_STATE = [
   "memory-cache.json",

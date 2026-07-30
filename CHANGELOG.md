@@ -20,6 +20,21 @@
 - **The subagent hooks plugin** (`plugins/gutt-subagent-hooks-plugin/`), which was
   never listed in `marketplace.json` and therefore never shipped. Decision O4
   keeps subagent hooks out of 3.0 (GP-868)
+- **`capture-queue.jsonl` and everything that maintained it.** The R37 state
+  contract named a third artifact — an append-only capture queue written at Stop
+  and drained at the next SessionStart — and its retention was implemented ahead of
+  its writer, on the reasoning that a sweep step appearing only alongside its first
+  writer is a step nobody notices is missing. The writer never arrived: GP-866 moved
+  the judge inline at Stop, where it fails open rather than deferring work, so there
+  was no deferred work to queue and GP-873 closed as not needed. Gone with it: the
+  `queue` sweep step and its `QUEUE_TTL_MS` / `QUEUE_MAX_ENTRIES` / `QUEUE_FILE`
+  constants in `shared/session-sweep.cjs`, the `pruneJsonl` helper in
+  `shared/plugin-state.cjs` (the step was its only caller), the artifact's rows in
+  `docs/runtime-state-convention.md`, and nine assertion sites. No user-visible
+  behaviour changes — nothing ever wrote the file, so the sweep step reclaimed
+  nothing on every session it ran. Nothing else in the state contract is
+  line-oriented JSON; `pruneJsonl` is recoverable from history if that changes
+  (GP-873)
 
 ### Added
 

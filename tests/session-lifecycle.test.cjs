@@ -837,97 +837,6 @@ describe("session lifecycle: TTL primitives", () => {
     }
   });
 
-  it("pruneJsonl expires entries by their own timestamp, not the file's mtime", () => {
-    // The queue is append-only, so its mtime tracks the *newest* entry. Judging age
-    // by mtime would expire a busy queue wholesale and never expire an idle one.
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    const stale = new Date(Date.now() - 8 * 24 * HOUR).toISOString();
-    fs.writeFileSync(
-      queue,
-      [
-        JSON.stringify({ at: stale, text: "expired" }),
-        JSON.stringify({ at: new Date().toISOString(), text: "kept" }),
-      ].join("\n") + "\n"
-    );
-    // Stamped now, so an mtime-based implementation would keep both entries.
-    const now = new Date();
-    fs.utimesSync(queue, now, now);
-
-    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR });
-    assert.equal(res.expired, 1);
-    assert.equal(res.kept, 1);
-    assert.deepEqual(
-      fs
-        .readFileSync(queue, "utf8")
-        .trim()
-        .split("\n")
-        .map((l) => JSON.parse(l).text),
-      ["kept"]
-    );
-  });
-
-  it("pruneJsonl drops what cannot be parsed and keeps what cannot be dated", () => {
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    fs.writeFileSync(
-      queue,
-      [
-        "{ this line is not json",
-        JSON.stringify({ text: "no timestamp field at all" }),
-        JSON.stringify({ at: "not a date", text: "unparseable timestamp" }),
-      ].join("\n") + "\n"
-    );
-
-    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR });
-    assert.equal(res.malformed, 1, "the non-JSON line goes");
-    // An undatable entry is not a provably old one, and a queue entry is somebody's
-    // un-drained capture — dropping it on a missing field would lose real work.
-    assert.equal(res.expired, 0, "an entry with no usable timestamp is not 'old'");
-    assert.equal(res.kept, 2, "both undatable captures survive");
-  });
-
-  it("pruneJsonl keeps the newest maxLines, and rewrites nothing when nothing went", () => {
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    const at = new Date().toISOString();
-    fs.writeFileSync(
-      queue,
-      Array.from({ length: 12 }, (_, n) => JSON.stringify({ at, n })).join("\n") + "\n"
-    );
-
-    assert.equal(pluginState.pruneJsonl(queue, { maxLines: 5 }).overflow, 7);
-    assert.deepEqual(
-      fs
-        .readFileSync(queue, "utf8")
-        .trim()
-        .split("\n")
-        .map((l) => JSON.parse(l).n),
-      [7, 8, 9, 10, 11],
-      "the newest five survive"
-    );
-
-    // Steady state matters: this runs on the ≤50ms SessionStart path every session,
-    // so a queue already inside its bounds must cost one read and no write.
-    const before = fs.statSync(queue).mtimeMs;
-    const second = pluginState.pruneJsonl(queue, { maxLines: 5 });
-    assert.equal(second.pruned, false);
-    assert.equal(second.kept, 5);
-    assert.equal(fs.statSync(queue).mtimeMs, before, "an in-bounds queue is not rewritten");
-  });
-
-  it("pruneJsonl empties a queue that is one enormous unparseable blob", () => {
-    // The documented exception to "keep the tail": for a queue of JSON entries a
-    // multi-megabyte blob with no line structure is garbage by the same rule that
-    // drops any other unparseable line, and keeping it would mean re-reading it on
-    // every SessionStart forever.
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    fs.writeFileSync(queue, "x".repeat(5 * 1024 * 1024));
-    assert.ok(fs.statSync(queue).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
-
-    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR, maxLines: 500 });
-    assert.equal(res.kept, 0);
-    assert.equal(fs.existsSync(queue), true, "the file itself stays, emptied");
-    assert.equal(fs.statSync(queue).size, 0);
-  });
-
   it("a long line does not take the short ones with it", () => {
     // The realistic shape: an ordinary log that picks up one big stack trace.
     // The byte-bounded fallback used to drop "the partial first line" even when
@@ -1552,20 +1461,6 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       path.join(dir, "config.json"),
       JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
     );
-    // A queue that is both too old and too long, so the sweep's queue step has both
-    // of its bounds to apply. Nothing writes this file until GP-873, but the
-    // retention policy is R37's and SessionStart is where the contract says it runs
-    // — a step that only appears alongside its first writer is a step nobody
-    // notices is missing.
-    const staleAt = new Date(Date.now() - 8 * 24 * HOUR).toISOString();
-    const freshAt = new Date().toISOString();
-    fs.writeFileSync(
-      path.join(dir, "capture-queue.jsonl"),
-      [
-        ...Array.from({ length: 40 }, (_, i) => JSON.stringify({ at: staleAt, n: `stale-${i}` })),
-        ...Array.from({ length: 600 }, (_, i) => JSON.stringify({ at: freshAt, n: `fresh-${i}` })),
-      ].join("\n") + "\n"
-    );
     // Debris from hooks killed mid-write: a lock whose session id will never be
     // reused (so nothing ever contends for it to trigger stale reclamation) and
     // an orphaned atomic-write temp. Backdated past DEBRIS_TTL_MS so the sweep
@@ -1578,7 +1473,7 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       // by the sweep's own clearExpiredSnooze, so a stale lock there is reclaimed
       // by withLock and would prove nothing about this step. A temp filename is
       // never reused, so nothing but root-debris will ever remove it.
-      path.join(dir, "capture-queue.jsonl.tmp.1234"),
+      path.join(dir, "config.json.tmp.1234"),
     ]) {
       fs.writeFileSync(f, "");
       fs.utimesSync(f, stale, stale);
@@ -1685,19 +1580,5 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       30,
       "exactly the 30 backdated files were reclaimed"
     );
-
-    // The capture queue, per the TTL table in docs/runtime-state-convention.md.
-    const queue = fs
-      .readFileSync(path.join(dir, "capture-queue.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
-    assert.equal(queue.length, 500, "queue bounded to its 500-entry cap");
-    assert.equal(
-      queue.filter((e) => String(e.n).startsWith("stale")).length,
-      0,
-      "every entry past the 7d TTL was dropped"
-    );
-    assert.equal(queue[queue.length - 1].n, "fresh-599", "the newest entry survived");
   });
 });
