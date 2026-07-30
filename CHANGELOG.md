@@ -44,6 +44,21 @@
 - New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
   memory scope, for the onboarding agent to consume. Ships no hooks.
   (GP-883, E7 mentor shared skill base)
+
+### Fixed
+
+- Repo instructions said the group is determined automatically and must not be
+  passed — the opposite of what the shipped skills and the new agent require.
+  Omitting `group_id` on a write targets an unspecified one of the caller's groups
+  rather than a fixed default, and an unscoped read silently includes personal
+  scope. `CLAUDE.md` now points at `shared/agent-identity.md` as the normative
+  reference (GP-884)
+- `agent-memory-protocol` stated "Register first" unconditionally, omitting the
+  read-only exemption its own normative reference carries. A read-only agent's
+  scope is empty by construction, so registering buys it nothing — the exemption
+  now lives inside the numbered rule, where a weaker model reads it as binding
+  rather than advisory. The onboarding agent preloads this skill and runs
+  read-only when preparing a brief about someone else (GP-884)
   - `individual-program-design` — elicit goals, set milestones on a default
     day 1 / week 1 / day 30 / 60 / 90 cadence, and persist the program as one
     self-contained `add_personal_memory` episode with `last_n_episodes=0`.

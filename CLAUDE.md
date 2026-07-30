@@ -85,7 +85,7 @@ When working on this project, use the gutt memory graph to:
 - Capture user preferences
 - Record project patterns
 
-Note: The MCP server determines the group_id automatically from authentication. Do not specify group_id manually.
+Note: pass the group explicitly. Omitting `group_id` on a write targets an unspecified one of your allowed groups, not a fixed default — so pass it whenever you can write to more than one; with exactly one group you may omit it. On reads, pass `group_ids` naming the groups you mean: omitting it includes personal scope. `shared/agent-identity.md` is the normative reference.
 
 ## Related Tickets
 
