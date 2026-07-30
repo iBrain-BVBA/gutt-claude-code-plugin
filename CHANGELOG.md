@@ -23,6 +23,19 @@
 
 ### Added
 
+- `mentor` agent in `gutt-mentor` — the growth-goal counterpart to the onboarding
+  agent, for asks with no new territory to map ("get better at code reviews",
+  "grow toward tech lead"). Elicits the goal, grounds it in what the org graph
+  has recorded about it — expectations and career paths, working agreements,
+  lessons, people to learn from, prior programs — assembles a provenance-marked
+  materials list, then builds and resumes the program through the S7.1 skills.
+  **Writes to personal scope only:** the program never goes to the org graph, so
+  the agent registers no identity and tags nothing. Where the graph is thin on a
+  goal it says so explicitly and provides general best practices labeled as
+  general rather than org-derived. Also covers a human mentor preparing to
+  mentor someone else, read-only. Preloads `memory-search` and the two S7.1
+  skills; deliberately not `memory-capture` or `agent-memory-protocol`, whose
+  subjects are org writes and registration — things this agent never does
 - `onboarding-guide` agent moved from gutt-core into `gutt-mentor` and rebased
   onto dual scope. Reads the org graph for team, architecture, decisions, lessons
   and experts, then builds the joiner's plan through the S7.1 skills and resumes

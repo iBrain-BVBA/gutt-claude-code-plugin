@@ -137,6 +137,15 @@ role can learn from it. Their progress, blockers and open questions stay persona
 Self-service: personal scope follows the authenticated login, so the joiner runs it
 themselves. No hooks.
 
+The `mentor` agent covers growth after the ramp — a goal-shaped ask ("get better
+at code reviews", "grow toward tech lead") rather than new territory to map. It
+elicits the goal, grounds it in whatever the org graph has recorded about it
+(expectations, working agreements, lessons, people to learn from), assembles a
+materials list, and turns it into a program tracked the same way. **Everything it
+writes is personal — the program never goes to the org graph**, so it registers
+no agent identity and tags nothing. Where the graph is thin it says so plainly
+and gives general best practice, labeled as general.
+
 ## Usage
 
 ### Memory Search
@@ -185,8 +194,8 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   ├── mcp.json                    # MCP config template
 │   └── config.json.example
 ├── auto-lint-plugin/               # standalone lint-on-edit plugin (no gutt dependency)
-├── gutt-mentor/                    # mentor plugin — onboarding agent + personal-scope program design/tracking (no hooks)
-│   ├── agents/                     # onboarding-guide
+├── gutt-mentor/                    # mentor plugin — onboarding + mentor agents, personal-scope program design/tracking (no hooks)
+│   ├── agents/                     # onboarding-guide, mentor
 │   └── skills/                     # individual-program-design, progress-tracking
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide
 ├── tests/
