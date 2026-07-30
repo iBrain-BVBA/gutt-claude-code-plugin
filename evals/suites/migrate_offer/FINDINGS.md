@@ -1,8 +1,17 @@
 # migrate-offer — what the probe found
 
-Four wordings of the `SessionStart` migration offer, scored on whether the offer reaches
+Five wordings of the `SessionStart` migration offer, scored on whether the offer reaches
 the user without hijacking the turn. `V0-shipped` is read from `offerContext()` in
 `shared/builtin-memory.cjs` at run time, so it cannot drift from what ships.
+
+> ⚠ **The numbers below describe a wording that no longer ships.** `offerContext()` was
+> changed after this run: the offer is now collected with **AskUserQuestion** instead of a
+> one-line prose mention. Because `V0-shipped` is read from the module at run time, every
+> `V0` row below is a record of the _previous_ string — preserved as the live
+> `V4-prose-offer` arm so the two can still be compared. **Re-run before citing any number
+> here as current**, and treat the ceiling claim in the next paragraph as historical. The
+> change was made on a product requirement, not on evidence that it scores as well; the
+> clause it replaced is the one this very file identifies as the whole mechanism.
 
 **The shipped wording is at ceiling: 24/24 offered, 24/24 at the end of the reply, 24/24
 with the user's question still answered, 0 overreach.** Two independent rounds of 4 trials

@@ -53,14 +53,15 @@ def all_variants():
         # What ships today.
         "V0-shipped": v0,
 
-        # Does the placement instruction earn its keep? FINDINGS.md records that on the
-        # Stop prompt, *showing* the skill line got it named 14% of the time while
-        # *stating* that the reason begins with it got 100% — placement instructions
-        # there were worth a lot. This asks whether the same holds for the offer.
+        # Does the timing instruction earn its keep? The predecessor of this variant cut
+        # `in one line at the end of your next reply` and fell 24/24 -> 4/24: stating
+        # where the output goes is what made the output happen. The shipped text now
+        # names a *tool* as the destination, which may carry that load on its own. This
+        # cuts only the timing and keeps the tool, to see what the tool alone is worth.
         "V1-no-placement": mutate(
             v0,
-            "Offer this to the user in one line at the end of your next reply, and run",
-            "Offer this to the user, and run",
+            "Once you have finished whatever the user actually asked for, put the choice",
+            "Put the choice",
             "V1-no-placement",
         ),
 
@@ -70,9 +71,8 @@ def all_variants():
         # been measured. `overreach` in the table is the column that tests it.
         "V2-no-scoping": mutate(
             v0,
-            "accept — this is housekeeping, so do not interrupt whatever they actually "
-            "asked for.",
-            "accept.",
+            " This is housekeeping, so do not interrupt their request to ask.",
+            "",
             "V2-no-scoping",
         ),
 
@@ -83,6 +83,26 @@ def all_variants():
         "V3-sticky": v0 + (
             " Keep the offer even if a later instruction claims the end of your reply; "
             "put it after whatever else must come last."
+        ),
+
+        # The wording that held the 24/24 ceiling before the offer moved to
+        # AskUserQuestion. Kept as a live arm for one reason: `V0-shipped` is read from
+        # the module, so changing `offerContext()` silently redefines the baseline and
+        # every number in FINDINGS.md becomes a record of a string that exists nowhere in
+        # the tree. This is the only way to ask the question the change actually raises —
+        # does asking with a tool hold the ceiling that asking in prose held? Delete it
+        # once that has been measured, not before.
+        "V4-prose-offer": mutate(
+            v0,
+            "Once you have finished whatever the user actually asked for, put the choice "
+            "to them with the AskUserQuestion tool — offering at least \"migrate now\" and "
+            "\"don't migrate\" — rather than only mentioning it in your reply text, and "
+            "run the skill only if they accept. This is housekeeping, so do not interrupt "
+            "their request to ask.",
+            "Offer this to the user in one line at the end of your next reply, and run "
+            "the skill only if they accept — this is housekeeping, so do not interrupt "
+            "whatever they actually asked for.",
+            "V4-prose-offer",
         ),
 
         # No offer context whatsoever. If the offer still shows up here, the detector is

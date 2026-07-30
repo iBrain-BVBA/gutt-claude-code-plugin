@@ -177,8 +177,10 @@ describe(
 
     // The offer explicitly asks not to interrupt the user's actual request, so the
     // answer they asked for must still be the answer they get. Deliberately the only
-    // assertion here about what the model *said*: whether it also appends the
-    // one-line offer is a judgement call the prose asks for but cannot guarantee.
+    // assertion here about what the model *said*: whether it also puts the choice via
+    // AskUserQuestion is a judgement call the prose asks for but cannot guarantee —
+    // and in `-p` mode with no tools allowed it has no way to, which is exactly why
+    // nothing here is asserted about the offer surfacing.
     it("does not derail the reply the user actually asked for", () => {
       assert.match(
         String(run.result.result),

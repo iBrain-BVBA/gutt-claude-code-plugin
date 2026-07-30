@@ -229,6 +229,18 @@ const MIGRATE_SKILL = "gutt-claude-code-plugin:migrate-memory";
  * now", and a session opened to ask one quick question would get a migration run
  * instead of an answer. The offer is housekeeping and can wait for a yes.
  *
+ * **The answer is collected with AskUserQuestion, not prose.** A one-line mention at
+ * the end of a reply was the original design and it does surface, but it leaves the
+ * accept/decline to be inferred from free text — so "yes" to a trailing question can
+ * as easily be read as approval of the actual work, and the recorded decision (which
+ * suppresses the offer forever) then rests on a guess. A tool answer is unambiguous
+ * and is what `record declined` deserves as evidence.
+ *
+ * The cost is real and accepted: an explicit question is more interruptive than a
+ * sentence, and it fires on the first turn of every session with a non-empty store
+ * until answered. That is why "answer what they asked first" stays in the text — the
+ * question goes *after* the reply, never instead of it.
+ *
  * @param {number} count - how many local facts are waiting
  * @returns {string}
  */
@@ -238,10 +250,12 @@ function offerContext(count) {
     `Claude Code has been keeping its own file-based memory store for this project, ` +
     `separate from gutt, and it currently holds ${notes}. Nothing in it is visible to ` +
     `teammates, to your other projects, or to gutt search. The \`${MIGRATE_SKILL}\` ` +
-    `skill moves it into the graph and asks before it writes or deletes anything. Offer ` +
-    `this to the user in one line at the end of your next reply, and run the skill only ` +
-    `if they accept — this is housekeeping, so do not interrupt whatever they actually ` +
-    `asked for. If they decline, the answer is recorded and the offer is not raised again.`
+    `skill moves it into the graph and asks before it writes or deletes anything. ` +
+    `Once you have finished whatever the user actually asked for, put the choice to ` +
+    `them with the AskUserQuestion tool — offering at least "migrate now" and "don't ` +
+    `migrate" — rather than only mentioning it in your reply text, and run the skill ` +
+    `only if they accept. This is housekeeping, so do not interrupt their request to ` +
+    `ask. If they decline, the answer is recorded and the offer is not raised again.`
   );
 }
 
