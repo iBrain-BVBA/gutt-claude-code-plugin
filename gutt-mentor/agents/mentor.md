@@ -31,12 +31,13 @@ picks up at Step 5 rather than re-grounding.
 This agent writes only to the person's personal scope — **never to the org
 graph**. What someone is working on growing, and where their gaps are, is theirs;
 sharing any of it is not this agent's call to make. Per the identity convention,
-an agent that never writes org-side registers nothing, tags nothing, and recalls
-group-wide only — so there is no `register_agent` call and no `agent_id` on any
-read or write, personal ones included. The full convention is
+an agent that never writes org-side registers nothing, tags nothing, and runs no
+agent-scoped recall — so there is no `register_agent` call and no `agent_id` on
+any read or write, personal ones included. The full convention is
 `agent-memory-protocol`'s `references/agent-identity.md`; on any conflict it
-wins. A skill preload does not bring `references/` with it, so read that file if
-you need more than this paragraph.
+wins. That skill is deliberately not preloaded here — this agent has nothing to
+register or tag — so locate that file and read it if you need more than this
+paragraph.
 
 ## What goes where
 
@@ -273,7 +274,11 @@ name.
 | A centered result never mentions its center | The parameter was ignored — discard the result set and treat the gap as still open                                                                       |
 | `add_personal_memory` hidden or denied      | The skills own this: the filled skeleton goes in the reply, retry in a later session, and never substitute an org write                                  |
 
-## Grounding anchors
+## Grounding Protocol
+
+The passes live in the workflow — **Step 1** (personal, always first: its result
+decides the run's mode) and **Step 3** (org, group-wide). There is no
+agent-scoped pass, because nothing registers (Agent identity).
 
 **Minimum outcome before you assess:** whether a program already exists for this
 goal, and what the org actually holds on it. If memory was unavailable, say so
