@@ -460,21 +460,14 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
 }
 
 /**
- * Reading a line-oriented file bigger than this to prune it costs more than the
+ * Reading a breadcrumb log bigger than this to trim it costs more than the
  * SessionStart budget allows (GP-863, R25), so past this size only the tail is
  * read and the rest is dropped unread.
  *
- * Dropped, not deleted. These files are the user's un-drained captures and the
- * plugin's only diagnostic log; unlinking one throws away every entry including
- * the newest, and for `hook-errors.log` it also throws away the note saying it
- * happened. Keeping the tail bounds the work just as well and normally loses
- * only the oldest data.
- *
- * The exception is a file with no line structure at all in its tail — a single
- * multi-megabyte "line". `pruneJsonl` still removes that one, because for a
- * queue of JSON entries an unparseable blob is garbage by the same rule that
- * drops any other unparseable line, and keeping it would mean re-reading it on
- * every SessionStart forever.
+ * Dropped, not deleted. These files are the plugin's only diagnostic record;
+ * unlinking one throws away every line including the newest, and for
+ * `hook-errors.log` it also throws away the note saying it happened. Keeping the
+ * tail bounds the work just as well and normally loses only the oldest data.
  */
 const DISCARD_BYTES = 4 * 1024 * 1024;
 
@@ -612,89 +605,6 @@ function trimLog(absPath, { maxBytes = 256 * 1024, keepLines = 200 } = {}) {
   }
 }
 
-/**
- * Bound a JSONL queue: drop entries older than `maxAgeMs`, entries that don't
- * parse at all, and — after those are gone — everything but the newest
- * `maxLines`.
- *
- * Age comes from each entry's own timestamp, never the file's mtime. The queue is
- * append-only, so its mtime is the age of the *newest* entry and says nothing
- * about the oldest; using it would expire a busy queue wholesale and never expire
- * an idle one. An entry carrying no parseable timestamp is **kept**: expiry is for
- * entries proven old, and a queue entry is somebody's un-drained capture rather
- * than a log line, so the default has to be to keep it.
- *
- * Rewrites only when something was actually dropped, so the steady-state cost on
- * the SessionStart path is one read and no write (R25).
- *
- * @param {string|null} absPath
- * @param {{maxAgeMs?: number, maxLines?: number}} opts
- * @returns {{pruned: boolean, kept: number, expired: number, malformed: number, overflow: number}}
- */
-function pruneJsonl(absPath, { maxAgeMs = Infinity, maxLines = Infinity } = {}) {
-  const untouched = { pruned: false, kept: 0, expired: 0, malformed: 0, overflow: 0 };
-  const size = sizeOf(absPath);
-  if (size <= 0) {
-    return untouched; // missing, unstattable, or empty — nothing to bound
-  }
-  try {
-    let text;
-    let discarded = false;
-    if (size > DISCARD_BYTES) {
-      // Same bound as trimLog, for the same reason: reading a runaway file whole
-      // would blow the SessionStart budget. The tail survives, the rest doesn't.
-      const tail = readTail(absPath, DISCARD_BYTES);
-      text = tail.text;
-      discarded = tail.truncated;
-      debugLog(
-        "plugin-state",
-        `oversized queue (${size}B), keeping the last ${DISCARD_BYTES}B: ${absPath}`
-      );
-    } else {
-      text = fs.readFileSync(absPath, "utf8");
-    }
-
-    const now = Date.now();
-    let expired = 0;
-    let malformed = 0;
-    const live = [];
-    for (const line of text.split("\n")) {
-      if (line.trim() === "") {
-        continue; // blank lines aren't entries, and aren't worth counting as damage
-      }
-      let entry;
-      try {
-        entry = JSON.parse(line);
-      } catch {
-        malformed++;
-        continue;
-      }
-      // Date.parse returns NaN for a missing or unparseable stamp, and every
-      // comparison against NaN is false — so such an entry falls through to
-      // live[] rather than being expired. That is the intended default.
-      const at = Date.parse(entry?.at ?? entry?.timestamp ?? entry?.createdAt ?? "");
-      if (now - at > maxAgeMs) {
-        expired++;
-        continue;
-      }
-      live.push(line);
-    }
-
-    const overflow = Math.max(0, live.length - maxLines);
-    const kept = live.slice(overflow); // newest maxLines survive
-    // `discarded` counts too: the tail read already threw content away, so the
-    // file on disk no longer matches what we parsed and has to be rewritten.
-    if (!discarded && expired === 0 && malformed === 0 && overflow === 0) {
-      return { ...untouched, kept: kept.length };
-    }
-    const out = kept.length > 0 ? `${kept.join("\n")}\n` : "";
-    return { pruned: atomicWrite(absPath, out), kept: kept.length, expired, malformed, overflow };
-  } catch (err) {
-    debugLog("plugin-state", `prune failed for ${absPath}: ${err.message}`);
-    return untouched;
-  }
-}
-
 module.exports = {
   stateRoot,
   statePath,
@@ -709,5 +619,4 @@ module.exports = {
   remove,
   sweep,
   trimLog,
-  pruneJsonl,
 };

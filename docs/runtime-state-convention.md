@@ -27,14 +27,19 @@ All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sessions/<session_id>.json`                       | `session-state.cjs`                                                                      | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                          |
 | `config.json`                                      | `runtime-config.cjs` for everything but `migrationsVersion`, which is `migrations.cjs`'s | Runtime on/off, mode, snooze, the integer `migrationsVersion` recording which one-time cleanups this machine has had, and the per-project `projects` space (GP-922 — see below). **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads. |
-| `capture-queue.jsonl`                              | _(writer/drain — GP-873)_                                                                | Append-only capture queue. GP-863 owns only its TTL: entries >7d, unparseable lines, and overflow past 500 lines are pruned at SessionStart.                                                                                                                                                                           |
 | `hook-errors.log`                                  | `debug.cjs`                                                                              | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                                           |
 | `hook-invocations.log`                             | `user-prompt-submit`                                                                     | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                                                    |
 | `migrations/settings-backup-<ms>.json`             | `migrations.cjs` (GP-895)                                                                | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover.                        |
 | `migrations/builtin-memory-<projectKey>-<ms>.json` | `builtin-memory-store.cjs` (GP-922)                                                      | Every fact in a project's Claude Code memory store, captured verbatim before the store is migrated into gutt, plus the `verified` map that authorises each deletion. **Never swept**, same reasoning as the row above: it is the only remaining copy's undo. One per migration attempt per project.                    |
 
-The three artifacts named by the R37 state contract are the first three rows; the
-rest are caches, logs, and backups that rebuild themselves or are written once.
+The artifacts named by the R37 state contract are the first two rows; the rest are
+caches, logs, and backups that rebuild themselves or are written once.
+
+The contract used to name a third, `capture-queue.jsonl`, for a Stop-time capture
+queue drained at the next SessionStart. It never had a writer, and it never will:
+GP-866 moved the judge inline at Stop, where it fails open rather than deferring
+work, so GP-873 closed as not needed and the file was removed from the sweep, from
+`plugin-state.cjs`, and from this table.
 
 ### Keys in `sessions/<session_id>.json`
 
@@ -187,19 +192,19 @@ settings** — the one sanctioned write is a removal of the plugin's own dead ke
 
 ## The shared lib — `shared/plugin-state.cjs`
 
-| Function                                   | Purpose                                                                                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stateRoot()` / `statePath(...segs)`       | Resolve `${CLAUDE_PLUGIN_DATA}` (or a file under it). `null` when unset.                                                                    |
-| `readJson(path, fallback)`                 | Read + parse; `fallback` on missing/unparseable.                                                                                            |
-| `writeJson(path, data)`                    | **The one atomic-write idiom**: unique temp (`PID+timestamp+counter`) → rename over the target. No non-atomic fallback.                     |
-| `appendLine(path, line)`                   | Append a line to a log.                                                                                                                     |
-| `remove(path)` / `exists(path)`            | Delete / test a state file (null-safe).                                                                                                     |
-| `atomicWrite(path, text)`                  | Same idiom for non-JSON contents (backs `writeJson`).                                                                                       |
-| `withLock(path, fn)`                       | Run `fn` holding an exclusive `open(…,"wx")` lock at `<path>.lock`. Fails open after 250ms; reclaims a lock left by a dead holder after 5s. |
-| `updateJson(path, updater)`                | Read-modify-write under `withLock` — **the only safe way to mutate shared state**. Returns `{state, written}`.                              |
-| `sweep(dir, { maxAgeMs, match })`          | Age-based file cleanup — the sessions sweep.                                                                                                |
-| `pruneJsonl(path, { maxAgeMs, maxLines })` | Drops expired, malformed, and overflow entries from a JSONL queue. Rewrites only when something was dropped.                                |
-| `trimLog(path, { maxBytes, keepLines })`   | Bounds a breadcrumb log: one `stat` when it's small, tail-trim when it isn't.                                                               |
+| Function                                              | Purpose                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stateRoot()` / `statePath(...segs)`                  | Resolve `${CLAUDE_PLUGIN_DATA}` (or a file under it). `null` when unset.                                                                                                                                                                                                             |
+| `readJson(path, fallback)`                            | Read + parse; `fallback` on missing/unparseable.                                                                                                                                                                                                                                     |
+| `readJsonOrUnreadable(path, fallback)` / `UNREADABLE` | Same, but returns the `UNREADABLE` sentinel instead of `fallback` when the file exists and won't parse. **The distinction is load-bearing**: `updateConfig` uses it to refuse to overwrite a config it could not read, rather than silently replacing the user's keys with defaults. |
+| `writeJson(path, data)`                               | **The one atomic-write idiom**: unique temp (`PID+timestamp+counter`) → rename over the target. No non-atomic fallback.                                                                                                                                                              |
+| `appendLine(path, line)`                              | Append a line to a log.                                                                                                                                                                                                                                                              |
+| `remove(path)` / `exists(path)`                       | Delete / test a state file (null-safe).                                                                                                                                                                                                                                              |
+| `atomicWrite(path, text)`                             | Same idiom for non-JSON contents (backs `writeJson` and `trimLog`). Module-private — not exported; listed because it is the idiom, not because it is callable.                                                                                                                       |
+| `withLock(path, fn)`                                  | Run `fn` holding an exclusive `open(…,"wx")` lock at `<path>.lock`. Fails open after 250ms; reclaims a lock left by a dead holder after 5s.                                                                                                                                          |
+| `updateJson(path, updater)`                           | Read-modify-write under `withLock` — **the only safe way to mutate shared state**. Returns `{state, written}`.                                                                                                                                                                       |
+| `sweep(dir, { maxAgeMs, match })`                     | Age-based file cleanup — backs the sessions, debris, and legacy-marker steps.                                                                                                                                                                                                        |
+| `trimLog(path, { maxBytes, keepLines })`              | Bounds a breadcrumb log: one `stat` when it's small, tail-trim when it isn't.                                                                                                                                                                                                        |
 
 ### Why writes are locked, and why rename-first
 
@@ -218,8 +223,8 @@ not exist, and any parallel reader that looks in that window falls back to its
 defaults and writes those back — wiping live state. (Windows cannot always
 rename onto an existing file, so it alone keeps an unlink fallback.)
 
-Past 4MB the TTL helpers stop parsing and keep only the file's tail — reading a
-runaway file whole would blow the SessionStart budget (R25). They do **not**
+Past 4MB `trimLog` stops parsing and keeps only the file's tail — reading a
+runaway file whole would blow the SessionStart budget (R25). It does **not**
 discard the file: erasing a log is how a hook destroys the evidence of whatever
 made it run away.
 
@@ -232,10 +237,10 @@ single place the policy is written down (E8-S8.4 / GP-893 verifies them):
 | Artifact                     | TTL / bound                    |
 | ---------------------------- | ------------------------------ |
 | `sessions/<session_id>.json` | 24h                            |
-| `capture-queue.jsonl`        | 7d, max 500 entries            |
 | `hook-*.log`                 | 256KB, newest 200 lines        |
 | `config.json` snooze         | cleared once past its deadline |
 | `*.lock`, `*.tmp.*`          | 1h                             |
+| `*.lessons-prompted`         | dropped on sight (TTL 0)       |
 
 The 1h debris TTL covers locks and atomic-write temps orphaned by a hook killed
 mid-write. They need their own step because the `.json` match above never sees
@@ -244,17 +249,20 @@ a few hundred milliseconds and no temp outlives its own call. Without it an
 abandoned lock sits there forever: session ids are never reused, so nothing ever
 contends for that lock again to trigger `withLock`'s stale reclamation.
 
-The queue step reclaims nothing today — `capture-queue.jsonl` has no writer until
-GP-873. It is implemented here anyway because the retention policy is R37's and
-SessionStart is the event this contract names, and because a sweep step that only
-appears alongside its first writer is a step nobody notices is missing. `pruneJsonl`
-reads each entry's own timestamp rather than the file's mtime: the queue is
-append-only, so its mtime tracks the newest entry and would never expire the oldest.
-An entry carrying no parseable timestamp is kept, since expiry is for entries proven
-old and a queue entry is somebody's un-drained capture.
+There was one more step, pruning `capture-queue.jsonl` by entry age and count. It was
+implemented ahead of its writer on the reasoning that the retention policy was R37's
+and a sweep step appearing only alongside its first writer is a step nobody notices
+is missing. The writer never arrived — GP-866 put the judge inline at Stop, GP-873
+closed as not needed — so the step, its `QUEUE_TTL_MS` / `QUEUE_MAX_ENTRIES` /
+`QUEUE_FILE` constants, and the `pruneJsonl` helper it was the only caller of are all
+gone. Nothing else in the state contract is line-oriented JSON; should something
+become so, that function is recoverable from `shared/plugin-state.cjs`'s history
+(removed in GP-873) rather than carried unused.
 
-Every step is guarded independently: a corrupt queue file must not stop the
-session sweep, and no step may fail the session.
+Every step is guarded independently: a step that throws is logged and skipped, so it
+can neither fail the session nor stop the remaining steps. The isolation is per step,
+not per file — `logs` trims both breadcrumb logs inside one guard and relies on
+`trimLog` catching its own errors to reach the second.
 
 ### Fail-safe when `${CLAUDE_PLUGIN_DATA}` is unset
 

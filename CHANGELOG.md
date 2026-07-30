@@ -20,8 +20,34 @@
 - **The subagent hooks plugin** (`plugins/gutt-subagent-hooks-plugin/`), which was
   never listed in `marketplace.json` and therefore never shipped. Decision O4
   keeps subagent hooks out of 3.0 (GP-868)
+- **`capture-queue.jsonl` and everything that maintained it.** The R37 state
+  contract named a third artifact — an append-only capture queue written at Stop
+  and drained at the next SessionStart — and its retention was implemented ahead of
+  its writer, on the reasoning that a sweep step appearing only alongside its first
+  writer is a step nobody notices is missing. The writer never arrived: GP-866 moved
+  the judge inline at Stop, where it fails open rather than deferring work, so there
+  was no deferred work to queue and GP-873 closed as not needed. Gone with it: the
+  `queue` sweep step and its `QUEUE_TTL_MS` / `QUEUE_MAX_ENTRIES` / `QUEUE_FILE`
+  constants in `shared/session-sweep.cjs`, the `pruneJsonl` helper in
+  `shared/plugin-state.cjs` (the step was its only caller), the artifact's rows in
+  `docs/runtime-state-convention.md`, and the nine sites in the tests that named the
+  file — four `pruneJsonl` cases, three fixtures, and the queue assertions in the
+  full-sweep test. No user-visible behaviour changes — nothing ever wrote the file,
+  so the sweep step reclaimed nothing on every session it ran. Nothing else in the
+  state contract is line-oriented JSON; `pruneJsonl` is recoverable from
+  `shared/plugin-state.cjs`'s history if that changes (GP-873)
 
 ### Added
+
+- **Coverage for two sweep behaviours that no test asserted.** The `root-debris` and
+  `session-debris` steps could both be deleted outright with the suite staying green;
+  the full-sweep test now asserts each reclaims its orphan and that a lock younger
+  than `DEBRIS_TTL_MS` survives, since reclaiming a live lock is the failure that
+  actually hurts. Separately, `trimLog` is now exercised on a log that is both past
+  `DISCARD_BYTES` and free of newlines — the one combination that reaches `readTail`'s
+  partial-line drop with nothing behind the cut. Removing the `rest.trim()` guard
+  there wipes a 5MB `hook-errors.log` to nothing while still reporting success, and
+  until now no test failed when it did (GP-873)
 
 - **`/gutt off` now silences the capture judge too, and `mode` finally does
   something.** The `Stop` handler moved from a `type: "prompt"` hook to a command
@@ -175,6 +201,13 @@
   Step 6 at length, now an observable-and-response table. An agent body is a system
   prompt with no staged loading, so a restatement competes with the original and
   can drift from it
+- `memory-capture`'s degradation note no longer promises a durable
+  `capture-queue.jsonl` "coming with the background pipeline". No queue is coming:
+  the Stop judge runs inline and fails open, so there is no deferred work to hold,
+  and GP-873 is closed as not needed. What the note described as a stopgap — hold
+  the drafts, retry when a write tool returns, surface them to the user if the
+  session ends first — is the permanent answer, and the surrounding sentences
+  already specify it (GP-873)
 
 ### Deprecated
 
