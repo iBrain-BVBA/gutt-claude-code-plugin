@@ -19,8 +19,13 @@ The ablations exist to answer specific questions rather than to fill a table:
   V3-no-negatives  V0 minus the sentence excluding a verbatim echo and a recap. The story
                    argues that "re-emit the answer" read literally produces exactly those
                    two, so this measures whether saying so is load-bearing or ornamental.
-  V4-terse         the closing rule with the style list dropped. Separates "tell it where
-                   the summary goes" from "tell it how to write".
+  V5-plus-style    V0 *plus* the whole-reply style list. Round 1 shipped that list inside the
+                   markers and measured it at 335 characters for no detectable gain, so it
+                   was moved out and the shipped block is now the shorter form. This variant
+                   is the inversion that keeps the question open: it re-adds the list, so a
+                   later pooled round can still find out whether it earns its place. Dropping
+                   the comparison instead would have made the decision permanent by
+                   forgetting it was made.
 """
 import pathlib
 import re
@@ -67,6 +72,31 @@ def _drop_paragraph(text, needle):
     return "\n\n".join(kept)
 
 
+def style_paragraph():
+    """The whole-reply style list, read from the section it was moved to.
+
+    Pulled out of `SKILL.md` rather than pasted here for the same reason `shipped()` is: it
+    is a live rule that someone will reword, and a copy would drift into measuring a wording
+    that no longer exists anywhere. Raises rather than falling back, because a `V5` that
+    silently equals `V0` would look like evidence that the style list changes nothing.
+    """
+    text = SKILL.read_text(encoding="utf-8")
+    marker = "## Style for the whole reply"
+    if marker not in text:
+        raise SystemExit(
+            f"{SKILL} has no {marker!r} section — the style list has moved or gone, and "
+            "V5-plus-style cannot be built from it."
+        )
+    body = text.split(marker, 1)[1]
+    # First paragraph of that section is the rules; the paragraphs after it explain why they
+    # sit outside the markers, which is commentary and must not be measured as an instruction.
+    for para in re.split(r"\n\s*\n", body):
+        para = " ".join(para.split())
+        if para.startswith("Substance first"):
+            return para
+    raise SystemExit(f"{SKILL}: the style section no longer opens with the rules paragraph")
+
+
 # The rule GP-927 replaced, quoted from the `memory-capture` section it was removed from
 # (commit history has the original). Reproduced as prose the agent receives, not as a
 # citation, because that is how it reached the model when it shipped.
@@ -85,5 +115,5 @@ def all_variants():
         "V1-none": "",
         "V2-summary-only": V2_TEXT,
         "V3-no-negatives": _drop_paragraph(block, "verbatim echo"),
-        "V4-terse": _drop_paragraph(block, "no preamble"),
+        "V5-plus-style": f"{block}\n\n{style_paragraph()}",
     }

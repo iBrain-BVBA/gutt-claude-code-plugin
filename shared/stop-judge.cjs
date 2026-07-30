@@ -237,14 +237,20 @@ function readStyleBlock() {
  * (`hitl`, both constants present) and asserts the slack is real, so growing the block
  * past the budget fails a test instead of silently squeezing the judge's bullets.
  *
- * Measured 2026-07-30, worst case: style block 1213 + `HITL_TAIL` 339 + 2 separators =
- * 1554 of constants, plus the judge's 800 and a truncation ellipsis, for 2355. The value
- * below is that measurement plus room to reword the block — roughly a third of its length —
- * and not a round number chosen first. At 2400 the slack was 45 characters, which would
- * have made every edit to the skill a test failure; the guard is meant to catch a block
- * that has doubled, not one that gained a clause.
+ * Measured 2026-07-30, worst case: style block 878 + `HITL_TAIL` 339 + 2 separators = 1219
+ * of constants, plus the judge's 800 and a truncation ellipsis, for 2018. The value below is
+ * that measurement plus room to reword the block — comfortably more than a third of its
+ * length — and not a round number chosen first.
+ *
+ * It has moved twice, and both moves are the same lesson. At 2400 against a 1213-char block
+ * the slack was 45 characters, so every edit to the skill would have failed a test; the
+ * guard is meant to catch a block that has doubled, not one that gained a clause. Then
+ * `evals/suites/capture_close` measured the whole-reply style list as 335 of those characters
+ * for no gain it could detect, the list moved out of the injected region, and the block fell
+ * to 878 — so the cap came back down with it rather than being left loose at 2800. A cap
+ * that no longer tracks what it bounds is not a cap.
  */
-const MAX_COMPOSED_REASON_CHARS = 2800;
+const MAX_COMPOSED_REASON_CHARS = 2400;
 
 /**
  * Assemble the reason the platform will inject: the judge's verdict, then the constants.

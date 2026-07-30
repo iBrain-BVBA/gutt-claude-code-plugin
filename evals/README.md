@@ -58,14 +58,17 @@ ceiling (24/24), and the eleven words `in one line at the end of your next reply
 whole mechanism — removing them costs 24/24 → 4/24. It defaults to `claude-sonnet-5`, not
 `FAST_MODEL`, because the offer is largely a property of the session model (25% on Haiku).
 
-`suites/capture_close/FINDINGS.md` has round 1 of the closing suite. Headline: the shipped
-block beats both the reason-only baseline (88% against 54%) and the `memory-capture` rule it
-replaced (67%), and the dominant failure in the baselines is not the predicted one — the
-reply drops the capture silently rather than closing on it. Its other lesson is
-methodological and cost a whole round: the first version told the model to run a tool it did
-not have, so no capture appeared in any reply, nothing was buried, and all five variants
-scored the same for reasons unrelated to their wording. Presenting the capture as already
-complete is what made the property measurable.
+`suites/capture_close/FINDINGS.md` has rounds 1–3 of the closing suite. Headline: an injected
+closing rule beats both the reason-only baseline (59% pooled) and the `memory-capture` rule it
+replaced (66%) by 18+ points, in every round — but the two candidate wordings of that rule,
+878 and 1213 chars, cannot be separated at all: three rounds ranked them in both directions,
+and the shorter one has scored 75%, 100% and 62% on identical inputs. Read that spread before
+reaching for this bench to decide a wording. The dominant baseline failure is also not the
+predicted one — the reply drops the capture silently rather than closing on it. Its other
+lesson is methodological and cost a whole round: the first version told the model to run a
+tool it did not have, so no capture appeared in any reply, nothing was buried, and all five
+variants scored the same for reasons unrelated to their wording. Presenting the capture as
+already complete is what made the property measurable.
 
 `suites/prompt_pointer/FINDINGS.md` has round 1 of the pointer suite. Headline: the retired
 2.x "MANDATORY / SYSTEM-LEVEL DIRECTIVE" framing is measurably the failure GP-868 predicted —

@@ -647,6 +647,43 @@ describe("hook architecture guards", () => {
       );
     });
 
+    // The whole-reply style list sits *outside* the markers: `capture_close` measured it at
+    // 335 characters on every fire for no detectable gain, so it is stated for whoever loads
+    // the skill instead of shipped in a payload. That makes it the easiest thing in this
+    // change to lose by accident — nothing at runtime reads it, so deleting it breaks no
+    // test and no hook, and the skill would quietly stop stating the style AC1 asks for.
+    it("keeps the whole-reply style in the skill, outside the injected region", () => {
+      const md = fs.readFileSync(STYLE_MD, "utf8");
+      const outside = md.split(STOP_JUDGE.STYLE_END)[1] || "";
+      // Every pattern is whitespace-tolerant, because Prettier owns line breaks in markdown
+      // and reflows this paragraph freely. An earlier version used literal spaces and failed
+      // the moment "Concrete estimates" landed either side of a wrap — a guard that breaks on
+      // reformatting teaches people to loosen the guard.
+      const required = [
+        [/no\s+preamble/i, "substance first, no preamble"],
+        [/closing\s+pleasantry/i, "no closing pleasantry"],
+        [/restate\s+state/i, "restate state rather than assuming it carried"],
+        [/cap\s+lists\s+at\s+five/i, "capped and ranked lists"],
+        [/concrete\s+estimates/i, "concrete estimates"],
+        [/cause,\s+then\s+fix/i, "matter-of-fact about failures"],
+        [/one\s+next\s+action/i, "one next action"],
+      ];
+      const missing = required.filter(([re]) => !re.test(outside)).map(([, name]) => name);
+      assert.deepEqual(
+        missing,
+        [],
+        `the skill no longer states: ${missing.join("; ")} — these moved out of the injected ` +
+          `region on purpose, they did not stop being the style`
+      );
+      // And they must not have been left inside it as well, which would be the duplication
+      // moving them was meant to avoid paying for.
+      assert.doesNotMatch(
+        STOP_JUDGE.readStyleBlock(),
+        /no preamble/i,
+        "the style list is inside the markers again, so it ships on every fire"
+      );
+    });
+
     it("holds the closing style in exactly one place", () => {
       const capture = fs.readFileSync(CAPTURE_MD, "utf8");
       // The reference has to survive, or the skill that owns the rule is unreachable from

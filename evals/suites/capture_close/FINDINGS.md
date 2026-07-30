@@ -11,13 +11,53 @@ Two rounds, same variants and cases, `claude-haiku-4-5-20251001`, 2 and 4 trials
 **The shipped block beats both the no-instruction baseline and the rule it replaced, and the
 gap is categorical.** Pooled accuracy:
 
-| variant           | chars |  pooled | round 1 (n=8) | round 2 (n=16) |
-| ----------------- | ----: | ------: | ------------: | -------------: |
-| `V0-shipped`      |  1213 | **88%** |           88% |            88% |
-| `V3-no-negatives` |  1054 |     92% |           88% |            94% |
-| `V4-terse`        |   878 |     92% |           75% |           100% |
-| `V2-summary-only` |   312 |     67% |           62% |            69% |
-| `V1-none`         |     0 |     54% |           62% |            50% |
+| variant                   | chars |  pooled | round 1 (n=8) | round 2 (n=16) |
+| ------------------------- | ----: | ------: | ------------: | -------------: |
+| `V4-terse` → **now `V0`** |   878 |     92% |           75% |           100% |
+| `V3-no-negatives`         |  1054 |     92% |           88% |            94% |
+| `V0-shipped` → now `V5`   |  1213 | **88%** |           88% |            88% |
+| `V2-summary-only`         |   312 |     67% |           62% |            69% |
+| `V1-none`                 |     0 |     54% |           62% |            50% |
+
+### Round 3 flipped the ordering — read this before trusting the row above
+
+A third round (2 trials, n=8) ran after the swap, to validate the re-labelled variant set. It
+ranked the two candidate blocks the other way round. Pooled over all three rounds, n=32 per
+wording:
+
+| wording                            | chars | pooled |  r1 |   r2 |   r3 |
+| ---------------------------------- | ----: | -----: | --: | ---: | ---: |
+| block minus the negatives sentence |   719 |    94% | 88% |  94% | 100% |
+| **1213-char block** (now `V5`)     |  1213 |    91% | 88% |  88% | 100% |
+| **878-char block** (now `V0`)      |   878 |    84% | 75% | 100% |  62% |
+| `memory-capture`'s old rule        |   312 |    66% | 62% |  69% |  62% |
+| no instruction at all              |     0 |    59% | 62% |  50% |  75% |
+
+Two things follow, and they point in different directions.
+
+**The premise is robust.** Both candidate blocks beat the no-instruction baseline and the rule
+they replaced, in every round, by 18 points or more pooled. That is the finding GP-927 rests
+on and three rounds have not shaken it.
+
+**The choice between the two blocks is not resolvable on this bench, and the shorter one is
+now behind.** The 878-char form has scored 75%, 100% and 62% on the same wording and cases —
+a 38-point spread, worse than the 11 points `evals/README.md` documents elsewhere. Its pooled
+84% against the longer form's 91% is a 7-point gap in the direction opposite to the round that
+motivated adopting it. Neither number is a measurement of anything; the honest statement is
+that this suite cannot separate these two wordings at any n it has been run at, and that the
+argument for the shorter one is now _only_ that it costs 335 fewer characters per fire — not
+that it performs as well. It is still shipped, because that was a deliberate call and one
+noisy round is not grounds to reverse it either. What would settle it is a round at 8+ trials
+on those two wordings alone; until then, treat the shipped block as chosen on cost.
+
+### Labels
+
+**Labels in the round-1/2 table are the ones those rounds were run under, and two of them have
+since moved.** The 878-char `V4-terse` was adopted as the shipped block, so it is now `V0-shipped`;
+the 1213-char form it replaced is now `V5-plus-style`. `V3-no-negatives`'s 1054 was an
+ablation of the old baseline and will read differently next round. Re-running this suite
+today produces the same wordings under different names — compare wordings and character
+counts, not labels, across that line.
 
 `V1-none` is the capture path before this story: the fired reason alone. `V2-summary-only`
 is the rule that used to live in `memory-capture/SKILL.md` and asked for "a short summary of
@@ -44,13 +84,29 @@ bench cannot see them. Treat those two columns as unmeasured, not as passed.
 scored an 11-point spread across identical rounds elsewhere, and `V4` itself moved 75% → 100%
 between these two rounds on n=8 and n=16. Nothing in a 4-point band means anything here.
 
-The interesting shape of it is worth stating plainly anyway: `V4-terse` is `V0` with the
-style list removed, 335 characters shorter, and it did not score worse. If that survives
-pooled independent runs it is an argument for shortening the injected block, since those
-characters are paid on every fire. It has not survived anything yet — one more round at 4+
-trials, read pooled, is the next step, and until then the shipped block stays as it is.
-Shrinking a prompt on a difference this size is how the repo lost a round to a drifted
-baseline before.
+The interesting shape of it is worth stating plainly anyway: `V4-terse` was `V0` with the
+whole-reply style list removed, 335 characters shorter, and it did not score worse.
+
+**Adopted anyway, on the author's call, and the reasoning is worth being honest about.** The
+eval does not show `V4` is better; it showed it was not detectably worse while being 28%
+shorter, and those characters are paid on every fire. That is a decision under uncertainty
+rather than a measured win: the cost is certain and the benefit was unmeasurable, so the
+shorter form carried the burden of proof and did not fail. **Round 3 then put it behind —
+see below.** The decision stands on cost, not on performance, and the section below says so
+rather than leaving this paragraph as the last word. What the bench _does_ establish is the
+part that matters most here — the closing rule and the two-part demand in paragraphs 1–3
+carry the effect against `V1` and `V2`; the style list was riding along.
+
+The list did not stop being the style. It moved out of the injected region to the
+`## Style for the whole reply` section of the skill, where anyone loading the skill still
+reads it. `tests/hook-architecture.test.cjs` now guards that it is present there and absent
+from the block, because nothing at runtime reads it any more and deleting it would otherwise
+break no test.
+
+The variant set inverted to match: `V5-plus-style` re-adds the list to the new, shorter
+baseline and reconstitutes the old 1213-character block exactly. So the question stays open
+and answerable in a later round instead of being settled by having been forgotten. Both
+halves are read out of `SKILL.md` rather than pasted, so neither can drift from what ships.
 
 **Anything about whether the capture actually ran.** Tools are off; the capture is presented
 to the model as already complete. See the suite docstring — the first version of this suite

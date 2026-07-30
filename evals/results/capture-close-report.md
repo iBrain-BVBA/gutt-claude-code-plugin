@@ -1,18 +1,18 @@
-# capture-close — 4 trial(s) per case
+# capture-close — 2 trial(s) per case
 
 Judge model: `claude-haiku-4-5-20251001`.
 
-4 cases, 5 variants, 80 calls.
+4 cases, 5 variants, 40 calls.
 
 ```
 CLOSING THE TURN AFTER A FIRED CAPTURE
 variant            chars    all  confident    closed  unreported   echoed  apology  preamble  pleasantry    next  errors
 ------------------------------------------------------------------------------------------------------------------------
-V0-shipped          1213   88%        83%    16/16        2/16     0/16     0/16      0/16        0/16    2/16        0
-V1-none                0   50%        58%    13/16        5/16     0/16     0/16      1/16        0/16    0/16        0
-V2-summary-only      312   69%        58%    15/16        3/16     0/16     0/16      1/16        0/16    0/16        0
-V3-no-negatives     1054   94%        92%    16/16        1/16     0/16     0/16      0/16        0/16    2/16        0
-V4-terse             878  100%       100%    16/16        0/16     0/16     0/16      0/16        0/16    0/16        0
+V0-shipped           878   62%        67%     7/8         2/8      0/8      0/8       0/8         0/8     0/8         0
+V1-none                0   75%        83%     8/8         2/8      0/8      0/8       0/8         0/8     0/8         0
+V2-summary-only      312   62%        50%     8/8         3/8      0/8      0/8       0/8         0/8     0/8         0
+V3-no-negatives      719  100%       100%     8/8         0/8      0/8      0/8       0/8         0/8     0/8         0
+V5-plus-style       1213  100%       100%     8/8         0/8      0/8      0/8       0/8         0/8     0/8         0
 
   closed     = the tail of the reply is the work, not the bookkeeping — the
                measurement this suite exists for
@@ -22,10 +22,10 @@ V4-terse             878  100%       100%    16/16        0/16     0/16     0/16
   next       = offered one concrete next action (diagnostic, not scored)
 
 PER CASE — trials correct   (~ = label held less firmly)
-              case         V0-shipped           V1-none   V2-summary-only   V3-no-negatives          V4-terse
+              case         V0-shipped           V1-none   V2-summary-only   V3-no-negatives     V5-plus-style
 -------------------------------------------------------------------------------------------------------------
-        flaky-test                2/4               3/4               2/4               3/4               4/4
-  cache-regression                4/4               1/4               3/4               4/4               4/4
-migration-incident                4/4               3/4               2/4               4/4               4/4
-       advice-turn~               4/4               1/4               4/4               4/4               4/4
+        flaky-test                1/2               2/2               1/2               2/2               2/2
+  cache-regression                1/2               1/2               0/2               2/2               2/2
+migration-incident                2/2               2/2               2/2               2/2               2/2
+       advice-turn~               1/2               1/2               2/2               2/2               2/2
 ```

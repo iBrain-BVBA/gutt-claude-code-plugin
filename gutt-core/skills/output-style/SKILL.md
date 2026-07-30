@@ -18,9 +18,20 @@ That closing summary is not a verbatim echo of text already written above it, an
 
 Work the turn had to do along the way is part of finishing it, not an interruption of it: no "returning to", no "the work this interrupted", no apology for the detour.
 
-Substance first, no preamble and no closing pleasantry. Restate state rather than assuming it carried. Show finished work concretely. Cap lists at five and rank them. Concrete estimates, not vague ones. Matter-of-fact about failures — cause, then fix. Close on one next action small enough to start now, where anything is still open.
-
 <!-- INJECTED:END -->
+
+## Style for the whole reply
+
+Substance first, no preamble and no closing pleasantry. Restate state rather than assuming
+it carried. Show finished work concretely. Cap lists at five and rank them. Concrete
+estimates, not vague ones. Matter-of-fact about failures — cause, then fix. Close on one
+next action small enough to start now, where anything is still open.
+
+These sit outside the markers deliberately, and it is the same one source either way — the
+rules are stated here, not duplicated. `evals/suites/capture_close` measured them as costing
+335 characters on every fire without buying an improvement it could detect, so they are
+stated for whoever loads this skill rather than shipped in a payload. `FINDINGS.md` records
+what that measurement does and does not support.
 
 ## Writing the closing summary
 
