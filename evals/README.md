@@ -34,6 +34,24 @@ unit of comparison here.
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | `stop-judge` | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
 
+Not every prose behaviour is a verdict, and `run.py` can only score verdicts — `run_matrix`
+calls `ask()` without a `system` argument, so every suite call inherits `JUDGE_SYS` ("reply
+with a single JSON object"). Behaviour belonging to the **main agent** has to be probed
+directly with `ask(system=None)`, which is what `leak_probe.py` and the offer probe below
+both do:
+
+```bash
+cd evals
+python3 -m suites.migrate_offer.probe                    # SessionStart migration offer
+python3 -m suites.migrate_offer.probe --case displaced   # offer vs a competing "last line"
+python3 -m suites.migrate_offer.variants                 # diff the wordings, spend nothing
+```
+
+`suites/migrate_offer/FINDINGS.md` has the results. Headline: the shipped wording is at
+ceiling (24/24), and the eleven words `in one line at the end of your next reply` are the
+whole mechanism — removing them costs 24/24 → 4/24. It defaults to `claude-sonnet-5`, not
+`FAST_MODEL`, because the offer is largely a property of the session model (25% on Haiku).
+
 A verdict is not the only thing a judge prompt has to get right, so `leak_probe.py` sits
 beside that suite and asks whether a _fired_ verdict turns into the user's answer — a
 defect worth more than any accuracy gap in the tables below, and one the suite cannot see:

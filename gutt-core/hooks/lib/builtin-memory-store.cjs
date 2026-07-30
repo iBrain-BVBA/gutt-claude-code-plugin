@@ -1,0 +1,1 @@
+../../../shared/builtin-memory-store.cjs

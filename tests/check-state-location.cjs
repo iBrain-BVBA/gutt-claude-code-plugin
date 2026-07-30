@@ -30,6 +30,8 @@ const ALLOW = {
     "low-level error log under ${CLAUDE_PLUGIN_DATA}; can't depend on plugin-state (require cycle)",
   "shared/migrations.cjs":
     "one-shot 2.x cleanup: deletes only provably-dead paths a past version wrote (GP-895)",
+  "shared/builtin-memory-store.cjs":
+    "migrates Claude Code's own memory store: removes only facts verified present in the graph, after backing the store up under ${CLAUDE_PLUGIN_DATA} (GP-922)",
 };
 
 // GP-863 AC3, as CI rather than a one-off grep: state locations that 3.0 retired.

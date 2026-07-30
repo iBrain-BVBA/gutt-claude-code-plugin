@@ -18,18 +18,32 @@ npm run test:e2e
 Requires the `claude` CLI on `PATH` and a logged-in subscription. If `claude` is
 missing the suite skips rather than fails.
 
-**Cost:** five Haiku sessions, a few cents, ~80s wall clock. The discipline is one
-`claude -p` call per set of claims, never one per assertion.
+**Cost:** seven Haiku sessions, a few cents. The discipline is one `claude -p` call per
+set of claims, never one per assertion. Wall clock is not stated for the suite as a whole
+because it has not been measured since the GP-922 suites landed; the
+`migrate-memory-skill` run alone was 55–90s across five observed runs.
 
-Two suites:
+Four suites:
 
-| Suite                       | Runs | Covers                                                            |
-| --------------------------- | ---- | ----------------------------------------------------------------- |
-| `session-lifecycle.e2e.cjs` | 1    | startup lifecycle, state contract, AC3, first-prompt pointer, R36 |
-| `hook-routing.e2e.cjs`      | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence    |
+| Suite                              | Runs | Covers                                                                         |
+| ---------------------------------- | ---- | ------------------------------------------------------------------------------ |
+| `session-lifecycle.e2e.cjs`        | 1    | startup lifecycle, state contract, AC3, first-prompt pointer, R36              |
+| `hook-routing.e2e.cjs`             | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence                 |
+| `builtin-memory-migration.e2e.cjs` | 1    | GP-922 the migration **offer** reaches a conversation, and changes nothing     |
+| `migrate-memory-skill.e2e.cjs`     | 1    | GP-922 the **skill**: body delivery, its CLI running for real, the safety gate |
 
-See `docs/e2e-hook-test-plan.md` for what each run asserts and why, and for the two
-Stop-router defects this tier found.
+The two GP-922 suites split along what each can prove. The offer suite covers detection
+and injection; the skill suite covers the flow that runs after the user accepts. Neither
+completes a migration, because a completed one writes episodes to the real graph that no
+test can retract, and its verify step races asynchronous extraction — so the write,
+prune and note mechanics live in the mutation-checked unit tier instead. The skill suite
+allowlists only `Bash` and `Read`, which is what holds that boundary: with no MCP write
+tool in the session there is nothing for the flow to reach the graph with. (`Bash` is
+allowed, so this is an argument about the absent tools, not a sandbox.)
+
+See `docs/e2e-hook-test-plan.md` for what the first two suites assert and why, and for the
+two Stop-router defects this tier found. It does not yet cover the two GP-922 suites; what
+each of those asserts is documented in its own file header instead.
 
 **Not part of `npm test`.** These files are named `*.e2e.cjs`, not `*.test.cjs`,
 so the `node --test tests/**/*.test.cjs` glob does not pick them up. Keep it that

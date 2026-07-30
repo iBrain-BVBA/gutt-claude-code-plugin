@@ -39,6 +39,44 @@ transcripts and scored against hand-labelled verdicts: `python3 evals/run.py --l
 Python 3 stdlib, no dependencies. Outside `gutt-core/`, referenced by no hook, and
 deliberately out of `npm run test:all` — the calls cost money and take minutes.
 
+## Platform Reference Docs — read before designing against the platform
+
+The Claude Code plugin and hook platform changes under us, and the changes are silent: a
+field we were told does not exist starts working, an event appears, a constraint lifts.
+Designing from memory is how we end up ruling out an option that has since opened up.
+
+Two snapshots of the upstream docs live in `docs/`, each carrying its **source URL, the
+date it was read, and per-section confidence**:
+
+| File                                 | Covers                                                                            |
+| ------------------------------------ | --------------------------------------------------------------------------------- |
+| `docs/hook-platform-capabilities.md` | hook events, which accept `additionalContext`, Stop/SessionStart output contracts |
+| `docs/plugin-platform-reference.md`  | `plugin.json` schema, `userConfig`, env vars, caching, symlinks, component paths  |
+
+**Consult these before** choosing a hook event, adding a manifest field, reasoning about
+`${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}`, or concluding the platform cannot do
+something. They are more current than this file and than anything in the graph.
+
+**They are snapshots, not the source of truth.** Two rules:
+
+1. **Check the `Read:` date.** More than ~4 weeks old, or the answer decides a design →
+   re-read the upstream URL, don't trust the snapshot.
+2. **Never "correct" our own docs from a snapshot alone.** Where upstream and our docs
+   disagree, both files record the conflict as unresolved and name the run that would
+   settle it. A doc read is evidence; only a real run against a real install is proof.
+   `docs/plugin-platform-reference.md` §3 is a live example — it contradicts the local-dev
+   symlink claim below, and neither sentence has been verified.
+
+### Refreshing them
+
+Periodically — and always before a story that turns on platform behaviour — re-read both
+source URLs, then update the snapshot: bump `Read:`, revise what changed, and **keep the
+Follow-ups sections**, appending rather than replacing. A refresh that finds nothing new
+still earns a new `Read:` date; that is the useful signal. Anything a refresh falsifies in
+the graph needs a correction episode via `memory-capture` (through
+`conflict-adjudication` first if it contradicts a stored memory) — the graph does not
+expire on its own, and a stale Insight there outlives the doc that made it wrong.
+
 ## Shared Hook Libraries
 
 Hook libraries have a single source in `shared/*.cjs`. Each plugin's `hooks/lib/<name>.cjs` is a **symlink** into `shared/` (`../../../shared/` from `gutt-core` and `auto-lint-plugin`). Edit the file in `shared/` once — every plugin sees it. No manual copying, no propagation table.
@@ -47,6 +85,8 @@ Hook libraries have a single source in `shared/*.cjs`. Each plugin's `hooks/lib/
 - **Install-time:** Claude Code dereferences intra-marketplace symlinks when copying a plugin to its cache, so installed plugins get real files and stay self-contained. ([docs](https://code.claude.com/docs/en/plugins-reference#share-files-within-a-marketplace-with-symlinks))
 - **Plugin-local libs** with no `shared/` counterpart stay as real files — allowed by the guard.
 - **Local dev:** `--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks. Running from the repo works (the link resolves in place); to exercise a real install, install from the git marketplace source.
+  - **Directory-source: confirmed 2026-07-29 by observation.** A `"source": "directory"` marketplace entry loads in place with no copy step, and `hooks/lib/*.cjs` symlinks into `shared/` resolve at runtime — proven by a hook that requires one of them running correctly while the recorded cache directory was empty. Consequence: with that setup **the working tree is what executes**, so an uncommitted edit runs and no reinstall is needed.
+  - ⚠ **`--plugin-dir` specifically is still unverified.** The docs say "only symlinks that resolve within the plugin's own directory are preserved; all others are skipped", which would break every `hooks/lib/*.cjs` link. That statement is made about the _copy_ into the cache, so it plausibly never applies to an in-place load — but that is inference, and `--plugin-dir` is a different flag from a directory source. See `docs/plugin-platform-reference.md` §3. `check:shared` guards the links' shape, not whether the platform honours them.
 - **Windows:** symlinks need `git config core.symlinks true` (or Developer Mode); without it the links check out as plain text files.
 
 When adding a new shared lib: put the real file in `shared/`, then symlink it into each consuming plugin's `hooks/lib/`.

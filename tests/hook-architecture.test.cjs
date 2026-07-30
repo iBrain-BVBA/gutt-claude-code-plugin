@@ -199,11 +199,20 @@ describe("hook architecture guards", () => {
     // "not `memory-search`" is documentation, not a pointer, and scanning it flagged
     // correct code. hooks.json is scanned whole: its Stop prompt is prose the model
     // actually receives.
+    // `shared/` is scanned alongside the hooks because GP-922 moved pointer prose
+    // there for the first time: the SessionStart migration offer is policy, so the
+    // thin-router cap above pushed it out of the hook and into
+    // `shared/builtin-memory.cjs`. Scanning only the hook directory would have left
+    // that pointer unguarded — precisely the quiet failure this test exists to catch.
     const hookDir = path.join(ROOT, "gutt-core", "hooks");
-    const sources = fs
-      .readdirSync(hookDir)
-      .filter((f) => f.endsWith(".cjs"))
-      .map((f) => stripComments(fs.readFileSync(path.join(hookDir, f), "utf8")))
+    const sharedDir = path.join(ROOT, "shared");
+    const cjsIn = (dir) =>
+      fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".cjs"))
+        .map((f) => stripComments(fs.readFileSync(path.join(dir, f), "utf8")));
+    const sources = cjsIn(hookDir)
+      .concat(cjsIn(sharedDir))
       .concat(fs.readFileSync(path.join(hookDir, "hooks.json"), "utf8"));
 
     // Three shapes, because one is not enough. This guard was briefly decorative:
@@ -269,6 +278,41 @@ describe("hook architecture guards", () => {
       bare,
       [],
       `these skill references are missing the "${pluginName}:" namespace: ${bare.map((r) => r.slice(1)).join(", ")}`
+    );
+  });
+
+  // Migration is a bulk *caller* of the memory skills, not a second implementation of
+  // them. It writes a whole store in batches and then deletes the local copy, so any
+  // dedup or conflict rule it fails to honour is multiplied by every fact in the store
+  // and the original is gone. GP-922's flow shipped naming only `memory-capture` and
+  // `memory-search`: a local note that *contradicted* the graph would have been
+  // written as the newest word on its subject, in bulk, rather than going to the
+  // `conflict-adjudication` skill GP-861 exists to provide. Nothing at runtime notices
+  // a missing delegation — the migration just quietly does its own thing.
+  //
+  // The three are asserted as identifiers rather than sentences: dropping a delegation
+  // fails the first assertion, renaming a skill directory fails the second, and
+  // rewording the prose around them fails neither.
+  it("migrate-memory delegates to the memory skills instead of reimplementing them", () => {
+    const skillsDir = path.join(ROOT, "gutt-core", "skills");
+    const body = fs.readFileSync(path.join(skillsDir, "migrate-memory", "SKILL.md"), "utf8");
+    const required = ["memory-capture", "memory-search", "conflict-adjudication"];
+
+    const missing = required.filter((stem) => !body.includes(`\`${stem}\``));
+    assert.deepEqual(
+      missing,
+      [],
+      `migrate-memory names no delegation to: ${missing.join(", ")} — a store is the ` +
+        `largest batch of writes this plugin makes, and these skills are what bound it`
+    );
+
+    const dangling = required.filter(
+      (stem) => !fs.existsSync(path.join(skillsDir, stem, "SKILL.md"))
+    );
+    assert.deepEqual(
+      dangling,
+      [],
+      `migrate-memory delegates to skills that do not exist: ${dangling.join(", ")}`
     );
   });
 
