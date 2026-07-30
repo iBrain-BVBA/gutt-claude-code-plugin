@@ -47,19 +47,6 @@ function marketplacePluginDirs() {
 }
 
 /**
- * Lines that are neither blank nor comment. Total line count is the wrong
- * metric for this codebase — the house style is comment-heavy on purpose, and a
- * cap on it would push explanation out of the files that most need it.
- *
- * Naive about `//` and block delimiters inside string literals. That can only
- * ever *under*count, so the cap stays conservative; a hook that trips it is
- * over the limit either way.
- */
-function codeLines(file) {
-  return stripComments(fs.readFileSync(file, "utf8")).split("\n").filter(Boolean).length;
-}
-
-/**
  * Drop comment and blank lines, keeping the code. Line-oriented and naive about
  * `//` inside string literals, which can only ever keep *more* than it should —
  * safe for both callers here (a conservative line cap, and a scan that would
@@ -139,22 +126,14 @@ describe("hook architecture guards", () => {
     );
   });
 
-  // The whole point of the rebuild: procedure lives in skills, hooks only route.
-  // 60 is set just above session-start.cjs, the largest surviving router — tight
-  // enough that behavior creeping back into a hook trips it.
-  it("keeps every gutt-core hook a thin router (≤60 code lines)", () => {
-    const dir = path.join(ROOT, "gutt-core", "hooks");
-    const oversized = fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith(".cjs"))
-      .map((f) => ({ file: f, lines: codeLines(path.join(dir, f)) }))
-      .filter((h) => h.lines > 60);
-    assert.deepEqual(
-      oversized,
-      [],
-      `behavior belongs in a skill, not a hook: ${JSON.stringify(oversized)}`
-    );
-  });
+  // A ≤60 code-line cap on every gutt-core hook used to live here, and it was the
+  // only thing keeping procedure out of the hooks — it is what pushed GP-922's
+  // pointer prose into shared/builtin-memory.cjs. It was removed deliberately in
+  // GP-866 rather than worked around: the router needed a config-command row and
+  // was at 58 of 60. Nothing enforces the shape now, so it is reviewer judgement.
+  // The guards that remain still catch the failures the cap never did — a pointer
+  // at a skill that does not exist, a prompt hook on UserPromptSubmit, a handler
+  // path that is not on disk.
 
   // Every skill in every marketplace plugin, not just gutt-core's. A skill is
   // loaded through its frontmatter, so a missing or malformed block — or a `name`
