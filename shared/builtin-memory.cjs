@@ -32,7 +32,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { isMigrationSettled, isSnoozed } = require("./runtime-config.cjs");
+const { isMigrationSettled, isSuppressed } = require("./runtime-config.cjs");
 
 /**
  * The store's index file. Claude Code keeps one-line pointers here and one `.md`
@@ -272,9 +272,12 @@ function offerContext(count) {
  * @returns {string|null}
  */
 function migrationOffer(payload = {}, sessionId = null) {
-  // A snoozed plugin says nothing at all — the same contract the UserPromptSubmit
-  // router honours on its row 1. (`enabled` is GP-866's to enforce across the surface.)
-  if (isSnoozed(sessionId)) {
+  // A suppressed plugin says nothing at all — the same gate the UserPromptSubmit
+  // router honours on its row 1. GP-866 widened this from snooze-only to include a
+  // durable `/gutt off`, which is the whole point of that switch: a user who turned
+  // the plugin off should not be met by an unprompted migration offer at the next
+  // session start.
+  if (isSuppressed(sessionId)) {
     return null;
   }
   if (isMigrationSettled(projectKey(payload))) {

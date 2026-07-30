@@ -658,11 +658,63 @@ function runClaudeStream(options) {
 // ---------------------------------------------------------------------------
 // Reading the CLI's own account of what it did, out of the debug log.
 //
-// These parse debug output rather than inferring behaviour from side effects,
-// because for a `type: "prompt"` hook there *are* no side effects: the verdict
-// never touches disk and a hook that was never evaluated is indistinguishable
-// from one that returned ok:true.
+// These parse debug output rather than inferring behaviour from side effects.
+// That was the only option while the Stop handler was a `type: "prompt"` hook:
+// the verdict never touched disk, so a hook that was never evaluated could not be
+// told apart from one that returned ok:true.
+//
+// GP-866 made the Stop handler a command hook, which inverted that. It has side
+// effects — it writes a deterministic outcome line per turn — and it emits none of
+// the prompt-hook debug lines the three Stop observers below match on. Those
+// observers therefore return `[]` and `0` for every run now, which is why the
+// assertions built on them were passing vacuously rather than failing loudly.
+// Anything about Stop must use `stopOutcomes()` instead; the observers below are
+// kept only for events that still dispatch a prompt hook, of which there are
+// currently none.
 // ---------------------------------------------------------------------------
+
+/**
+ * Every Stop outcome the hook recorded, in order, read from its own log.
+ *
+ * The command hook writes one `Stop: …` line per turn — `skipped, already active`,
+ * `suppressed`, `deferred, N agent task(s) …`, or a judge outcome followed by
+ * `(mode=…)`. That is a stronger signal than the debug log ever gave us: it survives
+ * the CLI changing its logging, and it distinguishes a judge that passed from one
+ * that could not answer.
+ *
+ * @param {string|null} dataDir the run's ${CLAUDE_PLUGIN_DATA}
+ * @returns {Array<{outcome: string, line: string}>}
+ */
+function stopOutcomes(dataDir) {
+  if (!dataDir) {
+    return [];
+  }
+  let text = "";
+  try {
+    text = fs.readFileSync(path.join(dataDir, "hook-invocations.log"), "utf8");
+  } catch {
+    return []; // no log is a real answer: the hook never ran
+  }
+  return [...text.matchAll(/^.*?\bStop: (.+)$/gm)].map((match) => ({
+    outcome: match[1].split(/ \(mode=| — /)[0].trim(),
+    line: match[0],
+  }));
+}
+
+/**
+ * How many times the judge was actually convened for a run — i.e. how many turns got
+ * past every pre-judge row. Only the judge-outcome line carries `(mode=…)`, so this
+ * counts model calls rather than Stop dispatches.
+ *
+ * This is the livelock bound's replacement. The P1 it guards re-fired 16 times on one
+ * turn.
+ *
+ * @param {string|null} dataDir
+ * @returns {number}
+ */
+function stopJudgements(dataDir) {
+  return stopOutcomes(dataDir).filter((entry) => /\(mode=/.test(entry.line)).length;
+}
 
 /**
  * Every prompt-hook verdict the CLI logged, in order.
@@ -898,6 +950,8 @@ module.exports = {
   runClaudeStream,
   sessionStartEvents,
   stopHookActiveStates,
+  stopJudgements,
+  stopOutcomes,
   stopVerdicts,
   subscriptionSafeEnv,
   toolResultText,

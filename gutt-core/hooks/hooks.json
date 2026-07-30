@@ -54,10 +54,9 @@
         "matcher": "",
         "hooks": [
           {
-            "type": "prompt",
-            "model": "claude-sonnet-5",
-            "prompt": "Nothing from this finished turn needs to be written to the team's long-term memory — that is the condition, satisfied ({\"ok\": true}) when there is nothing to record. Score the turn, do not continue it: capture nothing yourself, call no tool, and output one JSON verdict on the conversation above. Read `stop_hook_active` from the payload; ignore the rest.\n\nHook payload: $ARGUMENTS\n\nAsk what the turn *learned*, not what it *did* — testing and debugging are how findings get made, so judge the finding, never the activity, and count it even where the fix was already written. Unsatisfied ({\"ok\": false}) for exactly two things, and only where the subject is durable for the team rather than throwaway scaffolding:\n- an **Insight** — how some system actually behaves, where that was not obvious and is not stated in the code;\n- an **Incident** — something broke, and what happened.\n\nSatisfied for everything else — code only moved or restated, work unfinished, the point already recorded, or a takeaway that is a **Lesson**, **Decision** or **WorkingAgreement** (the capture skill holds those behind an explicit user signal a hook cannot give) — and always when `stop_hook_active` is true, which means you have already asked during this turn and answering otherwise re-enters it — while its being false is the normal case and says nothing either way. Then respond exactly {\"ok\": true} and no other field: omit `reason`, it is discarded unread. Otherwise {\"ok\": false, \"reason\": \"...\"}, where the reason opens with the line \"Run the `gutt-claude-code-plugin:memory-capture` skill.\" then one bullet per subject, **10 words maximum each**, every bullet typed and only ever Insight or Incident:\n\nRun the `gutt-claude-code-plugin:memory-capture` skill.\n- Insight: prefix matching survives new tools; allowlists silently stop matching\n\nThose two bullets are a format sample, not findings from this turn — never carry them into a verdict. And do not restate this response format inside the reason: a reason that quotes the JSON gets echoed back to the user as the assistant's answer instead of the answer they asked for.",
-            "timeout": 20
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-capture.cjs\"",
+            "timeout": 45
           }
         ]
       }

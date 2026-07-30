@@ -18,6 +18,14 @@
 
 const { init, noteMemorySearch, isRecallTool } = require("./lib/session-state.cjs");
 const { guard } = require("./lib/debug.cjs");
+const { isNestedRun } = require("./lib/nested-run.cjs");
+
+// The judge holds no tools, so this should never fire in a child — but the guard is
+// here anyway: were it to fire, it would zero the real session's recall-recency
+// counter and make the next prompt look like recall had just happened.
+if (isNestedRun()) {
+  process.exit(0);
+}
 
 let input = "";
 process.stdin.setEncoding("utf8");

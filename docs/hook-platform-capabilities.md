@@ -1,14 +1,18 @@
 # Hook platform capabilities (upstream)
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
-**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Method:** `WebFetch` passes plus one
-live CLI run for §5 (see [Provenance](#provenance))
+**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Measured:** 2026-07-30 (§5 argv, §6, §7) ·
+**Reported:** 2026-07-30 (§8, by the maintainer — not yet re-read from source) ·
+**Method:** `WebFetch` passes plus live CLI runs for §5–§7 (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
 docs, tests and recorded memory assume, and one of our recorded findings is now false.
 
-This is a snapshot of what the platform offers, not a design. Nothing here has been
-implemented; the [Implications](#implications-for-this-plugin) section marks what is
-merely _now possible_ versus what we already rely on.
+Mostly a snapshot of what the platform offers rather than a design, but no longer
+uniformly so: **§1–§4 describe capabilities we have not built on, while §5–§8 drove
+GP-866 and are relied on in shipped code.** The
+[Implications](#implications-for-this-plugin) section marks which is which. Note the three
+provenance tiers, weakest last — **Measured** (a real run) outranks **Read** (a doc fetch),
+which outranks **Reported** (told to us, unverified).
 
 ## 1. `additionalContext` is no longer a two-event field
 
@@ -73,12 +77,18 @@ Verbatim:
 > a system reminder at the end of the turn. The conversation continues normally — Claude
 > can respond to your feedback or let the turn complete."
 
-**This is a channel we do not have today, and the distinction is subtle.** Our Stop
-handler is a `prompt` hook, not a command hook. The GP-862 spike established that a
-native prompt hook's only output is `{ok, reason}` and that any context it emits is
-stripped — that finding is about **prompt** hooks and is not contradicted by the table
-above, which describes **command** hooks. Whether a command Stop hook can give us a
-non-blocking context channel is therefore an open question, not a settled capability.
+**This is a channel we do not have today, and the distinction is subtle.** The GP-862
+spike established that a native prompt hook's only output is `{ok, reason}` and that any
+context it emits is stripped — that finding is about **prompt** hooks and is not
+contradicted by the table above, which describes **command** hooks. Whether a command Stop
+hook can give us a non-blocking context channel is therefore an open question, not a
+settled capability.
+
+Since GP-866 our Stop handler _is_ a command hook (§7), so the table above now describes
+our own handler and the question is directly testable rather than hypothetical — but it is
+still untested, and `gutt-core/hooks/stop-capture.cjs` deliberately uses `decision:
+"block"` to reproduce the prompt hook's routing exactly. Swapping the channel is a separate
+change, so that a regression in it cannot be confused with a regression in the conversion.
 
 Why it matters: every current Stop fire is a `ok:false` that re-enters the turn. A
 non-blocking channel would let a suggestion reach the model _without_ re-entering, which
@@ -135,10 +145,158 @@ gave up:
 model (sonnet). It may not exist or you may not have access to it.
 ```
 
-That text reaches `--debug-file` only. So a typo in this field disables the Stop
-judge outright while every unit test stays green — `tests/test-all-hooks.cjs` skips
-the Stop entry (`type: prompt`), and the e2e verdict assertions only bite in a run
-that got as far as producing a verdict. Worth a guard if we keep pinning a model.
+That text reaches `--debug-file` only. So a typo in this field disabled the Stop judge
+outright while every unit test stayed green.
+
+**Both halves of that blind spot are now closed** (2026-07-30, same change as §8). The Stop
+entry is a command hook, so `tests/test-all-hooks.cjs` no longer skips it — it reports
+`Skipped (non-command): 0` — and the e2e tier reads the hook's own outcome log rather than
+verdicts a dead judge never emits, so a broken judge now fails a test instead of being
+invisible. `tests/hook-architecture.test.cjs` also asserts the judge is passed an explicit
+model, with no "not applicable" escape hatch.
+
+### The hazard is confined to the manifest field — argv resolves aliases
+
+**Measured 2026-07-30.** `claude -p --model sonnet` and `claude -p --model claude-sonnet-5`
+both returned a clean reply, exit 0. So the 404 above is a property of the prompt hook's
+`model` **field**, which is handed to the API unmodified — not of naming a model by alias.
+On a command line the CLI resolves the alias before the API sees it.
+
+This matters more than a footnote because of what it did to the guard. GP-866 moved the
+Stop handler to a command hook (§6, §7), which put the model in argv and **retired** this
+failure mode rather than relocating it. The old guard was written as:
+
+```js
+if (stop.model === undefined) {
+  return; // unpinned is valid — the platform picks a fast default
+}
+```
+
+A command hook has no `model` field, so that early return would have made the guard pass
+while asserting nothing — the guard would have survived the change and the property it
+stood for would not. It is now replaced by one asserting the judge is passed a model at
+all, with no escape hatch (`tests/hook-architecture.test.cjs`). Note the shape rather than
+the specifics: a guard with a "not applicable" branch silently becomes vacuous exactly
+when the thing it guards is restructured, which is when you need it most.
+
+## 6. The prompt `prompt` field takes one substitution, not shell expansion
+
+**Measured 2026-07-30** against `claude` 2.1.220, prompted by the question "could the
+judge read `config.json` if the field ran a script, the way a slash command body does?"
+
+A throwaway plugin registered one Stop prompt hook whose field was
+``!`cat <file>`\n\nHook payload: $ARGUMENTS``, with the entire judging instruction — and a
+token appearing nowhere else — inside that file. The instruction was deliberately kept out
+of `hooks.json` so that an instruction obeyed from literal text could not read as success.
+
+Result: **the backtick call is not expanded.** It survived verbatim into the prompt the
+judge received (visible on the `Hooks: Processing prompt hook with prompt: …` lines), the
+token never appeared, and `cat` never ran. The judge instead read the literal text as the
+condition it was asked to evaluate, answering `ok:false` with "the transcript contains no
+evidence of executing `cat …`". Its fed-back reason then drove the main model to keep
+_trying_ to run the command until the sandbox blocked it: **four evaluations in one turn,
+16 turns, $0.13** — an incidental live reproduction of the re-fire failure mode in §3.
+
+By contrast `$ARGUMENTS` **was** substituted: zero literal occurrences survived, and the
+payload's `stop_hook_active` is present in the sent prompt. So the field goes through
+exactly one narrow substitution and no shell. There is no route from a prompt hook to
+anything on disk.
+
+Consequence: a `type: "prompt"` hook cannot read plugin config, so it can be neither gated
+on `enabled`/snooze nor varied in wording by `mode`. And `$ARGUMENTS` is no way in either —
+the payload is constructed by the platform, with no plugin-facing field to add to it.
+
+## 7. A command Stop hook cannot gate a prompt sibling
+
+**Measured 2026-07-30**, same method. This is the sibling half of Follow-up 2. Our own
+notes say siblings "run in parallel with no channel between them"
+(`docs/runtime-state-convention.md:162`, `gutt-core/hooks/session-start.cjs:65`) — but that
+sentence is about two hooks racing to write state, and says nothing about whether one
+hook's output can suppress another's _dispatch_. Untested, and load-bearing.
+
+One plugin, two Stop handlers — a command hook and a prompt hook — run twice, differing
+only in what the command hook returned:
+
+| Command hook returns     | Gate ran | Prompt-hook evaluations |
+| ------------------------ | -------- | ----------------------- |
+| exit 0, no output        | yes      | 1                       |
+| `{"continue": false, …}` | yes      | 1                       |
+
+**No suppression.** The prompt judge is evaluated regardless. `continue: false` is not
+inert — it suppressed the turn's final answer, which came back empty — but it does not stop
+the sibling. So the two hooks are independent in dispatch, not merely in state.
+
+**Taken with §6 this closes the design space** for gating Stop on config: the handler cannot
+stay a prompt hook (§6) and cannot be gated by a sibling (§7), so it must _become_ a command
+hook. Recorded on GP-866, whose new ACs turn on exactly this.
+
+> **Correction, 2026-07-30.** This section previously closed "and the dedicated
+> `claude-sonnet-5` judge is removed rather than gated — a command hook cannot invoke a
+> model." **That was wrong**, and it was inference rather than measurement: a command hook
+> can invoke a model by shelling out to `claude -p`, which is what
+> `shared/stop-judge.cjs` now does. The conversion therefore kept the model judge instead
+> of dropping it, and R11 is intact.
+>
+> Worth noting how the error was made, since the shape recurs. Two things were measured
+> here — a prompt hook cannot read config, a sibling cannot gate a sibling — and a third
+> was appended in the same breath without being tested. It read as equally established
+> because it sat in the same paragraph as two real results. The measured claims stand; only
+> the unmeasured rider was false.
+
+Still open from Follow-up 2: whether a command Stop hook's `additionalContext` reaches the
+model **non-blocking**. Not tested here — these runs only counted dispatches, and the
+converted handler deliberately uses `decision: "block"` so the channel question stays
+separable from the conversion.
+
+## 8. The Stop payload says whether background work is still in flight
+
+**Reported 2026-07-30 by the maintainer, not yet re-read from upstream** — see Follow-up 5.
+This is the weakest provenance tier in this file and the fields are load-bearing in
+`gutt-core/hooks/stop-capture.cjs`, so treat the shape as unconfirmed even though the
+behaviour it drives is unit-tested against it.
+
+Stop's stdin carries two arrays, from Claude Code **2.1.145** onward, that let a hook tell
+"the session is done" apart from "the session is paused, waiting for background work to
+wake it back up". Both are **present whenever the task registry is reachable** and **empty
+when nothing is in flight or scheduled** — so an absent array means an older CLI or an
+unreachable registry, and is not the same statement as an empty one.
+
+`background_tasks`, one entry per in-flight task:
+
+| Field             | Notes                                                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | Task identifier                                                                                                                                                 |
+| `type`            | Friendly label — `shell`, `subagent`, `monitor`, `workflow`, `teammate`, `cloud session`, `MCP task`. Falls back to the raw discriminant for unrecognized types |
+| `status`          | Current task status                                                                                                                                             |
+| `description`     | Free text, capped at 1000 chars with a `… [+N chars]` marker when clipped                                                                                       |
+| `command`         | `shell` tasks only                                                                                                                                              |
+| `agent_type`      | `subagent` tasks only                                                                                                                                           |
+| `server` / `tool` | `monitor` and `MCP task` only                                                                                                                                   |
+| `name`            | `workflow` tasks only                                                                                                                                           |
+
+`session_crons`, one entry per session-scoped scheduled wakeup (`CronCreate`,
+`ScheduleWakeup`, `/loop`): `id`, `schedule`, `recurring`, `prompt`.
+
+### What we do with it, and the two traps
+
+`stop-judge.pendingAgentTasks()` filters `background_tasks` to an **allowlist** of
+agent-shaped types and the Stop router defers when it is non-empty. Three decisions worth
+recording, because each is a failure mode avoided rather than a preference:
+
+1. **Allowlist, not denylist.** `type` falls back to the raw discriminant for types this
+   CLI version does not name, so a denylist would defer the judge on anything new —
+   potentially for the life of the session, with nothing saying so. An unrecognised agent
+   type instead judges early and may score partial work, which is recoverable.
+2. **Never gate on `session_crons`.** A `recurring: true` entry never drains, so gating on
+   it would silence capture for the rest of the session. Even a one-shot `ScheduleWakeup`
+   can be an hour out. The array is useful for a HUD or a log line, not for a gate.
+3. **Absent must judge, not defer.** Reading an absent array as "nothing pending" is
+   correct; reading it as "wait" would disable capture on every pre-2.1.145 install.
+
+Why it matters beyond tidiness: each background agent completion re-invokes the main loop
+and produces another Stop, so before this the judge ran once per completion on a fan-out
+turn — every one of them scoring a summary whose findings had not arrived. Deferring
+collapses that to one judgement per turn.
 
 ## Implications for this plugin
 
@@ -156,9 +314,13 @@ that got as far as producing a verdict. Worth a guard if we keep pinning a model
 
 **Now in use:**
 
-- The Stop judge pins `"model": "claude-sonnet-5"` (§5) rather than taking the platform
-  default fast model. Judge quality is the whole value of that hook, and the default was
-  never chosen — it was inherited.
+- The Stop judge pins its model as `--model claude-sonnet-5` in the child's argv (§5)
+  rather than taking the platform default fast model. Judge quality is the whole value of
+  that hook, and the default was never chosen — it was inherited. Note the spelling: this
+  is no longer a manifest `model` field, and §5 is about why that distinction retired a
+  failure mode rather than moving it.
+- The Stop router defers while `background_tasks` names an in-flight agent (§8), so a
+  fan-out turn is judged once, after the last agent drains, instead of once per completion.
 
 **Stale as a result:**
 
@@ -174,11 +336,21 @@ None of these are done; recorded so they are not lost.
    `memory-capture` rule 1 the pair goes through `conflict-adjudication` first.
 2. Answer §3: can a **command** Stop hook return non-blocking `additionalContext` under
    our hook set? This is testable in the e2e tier and would need a real run, not a doc read.
+   **Partly answered 2026-07-30 — see §7.** The sibling-dispatch half is settled: a command
+   hook cannot suppress a prompt sibling. The `additionalContext` half is still open, and it
+   is now the one that matters, because §6 + §7 force the Stop handler to a command hook and
+   the non-blocking channel is what would keep it from re-entering the turn.
 3. Decide whether `CwdChanged` should re-evaluate the GP-922 migration offer.
-4. Guard the pinned `model` value in §5. A typo silently disables the Stop judge and no
-   tier catches it: the unit tier skips prompt hooks, the e2e tier asserts on verdicts
-   that a dead judge never emits. The cheap version is a structural assertion that the
-   value matches a known-id shape; the honest version asserts a verdict was produced.
+4. ~~Guard the pinned `model` value in §5.~~ **Done 2026-07-30.**
+   `tests/hook-architecture.test.cjs` asserts `--model` is in the judge's argv and that
+   `JUDGE_MODEL` matches a known-id shape, with no early return; the smoke tier now
+   executes the Stop hook, and the e2e tier asserts on recorded outcomes rather than on
+   verdicts a dead judge never emits.
+5. Confirm §8's `background_tasks` / `session_crons` fields against the upstream doc. They
+   were supplied by the maintainer and are relied on by `stop-capture.cjs`, but this file
+   has not re-read the source since, so they are **Reported**, not **Read** or
+   **Measured** — the weakest tier in this file, and the one thing in §8 a reviewer should
+   not yet trust.
 
 ## Provenance
 
@@ -199,4 +371,11 @@ builds on this:
   confidence in the file. The two passes disagreed on whether `model` is a config field at
   all (one pass found only the SessionStart _input_ field of the same name); the live run
   settled it — it is both.
+- **§6 and §7 are not doc reads at all** — both were measured against `claude` 2.1.220 on
+  2026-07-30 with throwaway single-hook plugins loaded via `--plugin-dir`, reading
+  `--debug-file`. Each was designed so the negative result could not be faked: §6 keeps the
+  judging instruction out of `hooks.json` entirely, so text obeyed from the literal field
+  could not pass as expansion; §7 has the command hook touch a marker file, so "0 prompt
+  evaluations" could be distinguished from "neither hook ran". Highest confidence in the
+  file, alongside §5.
 - **§ "Implications" and "Follow-ups" are our inference**, not upstream text.

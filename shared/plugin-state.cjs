@@ -103,6 +103,42 @@ function readJson(absPath, fallback = null) {
   }
 }
 
+/**
+ * Sentinel for "the file is present but could not be read or parsed".
+ *
+ * `readJson` collapses absent and unreadable into one fallback. That is right for a
+ * reader that only wants a value, and wrong for a read-modify-write: a mutator that
+ * cannot tell them apart treats a corrupt file as a fresh one, writes a replacement
+ * built from the keys it owns, and silently drops every key it does not — including
+ * another module's records.
+ */
+const UNREADABLE = Symbol("unreadable");
+
+/**
+ * Read JSON, distinguishing absent from unreadable.
+ *
+ * One read rather than `existsSync` then `readFileSync`, so there is no window in
+ * which the file appears then vanishes: ENOENT *is* the absent answer.
+ *
+ * @param {string|null} absPath
+ * @returns {*} the parsed value, `null` when there is no such file, or `UNREADABLE`
+ *   when the file exists but could not be read or parsed
+ */
+function readJsonOrUnreadable(absPath) {
+  if (!absPath) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(absPath, "utf8"));
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return null;
+    }
+    debugLog("plugin-state", `unreadable ${absPath}: ${err.message}`);
+    return UNREADABLE;
+  }
+}
+
 // Monotonic per-process counter so temp names are unique even for two writes in
 // the same millisecond. Writes are synchronous, so same-process calls already
 // serialize and distinct PIDs disambiguate across processes — this is belt-and-
@@ -664,6 +700,8 @@ module.exports = {
   statePath,
   exists,
   readJson,
+  readJsonOrUnreadable,
+  UNREADABLE,
   writeJson,
   updateJson,
   withLock,

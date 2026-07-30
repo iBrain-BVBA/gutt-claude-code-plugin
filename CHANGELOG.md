@@ -23,6 +23,52 @@
 
 ### Added
 
+- **`/gutt off` now silences the capture judge too, and `mode` finally does
+  something.** The `Stop` handler moved from a `type: "prompt"` hook to a command
+  hook (`hooks/stop-capture.cjs`) that shells out to `claude -p` for the verdict.
+  A prompt hook's `prompt` field takes one substitution and no shell expansion, so
+  it could not read `config.json` — it dispatched on every turn regardless of your
+  settings, which is why `/gutt off` used to stop recall while the judge kept
+  asking for captures. Off or snoozed now returns before any child is spawned, and
+  `mode: hitl` appends an instruction to confirm each subject with you through
+  `AskUserQuestion` before anything is written. `mode: auto` is unchanged, and the
+  judge's wording is byte-identical to what it replaces, so the only difference on
+  the default path is where the model runs.
+
+- **The `/gutt` settings command** — `/gutt config`, `/gutt on`,
+  `/gutt off [minutes|session]`, `/gutt mode auto|hitl`. The direct power-user ask
+  (R24): a timed snooze that expires on its own, plus a durable off that survives
+  restarts. Parsed and applied deterministically by the `UserPromptSubmit` hook,
+  which then reports the outcome as injected context — no model reads the arguments,
+  so a mistyped minute count cannot become a long silence. Writes go only to
+  `${CLAUDE_PLUGIN_DATA}/config.json`, through the existing locked
+  atomic-temp+rename path. `/gutt-claude-code-plugin:gutt …` and `/gutt:…` are
+  accepted spellings; the ticket's `/gutt:off` would have required renaming the
+  plugin, which moves `${CLAUDE_PLUGIN_DATA}` and orphans existing state (GP-866)
+  - `enabled` and `mode` now have readers as well as writers. They shipped in the
+    documented `config.json` shape in GP-863 and were used by nothing, so a
+    hand-written `{"enabled": false}` silently did nothing. The router's suppression
+    row reads both halves through one `isSuppressed()` call, so honouring `enabled`
+    costs no extra file read on a 50ms path.
+  - Out-of-range minute counts are rejected rather than clamped, and an out-of-scope
+    `/gutt off session` with no session id is refused rather than writing a snooze no
+    session could ever clear.
+  - The HUD's gutt segment shows ` off` or ` zzz` while suppressed.
+  - The judge **defers while background agents are still in flight**, reading
+    `background_tasks` off the Stop payload (Claude Code ≥ 2.1.145) and waiting only
+    on agent-shaped types — `subagent`, `workflow`, `teammate`, `cloud session`. A
+    background shell command or MCP monitor does not defer it, and an absent array
+    judges rather than defers, so an older CLI behaves as before. `session_crons` is
+    deliberately ignored: a recurring wakeup never drains, so gating on it would
+    silence capture for the rest of the session. One judge run per fan-out turn
+    instead of one per agent completion.
+  - The judge reports **why** it stayed quiet. A pass, a missing transcript, a
+    timeout, `claude` off the hook's PATH, a non-zero exit and an unparseable verdict
+    used to log the single word `quiet`, so a judge broken since an expired token was
+    indistinguishable from a quiet month; the failures now also reach
+    `hook-errors.log` with the child's `stderr`.
+  - A reason that quotes the verdict format is dropped rather than fed back, and an
+    over-long one is truncated — GP-921 route 1 in code rather than in prose alone.
 - `onboarding-guide` agent moved from gutt-core into `gutt-mentor` and rebased
   onto dual scope. Reads the org graph for team, architecture, decisions, lessons
   and experts, then builds the joiner's plan through the S7.1 skills and resumes

@@ -95,14 +95,44 @@ longer edits that file for you — see
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                       | Event            | Purpose                                                                            |
-| -------------------------- | ---------------- | ---------------------------------------------------------------------------------- |
-| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                 |
-| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                           |
-| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                |
-| `user-prompt-submit.cjs`   | UserPromptSubmit | Points at `memory-search` on a new session or after a compaction                   |
-| _(prompt hook)_            | Stop             | Fast-model judge: suggests memory-capture when the turn produced something durable |
-| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                  |
+| Hook                       | Event            | Purpose                                                                                                         |
+| -------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                              |
+| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                                                        |
+| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                             |
+| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt` config commands; points at `memory-search` on a new session or after a compaction               |
+| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours `/gutt off` and `mode`, defers while background agents run |
+| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                                               |
+
+### Settings — the `/gutt` command
+
+Type these at any time; the change is applied by the UserPromptSubmit hook before the
+model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
+
+| Command                 | Effect                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `/gutt config`          | Show the stored settings and the state they add up to                                      |
+| `/gutt off`             | Turn memory recall off until `/gutt on` — survives restarts                                |
+| `/gutt off 30`          | Snooze recall for 30 minutes (1–10080), then it resumes on its own                         |
+| `/gutt off session`     | Snooze recall for the rest of this session                                                 |
+| `/gutt on`              | Clear any off or snooze                                                                    |
+| `/gutt mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
+
+`/gutt-claude-code-plugin:gutt <subcommand>` and `/gutt:<subcommand>` are accepted too.
+The HUD shows ` off` or ` zzz` in the gutt segment while recall is suppressed, since a
+durable off is otherwise invisible.
+
+Two things worth knowing. An out-of-range minute count is **rejected, not clamped** —
+`/gutt off 300000` changes nothing rather than silencing recall for seven months. And off
+or snooze silences **both** halves: no recall pointer is injected, and the end-of-turn
+capture judge is not run at all (no subprocess is spawned). Capture mode is the other
+axis — it governs only how a capture is confirmed once the judge has fired.
+
+The judge also **defers while background agents are still working**. A turn that ends with
+subagents in flight is not finished, so judging it would score a partial summary; the Stop
+that runs once the last agent drains judges the whole thing instead. Background shell
+commands and MCP monitors do not defer it — they cannot add a finding, and some run for the
+whole session.
 
 ### Skills
 
