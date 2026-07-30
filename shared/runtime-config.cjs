@@ -40,7 +40,15 @@
  */
 "use strict";
 
-const { statePath, readJson, writeJson, withLock } = require("./plugin-state.cjs");
+const {
+  statePath,
+  readJson,
+  readJsonOrUnreadable,
+  UNREADABLE,
+  writeJson,
+  withLock,
+} = require("./plugin-state.cjs");
+const { debugLog } = require("./debug.cjs");
 
 /**
  * The documented shape of `config.json`. Every key here has both a reader and a
@@ -134,6 +142,24 @@ function readRawConfig() {
 }
 
 /**
+ * `readRawConfig` with "no file yet" and "file is unreadable" told apart.
+ *
+ * `/gutt config` needs the distinction and nothing else does: its whole job is to
+ * explain the stored state, so rendering built-in defaults for a file that failed to
+ * parse reports values it never read — under a header that says it read them. Every
+ * other caller wants a value and is right to take the defaults.
+ *
+ * @returns {{state: "absent"|"ok"|"unreadable", raw: Object|null}}
+ */
+function readRawConfigState() {
+  const value = readJsonOrUnreadable(configPath());
+  if (value === UNREADABLE) {
+    return { state: "unreadable", raw: null };
+  }
+  return value ? { state: "ok", raw: value } : { state: "absent", raw: null };
+}
+
+/**
  * Does a snooze apply, given a config already read? Split out of `isSnoozed` so
  * `isSuppressed` can answer both halves of the question from **one** read — this
  * is on the UserPromptSubmit path with a 50ms budget (R25), and two `readConfig()`
@@ -214,7 +240,18 @@ function updateConfig(mutate) {
     withLock(file, () => {
       // Re-read inside the lock: the pre-check that got us here ran unlocked and
       // may already be stale.
-      const next = mutate(readJson(file, null));
+      const stored = readJsonOrUnreadable(file);
+      // A corrupt or unreadable file must not be treated as a fresh one. Every
+      // mutator below collapses a null to `{}` and returns it, so proceeding here
+      // would write a config built from the one key the caller owns and silently
+      // drop the rest — `projects` (a per-project migration answer), `mode`, and
+      // `migrationsVersion` among them. Refusing turns a silent data loss into a
+      // failed write the command surface already knows how to report.
+      if (stored === UNREADABLE) {
+        debugLog("runtime-config", `refusing to overwrite unreadable ${file}`);
+        return false;
+      }
+      const next = mutate(stored);
       return next ? writeJson(file, next) : false;
     }) || false
   );
@@ -466,6 +503,7 @@ module.exports = {
   configPath,
   readConfig,
   readRawConfig,
+  readRawConfigState,
   isSnoozed,
   isSuppressed,
   setSnooze,
