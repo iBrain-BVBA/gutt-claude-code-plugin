@@ -240,6 +240,13 @@ a correction has its summary rewritten in place rather than kept beside the new
 one. What survives is the dated episode history behind it. Say so whenever you
 recommend `supersede`, so nobody expects a tombstone that won't be there.
 
+Because that history is all that survives, it is worth making the correction
+part of it explicitly: the approved write should name the superseded side's
+episodes as its `previous_episodes` (`memory-capture` rule 7). It is the nearest
+thing to a link between the two that the graph will hold — a correction episode
+that names what it corrects, rather than a fresh claim that happens to arrive
+later. That is why the handback carries episode ids and not only node ids.
+
 ## What to hand back
 
 One verdict, and the evidence behind it. The consumer renders this for a human,
@@ -251,10 +258,12 @@ so the evidence has to stand on its own:
 - **pair** — both memories by readable node id, with a one-line statement of
   what each claims; a not-yet-written side is cited as `candidate (unwritten)`
   in place of an id, with the same one-line claim
-- **for `supersede`** — which one is superseded and which replaces it. Where the
-  losing memory bundles several claims and only one is contested, say so: name
-  the claim that falls, and state that the rest stand unadjudicated so nobody
-  retires the whole memory over one line of it
+- **for `supersede`** — which one is superseded and which replaces it, plus the
+  superseded side's **episode** ids, so the approved correction can chain to them
+  without re-running your search. Where the losing memory bundles several claims
+  and only one is contested, say so: name the claim that falls, and state that
+  the rest stand unadjudicated so nobody retires the whole memory over one line
+  of it
 - **for `coexist`** — why there is no collision: a conflict that never existed,
   or one already settled elsewhere; and where the narrower side is a local
   variation, that it was judged a deliberate exception rather than a correction

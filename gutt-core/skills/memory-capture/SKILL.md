@@ -14,12 +14,13 @@ _whether you may write it without asking_.
 
 ## Hard rules (non-negotiable — read first)
 
-1. **Search before you write.** Run `memory-search` rung 1 first. If the point
-   already exists, don't duplicate it — write a new episode with **only what
-   changed**. Dedup ≠ update: a near-match is a reason to write _less_, never to
-   rewrite the old entry. But a near-match that _contradicts_ what you were
-   about to write is not a dedup — take that pair to `conflict-adjudication`
-   before writing.
+1. **Search before you write — and keep the ids of what you found.** Run
+   `memory-search` rung 1 first. If the point already exists, don't duplicate it
+   — write a new episode with **only what changed**, and name the near-matches
+   as `previous_episodes` on that write (rule 7). Dedup ≠ update: a near-match
+   is a reason to write _less_, never to rewrite the old entry. But a near-match
+   that _contradicts_ what you were about to write is not a dedup — take that
+   pair to `conflict-adjudication` before writing.
 2. **Trust-tier gate.** Auto-write only **Insight** and **Incident**.
    **Lesson**, **Decision**, and **WorkingAgreement** need an **explicit human
    signal** — the user asked for it or confirmed it. No signal (you inferred it
@@ -29,7 +30,9 @@ _whether you may write it without asking_.
    `last_n_episodes=0` on every org/group write; the server default of `3` is
    wrong for plugin writes — it pulls unrelated recent episodes into entity/edge
    extraction. Non-zero is meaningful **only** in personal scope, for
-   intentionally chaining check-ins.
+   intentionally chaining check-ins. This bans the _blind_ recent-N window, not
+   provenance: naming specific related episodes is rule 7, and the two do not
+   conflict.
 4. **Discover the write tool — don't assume its name.** Depending on the
    deployment you'll see per-group `add_memory_to_<group>` tools (pick the one
    for your target group; there is **no `group_id` argument**), or a generic
@@ -44,6 +47,21 @@ _whether you may write it without asking_.
 6. **A write is queued, not confirmed.** A success response means the episode was
    _enqueued_; extraction can still fail silently server-side. Don't treat
    success as proof it landed — verify (see Batching).
+7. **Name what the episode builds on — `previous_episodes`.** When rule 1's
+   dedup surfaced related episodes and you have their **episode** ids, pass them
+   as `previous_episodes` on the write. A delta episode whose antecedents are
+   nowhere in its input reads to extraction as a standalone claim. Three things
+   to get right, all covered in `references/tools.md`:
+   - **Episode ids, not node ids.** `search_memory_nodes` returns none; take them
+     from `search_memory_facts` results, in each fact's `episodes` array.
+   - **Only ids a search returned.** Resolution happens before the write, so one
+     bad or ambiguous id fails the **whole write** — don't hand-build them.
+   - **Nothing to link → omit it.** An unrelated episode in the list is worse
+     than an empty one, and most captures have no antecedent at all.
+
+   Supplying it makes `last_n_episodes` a no-op; keep passing `0` anyway per
+   rule 3. Prose in the body is not a substitute — extraction reads this field,
+   not your cross-references.
 
 ## When to write — and when not to
 
@@ -63,13 +81,17 @@ fight the tier gate: a Decision you inferred without the user saying so is a
 2. **Classify + gate.** Pick the type (below) and apply rule 2. Gated type with
    no human signal → draft for review and stop here.
 3. **Dedup.** `memory-search` rung 1 on the key terms. Already there? Write only
-   the delta as a new episode, or skip.
+   the delta as a new episode, or skip. Before you move on, collect the episode
+   ids of the near-matches you're writing against — from the `episodes` array of
+   the facts the pass returned. This is the only step where they are in front of
+   you, and step 5 needs them.
 4. **Structure.** `name` with a typed prefix — one of the five tier types
    (`Insight:` / `Incident:` / `Lesson:` / `Decision:` / `WorkingAgreement:`);
    `episode_body` as Context → Insight → Outcome → Guidance, ≤15,000 chars;
    `source="json"` for structured runs, `"text"` for narrative; tz-aware ISO
    `reference_time` only when backdating.
-5. **Write.** Choose the tool per rule 4; pass `last_n_episodes=0`. Omit
+5. **Write.** Choose the tool per rule 4; pass `last_n_episodes=0`, and
+   `previous_episodes` with step 3's ids when there are any (rule 7). Omit
    `group_id` unless you're on the generic tool and must target a specific group.
 6. **Verify.** After the batch, confirm with a search (see Batching).
 
