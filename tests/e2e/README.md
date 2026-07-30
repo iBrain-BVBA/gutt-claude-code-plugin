@@ -21,12 +21,22 @@ missing the suite skips rather than fails.
 **Cost:** five Haiku sessions, a few cents, ~80s wall clock. The discipline is one
 `claude -p` call per set of claims, never one per assertion.
 
-Two suites:
+Four suites:
 
-| Suite                       | Runs | Covers                                                            |
-| --------------------------- | ---- | ----------------------------------------------------------------- |
-| `session-lifecycle.e2e.cjs` | 1    | startup lifecycle, state contract, AC3, first-prompt pointer, R36 |
-| `hook-routing.e2e.cjs`      | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence    |
+| Suite                              | Runs | Covers                                                                         |
+| ---------------------------------- | ---- | ------------------------------------------------------------------------------ |
+| `session-lifecycle.e2e.cjs`        | 1    | startup lifecycle, state contract, AC3, first-prompt pointer, R36              |
+| `hook-routing.e2e.cjs`             | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence                 |
+| `builtin-memory-migration.e2e.cjs` | 1    | GP-922 the migration **offer** reaches a conversation, and changes nothing     |
+| `migrate-memory-skill.e2e.cjs`     | 1    | GP-922 the **skill**: body delivery, its CLI running for real, the safety gate |
+
+The two GP-922 suites split along what each can prove. The offer suite covers detection
+and injection; the skill suite covers the flow that runs after the user accepts. Neither
+completes a migration, because a completed one writes episodes to the real graph that no
+test can retract, and its verify step races asynchronous extraction — so the write,
+prune and note mechanics live in the mutation-checked unit tier instead. The skill suite
+allowlists only `Bash` and `Read`, which is what makes that boundary structural: with no
+MCP write tool in the session it _cannot_ reach the graph.
 
 See `docs/e2e-hook-test-plan.md` for what each run asserts and why, and for the two
 Stop-router defects this tier found.

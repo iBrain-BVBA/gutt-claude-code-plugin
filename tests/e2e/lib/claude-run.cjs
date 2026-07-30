@@ -821,6 +821,54 @@ function hookAttachments(transcript) {
     .filter((attachment) => String(attachment.type || "").startsWith("hook_"));
 }
 
+/**
+ * Every tool call the model made, optionally filtered to one tool.
+ *
+ * This is how a test sees what the model *did* rather than what it said. For a skill
+ * the distinction is the whole point: the reply is prose the model composed, while a
+ * tool call is evidence the skill's instructions were actually acted on.
+ *
+ * @param {Object[]} transcript
+ * @param {string} [name] - tool name, e.g. "Bash"
+ * @returns {Object[]} the tool_use blocks
+ */
+function toolUses(transcript, name = null) {
+  return transcript
+    .filter((row) => row.message && Array.isArray(row.message.content))
+    .flatMap((row) => row.message.content)
+    .filter((block) => block && block.type === "tool_use")
+    .filter((block) => !name || block.name === name);
+}
+
+/**
+ * Everything the tools handed back, as one string.
+ *
+ * Needed to assert that a documented command *worked*, not merely that it was run —
+ * a wrong path or an unexpanded `${CLAUDE_PLUGIN_DATA}` still produces a tool_use.
+ * The content is a string on some rows and an array of parts on others, so both are
+ * flattened here rather than at each call site.
+ *
+ * @param {Object[]} transcript
+ * @returns {string}
+ */
+function toolResultText(transcript) {
+  return transcript
+    .filter((row) => row.message && Array.isArray(row.message.content))
+    .flatMap((row) => row.message.content)
+    .filter((block) => block && block.type === "tool_result")
+    .flatMap((block) => {
+      const content = block.content;
+      if (typeof content === "string") {
+        return [content];
+      }
+      if (Array.isArray(content)) {
+        return content.map((part) => (part && typeof part.text === "string" ? part.text : ""));
+      }
+      return [];
+    })
+    .join("\n");
+}
+
 module.exports = {
   BILLABLE_ENV_KEYS,
   DEFAULT_DISALLOWED_TOOLS,
@@ -852,5 +900,7 @@ module.exports = {
   stopHookActiveStates,
   stopVerdicts,
   subscriptionSafeEnv,
+  toolResultText,
+  toolUses,
   withPlantedConfig,
 };
