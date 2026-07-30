@@ -50,13 +50,28 @@ const BACKUP_PREFIX = "builtin-memory-";
  * future writes into the graph instead.
  *
  * It goes at the top of the index rather than replacing it, so a migration that left
- * facts behind still installs the redirect — that partial case is precisely where the
- * store is both unredirected and, the decision being terminal, never re-offered.
+ * facts behind still installs the redirect while keeping the pointers to what has not
+ * moved yet.
  *
- * Detection never reads this text (`listFacts` excludes the index by name), so
- * rewording it cannot break the gate.
+ * Which case is unrecoverable is the opposite of what an earlier version of this comment
+ * claimed, and the distinction decides where the note matters most. A **partial**
+ * migration leaves the decision unset, so `migrationOffer` speaks again and a later
+ * session can finish the job. A **complete** one records `migrated`, which is terminal,
+ * and empties the store — so both gates fall silent and nothing ever reaches this code
+ * again. A note that fails to land on a complete run is therefore never installed by
+ * anyone. That is why `deleteVerified` reports whether the write succeeded and why step
+ * 10 of the skill refuses to record `migrated` without it.
+ *
+ * Detection never reads this text (`listFacts` excludes the index by name), so rewording
+ * it cannot break the gate. Rewording it cannot break `stripNote` either, because that
+ * matches the sentinels rather than the prose — but only since the sentinels exist; the
+ * byte-exact match this replaced would have stacked a second note on the first reword.
  */
+const NOTE_START = "<!-- gutt:memory-migrated -->";
+const NOTE_END = "<!-- /gutt:memory-migrated -->";
+
 const MARKER_NOTE = [
+  NOTE_START,
   "# Project memory",
   "",
   "gutt is the store of record for this project's memory. Write new memories to the",
@@ -67,6 +82,7 @@ const MARKER_NOTE = [
   "migrated contents have been removed; anything still listed below has not been",
   "migrated yet, and anything recorded here in the meantime should be moved across",
   "and removed once MCP is back.",
+  NOTE_END,
   "",
 ].join("\n");
 
@@ -171,34 +187,76 @@ function backupStore(payload, now = Date.now()) {
  * backup are accepted: a name the backup never held is one whose content was never
  * saved, and recording it would authorise deleting a file with no undo.
  *
+ * Two ways this used to lie, both of which authorised or misreported deletions:
+ *
+ *   - **It reported success from inside the updater.** `result.recorded` was pushed to
+ *     while computing the new state, and `updateJson`'s `{written}` flag was dropped — so
+ *     a backup the lock could read but not write back (disk full, permissions, data dir
+ *     pulled mid-run) still returned every name as recorded. `delete` then said "nothing
+ *     verified", and the only explanation that offers a caller is "the episodes never
+ *     landed" — inviting a second write of the whole store.
+ *   - **It destroyed the backup when it could not parse it.** Returning `current` was
+ *     meant as "leave the file alone", but `updateJson` has no such contract: it writes
+ *     whatever the updater returns, and `readJson`'s fallback for a parse *or* read error
+ *     is `null`, so `JSON.stringify(null)` replaced the user's only undo with four bytes.
+ *     A half-written backup from a killed run still holds every fact's text; that text is
+ *     what was being overwritten.
+ *
+ * So: validate before entering the updater, and treat an unwritten file as nothing
+ * recorded. Erring toward `rejected` is always safe — a name not recorded is a file not
+ * deleted.
+ *
  * @param {string|null} key
  * @param {Object<string,string>} confirmations
- * @returns {{recorded: string[], rejected: string[]}}
+ * @returns {{recorded: string[], rejected: string[], reason?: string}}
  */
 function recordVerified(key, confirmations = {}) {
   const file = latestBackup(key);
-  const result = { recorded: [], rejected: [] };
+  const names = Object.keys(confirmations);
   if (!file) {
-    result.rejected = Object.keys(confirmations);
-    return result;
+    return {
+      recorded: [],
+      rejected: names,
+      reason: "no backup on disk — nothing may be authorised for deletion without one",
+    };
   }
-  updateJson(file, (current) => {
-    if (!current) {
-      return current;
+
+  const backup = readJson(file, null);
+  if (!backup || typeof backup !== "object") {
+    return {
+      recorded: [],
+      rejected: names,
+      reason: `the backup at ${file} is missing or unreadable, so nothing can be authorised for deletion. It has been left untouched; check it before retrying.`,
+    };
+  }
+
+  const result = { recorded: [], rejected: [] };
+  const verified = backup.verified && typeof backup.verified === "object" ? backup.verified : {};
+  for (const [name, episodeId] of Object.entries(confirmations)) {
+    if (Object.prototype.hasOwnProperty.call(backup.files || {}, name) && episodeId) {
+      verified[name] = String(episodeId);
+      result.recorded.push(name);
+    } else {
+      result.rejected.push(name);
     }
-    const verified =
-      current.verified && typeof current.verified === "object" ? current.verified : {};
-    for (const [name, episodeId] of Object.entries(confirmations)) {
-      if (Object.prototype.hasOwnProperty.call(current.files || {}, name) && episodeId) {
-        verified[name] = String(episodeId);
-        result.recorded.push(name);
-      } else {
-        result.rejected.push(name);
-      }
-    }
-    current.verified = verified;
-    return current;
+  }
+
+  const { written } = updateJson(file, (current) => {
+    // Re-read under the lock so a concurrent writer is not clobbered, but fall back to
+    // the copy validated above rather than to null — returning null here is the bug this
+    // function's docstring describes.
+    const base = current && typeof current === "object" ? current : backup;
+    base.verified = { ...(base.verified || {}), ...verified };
+    return base;
   });
+
+  if (!written) {
+    return {
+      recorded: [],
+      rejected: names,
+      reason: `could not persist confirmations to ${file}, so nothing is authorised for deletion. The episodes themselves may well have landed in the graph — re-run verification rather than re-writing them.`,
+    };
+  }
   return result;
 }
 
@@ -225,23 +283,67 @@ function isDeletableFact(dir, name) {
 }
 
 /**
- * Rewrite `MEMORY.md` as the standing note followed by only those pointers that still
- * resolve to a fact on disk.
+ * Strip a previously-written standing note out of an index.
  *
- * This used to be one all-or-nothing step gated on the store having emptied, which left
- * a partial migration with an index full of pointers to files it had just deleted. That
- * is not cosmetic: Claude Code loads the index into context every session, so each dead
- * pointer re-injects a one-line description of a note nobody can open, indefinitely.
+ * Matched between its sentinels, not by its bytes. The predecessor compared an exact
+ * `MARKER_NOTE` prefix, which failed in two reachable ways — and in both, the unmatched
+ * old note carries no pointer, so the keep rule in `rewriteIndex` preserved it as user
+ * content and prepended a second note above it, reporting success:
  *
- * Installing the note unconditionally is safe for the reason the old gate doubted. The
- * concern was that an early note would be "the sole survivor of a half-finished
- * migration and would read as a completed one" — true of a full-file overwrite, but not
- * of a note placed above the surviving pointers, where the store still visibly lists
- * facts that have not moved. Detection is untouched either way: `listFacts` excludes the
- * index by name, so the note can never make a non-empty store look empty.
+ *   - **CRLF.** The index is read with `split(/\r?\n/)` precisely because stores can be
+ *     CRLF, but the prefix test ran on the raw text ahead of that split, so a CRLF index
+ *     never matched. Windows plus a second partial run is enough. Hence the normalisation
+ *     here rather than at the split.
+ *   - **Rewording.** Editing one word of `MARKER_NOTE` between plugin versions orphaned
+ *     every note already on disk. The docstring up there actively invited that edit.
  *
- * Survivors are decided by what is on disk, not by what this run deleted, so pointers
- * already orphaned by an earlier partial run are repaired rather than preserved.
+ * Only the region between the sentinels is removed, so anything a user added below the
+ * note survives. No released version wrote the sentinel-free form, so there is no
+ * migration path to keep for it.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function stripNote(text) {
+  const normalised = text.replace(/\r\n/g, "\n");
+  const start = normalised.indexOf(NOTE_START);
+  if (start === -1) {
+    return normalised;
+  }
+  const end = normalised.indexOf(NOTE_END, start);
+  if (end === -1) {
+    return normalised;
+  }
+  return normalised.slice(0, start) + normalised.slice(end + NOTE_END.length);
+}
+
+/**
+ * Rewrite `MEMORY.md` with the standing note on top, dropping the pointers whose target
+ * files are gone and preserving everything else.
+ *
+ * The rewrite used to be gated on the store having emptied, which left a partial
+ * migration with an index full of pointers to files it had just deleted. That is not
+ * cosmetic: Claude Code loads the index into context every session, so each dead pointer
+ * re-injects a one-line description of a note nobody can open, indefinitely.
+ *
+ * **What is dropped is deliberately narrow, and an earlier version of this function got
+ * it wrong.** It kept only lines that *were* resolvable pointers, which silently deleted
+ * every heading, paragraph and plain bullet in the file. Real stores on one machine held
+ * up to 46 such lines, and one held four facts with no pointer lines at all — where
+ * "keep only pointers" reduced the index to the note alone and so reproduced the exact
+ * "reads as a completed migration" failure the old gate existed to prevent. A line is
+ * therefore removed only when it is a pointer *and* every file it points at is gone.
+ * Everything this module did not write, it does not delete.
+ *
+ * Installing the note unconditionally is safe for the reason the old gate doubted: a note
+ * above the surviving content is not "the sole survivor of a half-finished migration",
+ * because the content is still there. Detection is untouched either way — `listFacts`
+ * excludes the index by name, so the note can never make a non-empty store look empty.
+ *
+ * Dead pointers are identified from what is on disk rather than from what this run
+ * deleted, so pointers orphaned by an *earlier* partial run are repaired too — though
+ * only on a run that deletes something, since that is what `deleteVerified` gates this
+ * call on.
  *
  * @param {string} dir
  * @returns {boolean} whether the index was written
@@ -251,33 +353,64 @@ function rewriteIndex(dir) {
   let existing = "";
   try {
     existing = fs.readFileSync(target, "utf8");
-  } catch {
-    // No index, or one we cannot read. The note alone is still worth leaving.
+  } catch (err) {
+    // A missing index is ordinary: write the note into a fresh one. An index that exists
+    // and cannot be read is not — overwriting it would discard content never seen, which
+    // is the one outcome worth failing for.
+    if (err.code !== "ENOENT") {
+      return false;
+    }
   }
 
-  // Bare `.md` names only — a pointer carrying a separator does not address a fact in
-  // this store, and is dropped for the same reason `isDeletableFact` refuses one.
-  const survivors = existing.split(/\r?\n/).filter((line) => {
-    const pointer = /]\(([^)/\\]+\.md)\)/.exec(line);
-    return pointer !== null && exists(path.join(dir, pointer[1]));
-  });
+  // Bare `.md` names only, for the reason `isDeletableFact` refuses a separator: a
+  // pointer carrying one does not address a fact in this store, so its target's absence
+  // says nothing. Such a line has no bare-name pointer, falls into the keep branch, and
+  // is preserved untouched.
+  const kept = stripNote(existing)
+    .split(/\r?\n/)
+    .filter((line) => {
+      const names = [...line.matchAll(/]\(([^)/\\]+\.md)\)/g)].map((m) => m[1]);
+      // A line pointing at several facts survives while any one of them does, so a
+      // shared line can keep one stale pointer — strictly better than dropping the live
+      // ones alongside it.
+      return names.length === 0 || names.some((name) => exists(path.join(dir, name)));
+    });
 
+  const body = kept.join("\n").replace(/^\n+/, "").replace(/\s+$/, "");
+  // The blank line matters: a list butted straight against the closing paragraph is not
+  // a list to a strict markdown parser, and this file is read by both.
+  const contents = body ? `${MARKER_NOTE}\n${body}\n` : MARKER_NOTE;
+
+  // Temp-then-rename, for the reason `plugin-state.cjs` gives for its own atomic write:
+  // "a failed write returns false rather than risk a torn file". `writeFileSync` opens
+  // O_TRUNC, so ENOSPC mid-write — or the process dying between truncate and write —
+  // leaves the index empty, and by this point the facts it indexed are already unlinked.
+  // That combination is unrecoverable in practice: the backup's own copy of the index may
+  // be null, and there is no `restore` subcommand to reach it with.
+  //
+  // `atomicWrite` itself cannot be reused — it refuses paths outside ${CLAUDE_PLUGIN_DATA},
+  // correctly, and this is the user's file. Same directory for the temp so the rename
+  // stays within one filesystem.
+  const temp = `${target}.gutt-tmp-${process.pid}`;
   try {
-    fs.writeFileSync(
-      target,
-      // The blank line matters: a list butted straight against the closing paragraph is
-      // not a list to a strict markdown parser, and this file is read by both.
-      survivors.length ? `${MARKER_NOTE}\n${survivors.join("\n")}\n` : MARKER_NOTE
-    );
+    fs.writeFileSync(temp, contents);
+    fs.renameSync(temp, target);
     return true;
   } catch {
+    try {
+      fs.unlinkSync(temp);
+    } catch {
+      // Nothing to clean up, or we cannot — either way the target is untouched, which is
+      // the property that matters. Swallowed deliberately: reporting a temp-file leak
+      // over the failed write it accompanies would bury the signal the caller needs.
+    }
     return false;
   }
 }
 
 /**
  * Remove exactly those facts with a recorded verification, then leave the standing
- * note in `MEMORY.md` above whatever pointers still resolve.
+ * note at the top of `MEMORY.md` and drop the pointers whose targets have gone.
  *
  * Deletes nothing at all when there is no backup, or when nothing has been verified.
  * That is the whole safety property: an unverified write leaves `verified` empty and
@@ -315,11 +448,27 @@ function deleteVerified(payload) {
   }
 
   // Only once something was actually removed — a run that deleted nothing has no
-  // business rewriting the user's index as a side effect. The facts are safely in the
-  // graph either way; a failed write only means Claude Code may keep writing locally,
-  // which the next session can fix.
+  // business rewriting the user's index as a side effect.
+  //
+  // A failed rewrite is not something "the next session can fix", as this comment used to
+  // claim. The runs are asymmetric: a partial one leaves the decision unset and does come
+  // back, but a run that empties the store gets `migrated` recorded, which is terminal,
+  // and `listFacts` then reads the store as empty — so both gates in `migrationOffer` go
+  // quiet and nothing reaches this code again. The index keeps its dead pointers and
+  // never receives the redirect.
+  //
+  // Hence the reason string. `note` on its own was a correct signal with no consumer: the
+  // skill read only `kept`, so a failed rewrite with `kept` empty was reported to the user
+  // as a clean migration. Step 10 now gates `record migrated` on the note as well.
   if (outcome.deleted.length) {
     outcome.note = rewriteIndex(dir);
+    if (!outcome.note) {
+      outcome.reason =
+        `deleted ${outcome.deleted.length} fact(s), but ${INDEX_FILE} could not be ` +
+        `rewritten: it still lists deleted facts and carries no redirect to gutt. Report ` +
+        `this and do NOT record the migration as complete — recording it is terminal and ` +
+        `no later session can repair the index.`;
+    }
   }
   return outcome;
 }

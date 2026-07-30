@@ -438,6 +438,16 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
     assert.deepEqual(outcome.kept.sort(), ["a.md", "b.md"]);
     assert.match(outcome.reason, /nothing verified/);
     assert.deepEqual(fs.readdirSync(memoryDir).sort(), ["MEMORY.md", "a.md", "b.md"]);
+    // And the index is not touched either. A regression guard, *not* a firing vector for
+    // the `deleted.length` gate, which is what this comment used to claim: this test
+    // returns at the "nothing verified" guard well before the gate, so hardcoding the gate
+    // open leaves it green. "leaves the index alone when a run deletes nothing" is the
+    // only test that reaches the gate with nothing deleted, and it owns that claim.
+    assert.equal(
+      fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8"),
+      "- [A](a.md)\n",
+      "a run that deleted nothing must leave the index byte-identical"
+    );
   });
 
   it("deletes nothing when no backup was taken", () => {
@@ -466,17 +476,77 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
     assert.deepEqual(result.rejected, ["a.md"]);
   });
 
+  // The backup is the only undo for a store this module is about to delete, and the
+  // corrupt case is not hypothetical: a run killed mid-write leaves a truncated file that
+  // still contains every fact's text. `updateJson` writes whatever the updater returns and
+  // `readJson` falls back to null, so returning the unparsed value replaced that text with
+  // the four bytes `null`.
+  it("never overwrites a backup it could not parse", () => {
+    const { payload } = seed("-p-corrupt-backup");
+    store.backupStore(payload);
+    const key = mem.projectKey(payload);
+    const file = store.latestBackup(key);
+    const intact = fs.readFileSync(file, "utf8");
+    // Truncate to half — still holds fact text, no longer parses.
+    fs.writeFileSync(file, intact.slice(0, Math.floor(intact.length / 2)));
+    const corrupt = fs.readFileSync(file, "utf8");
+
+    const result = store.recordVerified(key, { "a.md": "ep-1" });
+
+    assert.deepEqual(result.recorded, [], "nothing may be authorised against a bad backup");
+    assert.deepEqual(result.rejected, ["a.md"], "the caller must be told which names failed");
+    assert.match(result.reason || "", /unreadable/i, "and why, or it cannot act on it");
+    assert.equal(
+      fs.readFileSync(file, "utf8"),
+      corrupt,
+      "the recoverable text must survive — this is the user's only undo"
+    );
+    // And the follow-on: with nothing recorded, deletion stays a no-op.
+    assert.deepEqual(store.deleteVerified(payload).deleted, []);
+  });
+
+  it("reports nothing recorded when the backup cannot be written back", () => {
+    const { payload } = seed("-p-unwritable-backup");
+    store.backupStore(payload);
+    const key = mem.projectKey(payload);
+    const file = store.latestBackup(key);
+    const dir = path.dirname(file);
+    fs.chmodSync(dir, 0o500);
+    try {
+      const result = store.recordVerified(key, { "a.md": "ep-1" });
+      // The old code pushed to `recorded` inside the updater and dropped updateJson's
+      // `written` flag, so this returned ["a.md"] while the file kept its old contents —
+      // and `delete` then said "nothing verified", whose only natural reading is "the
+      // episode never landed in the graph". That invites writing the whole store twice.
+      assert.deepEqual(result.recorded, [], "an unpersisted confirmation is not recorded");
+      assert.deepEqual(result.rejected, ["a.md"]);
+      assert.match(result.reason || "", /could not persist/i);
+      assert.match(
+        result.reason || "",
+        /may well have landed/i,
+        "the reason must steer the caller away from re-writing episodes that did land"
+      );
+    } finally {
+      fs.chmodSync(dir, 0o700);
+    }
+  });
+
   it("removes only the verified facts, prunes their pointers, and notes on top", () => {
+    // Two survivors, not one. At n=1 a mutation that keeps only the first surviving line
+    // (`kept.slice(0, 1)`) passes the whole suite, so "keep the pointers that still
+    // resolve" would be pinned only at n=1 while the real 30-fact store lost all but one
+    // line. Verified: that mutation fails this test and two others.
     const { memoryDir, payload } = seedStore(configDir, "-p-partial", {
-      "MEMORY.md": "- [A](a.md) — hook\n- [B](b.md) — hook\n",
+      "MEMORY.md": "- [A](a.md) — hook\n- [B](b.md) — hook\n- [C](c.md) — hook\n",
       "a.md": FACT,
       "b.md": "second fact",
+      "c.md": "third fact",
     });
     store.backupStore(payload);
     store.recordVerified(mem.projectKey(payload), { "a.md": "ep-1" });
     const outcome = store.deleteVerified(payload);
     assert.deepEqual(outcome.deleted, ["a.md"]);
-    assert.deepEqual(outcome.kept, ["b.md"]);
+    assert.deepEqual(outcome.kept.sort(), ["b.md", "c.md"]);
     assert.equal(outcome.note, true, "a partial migration still needs the redirect");
     assert.equal(fs.existsSync(path.join(memoryDir, "a.md")), false);
     assert.equal(fs.existsSync(path.join(memoryDir, "b.md")), true);
@@ -486,6 +556,7 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
     // note nobody can open — so the deletion has to take its index line with it.
     assert.doesNotMatch(index, /a\.md/, "the migrated fact's pointer must be gone");
     assert.match(index, /\n\n- \[B\]\(b\.md\)/, "a fact left behind stays listed, as a list");
+    assert.match(index, /- \[C\]\(c\.md\)/, "every survivor stays listed, not just the first");
     assert.ok(
       index.indexOf("gutt is the store of record") < index.indexOf("- [B]"),
       "the note belongs above the surviving pointers, not buried under them"
@@ -493,6 +564,249 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
     // The note must not be what makes the store look finished: facts remain, so the
     // offer has to return.
     assert.equal(mem.hasMigratableStore(payload), true);
+  });
+
+  // The regression a first version of this shipped: keeping only resolvable pointers
+  // deleted every heading, paragraph and plain bullet in the file. Real stores on one
+  // machine held up to 46 such lines, and one held four facts with no pointer lines at
+  // all — where that rule left the note alone and so read as a completed migration,
+  // reproducing the very failure the old gate prevented.
+  it("preserves index content it did not write", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-prose", {
+      // CRLF on purpose: a store written on Windows must not have its line endings
+      // carried through into the rewritten file.
+      "MEMORY.md": [
+        "# My own heading",
+        "",
+        "A paragraph I wrote by hand.",
+        "",
+        "- [A](a.md) — migrated away",
+        "- [B](b.md) — stays",
+        "- a bullet with no link at all",
+        "- [Design doc](../docs/design.md) — not a fact in this store",
+        "- see [A](a.md) and [B](b.md) together",
+        "",
+      ].join("\r\n"),
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
+    store.backupStore(payload);
+    store.recordVerified(mem.projectKey(payload), { "a.md": "ep-1" });
+    assert.equal(store.deleteVerified(payload).note, true);
+
+    const index = fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8");
+    assert.match(index, /# My own heading/, "a heading is not this module's to delete");
+    assert.match(index, /A paragraph I wrote by hand\./, "nor is hand-written prose");
+    assert.match(index, /- a bullet with no link at all/, "nor a bullet carrying no pointer");
+    // A pointer with a separator addresses nothing in this store, so its target's
+    // absence says nothing about it and it must survive.
+    assert.match(index, /\.\.\/docs\/design\.md/, "a pointer outside the store is not a fact");
+    assert.match(index, /- \[B\]\(b\.md\)/);
+    assert.doesNotMatch(index, /migrated away/, "the migrated fact's own pointer line goes");
+    // A line naming several facts survives while any one of them does — keeping one
+    // stale pointer beats deleting the live pointers sharing the line with it.
+    assert.match(index, /- see \[A\]\(a\.md\) and \[B\]\(b\.md\) together/);
+    assert.doesNotMatch(index, /\r/, "CRLF input must be normalised, not carried through");
+  });
+
+  // Reaches the rewrite gate with nothing deleted, which the "nothing verified" tests
+  // cannot do — they return early, before the gate. Two jobs: it pins the documented
+  // limit of orphan repair, and it is the firing vector for the gate itself, which
+  // otherwise stays green when hardcoded open.
+  it("leaves the index alone when a run deletes nothing", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-nothing-deleted", {
+      "MEMORY.md": "- [Gone](gone.md) — orphaned earlier\n- [B](b.md) — hook\n",
+      "b.md": "second fact",
+    });
+    const before = fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8");
+    store.backupStore(payload);
+    // Verified names a file that is already gone, so the loop finds nothing to remove
+    // while `verified` is non-empty — the one path that reaches the gate empty-handed.
+    store.recordVerified(mem.projectKey(payload), { "b.md": "ep-1" });
+    fs.unlinkSync(path.join(memoryDir, "b.md"));
+    const outcome = store.deleteVerified(payload);
+
+    assert.deepEqual(outcome.deleted, [], "nothing was there to delete");
+    assert.equal(outcome.note, false, "no deletion, no rewrite, so no note");
+    assert.equal(
+      fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8"),
+      before,
+      "a run that deletes nothing must not rewrite the index — orphan repair rides on a " +
+        "deletion, and this is the limit of it"
+    );
+  });
+
+  // Running twice must not stack two copies of the note, which is the failure mode of
+  // preserving non-pointer lines: the previous note *is* non-pointer content.
+  it("does not accumulate the standing note across runs", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-twice", {
+      "MEMORY.md": "# Mine\n\n- [A](a.md) — hook\n- [B](b.md) — hook\n",
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
+    const key = mem.projectKey(payload);
+    store.backupStore(payload);
+    store.recordVerified(key, { "a.md": "ep-1" });
+    store.deleteVerified(payload);
+    store.recordVerified(key, { "b.md": "ep-2" });
+    store.deleteVerified(payload);
+
+    const index = fs.readFileSync(path.join(memoryDir, "MEMORY.md"), "utf8");
+    assert.equal(
+      index.split("gutt is the store of record").length - 1,
+      1,
+      "the note must appear exactly once, however many times delete runs"
+    );
+    assert.match(index, /# Mine/, "the user's heading survives both runs");
+  });
+
+  // The same claim over CRLF, which is a separate code path and the reachable half of the
+  // bug the sentinels fix. `stripNote` used to compare an exact LF-joined prefix on the
+  // raw text, so a CRLF index never matched — and since the unmatched note carries no
+  // pointer, the keep rule preserved it as user content and stacked a second note above
+  // it, returning note:true. Permanent: the next run rewrites in LF and the stale copy
+  // stays in the body forever.
+  it("does not stack a second note when the index it wrote is CRLF", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-crlf-twice", {
+      "MEMORY.md": "# Mine\r\n\r\n- [A](a.md) — hook\r\n- [B](b.md) — hook\r\n",
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
+    const key = mem.projectKey(payload);
+    store.backupStore(payload);
+    store.recordVerified(key, { "a.md": "ep-1" });
+    store.deleteVerified(payload);
+
+    // Claude Code keeps writing this file after a migration — that is the stated premise
+    // for the note existing — so re-introduce CRLF before the second run.
+    const target = path.join(memoryDir, "MEMORY.md");
+    fs.writeFileSync(target, fs.readFileSync(target, "utf8").replace(/\n/g, "\r\n"));
+    store.recordVerified(key, { "b.md": "ep-2" });
+    const outcome = store.deleteVerified(payload);
+
+    const index = fs.readFileSync(target, "utf8");
+    assert.equal(outcome.note, true);
+    assert.equal(
+      index.split("gutt is the store of record").length - 1,
+      1,
+      "a CRLF index must not accumulate a second note"
+    );
+    assert.equal(
+      index.split("# Project memory").length - 1,
+      1,
+      "nor a second heading — the duplicate is what the user actually sees"
+    );
+    assert.match(index, /# Mine/, "the user's own heading still survives");
+  });
+
+  // Rewording MARKER_NOTE is the other half. The docstring above it invites the edit, and
+  // before the sentinels a reword orphaned every note already on disk — same stacking,
+  // same note:true. Asserted structurally so this keeps holding after a genuine reword.
+  it("recognises its own note by sentinel, not by wording", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-reworded", {
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
+    const key = mem.projectKey(payload);
+    store.backupStore(payload);
+    store.recordVerified(key, { "a.md": "ep-1" });
+    store.deleteVerified(payload);
+
+    // Simulate a version whose prose differed, keeping the sentinels intact.
+    const target = path.join(memoryDir, "MEMORY.md");
+    fs.writeFileSync(
+      target,
+      fs.readFileSync(target, "utf8").replace("gutt is the store of record", "gutt holds")
+    );
+    store.recordVerified(key, { "b.md": "ep-2" });
+    store.deleteVerified(payload);
+
+    const index = fs.readFileSync(target, "utf8");
+    assert.equal(
+      index.split("<!-- gutt:memory-migrated -->").length - 1,
+      1,
+      "the reworded note must be replaced, not preserved alongside the new one"
+    );
+    assert.doesNotMatch(index, /gutt holds/, "the superseded wording must be gone");
+  });
+
+  // `note` is the only channel reporting that the index could not be rewritten, i.e.
+  // that the store is still pointing at deleted files. Every other assertion in this
+  // file checks it true, so nothing pinned the failure branch: making the catch return
+  // true left the suite green.
+  // Two ways the rewrite can fail, and they take different branches: the read guard and
+  // the write catch. A read-only *file* is no longer a vector for either — the write is
+  // temp-then-rename, and replacing a read-only file needs only a writable directory —
+  // so each branch gets the vector that actually reaches it.
+  it("reports note:false when the index cannot be read", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-unreadable", {
+      "MEMORY.md": "# Mine\n\n- [A](a.md) — hook\n",
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
+    store.backupStore(payload);
+    store.recordVerified(mem.projectKey(payload), { "a.md": "ep-1" });
+    const index = path.join(memoryDir, "MEMORY.md");
+    const before = fs.readFileSync(index, "utf8");
+
+    // Mode 000, not a directory. A directory looks like the same failure from the outside
+    // — EISDIR instead of ENOENT — but the rename then fails too, so the atomic write
+    // produces note:false on its own and the read guard can be deleted with the suite
+    // still green. This vector is the one where the read fails and the write would have
+    // *succeeded*, which is exactly when the missing guard overwrites a file nobody read.
+    fs.chmodSync(index, 0o000);
+    let outcome;
+    try {
+      try {
+        fs.readFileSync(index, "utf8");
+        // Mode not enforced (running as root); the vector does not exist here.
+        return;
+      } catch {
+        // Expected — the index is genuinely unreadable, so the test is meaningful.
+      }
+      outcome = store.deleteVerified(payload);
+    } finally {
+      fs.chmodSync(index, 0o644);
+    }
+
+    assert.deepEqual(outcome.deleted, ["a.md"]);
+    assert.equal(outcome.note, false, "an unreadable index must not report success");
+    assert.equal(
+      fs.readFileSync(index, "utf8"),
+      before,
+      "an index that could not be read must be left byte-identical, not overwritten"
+    );
+    assert.match(outcome.reason || "", /could not be rewritten/);
+  });
+
+  it("reports note:false when the index cannot be written", () => {
+    const { memoryDir, payload } = seedStore(configDir, "-p-unwritable", {
+      "MEMORY.md": "- [A](a.md) — hook\n- [B](b.md) — hook\n",
+      "a.md": FACT,
+      "b.md": "second fact",
+    });
+    store.backupStore(payload);
+    store.recordVerified(mem.projectKey(payload), { "a.md": "ep-1" });
+    // Occupy the temp path with a directory so the temp write throws. Contrived, but it
+    // is the branch's only deterministic vector, and the leftover-temp state it simulates
+    // is reachable after a killed run.
+    const index = path.join(memoryDir, "MEMORY.md");
+    fs.mkdirSync(`${index}.gutt-tmp-${process.pid}`);
+    const before = fs.readFileSync(index, "utf8");
+    const outcome = store.deleteVerified(payload);
+
+    // The fact still goes — it is confirmed in the graph, and a stale index is not a
+    // reason to keep a second copy. What must not happen is reporting success.
+    assert.deepEqual(outcome.deleted, ["a.md"]);
+    assert.equal(outcome.note, false, "a failed index write must not report success");
+    assert.equal(
+      fs.readFileSync(index, "utf8"),
+      before,
+      "a failed write must leave the index intact rather than truncated"
+    );
+    // The reason is the whole point of the fix: `note` had no consumer, so a caller
+    // reading only `kept` saw this as a clean migration.
+    assert.match(outcome.reason || "", /do NOT record the migration as complete/i);
   });
 
   it("leaves the standing note once every fact has gone", () => {
@@ -511,8 +825,10 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
   });
 
   // The case this shipped broken: a partial run had already orphaned 30 pointers, and
-  // they outlived it because the rewrite never fired. Survivors are therefore decided by
-  // what is on disk, not by what this particular run deleted.
+  // they outlived it because the rewrite never fired. A dead pointer is therefore
+  // identified from what is on disk rather than from what this run deleted — though only
+  // a run that deletes something rewrites the index at all, so orphans left by a
+  // migration that then stalls for good are not reached by this.
   it("repairs pointers orphaned by an earlier run", () => {
     const { memoryDir, payload } = seedStore(configDir, "-p-orphans", {
       "MEMORY.md": "- [Gone](gone.md) — hook\n- [A](a.md) — hook\n- [B](b.md) — hook\n",
