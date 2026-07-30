@@ -464,7 +464,7 @@ describe("hook architecture guards", () => {
   // A fired verdict costs the user their view of the turn. Stop runs after the work
   // is done and the answer is written, so whatever Claude says next is what they are
   // left looking at — and a continuation spent entirely on memory bookkeeping buries
-  // the work it interrupted, leaving them to scroll back for what they asked for.
+  // the work beneath it, leaving them to scroll back for what they asked for.
   //
   // Both halves of the fix live in `memory-capture/SKILL.md`, not in the fired reason.
   // The reason is read on every firing and is a payload — a skill name and a bullet
@@ -473,17 +473,32 @@ describe("hook architecture guards", () => {
   // separately below.
   //
   // Anchored on the terms that carry the meaning rather than the sentences around
-  // them: the artifact is named "TL;DR" and its position is the requirement. Reword
+  // them: there must be a closing summary of the work and it must come last. Reword
   // the prose freely; keep those.
-  it("makes a capture hand the turn back with a TL;DR, last", () => {
+  //
+  // The artifact used to be named "TL;DR" and this guard matched that literal. It was
+  // renamed deliberately — a fixed label reads as boilerplate, and a heading naming
+  // the actual work is worth more — so the anchor moved with it. Note the shape of
+  // that near-miss: had the rename landed without touching this file, the assertion
+  // would have failed loudly, which is the good case. The bad case is a guard whose
+  // string survives a rewrite while the property it stood for quietly leaves.
+  it("makes a capture close on a summary of the work, last", () => {
     const md = fs.readFileSync(
       path.join(ROOT, "gutt-core", "skills", "memory-capture", "SKILL.md"),
       "utf8"
     );
     assert.match(
       md,
-      /TL;DR/,
-      "the skill never asks for a summary of the interrupted work, so the capture becomes the turn"
+      /summary of\s+(that|the)\s+work/i,
+      "the skill never asks for a closing summary of the work, so the capture becomes the turn"
+    );
+    // The capture is part of finishing a turn. Framing it as a detour makes the reply
+    // read as an apology for having done the bookkeeping, and puts the emphasis on the
+    // interruption rather than on the work the user came for.
+    assert.match(
+      md,
+      /not an interruption/i,
+      "nothing stops the skill from framing the capture as an interruption of the work"
     );
     assert.match(
       md,

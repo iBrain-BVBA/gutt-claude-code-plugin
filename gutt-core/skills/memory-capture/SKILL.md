@@ -113,13 +113,20 @@ Say little about the capture itself — a few lines, not a report. What was writ
 its type, and anything the user still has to decide. Skip the procedure you just
 followed: nobody needs the dedup search narrated back to them.
 
-Then, when the capture interrupted work that was already finished — a Stop-hook
-verdict is the usual way that happens — end the reply with a brief TL;DR of that
-work, placed last, after everything else. The interruption arrives once the turn's
-answer is already written, so whatever comes next is what the user is left looking
-at; a reply given over to memory bookkeeping buries the work it interrupted and
-leaves them scrolling back for what they actually asked for. The capture is a
-footnote to the turn, not its subject, and the TL;DR is what hands the turn back.
+Then, when the capture followed work that was already finished — a Stop-hook
+verdict is the usual way that happens — close the reply with a short summary of
+that work, placed last, after everything else. Writing down what a turn learned is
+part of finishing it, not an interruption of it, so don't frame it as one: no
+"returning to", no "the work this interrupted", no apology for the detour. Give
+the summary a plain heading that names the work — "Summary", or better, what the
+work actually was ("The eval suite", "What shipped") — and write it as the closing
+account of the turn rather than as a recovery from a digression.
+
+Keep it to what the user needs to carry forward: what was delivered, anything that
+did not survive verification, and what is still open. It comes last because the
+capture is a footnote to the turn and the work is its subject — whatever sits at
+the bottom of the reply is what the user is left looking at, and it should be the
+work, not the bookkeeping.
 
 These two rules live here rather than in the Stop hook's fired reason on purpose.
 That reason is a payload — a skill name and a bullet per subject — and it is read
