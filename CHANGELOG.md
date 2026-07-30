@@ -44,21 +44,6 @@
 - New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
   memory scope, for the onboarding agent to consume. Ships no hooks.
   (GP-883, E7 mentor shared skill base)
-
-### Fixed
-
-- Repo instructions said the group is determined automatically and must not be
-  passed — the opposite of what the shipped skills and the new agent require.
-  Omitting `group_id` on a write targets an unspecified one of the caller's groups
-  rather than a fixed default, and an unscoped read silently includes personal
-  scope. `CLAUDE.md` now points at `shared/agent-identity.md` as the normative
-  reference (GP-884)
-- `agent-memory-protocol` stated "Register first" unconditionally, omitting the
-  read-only exemption its own normative reference carries. A read-only agent's
-  scope is empty by construction, so registering buys it nothing — the exemption
-  now lives inside the numbered rule, where a weaker model reads it as binding
-  rather than advisory. The onboarding agent preloads this skill and runs
-  read-only when preparing a brief about someone else (GP-884)
   - `individual-program-design` — elicit goals, set milestones on a default
     day 1 / week 1 / day 30 / 60 / 90 cadence, and persist the program as one
     self-contained `add_personal_memory` episode with `last_n_episodes=0`.
@@ -76,6 +61,42 @@
   from `marketplace.json`, so a new plugin is covered without editing a second
   list (`tests/hook-architecture.test.cjs`)
 - `memory-search` skill (gutt-core): the adaptive, relevance-gated memory-search discipline — rung 1 = one `search_memory_nodes` + `search_memory_facts` pass, judged for relevance and reformulated (not paginated) when weak; a relevance gate that reports "no relevant memory found" rather than stretching a distractor; rung 2 narrowing filters; rung 3 traversal handoff to `graph-traversal`; summary-first episode rules and tool-tier degradation. Rung-1 shape validated on a 50-query live-graph benchmark (top-3 hit-rate 86% vs 58% for a fixed single pass; zero false answers on absent-topic queries). Exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)
+
+### Fixed
+
+- Repo instructions said the group is determined automatically and must not be
+  passed — the opposite of what the shipped skills and the new agent require.
+  Omitting `group_id` on a write targets an unspecified one of the caller's groups
+  rather than a fixed default, and an unscoped read silently includes personal
+  scope. `CLAUDE.md` now points at `shared/agent-identity.md` as the normative
+  reference (GP-884)
+- `agent-memory-protocol` stated "Register first" unconditionally, omitting the
+  read-only exemption its own normative reference carries. A read-only agent's
+  scope is empty by construction, so registering buys it nothing — the exemption
+  now lives inside the numbered rule, where a weaker model reads it as binding
+  rather than advisory. The onboarding agent preloads this skill and runs
+  read-only when preparing a brief about someone else (GP-884)
+- The onboarding agent's org-reading step listed its twelve searches as one flat
+  block, mixing the first pass with the calls that can only follow it and opening
+  a group with the one tool `memory-search` says not to open with. Both live
+  validation rounds ran the whole battery unconditionally. The calls are now rows
+  keyed to the chosen scope, with the first pass and the gap-fillers in separate
+  columns; the rung-2 ceiling is stated deliberately, since centered fact searches
+  return current facts only while the traversal tools return superseded edges
+  unwarned and can fail on a hub (GP-884)
+- The onboarding brief asked for a UUID where the cited thing is a node, which
+  carries a readable id a joiner can follow; facts and episodes keep theirs. Also
+  corrects a scoped-recall pass described as running before the step that makes it
+  possible (GP-884)
+
+### Changed
+
+- The onboarding agent no longer restates guidance its preloaded skills own —
+  degradation, the personal-scope locator rationale, the program cadence and status
+  vocabulary, and a failure-modes list that repeated Agent identity, Step 3 and
+  Step 6 at length, now an observable-and-response table. An agent body is a system
+  prompt with no staged loading, so a restatement competes with the original and
+  can drift from it (GP-884)
 
 ### Deprecated
 
