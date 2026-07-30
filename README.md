@@ -95,14 +95,37 @@ longer edits that file for you — see
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                       | Event            | Purpose                                                                            |
-| -------------------------- | ---------------- | ---------------------------------------------------------------------------------- |
-| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                 |
-| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                           |
-| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                |
-| `user-prompt-submit.cjs`   | UserPromptSubmit | Points at `memory-search` on a new session or after a compaction                   |
-| _(prompt hook)_            | Stop             | Fast-model judge: suggests memory-capture when the turn produced something durable |
-| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                  |
+| Hook                       | Event            | Purpose                                                                                           |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------- |
+| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                |
+| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                                          |
+| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                               |
+| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt` config commands; points at `memory-search` on a new session or after a compaction |
+| _(prompt hook)_            | Stop             | Fast-model judge: suggests memory-capture when the turn produced something durable                |
+| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                                 |
+
+### Settings — the `/gutt` command
+
+Type these at any time; the change is applied by the UserPromptSubmit hook before the
+model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
+
+| Command                 | Effect                                                                     |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `/gutt config`          | Show the stored settings and the state they add up to                      |
+| `/gutt off`             | Turn memory recall off until `/gutt on` — survives restarts                |
+| `/gutt off 30`          | Snooze recall for 30 minutes (1–10080), then it resumes on its own         |
+| `/gutt off session`     | Snooze recall for the rest of this session                                 |
+| `/gutt on`              | Clear any off or snooze                                                    |
+| `/gutt mode auto\|hitl` | Set the capture mode (written and read back; no behaviour consumes it yet) |
+
+`/gutt-claude-code-plugin:gutt <subcommand>` and `/gutt:<subcommand>` are accepted too.
+The HUD shows ` off` or ` zzz` in the gutt segment while recall is suppressed, since a
+durable off is otherwise invisible.
+
+Two limits worth knowing. An out-of-range minute count is **rejected, not clamped** —
+`/gutt off 300000` changes nothing rather than silencing recall for seven months. And
+turning recall off does not silence the end-of-turn capture prompt: that is a separate
+axis, governed by capture mode once something reads it.
 
 ### Skills
 

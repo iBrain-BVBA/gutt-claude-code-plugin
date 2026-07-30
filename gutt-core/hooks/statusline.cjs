@@ -17,6 +17,27 @@
 
 const { getState, init } = require("./lib/session-state.cjs");
 const { getGroupId, isConfigured } = require("./lib/config.cjs");
+const { readConfig, isSnoozed } = require("./lib/runtime-config.cjs");
+
+/**
+ * `off` / `zzz` when the plugin is suppressed, empty otherwise (GP-866).
+ *
+ * A durable `/gutt off` is otherwise invisible: it survives restarts, nothing else
+ * reports it, and a user who forgot they typed it just sees a plugin that stopped
+ * working. The two states are distinguished because the recovery differs — a snooze
+ * lapses on its own, a durable off waits for `/gutt on`.
+ *
+ * Two reads in the snoozed case, which would matter on the UserPromptSubmit path
+ * and does not here: the statusline is off it.
+ * @param {string|null} sessionId
+ * @returns {string}
+ */
+function suppressionMark(sessionId) {
+  if (readConfig().enabled === false) {
+    return " off";
+  }
+  return isSnoozed(sessionId) ? " zzz" : "";
+}
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -39,7 +60,8 @@ process.stdin.on("end", () => {
     data = {};
   }
 
-  init(data.session_id || "unknown");
+  const sessionId = data.session_id || "unknown";
+  init(sessionId);
 
   const state = getState();
   const groupId = getGroupId();
@@ -49,7 +71,7 @@ process.stdin.on("end", () => {
     state.connectionStatus === "ok" ? "🟢" : state.connectionStatus === "error" ? "🔴" : "⚪";
   const configWarning = isConfigured() ? "" : "!";
   const groupPart = displayGroupId ? ` ${displayGroupId}` : "";
-  const guttSegment = `[gutt${statusIcon}${configWarning}${groupPart}]`;
+  const guttSegment = `[gutt${statusIcon}${configWarning}${suppressionMark(sessionId)}${groupPart}]`;
 
   let claudeSegment = "";
   if (data.model?.display_name || data.cost?.total_cost_usd !== undefined) {

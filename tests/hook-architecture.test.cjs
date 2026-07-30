@@ -280,6 +280,59 @@ describe("hook architecture guards", () => {
     );
   });
 
+  // The `/gutt` config surface (GP-866). Both guards below cover failures that are
+  // silent at runtime: nothing logs, nothing errors, the command just stops working.
+  describe("the /gutt config command surface", () => {
+    const ROUTER = path.join(ROOT, "gutt-core", "hooks", "user-prompt-submit.cjs");
+    const LIB = path.join(ROOT, "shared", "config-command.cjs");
+
+    // Row order is load-bearing and invisible. Put the config branch below the
+    // suppression check and `/gutt on` can never un-stick a plugin that is off:
+    // the off switch becomes one-way, with hand-editing config.json the only way
+    // back. A source-order check is crude but catches exactly the edit that would
+    // do it — moving the branch, or wrapping it in the suppression guard.
+    it("applies a config command before it checks for suppression", () => {
+      const src = stripComments(fs.readFileSync(ROUTER, "utf8"));
+      const command = src.indexOf("configCommandResult(");
+      const suppressed = src.indexOf("isSuppressed(");
+      assert.ok(command > -1, "the router no longer applies config commands");
+      assert.ok(suppressed > -1, "the router no longer checks suppression");
+      assert.ok(
+        command < suppressed,
+        "the config-command row must run first, or `/gutt on` cannot reach a plugin that is off"
+      );
+    });
+
+    // The parser hardcodes the namespace so it does not read plugin.json on a 50ms
+    // path. That trade only holds while the constant is right: rename the plugin and
+    // the autocompleted `/gutt-claude-code-plugin:gutt …` spelling — the one the `/`
+    // menu inserts, and so the common case — silently stops parsing, while the
+    // hand-typed forms keep working and hide it.
+    it("hardcodes the plugin namespace the manifest actually declares", () => {
+      const pluginName = JSON.parse(
+        fs.readFileSync(path.join(ROOT, "gutt-core", ".claude-plugin", "plugin.json"), "utf8")
+      ).name;
+      const src = fs.readFileSync(LIB, "utf8");
+      assert.match(
+        src,
+        new RegExp(`const PLUGIN_PREFIX = "${pluginName}";`),
+        `config-command.cjs must declare PLUGIN_PREFIX = "${pluginName}"`
+      );
+    });
+
+    // A command file is what makes the token a recognised command with autocomplete;
+    // without it the hook may never be dispatched at all.
+    it("ships the command file the hook's results are relayed through", () => {
+      const file = path.join(ROOT, "gutt-core", "commands", "gutt.md");
+      assert.ok(fs.existsSync(file), "gutt-core/commands/gutt.md is missing");
+      const body = fs.readFileSync(file, "utf8");
+      // Model-invoked, there is no UserPromptSubmit event and so no result in
+      // context — and `/gutt off` must never be something Claude decides to do.
+      assert.match(body, /^disable-model-invocation: true$/m);
+      assert.match(body, /already been applied/, "the body must not re-run the command itself");
+    });
+  });
+
   // Migration is a bulk *caller* of the memory skills, not a second implementation of
   // them. It writes a whole store in batches and then deletes the local copy, so any
   // dedup or conflict rule it fails to honour is multiplied by every fact in the store

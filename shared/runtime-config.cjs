@@ -3,12 +3,18 @@
  * GUTT runtime config — `${CLAUDE_PLUGIN_DATA}/config.json` (GP-863, R37 artifact 1/3).
  *
  * Durable, user-facing preferences: on/off, mode, snooze, and the per-project
- * decisions under `projects`. Per the S3.1 state contract this file has a single
- * writer — the config command surface (GP-866) — with two carve-outs. GP-863 owns
- * the first: the session lifecycle expires a lapsed snooze at SessionStart and drops
- * a session-scoped snooze at SessionEnd. GP-922 owns the second: the built-in-memory
- * migration decision, recorded once per project. GP-866 extends this with the
- * command-driven setters.
+ * decisions under `projects`. Per the S3.1 state contract the config command
+ * surface is the only writer a *user* drives, with two carve-outs the lifecycle
+ * drives on its own. GP-863 owns the first: a lapsed snooze is expired at
+ * SessionStart and a session-scoped snooze dropped at SessionEnd. GP-922 owns the
+ * second: the built-in-memory migration decision, recorded once per project.
+ *
+ * GP-866 landed the command-driven setters here rather than in the command layer,
+ * which is why `enabled` and `mode` are now writable from this module: the surface
+ * is a UserPromptSubmit hook, so "must not be written from a hook" would have
+ * forbidden the feature. What that older rule was protecting is still enforced —
+ * every mutator below touches only the keys it names, so the SessionStart sweep
+ * cannot clobber a preference and `/gutt on` cannot clobber a migration record.
  *
  * Shape note (GP-922): every key but `projects` is **machine-global**, and that was
  * the whole shape until now. A machine-wide "declined" would silence a repo where
@@ -37,9 +43,9 @@
 const { statePath, readJson, writeJson, withLock } = require("./plugin-state.cjs");
 
 /**
- * The documented shape of `config.json`. Read-side only: `enabled` and `mode`
- * are GP-866's to write — they are listed here so the contract is visible in
- * one place and consumers get a complete object.
+ * The documented shape of `config.json`. Every key here has both a reader and a
+ * writer as of GP-866; before it, `enabled` and `mode` were declared and used by
+ * nobody, so a hand-written `{"enabled": false}` silently did nothing.
  */
 const DEFAULTS = {
   enabled: true,
@@ -63,11 +69,26 @@ const PROJECTS_KEY = "projects";
  * Keys this module is allowed to mutate.
  *
  * The whitelist grows here rather than being quietly widened: GP-863 shipped it as
- * the two snooze keys alone, and GP-922 adds the per-project space. Anything not
- * listed belongs to GP-866's command surface and must not be touched from a hook.
+ * the two snooze keys alone, GP-922 added the per-project space, and GP-866 adds
+ * the two preference keys with the setters that write them. Anything not listed —
+ * `migrationsVersion`, notably — belongs to another module and must not be touched
+ * from here.
+ *
+ * The list is a statement about this module, not about any single call: no mutator
+ * writes all of it. `PREFERENCE_KEYS` and `SNOOZE_KEYS` are what the individual
+ * writers are scoped to, and keeping them separate is what stops the SessionStart
+ * sweep from touching a preference.
  */
 const SNOOZE_KEYS = ["snoozeUntil", "snoozeSessionId"];
-const OWNED_KEYS = [...SNOOZE_KEYS, PROJECTS_KEY];
+const PREFERENCE_KEYS = ["enabled", "mode"];
+const OWNED_KEYS = [...PREFERENCE_KEYS, ...SNOOZE_KEYS, PROJECTS_KEY];
+
+/**
+ * The capture modes `/gutt mode` accepts. Exported because E4 (GP-874) reads the
+ * same list — two copies would drift, and the failure would be a mode this module
+ * happily writes and E4 does not recognise.
+ */
+const MODES = ["auto", "hitl"];
 
 /**
  * Recorded answers to the built-in-memory migration offer (GP-922).
@@ -113,14 +134,17 @@ function readRawConfig() {
 }
 
 /**
- * True when a snooze is in force for `sessionId` at `now`. A session-scoped
- * snooze only applies to its own session; an expired `snoozeUntil` never applies.
- * @param {string|null} [sessionId]
- * @param {number} [now]
+ * Does a snooze apply, given a config already read? Split out of `isSnoozed` so
+ * `isSuppressed` can answer both halves of the question from **one** read — this
+ * is on the UserPromptSubmit path with a 50ms budget (R25), and two `readConfig()`
+ * calls to answer one question is the cost that made honouring `enabled` look
+ * expensive in the first place.
+ * @param {{snoozeUntil: string|null, snoozeSessionId: string|null}} config
+ * @param {string|null} sessionId
+ * @param {number} now
  * @returns {boolean}
  */
-function isSnoozed(sessionId = null, now = Date.now()) {
-  const { snoozeUntil, snoozeSessionId } = readConfig();
+function snoozeApplies({ snoozeUntil, snoozeSessionId }, sessionId, now) {
   if (snoozeSessionId && snoozeSessionId !== sessionId) {
     return false;
   }
@@ -130,6 +154,44 @@ function isSnoozed(sessionId = null, now = Date.now()) {
   }
   const until = Date.parse(snoozeUntil);
   return Number.isFinite(until) && until > now;
+}
+
+/**
+ * True when a snooze is in force for `sessionId` at `now`. A session-scoped
+ * snooze only applies to its own session; an expired `snoozeUntil` never applies.
+ *
+ * Kept as its own export even though the router now calls `isSuppressed`: it is
+ * the snooze half on its own, which is what `/gutt config` reports and what the
+ * lifecycle tests assert about.
+ * @param {string|null} [sessionId]
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+function isSnoozed(sessionId = null, now = Date.now()) {
+  return snoozeApplies(readConfig(), sessionId, now);
+}
+
+/**
+ * True when the plugin must stay silent — either turned off durably (`/gutt off`)
+ * or snoozed. This is the router's gate; `isSnoozed` alone was, and it left
+ * `enabled` in the documented schema with nothing reading it.
+ *
+ * `enabled` is compared with a strict `=== false` so an unrecognised stored value
+ * reads as on, matching how `readMigrationState` refuses to trust a status it does
+ * not know. A hand-edited `"enabled": "no"` therefore does **not** silence the
+ * plugin — and `/gutt config` prints the raw value so the mistake is visible
+ * rather than quietly ineffective.
+ *
+ * Why off-ness is `enabled` and not an unbounded snooze: an unbounded snooze is
+ * not representable. `setSnooze({})` writes both keys null, and `snoozeApplies`
+ * then returns `Boolean(null)` — false. There is no "snoozed forever" state.
+ * @param {string|null} [sessionId]
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+function isSuppressed(sessionId = null, now = Date.now()) {
+  const config = readConfig();
+  return config.enabled === false || snoozeApplies(config, sessionId, now);
 }
 
 /**
@@ -233,6 +295,103 @@ function clearSessionSnooze(sessionId) {
 }
 
 // ---------------------------------------------------------------------------
+// Command-driven setters (GP-866) — the writers behind `/gutt on|off|mode`
+// ---------------------------------------------------------------------------
+
+/**
+ * What `/gutt on` clears. Deliberately **not** `mode`: capture mode is a separate
+ * axis from on/off, and silently resetting a user's `hitl` choice because they
+ * un-snoozed recall would be a surprise.
+ */
+const RESTORE_KEYS = ["enabled", ...SNOOZE_KEYS];
+
+/**
+ * Turn recall off durably (`/gutt off` with no argument), or clear that flag.
+ *
+ * `true` is stored as the *absence* of the key rather than as `enabled: true`, so
+ * "on" has exactly one representation — the same delete-the-key style
+ * `withoutSnooze` uses. Passing `true` when the key is already absent writes
+ * nothing, so a no-op never creates a config file.
+ * @param {boolean} enabled
+ * @returns {boolean} true if a write landed
+ */
+function setEnabled(enabled) {
+  return updateConfig((config) => {
+    const next = config || {};
+    if (enabled === false) {
+      next.enabled = false;
+      return next;
+    }
+    if (next.enabled === undefined) {
+      return null;
+    }
+    delete next.enabled;
+    return next;
+  });
+}
+
+/**
+ * Set the capture mode (`/gutt mode auto|hitl`).
+ *
+ * Rejects a mode this version does not know rather than storing it, the same way
+ * `setMigrationState` refuses an unknown status: a typo must not become a stored
+ * value that E4 later fails to recognise.
+ * @param {string} mode
+ * @returns {boolean} true if a write landed
+ */
+function setMode(mode) {
+  if (!MODES.includes(mode)) {
+    return false;
+  }
+  return updateConfig((config) => {
+    const next = config || {};
+    next.mode = mode;
+    return next;
+  });
+}
+
+/**
+ * `/gutt on`: clear a durable off and any snooze, in one locked transaction.
+ *
+ * Writes nothing when nothing was suppressed — so `/gutt on` on a clean machine
+ * leaves no config file behind, and the command can honestly report "was already
+ * on" rather than claiming a change.
+ *
+ * A session-scoped snooze set by a *different* session is cleared too. `config.json`
+ * is machine-global, so `/gutt on` is a machine-global statement; the alternative
+ * leaves a foreign key in the file that `/gutt config` then has to explain.
+ *
+ * Do not route `clearExpiredSnooze`/`clearSessionSnooze` through this. They use
+ * `withoutSnooze` precisely because the lifecycle must never touch `enabled` —
+ * `tests/session-lifecycle.test.cjs` and `tests/e2e/hook-routing.e2e.cjs` both
+ * assert a preference survives a sweep.
+ * @returns {boolean} true if a write landed
+ */
+function restore() {
+  return updateConfig((config) => {
+    if (!config) {
+      return null;
+    }
+    // Two different tests, deliberately. Whether there is anything to *clear* is
+    // about meaning — only a non-null value suppresses anything — but once we are
+    // writing, every restore key present is removed, null ones included. Otherwise
+    // `setSnooze({sessionId})`'s explicit `snoozeUntil: null` would survive every
+    // `/gutt on` and sit in the file forever, since nothing null is worth clearing
+    // on its own.
+    const suppressing = RESTORE_KEYS.some(
+      (key) => config[key] !== undefined && config[key] !== null
+    );
+    if (!suppressing) {
+      return null;
+    }
+    for (const key of RESTORE_KEYS) {
+      delete config[key];
+    }
+    return config;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Built-in memory migration, per project (GP-922)
 // ---------------------------------------------------------------------------
 
@@ -301,14 +460,21 @@ module.exports = {
   DEFAULTS,
   PROJECTS_KEY,
   OWNED_KEYS,
+  PREFERENCE_KEYS,
+  MODES,
   MIGRATION_STATES,
   configPath,
   readConfig,
   readRawConfig,
   isSnoozed,
+  isSuppressed,
   setSnooze,
   clearExpiredSnooze,
   clearSessionSnooze,
+  // GP-866 config command setters
+  setEnabled,
+  setMode,
+  restore,
   // GP-922 built-in memory migration
   readMigrationState,
   isMigrationSettled,

@@ -100,8 +100,8 @@ any test was written. They are the load-bearing assumptions of the suite.
 ## Run budget
 
 The tier's discipline is _one `claude -p` call per set of claims, not one per
-assertion_. Five runs, all Haiku, all with tools denied, on the machine's
-subscription (R36):
+assertion_. Six runs, all with tools denied, on the machine's subscription (R36) —
+Haiku except run 4, which needs a Sonnet turn to have something worth judging:
 
 | Run | File                        | Claims                                                       |
 | --- | --------------------------- | ------------------------------------------------------------ |
@@ -110,6 +110,7 @@ subscription (R36):
 | 3   | `hook-routing.e2e.cjs`      | **row 1 snooze** suppresses without burning the flag         |
 | 4   | `hook-routing.e2e.cjs`      | **Stop router fires and terminates**, reply stays clean      |
 | 5   | `hook-routing.e2e.cjs`      | **R23 coexistence** with `auto-lint-plugin`                  |
+| 6   | `hook-routing.e2e.cjs`      | **row 0 `/gutt` config command** applied, and relayed        |
 
 ## Per-run assertions
 
@@ -133,7 +134,9 @@ A session-scoped snooze is planted for a known session id before launch.
   suppressed the pointer without burning the one-shot flag. Asserted from samples
   because `SessionEnd` clears the flag, so the final file cannot show it.
 - `SessionEnd` removed `snoozeSessionId`/`snoozeUntil` and left `enabled`/`mode`
-  untouched — those keys belong to the config command surface (GP-866)
+  untouched. GP-866 made those keys writable from `runtime-config.cjs` too, so the
+  claim is now about scope rather than ownership: the sweep goes through
+  `withoutSnooze` and only `restore()` (the `/gutt on` path) deletes `enabled`.
 - the run still answers the user normally
 
 ### Run 4 — the Stop router fires, and stops firing
@@ -160,6 +163,34 @@ reply cleanliness are the deterministic parts and the real guards.
 - gutt's five handlers still register and the lifecycle still completes
 - no hook emits a blocking decision, and the session is not interrupted
 - `auto-lint-plugin` contributes its `PostToolUse` handler without disturbing gutt
+
+### Run 6 — the `/gutt` config command (GP-866)
+
+Two command prompts in one session, config planted empty so the run starts from the
+documented defaults: `/gutt-claude-code-plugin:gutt off 30`, then `/gutt config`.
+
+The namespaced spelling is used on purpose. It is what the `/` menu inserts, so it is
+the form real users produce; a parser that only handled the hand-typed `/gutt off 30`
+would fail exactly here, and nowhere else in the suite would notice.
+
+- both turns return `is_error: false`
+- **exactly two** `additionalContext` events, both from `user-prompt-submit.cjs` —
+  one per command turn, and no memory pointer, because row 0 returns before the
+  pointer rows
+- `config.json` afterwards holds a `snoozeUntil` roughly 30 minutes out, and **no**
+  `enabled` key — a minute snooze must not touch the durable flag
+- a mid-run state sample still shows `firstPromptPending: true` — a config turn does
+  not spend the session's one pointer
+- the reply to prompt 1 mentions the 30 minutes, i.e. the model **relayed** the
+  injected result rather than surfacing it as suspicious (GP-868) or improvising
+  about config it never read
+- no `"decision": "block"` anywhere in the debug log (R23)
+
+This run is the only tier that can settle two things: that a command's raw text and
+arguments reach `UserPromptSubmit` at all, and that injected factual prose is consumed
+rather than flagged. Both were unverified anywhere in the repo before GP-866 — the
+first was established by reading a real `hook-invocations.log`, and this run is what
+keeps it true.
 
 ## Unit-tier additions this plan also requires
 

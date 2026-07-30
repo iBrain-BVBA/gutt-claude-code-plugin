@@ -4,21 +4,23 @@
  * (GP-844) in real Claude Code sessions.
  *
  * `session-lifecycle.e2e.cjs` covers one startup session and the state contract.
- * This file covers the three claims that only a live session can settle, each with
- * its own run:
+ * This file covers the claims that only a live session can settle, each with its own
+ * run:
  *
  *   Run 2  the anti-nag guarantee — two prompts, one SessionStart, one injection
  *   Run 3  the snooze row suppresses the pointer without consuming it
  *   Run 4  the Stop router fires, and then stops firing
  *   Run 5  R23 coexistence with a second plugin in the same session
+ *   Run 6  a `/gutt` config command is applied, and the result reaches the model
  *
  * Why the debug log carries most of the weight here: a `type: "prompt"` hook has
  * no side effects at all. Its verdict never reaches disk, so a hook that was never
  * evaluated looks exactly like one that returned ok:true. The CLI's own log is the
  * only evidence that distinguishes them.
  *
- * Cost and prerequisites: four Haiku runs, a few cents, against the machine's
- * logged-in subscription. Not part of `npm test`; see tests/e2e/README.md.
+ * Cost and prerequisites: five Haiku runs plus one Sonnet run (run 4), a few cents,
+ * against the machine's logged-in subscription. Not part of `npm test`; see
+ * tests/e2e/README.md.
  *
  * Run with: npm run test:e2e
  */
@@ -68,6 +70,7 @@ const IDS = {
   stopRouterRetry: crypto.randomUUID(),
   stopRouterRetry2: crypto.randomUUID(),
   coexist: crypto.randomUUID(),
+  configCommand: crypto.randomUUID(),
 };
 
 /**
@@ -576,6 +579,126 @@ describe(
       // Each plugin gets its own data dir, so auto-lint cannot reach gutt's state.
       assert.match(run.stateFile, /gutt-claude-code-plugin-inline/);
       assert.doesNotMatch(run.stateFile, /auto-lint/);
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Run 6 — the /gutt config command surface (GP-866)
+// ---------------------------------------------------------------------------
+
+describe(
+  "GP-892 run 6: a /gutt config command is applied deterministically and relayed",
+  { skip, timeout: 420000 },
+  () => {
+    let projectDir;
+    let run;
+    let configAfterRun;
+    const plantedAt = Date.now();
+
+    before(
+      async () => {
+        projectDir = createProject("config-command");
+        // Planted empty so the run starts from the documented defaults, and so the
+        // developer's own config is restored afterwards either way.
+        await withPlantedConfig({}, async (configFile) => {
+          run = await runClaudeStream({
+            projectDir,
+            sessionId: IDS.configCommand,
+            debugLabel: "claude-debug",
+            // The namespaced spelling first, deliberately: it is what the `/` menu
+            // inserts, so it is the form real users produce, and a parser that only
+            // handled the hand-typed variants would fail exactly here.
+            prompts: ["/gutt-claude-code-plugin:gutt off 30", "/gutt config"],
+          });
+          configAfterRun = readJsonQuiet(configFile);
+        });
+      },
+      { timeout: 400000 }
+    );
+
+    after(() => {
+      dropOwnState(IDS.configCommand);
+      if (projectDir) {
+        removeDir(projectDir);
+      }
+    });
+
+    it("answers both command turns without erroring", () => {
+      assert.equal(run.code, 0, `claude exited ${run.code}\nstderr: ${run.stderr}`);
+      assert.equal(run.turns.length, 2, `expected 2 turns, saw ${run.turns.length}`);
+      for (const turn of run.turns) {
+        assert.equal(turn.is_error, false);
+      }
+    });
+
+    it("applies the command and injects the outcome, on both turns", () => {
+      // Two injections and no memory pointer: row 0 returns before the pointer rows,
+      // so a config turn spends nothing. That is the whole reason it sits where it
+      // does.
+      const events = additionalContextEvents(run.debug);
+      assert.equal(
+        events.length,
+        2,
+        `expected one injection per command turn, got ${events.length}:\n${events.join("\n")}`
+      );
+      for (const event of events) {
+        assert.match(event, /user-prompt-submit\.cjs/, "the injection came from some other hook");
+      }
+    });
+
+    it("writes the snooze to config.json and nothing else", () => {
+      assert.ok(configAfterRun, "config.json vanished during the run");
+      const until = Date.parse(configAfterRun.snoozeUntil);
+      assert.ok(
+        Number.isFinite(until),
+        `no snooze deadline was written: ${configAfterRun.snoozeUntil}`
+      );
+      // Generous window: the run takes tens of seconds and the deadline is stamped
+      // when the hook fires, not when the test planted the file.
+      const minutesOut = (until - plantedAt) / 60000;
+      assert.ok(
+        minutesOut > 29 && minutesOut < 35,
+        `expected a deadline ~30 minutes out, got ${minutesOut.toFixed(1)} minutes`
+      );
+      assert.equal(
+        "enabled" in configAfterRun,
+        false,
+        "a minute snooze must not touch the durable off flag"
+      );
+    });
+
+    it("relays the outcome to the user rather than flagging it (GP-868)", () => {
+      // The one thing no other tier can settle. The injected text is factual prose,
+      // so the model should consume it and report; the failure mode this catches is
+      // Claude surfacing it as a suspicious out-of-band instruction, or ignoring it
+      // and improvising about config it never read.
+      const first = String(run.turns[0].result);
+      assert.match(
+        first,
+        /30 minutes|30-minute/i,
+        `the model did not relay the applied change:\n${first}`
+      );
+      const second = String(run.turns[1].result);
+      assert.match(second, /snooze|enabled|recall/i, `/gutt config was not relayed:\n${second}`);
+    });
+
+    it("does not consume the session's memory pointer on a command turn", () => {
+      assert.ok(run.samples.length > 0, "no session-state samples were captured during the run");
+      const armed = run.samples.filter((entry) => entry.state.firstPromptPending === true);
+      assert.ok(
+        armed.length > 0,
+        `firstPromptPending was never observed set across ${run.samples.length} samples — ` +
+          "a config turn burned the pointer it never used"
+      );
+    });
+
+    it("never blocks, on the one row the user typed on purpose (R23)", () => {
+      assert.doesNotMatch(
+        run.debug,
+        /"decision"\s*:\s*"block"/,
+        "the config row emitted a blocking decision — it would erase the user's command"
+      );
     });
   }
 );

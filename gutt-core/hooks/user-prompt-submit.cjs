@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 /**
- * UserPromptSubmit — a thin router into the memory skills (GP-864).
+ * UserPromptSubmit — a router into the memory skills (GP-864) and the `/gutt`
+ * config commands (GP-866).
  *
- * Emits `additionalContext` naming a skill and stops there. The behaviour lives
- * in `skills/memory-search` and `skills/memory-capture`; this hook only decides
- * *whether* to point at one, from state, on deterministic rows.
+ * Two jobs, both deterministic. Usually it emits `additionalContext` naming a
+ * skill and stops there: the behaviour lives in `skills/memory-search` and
+ * `skills/memory-capture`, and this hook only decides *whether* to point at one,
+ * from state, on fixed rows. The exception is row 0 — when the prompt is a `/gutt`
+ * config command, it applies the change through `lib/config-command.cjs` and emits
+ * the outcome instead of a pointer.
+ *
+ * Row 0 lives on this event because the platform gives us nothing better: a
+ * command's raw text (verified: including its arguments) arrives here before
+ * expansion, and hooks are the only processes that get `CLAUDE_PLUGIN_DATA`, so
+ * this is the one place that can find `config.json` without being told where it is.
  *
  * Why a command hook and not `type: "prompt"`: a prompt hook cannot inject
  * context. Its only lever on this event is `decision: "block"`, which "prevents
@@ -27,7 +36,8 @@
 const { statePath, appendLine } = require("./lib/plugin-state.cjs");
 const { LOG_FILES } = require("./lib/debug.cjs");
 const { init, advanceTurn, isRecallRecent } = require("./lib/session-state.cjs");
-const { isSnoozed } = require("./lib/runtime-config.cjs");
+const { isSuppressed } = require("./lib/runtime-config.cjs");
+const { configCommandResult } = require("./lib/config-command.cjs");
 const { guard } = require("./lib/debug.cjs");
 
 /**
@@ -93,6 +103,21 @@ const REGROUND_CONTEXT =
   `summary keeps only as conclusions. Run the \`${SEARCH_SKILL}\` skill before continuing ` +
   "this work to re-ground the specifics it dropped, rather than proceeding from the recap.";
 
+/**
+ * The hook's whole output channel. `additionalContext` lands alongside the
+ * submitted prompt; this event cannot replace the prompt, and it must never set
+ * `decision` — a block here erases the user's prompt and shows the reason to them
+ * rather than to Claude (R23).
+ * @param {string} context
+ */
+function emit(context) {
+  process.stdout.write(
+    `${JSON.stringify({
+      hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context },
+    })}\n`
+  );
+}
+
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -100,11 +125,17 @@ process.stdin.on("data", (chunk) => {
 });
 
 process.stdin.on("end", () => {
+  // Two forms of the same string, on purpose. `rawPrompt` is what the config
+  // command parser reads: truncating first would turn a long prompt into a
+  // half-command, and the parser requires the tail to be exact. `prompt` is the
+  // bounded copy the breadcrumb log gets.
+  let rawPrompt = "";
   let prompt = "unknown";
   let sessionId = "unknown";
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
-    prompt = String(data.prompt || data.message || "unknown").slice(0, 200);
+    rawPrompt = String(data.prompt || data.message || "unknown");
+    prompt = rawPrompt.slice(0, 200);
     sessionId = data.session_id || "unknown";
   } catch {
     // Unparseable stdin still exits 0 — this hook must never block a prompt.
@@ -116,13 +147,29 @@ process.stdin.on("end", () => {
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 19);
     appendLine(statePath(LOG_FILES.invocations), `[${timestamp}] Prompt: ${prompt}`);
 
-    // Row 1: snoozed → silent. Checked first and before the turn is advanced, so a
-    // snooze neither burns the one-shot flags it suppressed nor counts the turns it
-    // sat out. The counter therefore measures turns the plugin actually saw, which
-    // makes the row-4 window slightly wider across a snooze — accepted, because the
-    // alternative is a second locked write on the hot path to count turns nobody
-    // will act on.
-    if (isSnoozed(sessionId)) {
+    // Row 0: the user typed a `/gutt` config command (GP-866). Apply it and report
+    // the outcome; the behaviour is in `lib/config-command.cjs`.
+    //
+    // Above row 1 because `/gutt on` has to work while the plugin is off. Gate this
+    // on suppression and the off switch becomes one-way, with hand-editing
+    // config.json the only way back.
+    //
+    // Above `advanceTurn()` for the same reason row 1 is: a config turn is
+    // bookkeeping, not conversation. Burning `firstPromptPending` on `/gutt config`
+    // would cost the session its one memory pointer.
+    const commandResult = configCommandResult(rawPrompt, sessionId);
+    if (commandResult) {
+      emit(commandResult);
+      return;
+    }
+
+    // Row 1: suppressed → silent, either turned off durably or snoozed. Checked
+    // before the turn is advanced, so it neither burns the one-shot flags it
+    // suppressed nor counts the turns it sat out. The counter therefore measures
+    // turns the plugin actually saw, which makes the row-4 window slightly wider
+    // across a snooze — accepted, because the alternative is a second locked write
+    // on the hot path to count turns nobody will act on.
+    if (isSuppressed(sessionId)) {
       return;
     }
 
@@ -156,11 +203,7 @@ process.stdin.on("end", () => {
       return;
     }
 
-    process.stdout.write(
-      `${JSON.stringify({
-        hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context },
-      })}\n`
-    );
+    emit(context);
   });
 
   process.exitCode = 0;

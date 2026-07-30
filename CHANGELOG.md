@@ -23,6 +23,30 @@
 
 ### Added
 
+- **The `/gutt` settings command** — `/gutt config`, `/gutt on`,
+  `/gutt off [minutes|session]`, `/gutt mode auto|hitl`. The direct power-user ask
+  (R24): a timed snooze that expires on its own, plus a durable off that survives
+  restarts. Parsed and applied deterministically by the `UserPromptSubmit` hook,
+  which then reports the outcome as injected context — no model reads the arguments,
+  so a mistyped minute count cannot become a long silence. Writes go only to
+  `${CLAUDE_PLUGIN_DATA}/config.json`, through the existing locked
+  atomic-temp+rename path. `/gutt-claude-code-plugin:gutt …` and `/gutt:…` are
+  accepted spellings; the ticket's `/gutt:off` would have required renaming the
+  plugin, which moves `${CLAUDE_PLUGIN_DATA}` and orphans existing state (GP-866)
+  - `enabled` and `mode` now have readers as well as writers. They shipped in the
+    documented `config.json` shape in GP-863 and were used by nothing, so a
+    hand-written `{"enabled": false}` silently did nothing. The router's suppression
+    row reads both halves through one `isSuppressed()` call, so honouring `enabled`
+    costs no extra file read on a 50ms path.
+  - Out-of-range minute counts are rejected rather than clamped, and an out-of-scope
+    `/gutt off session` with no session id is refused rather than writing a snooze no
+    session could ever clear.
+  - The HUD's gutt segment shows ` off` or ` zzz` while suppressed.
+  - Known gap: turning recall off does **not** silence the end-of-turn capture
+    prompt. That hook is a `type: "prompt"` judge, dispatched unconditionally and
+    reading no config; gating it is capture mode's job, and nothing consumes that key
+    yet. Every message the command emits says "memory recall" rather than "gutt is
+    off" for exactly this reason.
 - New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
   memory scope, for the onboarding agent to consume. Ships no hooks.
   (GP-883, E7 mentor shared skill base)

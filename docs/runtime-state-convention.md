@@ -23,15 +23,15 @@ that migration.
 All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
 `${CLAUDE_PLUGIN_DATA}`; no code joins its own `.state` path anymore.
 
-| File                                               | Written by                                                                                                                 | Notes                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions/<session_id>.json`                       | `session-state.cjs`                                                                                                        | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                          |
-| `config.json`                                      | config commands (GP-866); snooze lifecycle and `projects` by `runtime-config.cjs`; `migrationsVersion` by `migrations.cjs` | Runtime on/off, mode, snooze, the integer `migrationsVersion` recording which one-time cleanups this machine has had, and the per-project `projects` space (GP-922 — see below). **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads. |
-| `capture-queue.jsonl`                              | _(writer/drain — GP-873)_                                                                                                  | Append-only capture queue. GP-863 owns only its TTL: entries >7d, unparseable lines, and overflow past 500 lines are pruned at SessionStart.                                                                                                                                                                           |
-| `hook-errors.log`                                  | `debug.cjs`                                                                                                                | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                                           |
-| `hook-invocations.log`                             | `user-prompt-submit`                                                                                                       | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                                                    |
-| `migrations/settings-backup-<ms>.json`             | `migrations.cjs` (GP-895)                                                                                                  | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover.                        |
-| `migrations/builtin-memory-<projectKey>-<ms>.json` | `builtin-memory-store.cjs` (GP-922)                                                                                        | Every fact in a project's Claude Code memory store, captured verbatim before the store is migrated into gutt, plus the `verified` map that authorises each deletion. **Never swept**, same reasoning as the row above: it is the only remaining copy's undo. One per migration attempt per project.                    |
+| File                                               | Written by                                                                               | Notes                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions/<session_id>.json`                       | `session-state.cjs`                                                                      | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                          |
+| `config.json`                                      | `runtime-config.cjs` for everything but `migrationsVersion`, which is `migrations.cjs`'s | Runtime on/off, mode, snooze, the integer `migrationsVersion` recording which one-time cleanups this machine has had, and the per-project `projects` space (GP-922 — see below). **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads. |
+| `capture-queue.jsonl`                              | _(writer/drain — GP-873)_                                                                | Append-only capture queue. GP-863 owns only its TTL: entries >7d, unparseable lines, and overflow past 500 lines are pruned at SessionStart.                                                                                                                                                                           |
+| `hook-errors.log`                                  | `debug.cjs`                                                                              | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                                           |
+| `hook-invocations.log`                             | `user-prompt-submit`                                                                     | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                                                    |
+| `migrations/settings-backup-<ms>.json`             | `migrations.cjs` (GP-895)                                                                | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover.                        |
+| `migrations/builtin-memory-<projectKey>-<ms>.json` | `builtin-memory-store.cjs` (GP-922)                                                      | Every fact in a project's Claude Code memory store, captured verbatim before the store is migrated into gutt, plus the `verified` map that authorises each deletion. **Never swept**, same reasoning as the row above: it is the only remaining copy's undo. One per migration attempt per project.                    |
 
 The three artifacts named by the R37 state contract are the first three rows; the
 rest are caches, logs, and backups that rebuild themselves or are written once.
@@ -56,16 +56,33 @@ because they keep the transcript the recall is still sitting in.
 
 ### Keys in `config.json`
 
-| Key                              | Producer                      | Scope           |
-| -------------------------------- | ----------------------------- | --------------- |
-| `enabled`, `mode`                | config commands (GP-866)      | machine-global  |
-| `snoozeUntil`, `snoozeSessionId` | `runtime-config.cjs` (GP-863) | machine-global  |
-| `migrationsVersion`              | `migrations.cjs` (GP-895)     | machine-global  |
-| `projects`                       | `runtime-config.cjs` (GP-922) | **per project** |
+| Key                              | Producer                       | Written by                    | Scope           |
+| -------------------------------- | ------------------------------ | ----------------------------- | --------------- |
+| `enabled`                        | `/gutt off` / `/gutt on`       | `runtime-config.cjs` (GP-866) | machine-global  |
+| `mode`                           | `/gutt mode`                   | `runtime-config.cjs` (GP-866) | machine-global  |
+| `snoozeUntil`, `snoozeSessionId` | `/gutt off N\|session`, sweeps | `runtime-config.cjs` (GP-863) | machine-global  |
+| `migrationsVersion`              | `migrations.cjs` (GP-895)      | `migrations.cjs`              | machine-global  |
+| `projects`                       | migration offer (GP-922)       | `runtime-config.cjs` (GP-922) | **per project** |
 
 `runtime-config.cjs` may mutate only the keys in its `OWNED_KEYS` list — the two
-snooze keys and `projects`. Everything else belongs to GP-866's command surface and
-must not be written from a hook.
+preference keys, the two snooze keys, and `projects`. `migrationsVersion` is the one
+key in this file it must not touch.
+
+Until GP-866 the rule here was stronger: `enabled` and `mode` were declared in
+`DEFAULTS`, read by nobody, and documented as "must not be written from a hook". That
+could not survive the command surface, because the command surface **is** a hook —
+`/gutt` is parsed and applied on `UserPromptSubmit`, the only event whose process is
+given `${CLAUDE_PLUGIN_DATA}`. What the old rule protected is still enforced, by
+scope rather than by prohibition: every mutator touches only the keys it names, so a
+SessionStart sweep cannot clobber a preference and `/gutt on` cannot clobber a
+migration record. `PREFERENCE_KEYS`, `SNOOZE_KEYS` and `RESTORE_KEYS` exist to keep
+those scopes separate — notably `RESTORE_KEYS` omits `mode`, so `/gutt on` does not
+silently reset a `hitl` choice.
+
+**`enabled` is read as `false` only on a strict boolean `false`.** A hand-edited
+`"enabled": "no"` therefore does nothing, the same way an unrecognised
+`memoryMigration.status` reads as unrecorded. `/gutt config` prints the raw stored
+value so a hand-edit that has no effect is visible rather than assumed to be working.
 
 #### The `projects` key space (GP-922)
 

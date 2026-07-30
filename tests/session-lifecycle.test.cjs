@@ -685,7 +685,13 @@ describe("session lifecycle: snooze", () => {
     assert.ok(runtimeConfig.readConfig().snoozeUntil, "durable snooze outlives the session");
   });
 
-  it("clearing snooze leaves keys owned by the config commands untouched", () => {
+  // The sweep touches only the two snooze keys. That used to be phrased as "these
+  // keys belong to GP-866, not to this module", which is no longer why: GP-866
+  // landed `setEnabled`/`setMode` in this same module, so ownership is not what
+  // separates them any more — scope is. `clearExpiredSnooze` goes through
+  // `withoutSnooze`, and `restore()` (the `/gutt on` path) is the only thing here
+  // that deletes `enabled`. Routing the sweep through `restore()` would break this.
+  it("clearing snooze leaves the preference keys untouched", () => {
     pluginState.writeJson(runtimeConfig.configPath(), {
       enabled: false,
       mode: "manual",
@@ -693,7 +699,7 @@ describe("session lifecycle: snooze", () => {
     });
     runtimeConfig.clearExpiredSnooze();
     const raw = runtimeConfig.readRawConfig();
-    assert.equal(raw.enabled, false, "GP-866's keys survive");
+    assert.equal(raw.enabled, false, "a durable off survives a snooze sweep");
     assert.equal(raw.mode, "manual");
     assert.equal("snoozeUntil" in raw, false);
   });
@@ -1357,6 +1363,124 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     assert.ok(contextOf(submit("m-snz")), "flag survived the snooze");
   });
 
+  it("row 1: a durable off is silent, and does not burn the flag either", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-off", source: "startup" },
+      { dataDir: dir, home }
+    );
+    // The only test that proves `isSuppressed` is wired into the router rather than
+    // merely exported. Before GP-866 this file was read by nobody and this prompt
+    // would have spoken.
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ enabled: false }));
+    assert.equal(submit("m-off"), null, "a durable off must be silent");
+
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({}));
+    assert.ok(contextOf(submit("m-off")), "flag survived the durable off");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Row 0 — the /gutt config commands (GP-866)
+  // ---------------------------------------------------------------------------
+
+  it("row 0: a config command reports the configuration", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-cfg", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-cfg", "/gutt config"));
+    assert.ok(ctx, "a config command must be answered");
+    assert.match(ctx, /enabled: true/);
+    assert.match(ctx, /mode: auto/);
+    assert.match(ctx, /snooze: none/);
+  });
+
+  it("row 0: a config turn does not burn the first-prompt flag", () => {
+    runHook("session-start.cjs", { session_id: "m-nb", source: "startup" }, { dataDir: dir, home });
+    assert.ok(contextOf(submit("m-nb", "/gutt config")), "the command is answered");
+    assert.equal(
+      readSession(dir, "m-nb").firstPromptPending,
+      true,
+      "a config turn is bookkeeping — it must not spend the session's one pointer"
+    );
+    const ctx = contextOf(submit("m-nb"));
+    assert.match(ctx, /memory-search/, "the pointer is still owed after a config turn");
+  });
+
+  // The highest-value case here. Put row 0 below the suppression row and `/gutt on`
+  // can never un-stick the plugin: the off switch becomes one-way and hand-editing
+  // config.json is the only way back. Nothing else would report that.
+  it("row 0 beats row 1: /gutt on works while the plugin is off", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-unstick", source: "startup" },
+      { dataDir: dir, home }
+    );
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ enabled: false }));
+    assert.equal(submit("m-unstick"), null, "off, so an ordinary prompt is silent");
+
+    const ctx = contextOf(submit("m-unstick", "/gutt on"));
+    assert.ok(ctx, "/gutt on must be answered even while suppressed");
+    assert.match(ctx, /back on/);
+
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.equal("enabled" in raw, false, "`/gutt on` clears the key rather than storing true");
+    assert.ok(contextOf(submit("m-unstick")), "and the pointer flows again");
+  });
+
+  it("row 0 beats row 1: a config command answers under a session snooze", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-snzcfg", source: "startup" },
+      { dataDir: dir, home }
+    );
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ snoozeSessionId: "m-snzcfg" })
+    );
+    const ctx = contextOf(submit("m-snzcfg", "/gutt config"));
+    assert.match(ctx, /rest of this session/, "the snooze is reported, not obeyed");
+  });
+
+  it("row 0: a minute snooze suppresses the next prompt and expires at guard time", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-min", source: "startup" },
+      { dataDir: dir, home }
+    );
+    assert.match(contextOf(submit("m-min", "/gutt off 30")), /30 minutes/);
+    assert.equal(submit("m-min"), null, "snoozed by the command, so silent");
+
+    // Guard-time expiry, through the real hook: the deadline is in the past, so the
+    // row-1 check must let this through without waiting for a SessionStart sweep.
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
+    );
+    assert.ok(contextOf(submit("m-min")), "a lapsed deadline no longer suppresses");
+  });
+
+  it("row 0: an unrecognised /gutt form changes nothing and says so", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-bad", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-bad", "/gutt off 30 and fix the tests"));
+    assert.match(ctx, /did not recognise/);
+
+    // Asserted per key rather than by the file's absence: SessionStart already
+    // created config.json to record `migrationsVersion`, so "no file" was never the
+    // right shape for this claim.
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.deepEqual(
+      Object.keys(raw).filter((k) => runtimeConfig.OWNED_KEYS.includes(k)),
+      [],
+      `a malformed command must write nothing, got ${JSON.stringify(raw)}`
+    );
+  });
+
   it("never blocks: no decision field, and unparseable stdin still exits 0", () => {
     runHook(
       "session-start.cjs",
@@ -1365,6 +1489,13 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     );
     const parsed = submit("m-safe");
     assert.equal(parsed.decision, undefined, "must never set `decision` (R23)");
+
+    // The config commands are the one row that emits on a prompt the user typed
+    // deliberately, which makes a `decision` here the most tempting mistake in the
+    // hook: blocking would erase `/gutt off 30` and show the result to the user
+    // instead of Claude. R23 forbids it on every row.
+    const command = submit("m-safe", "/gutt config");
+    assert.equal(command.decision, undefined, "not on a config command either (R23)");
 
     const bad = spawnSync("node", [path.join(HOOKS, "user-prompt-submit.cjs")], {
       input: "{not json",
