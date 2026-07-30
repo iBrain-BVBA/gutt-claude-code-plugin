@@ -24,8 +24,11 @@ another person is a different mode — see Step 7.
 **And it is conversational where it writes.** Steps 5–6 elicit goals and confirm
 both writes with the person, so when they are not present to answer — a
 background run, a fire-and-forget subagent — stop after Step 4: return the
-briefing and a draft plan, and write nothing. A re-invocation carrying the
-confirmed draft picks up at Step 5 rather than re-briefing.
+briefing and a draft plan, and write nothing. **Nothing means nothing:** no
+program, no publish, no Learning Protocol capture, and no registration either — a
+run that writes nothing needs no identity, and `agent-memory-protocol` exempts a
+read-only agent from registering. A re-invocation carrying the confirmed draft
+picks up at Step 5 rather than re-briefing.
 
 ## Agent identity
 
@@ -110,6 +113,11 @@ Step 2 under a different `<slug>` — replacing a program is
 `individual-program-design`'s business, on the person's say-so only. Nothing
 there at all? Continue to Step 2.
 
+**Neither clearly is its own case, and the common one:** a near-match, several
+candidates, or a record whose provenance you doubt. Do not force it into either
+branch — say what you found and ask which it is. With nobody to ask, treat it as
+not a resume, say why you did not use it, and continue to Step 2.
+
 ### Step 2: Determine scope
 
 | Scope   | Focus areas                                            |
@@ -120,6 +128,8 @@ there at all? Continue to Step 2.
 | Domain  | Concepts, terminology, related projects, experts       |
 | Full    | All of the above                                       |
 
+Nothing stated narrows it → Full.
+
 Also establish the **role** they are ramping into. It is what Step 3 searches for
 and what the published plan is filed under.
 
@@ -128,10 +138,12 @@ and what the published plan is filed under.
 Open with **one unscoped discovery read** — `search_memory_nodes(query="<team or
 role>")`, no `group_ids` — solely to learn the group names: every node and fact a
 read returns carries its own `group_id`, personal hits labelled `personal`. Take
-the org group names from it (never off a write tool's name suffix, which is a
-display alias, and never guessed), register (see Agent identity), then run the
-reads below. If it surfaces no org group and nobody can name one, skip the org
-reads and say so — see Failure modes.
+the org group names from that **`group_id` field** — never off a node's readable id
+prefix, which is an alias and can differ from the group (a node id reading
+`gutt_pro:…` can belong to group `gutt_pro_v2`), never off a write tool's name
+suffix, and never guessed. Then register (see Agent identity) and run the reads
+below. If it surfaces no org group and nobody can name one, skip the org reads and
+say so — see Failure modes.
 
 Every call below is an **org read**. `<org>` stands for the org group names that
 discovery read returned — pass them on every call, because omitting `group_ids`
@@ -147,7 +159,8 @@ first pass returned, which is why it cannot come first.
 | Focus area                        | Rung 1 — first pass                                                                                               | Rung 2 — only if that left a gap                                                                                |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Prior plans for this role, always | `search_memory_nodes(query="onboarding plan <role>", group_ids=[<org>])`                                          | —                                                                                                               |
-| People, roles, agreements         | `search_memory_nodes(query="<team/project> team members", entity="Person", group_ids=[<org>])`                    | `search_memory_facts(query="role responsibility works on", center_node_id="<team node id>", group_ids=[<org>])` |
+| People, roles, agreements         | `search_memory_nodes(query="<team/project>", entity="Team", group_ids=[<org>])` — also the id rung 2 centers on   | `search_memory_facts(query="role responsibility works on", center_node_id="<team node id>", group_ids=[<org>])` |
+|                                   | `search_memory_nodes(query="<team/project> members roles", entity="Person", group_ids=[<org>])`                   |                                                                                                                 |
 |                                   | `search_memory_nodes(query="<team> working agreement process", entity="WorkingAgreement", group_ids=[<org>])`     |                                                                                                                 |
 | Architecture, and how it connects | `search_memory_nodes(query="<project/system> architecture component", entity="SystemConcept", group_ids=[<org>])` | `search_memory_facts(query="depends on integrates with", center_node_id="<system node id>", group_ids=[<org>])` |
 |                                   | `search_memory_nodes(query="<project/system> component service", entity="CodeComponent", group_ids=[<org>])`      |                                                                                                                 |
@@ -157,6 +170,12 @@ first pass returned, which is why it cannot come first.
 | Lessons and pitfalls              | `fetch_lessons_learned(query="<project/system/team>", group_ids=[<org>])`                                         | —                                                                                                               |
 |                                   | `fetch_lessons_learned(query="<project> pitfall avoid mistake", group_ids=[<org>])`                               |                                                                                                                 |
 | Experts and documentation         | `search_memory_nodes(query="<project/system> documentation runbook", entity="Document", group_ids=[<org>])`       | `search_memory_facts(query="expertise knowledge owner", center_node_id="<system node id>", group_ids=[<org>])`  |
+
+**Pair each row with facts, not just nodes.** `memory-search`'s first rule runs
+node and fact searches together, because a fact often carries the answer and
+outranks the entity summary — so the first pass includes one **uncentered**
+`search_memory_facts` on the row's own phrasing. The right-hand column is the
+_centered_ refinement, not the row's only fact search.
 
 The prior-plans row is the highest-value read and the reason Step 6 publishes: a
 published plan is found by searching its content, which is why Step 6 names it in
@@ -202,6 +221,11 @@ Hand to `individual-program-design` — it owns the program record, the cadence 
 the status vocabulary, and its rules apply unchanged: goals in the person's own
 words, never inferred; the write is `add_personal_memory`, no `agent_id`,
 `last_n_episodes=0`.
+
+**Use that skill's headings verbatim.** `progress-tracking` reconstructs status by
+reading them, so a renamed or added heading reads as a missing section. The program
+is not the Step 6 record — that one is shaped for org search and opens with a
+`## Role` the program does not have.
 
 Give it the org grounding from Step 3 so the milestones attach to real systems,
 real reviewers, and real first tasks rather than generic ones. A milestone still
