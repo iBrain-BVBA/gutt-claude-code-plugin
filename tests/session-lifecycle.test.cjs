@@ -819,6 +819,30 @@ describe("session lifecycle: TTL primitives", () => {
     assert.ok(fs.statSync(log).size > 1, "bounded, not emptied");
   });
 
+  it("trimLog bounds an oversized log that has no line structure at all", () => {
+    // Both axes at once: past DISCARD_BYTES *and* without a single newline. Only
+    // that combination reaches readTail's partial-line drop with nothing behind the
+    // cut. The test above is newline-free but small enough to take the plain
+    // readFileSync path; the one at the top of this block is oversized but has
+    // newlines. Neither gets there.
+    //
+    // What protects the file is the `rest.trim() !== ""` check — drop it and a 5MB
+    // structureless hook-errors.log trims to nothing, with trimLog still reporting
+    // {trimmed: true} and guard() seeing no throw, so the failure is invisible
+    // precisely because the log is what got wiped. (The `nl === -1` ternary beside
+    // it is belt-and-braces, not the guard: slice(-1 + 1) is slice(0), so without
+    // the ternary `rest` would be the whole tail and the outcome identical.)
+    const log = pluginState.statePath("hook-errors.log");
+    fs.writeFileSync(log, "x".repeat(5 * 1024 * 1024));
+    assert.ok(fs.statSync(log).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
+
+    const res = pluginState.trimLog(log, { maxBytes: 256 * 1024, keepLines: 200 });
+
+    assert.equal(res.discarded, true, "the tail read must report it dropped content");
+    assert.ok(fs.statSync(log).size <= 256 * 1024, "bounded to maxBytes");
+    assert.ok(fs.statSync(log).size > 1, "bounded, not wiped to a single newline");
+  });
+
   it("the byte bound holds when the cut lands mid-character", () => {
     // Every other trim fixture is ASCII, where a byte cut is always a character
     // cut. Slicing bytes and decoding afterwards turns a split multi-byte
@@ -1436,7 +1460,7 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
 
   /**
    * Re-seed the worst dirty state a real machine can present: expired sessions,
-   * a queue with stale entries, an oversized log, a lapsed snooze, and debris.
+   * an oversized log, a lapsed snooze, and debris.
    *
    * Repeatable on purpose. It used to run once in before(), which meant the
    * latency loop swept an already-clean dir for 39 of its 40 samples and the
@@ -1579,6 +1603,31 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       fs.readdirSync(sessions).filter((f) => /^bench-\d+\.json$/.test(f)).length,
       30,
       "exactly the 30 backdated files were reclaimed"
+    );
+
+    // The two debris steps had no outcome assertion at all: deleting either one
+    // left this suite green. The fresh lock is the one that matters most — a wrong
+    // DEBRIS_TTL_MS, or an isDebris that stopped consulting mtime, would reclaim a
+    // lock out from under a hook that is still holding it.
+    assert.equal(
+      fs.existsSync(path.join(dir, "config.json.tmp.1234")),
+      false,
+      "root-debris reclaimed the orphaned temp"
+    );
+    assert.equal(
+      fs.existsSync(path.join(sessions, "bench-0.json.lock")),
+      false,
+      "session-debris reclaimed the stale lock"
+    );
+    assert.equal(
+      fs.existsSync(path.join(sessions, "bench-0.json.tmp.1234")),
+      false,
+      "session-debris reclaimed the orphaned temp"
+    );
+    assert.equal(
+      fs.existsSync(path.join(sessions, "live.json.lock")),
+      true,
+      "a lock younger than DEBRIS_TTL_MS must survive — it may still be held"
     );
   });
 });

@@ -460,7 +460,7 @@ function sweep(dir, { maxAgeMs, match = () => true } = {}) {
 }
 
 /**
- * Reading a line-oriented file bigger than this to prune it costs more than the
+ * Reading a breadcrumb log bigger than this to trim it costs more than the
  * SessionStart budget allows (GP-863, R25), so past this size only the tail is
  * read and the rest is dropped unread.
  *

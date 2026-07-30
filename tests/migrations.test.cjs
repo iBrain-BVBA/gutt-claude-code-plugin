@@ -196,22 +196,31 @@ describe("running the migration", () => {
   // of these would drop the user's own config or the only diagnostic record of what
   // the hooks did.
   it("never touches the live state artifacts", () => {
-    const live = {
-      "hook-errors.log": "[2026-07-28 10:00:00] plugin-state: trim failed\n",
-      "hook-invocations.log": "[2026-07-28 10:00:00] Prompt: hi\n",
-    };
-    for (const [name, body] of Object.entries(live)) {
-      fs.writeFileSync(path.join(dataDir, name), body);
-    }
+    // Nothing in the migration writes hook-invocations.log, so it must come back
+    // byte-for-byte. hook-errors.log is asserted on separately below: it is the
+    // file debugLog appends to, so demanding equality here would quietly also
+    // assert "the migration never logs", which is not a property we want to hold.
+    const untouched = "2026-07-28T10:00:00.000Z [UserPromptSubmit] Prompt: hi\n";
+    const errors = "2026-07-28T10:00:00.000Z [plugin-state] trim failed\n";
+    fs.writeFileSync(path.join(dataDir, "hook-invocations.log"), untouched);
+    fs.writeFileSync(path.join(dataDir, "hook-errors.log"), errors);
     fs.mkdirSync(path.join(dataDir, "sessions"));
     fs.writeFileSync(path.join(dataDir, "sessions", "abc.json"), '{"rev":1}');
     fs.writeFileSync(path.join(dataDir, "config.json"), JSON.stringify({ enabled: false }));
 
     run();
 
-    for (const [name, body] of Object.entries(live)) {
-      assert.equal(fs.readFileSync(path.join(dataDir, name), "utf8"), body, `${name} was modified`);
-    }
+    assert.equal(
+      fs.readFileSync(path.join(dataDir, "hook-invocations.log"), "utf8"),
+      untouched,
+      "hook-invocations.log was modified"
+    );
+    // Preserved, not necessarily unchanged — a diagnostic appended mid-migration is
+    // legitimate; losing the entries that were already there is not.
+    assert.ok(
+      fs.readFileSync(path.join(dataDir, "hook-errors.log"), "utf8").startsWith(errors),
+      "hook-errors.log lost the entries it had before the migration ran"
+    );
     assert.equal(fs.existsSync(path.join(dataDir, "sessions", "abc.json")), true);
     // config.json is rewritten to record the version — but only that key.
     const config = JSON.parse(fs.readFileSync(path.join(dataDir, "config.json"), "utf8"));

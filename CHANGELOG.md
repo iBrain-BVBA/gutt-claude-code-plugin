@@ -30,13 +30,24 @@
   `queue` sweep step and its `QUEUE_TTL_MS` / `QUEUE_MAX_ENTRIES` / `QUEUE_FILE`
   constants in `shared/session-sweep.cjs`, the `pruneJsonl` helper in
   `shared/plugin-state.cjs` (the step was its only caller), the artifact's rows in
-  `docs/runtime-state-convention.md`, and nine assertion sites. No user-visible
-  behaviour changes — nothing ever wrote the file, so the sweep step reclaimed
-  nothing on every session it ran. Nothing else in the state contract is
-  line-oriented JSON; `pruneJsonl` is recoverable from history if that changes
-  (GP-873)
+  `docs/runtime-state-convention.md`, and the nine sites in the tests that named the
+  file — four `pruneJsonl` cases, three fixtures, and the queue assertions in the
+  full-sweep test. No user-visible behaviour changes — nothing ever wrote the file,
+  so the sweep step reclaimed nothing on every session it ran. Nothing else in the
+  state contract is line-oriented JSON; `pruneJsonl` is recoverable from
+  `shared/plugin-state.cjs`'s history if that changes (GP-873)
 
 ### Added
+
+- **Coverage for two sweep behaviours that no test asserted.** The `root-debris` and
+  `session-debris` steps could both be deleted outright with the suite staying green;
+  the full-sweep test now asserts each reclaims its orphan and that a lock younger
+  than `DEBRIS_TTL_MS` survives, since reclaiming a live lock is the failure that
+  actually hurts. Separately, `trimLog` is now exercised on a log that is both past
+  `DISCARD_BYTES` and free of newlines — the one combination that reaches `readTail`'s
+  partial-line drop with nothing behind the cut. Removing the `rest.trim()` guard
+  there wipes a 5MB `hook-errors.log` to nothing while still reporting success, and
+  until now no test failed when it did (GP-873)
 
 - **`/gutt off` now silences the capture judge too, and `mode` finally does
   something.** The `Stop` handler moved from a `type: "prompt"` hook to a command

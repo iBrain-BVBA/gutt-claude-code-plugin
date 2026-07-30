@@ -34,8 +34,10 @@ const isDebris = (f) => f.endsWith(".lock") || f.includes(".tmp.");
  * Every artifact in the state contract gets bounded here, at the one event
  * guaranteed to fire before any of them are read.
  *
- * Each step is independently guarded — one corrupt file must not stop the rest of
- * the sweep, and no step may abort the hook.
+ * Each step is independently guarded: a step that throws is logged and skipped, so
+ * it can neither abort the hook nor stop the remaining steps from running. Note the
+ * isolation is per step, not per file — `logs` trims both breadcrumb logs inside one
+ * guard, and relies on `trimLog` catching its own errors to reach the second.
  */
 function ttlSweep() {
   const step = (name, fn) => guard("SessionStart", `ttl sweep (${name})`, fn);
