@@ -18,8 +18,10 @@ npm run test:e2e
 Requires the `claude` CLI on `PATH` and a logged-in subscription. If `claude` is
 missing the suite skips rather than fails.
 
-**Cost:** five Haiku sessions, a few cents, ~80s wall clock. The discipline is one
-`claude -p` call per set of claims, never one per assertion.
+**Cost:** seven Haiku sessions, a few cents. The discipline is one `claude -p` call per
+set of claims, never one per assertion. Wall clock is not stated for the suite as a whole
+because it has not been measured since the GP-922 suites landed; the
+`migrate-memory-skill` run alone was 55–90s across five observed runs.
 
 Four suites:
 
