@@ -34,6 +34,20 @@ function handlers(pluginDir) {
 const ALL = PLUGIN_DIRS.flatMap(handlers);
 
 /**
+ * The Stop judge's condition text, and where it now lives.
+ *
+ * It used to be the `prompt` field of a `type: "prompt"` entry in hooks.json, so the
+ * guards below read `stop.prompt`. GP-866 moved the handler to a command hook and the text
+ * to `shared/stop-judge.cjs`; every assertion on its wording moved with it, unchanged.
+ *
+ * Reading it through the plugin's symlinked copy rather than from `shared/` directly is
+ * deliberate: that is the path the hook actually requires, so a broken link fails these
+ * guards instead of surfacing later as a judge that never fires.
+ */
+const STOP_JUDGE_LIB = path.join(ROOT, "gutt-core", "hooks", "lib", "stop-judge.cjs");
+const JUDGE_CONDITION = require(STOP_JUDGE_LIB).JUDGE_CONDITION;
+
+/**
  * Plugin directories as the marketplace actually lists them, so adding a plugin
  * there covers it here without editing a second list. `PLUGIN_DIRS` above stays
  * hand-written on purpose — it drives the hook-shape guards, and a plugin that
@@ -44,19 +58,6 @@ function marketplacePluginDirs() {
   const file = path.join(ROOT, ".claude-plugin", "marketplace.json");
   const { plugins = [] } = JSON.parse(fs.readFileSync(file, "utf8"));
   return plugins.map((p) => String(p.source || "").replace(/^\.\//, "")).filter(Boolean);
-}
-
-/**
- * Lines that are neither blank nor comment. Total line count is the wrong
- * metric for this codebase — the house style is comment-heavy on purpose, and a
- * cap on it would push explanation out of the files that most need it.
- *
- * Naive about `//` and block delimiters inside string literals. That can only
- * ever *under*count, so the cap stays conservative; a hook that trips it is
- * over the limit either way.
- */
-function codeLines(file) {
-  return stripComments(fs.readFileSync(file, "utf8")).split("\n").filter(Boolean).length;
 }
 
 /**
@@ -110,51 +111,69 @@ describe("hook architecture guards", () => {
     assert.deepEqual(bad, [], "a prompt hook on UserPromptSubmit can only allow or destroy");
   });
 
-  // Stop is the inverse: on ok:false "the reason is fed back to Claude as its
-  // next instruction and the turn continues" — routing with no lost work. If
-  // this ever becomes a command hook again we are back to judging in regex (R11).
-  it("keeps the Stop judgement in a prompt hook, not a script", () => {
+  // Stop was a prompt hook until GP-866 and is now a command hook, which inverts this
+  // guard. The move was forced, not chosen: a prompt hook's `prompt` takes one
+  // substitution and no shell expansion, so it cannot read config.json and could honour
+  // neither `/gutt off` nor `mode`; and a command sibling cannot gate a prompt sibling's
+  // dispatch. See docs/hook-platform-capabilities.md §6 and §7.
+  //
+  // R11 — never judge a turn with a regex — is preserved by shelling out to a model, not
+  // by the hook type, so the assertion that matters now is that the handler still asks a
+  // model. Both halves are checked: the type, and that the script spawns the judge.
+  it("keeps the Stop judgement with a model, now via a command hook", () => {
     const stop = ALL.filter((h) => h.event === "Stop");
     assert.equal(stop.length, 1, "exactly one Stop handler");
-    assert.equal(stop[0].type, "prompt");
-  });
-
-  // A prompt hook's `model` is passed straight to the API, so a CLI alias is not a
-  // model id: `"sonnet"` answers 404 `not_found_error {"message": "model: sonnet"}`.
-  // Measured, and the failure is silent — the hook dispatches, the evaluator retries
-  // 11 times, no verdict is ever produced, the turn ends normally, and the only trace
-  // is in --debug-file. That disables the judge outright with every tier green: the
-  // command-hook runner skips this entry (type: prompt) and the e2e verdict
-  // assertions need a verdict to bite on. Hence a shape check here.
-  // See docs/hook-platform-capabilities.md §5.
-  it("pins the Stop judge to a full model id, never a CLI alias", () => {
-    const [stop] = ALL.filter((h) => h.event === "Stop");
-    if (stop.model === undefined) {
-      return; // unpinned is valid — the platform picks a fast default
-    }
+    assert.equal(stop[0].type, "command");
+    const src = stripComments(fs.readFileSync(STOP_JUDGE_LIB, "utf8"));
     assert.match(
-      stop.model,
-      /^claude-[a-z]+-\d/,
-      `"${stop.model}" is not a model id; an alias 404s and silently kills the judge`
+      src,
+      /"claude"/,
+      "the Stop handler no longer spawns a model judge — R11 forbids scoring a turn in regex"
     );
   });
 
-  // The whole point of the rebuild: procedure lives in skills, hooks only route.
-  // 60 is set just above session-start.cjs, the largest surviving router — tight
-  // enough that behavior creeping back into a hook trips it.
-  it("keeps every gutt-core hook a thin router (≤60 code lines)", () => {
-    const dir = path.join(ROOT, "gutt-core", "hooks");
-    const oversized = fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith(".cjs"))
-      .map((f) => ({ file: f, lines: codeLines(path.join(dir, f)) }))
-      .filter((h) => h.lines > 60);
-    assert.deepEqual(
-      oversized,
-      [],
-      `behavior belongs in a skill, not a hook: ${JSON.stringify(oversized)}`
+  // The hook must outlive the child it waits on, or the platform kills the handler
+  // mid-judge and every verdict is lost with the tier still green.
+  it("gives the Stop hook longer than the judge child it spawns", () => {
+    const [stop] = ALL.filter((h) => h.event === "Stop");
+    const { JUDGE_TIMEOUT_MS } = require(STOP_JUDGE_LIB);
+    assert.ok(stop.timeout, "the Stop hook declares no timeout, so the default may cut the judge");
+    assert.ok(
+      stop.timeout * 1000 > JUDGE_TIMEOUT_MS,
+      `hook timeout ${stop.timeout}s does not exceed the judge's ${JUDGE_TIMEOUT_MS}ms`
     );
   });
+
+  // The alias hazard this replaces is *retired*, not relocated, and the distinction is
+  // the point. A prompt hook's `model` went to the API unmodified, so `"sonnet"` answered
+  // 404 `not_found_error {"message": "model: sonnet"}` and killed the judge silently —
+  // dispatched, retried 11 times, no verdict, turn ends normally, trace only in
+  // --debug-file. On argv the CLI resolves the alias: measured 2026-07-30, `--model
+  // sonnet` and `--model claude-sonnet-5` both returned a clean reply.
+  //
+  // The old guard had an early `return` when `model` was absent, which a command hook
+  // would have satisfied — it would have gone green while asserting nothing. So this one
+  // asserts the model is passed at all, with no escape hatch.
+  // See docs/hook-platform-capabilities.md §5.
+  it("passes the judge an explicit model rather than inheriting a default", () => {
+    const src = stripComments(fs.readFileSync(STOP_JUDGE_LIB, "utf8"));
+    assert.match(src, /"--model"/, "the judge child inherits whatever model the CLI defaults to");
+    const { JUDGE_MODEL } = require(STOP_JUDGE_LIB);
+    assert.match(
+      JUDGE_MODEL,
+      /^claude-[a-z]+-\d/,
+      `"${JUDGE_MODEL}" is not a model id; pin the id so the judge does not follow the CLI`
+    );
+  });
+
+  // A ≤60 code-line cap on every gutt-core hook used to live here, and it was the
+  // only thing keeping procedure out of the hooks — it is what pushed GP-922's
+  // pointer prose into shared/builtin-memory.cjs. It was removed deliberately in
+  // GP-866 rather than worked around: the router needed a config-command row and
+  // was at 58 of 60. Nothing enforces the shape now, so it is reviewer judgement.
+  // The guards that remain still catch the failures the cap never did — a pointer
+  // at a skill that does not exist, a prompt hook on UserPromptSubmit, a handler
+  // path that is not on disk.
 
   // Every skill in every marketplace plugin, not just gutt-core's. A skill is
   // loaded through its frontmatter, so a missing or malformed block — or a `name`
@@ -301,6 +320,59 @@ describe("hook architecture guards", () => {
     );
   });
 
+  // The `/gutt` config surface (GP-866). Both guards below cover failures that are
+  // silent at runtime: nothing logs, nothing errors, the command just stops working.
+  describe("the /gutt config command surface", () => {
+    const ROUTER = path.join(ROOT, "gutt-core", "hooks", "user-prompt-submit.cjs");
+    const LIB = path.join(ROOT, "shared", "config-command.cjs");
+
+    // Row order is load-bearing and invisible. Put the config branch below the
+    // suppression check and `/gutt on` can never un-stick a plugin that is off:
+    // the off switch becomes one-way, with hand-editing config.json the only way
+    // back. A source-order check is crude but catches exactly the edit that would
+    // do it — moving the branch, or wrapping it in the suppression guard.
+    it("applies a config command before it checks for suppression", () => {
+      const src = stripComments(fs.readFileSync(ROUTER, "utf8"));
+      const command = src.indexOf("configCommandResult(");
+      const suppressed = src.indexOf("isSuppressed(");
+      assert.ok(command > -1, "the router no longer applies config commands");
+      assert.ok(suppressed > -1, "the router no longer checks suppression");
+      assert.ok(
+        command < suppressed,
+        "the config-command row must run first, or `/gutt on` cannot reach a plugin that is off"
+      );
+    });
+
+    // The parser hardcodes the namespace so it does not read plugin.json on a 50ms
+    // path. That trade only holds while the constant is right: rename the plugin and
+    // the autocompleted `/gutt-claude-code-plugin:gutt …` spelling — the one the `/`
+    // menu inserts, and so the common case — silently stops parsing, while the
+    // hand-typed forms keep working and hide it.
+    it("hardcodes the plugin namespace the manifest actually declares", () => {
+      const pluginName = JSON.parse(
+        fs.readFileSync(path.join(ROOT, "gutt-core", ".claude-plugin", "plugin.json"), "utf8")
+      ).name;
+      const src = fs.readFileSync(LIB, "utf8");
+      assert.match(
+        src,
+        new RegExp(`const PLUGIN_PREFIX = "${pluginName}";`),
+        `config-command.cjs must declare PLUGIN_PREFIX = "${pluginName}"`
+      );
+    });
+
+    // A command file is what makes the token a recognised command with autocomplete;
+    // without it the hook may never be dispatched at all.
+    it("ships the command file the hook's results are relayed through", () => {
+      const file = path.join(ROOT, "gutt-core", "commands", "gutt.md");
+      assert.ok(fs.existsSync(file), "gutt-core/commands/gutt.md is missing");
+      const body = fs.readFileSync(file, "utf8");
+      // Model-invoked, there is no UserPromptSubmit event and so no result in
+      // context — and `/gutt off` must never be something Claude decides to do.
+      assert.match(body, /^disable-model-invocation: true$/m);
+      assert.match(body, /already been applied/, "the body must not re-run the command itself");
+    });
+  });
+
   // Migration is a bulk *caller* of the memory skills, not a second implementation of
   // them. It writes a whole store in batches and then deletes the local copy, so any
   // dedup or conflict rule it fails to honour is multiplied by every fact in the store
@@ -343,10 +415,9 @@ describe("hook architecture guards", () => {
   // `stop_hook_active` precisely so the prompt can break its own loop — this
   // asserts the prompt actually uses it.
   it("gives the Stop judge a termination condition", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /stop_hook_active/,
       "the Stop prompt ignores stop_hook_active, so nothing stops it re-judging the same turn"
     );
@@ -371,12 +442,54 @@ describe("hook architecture guards", () => {
   // correct ok:false that reached Claude and once as a fire-shaped reason attached
   // to ok:true, which the CLI discarded unread. Accurate reasoning, inverted field,
   // silent dropped capture. This asserts the polarity is stated, not the wording.
+  it("deviates from the prompt-hook wording only in the two documented ways", () => {
+    // GP-866 claimed the condition text was carried over byte-identically and verified it
+    // by hand at review time, so nothing pinned it: the claim would have decayed the first
+    // time the prompt was reworded, silently. This is that check, committed.
+    //
+    // The fixture is the `prompt` field of the `type: "prompt"` Stop entry as it stood on
+    // release/3.0. Exactly two deviations are allowed, and both are forced by the new
+    // mechanism rather than chosen:
+    //   1. `$ARGUMENTS` → `__PAYLOAD__`, substituted by buildJudgePrompt instead of by the
+    //      platform.
+    //   2. "on the conversation above" → "on the turn quoted below", because
+    //      buildJudgePrompt puts the condition first and appends the turn, so "above"
+    //      pointed the judge at nothing but the condition's own opening sentence.
+    // A third difference fails here and has to be argued for — which is the point.
+    const fixture = path.join(__dirname, "fixtures", "stop-judge-condition-prompt-hook.txt");
+    const original = fs.readFileSync(fixture, "utf8");
+    const rebuilt = JUDGE_CONDITION.replace("__PAYLOAD__", "$ARGUMENTS").replace(
+      "on the turn quoted below",
+      "on the conversation above"
+    );
+    assert.equal(
+      rebuilt,
+      original,
+      "the judge condition drifted from the prompt-hook text in a way GP-866 did not document"
+    );
+  });
+
+  it("points the judge at the turn in the direction the prompt actually places it", () => {
+    // The retained "conversation above" wording was true of a prompt hook, where the
+    // transcript preceded the condition. buildJudgePrompt appends the turn, so the phrase
+    // has to follow the text it describes or the judge is told to score nothing.
+    const assembled = require(STOP_JUDGE_LIB).buildJudgePrompt(
+      { stop_hook_active: false },
+      "THE-TURN"
+    );
+    const pointer = assembled.indexOf("quoted below");
+    assert.ok(pointer > -1, "the condition no longer says where the turn is");
+    assert.ok(
+      assembled.indexOf("THE-TURN") > pointer,
+      "the condition points at the turn in the wrong direction"
+    );
+  });
+
   it("states the stopping condition in the direction the CLI reads it", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     // The opening sentence — everything before the first blank line — is what the
     // CLI presents as "Condition:".
-    const condition = stop.prompt.split("\n\n")[0];
+    const condition = JUDGE_CONDITION.split("\n\n")[0];
     assert.match(
       condition,
       /^Nothing\b/,
@@ -394,23 +507,37 @@ describe("hook architecture guards", () => {
   // tier the narrowing keeps — and the continuation still declined it. Tier and
   // durability are independent conditions, so the prompt has to state both.
   it("requires the subject to be durable for the team, not just correctly typed", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /durable for the team|throwaway|scaffolding/i,
       "nothing stops the judge firing on a real finding about a sandbox or test harness"
     );
   });
 
-  it("keeps the payload interpolation that the termination condition reads", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+  // The condition tells the judge to read `stop_hook_active` from the payload, so the
+  // payload has to arrive. Under the prompt hook that was the platform substituting
+  // `$ARGUMENTS`; now it is `buildJudgePrompt` substituting `__PAYLOAD__`.
+  //
+  // Asserted on the assembled prompt rather than on the template, which is a stronger
+  // guard than the one it replaces: a `$ARGUMENTS` match only proved the placeholder was
+  // *present*, and would have passed just as happily if nothing ever replaced it. This
+  // fails if the placeholder goes missing, if it survives unsubstituted, or if the value
+  // stops being forwarded.
+  it("delivers the payload the termination condition is told to read", () => {
+    const { buildJudgePrompt } = require(STOP_JUDGE_LIB);
+    const assembled = buildJudgePrompt({ stop_hook_active: true }, "a closing summary");
     assert.match(
-      stop.prompt,
-      /\$ARGUMENTS/,
-      "the prompt names stop_hook_active but no longer interpolates the payload that carries it"
+      assembled,
+      /"stop_hook_active"\s*:\s*true/,
+      "the judge is told to read stop_hook_active but the assembled prompt does not carry it"
     );
+    assert.doesNotMatch(
+      assembled,
+      /__PAYLOAD__|\$ARGUMENTS/,
+      "a placeholder reached the judge unsubstituted, so it reads a literal instead of a value"
+    );
+    assert.match(assembled, /a closing summary/, "the turn being scored is not in the prompt");
   });
 
   // Observed in a real session: the judge answered {"ok": true} with a 400-character
@@ -420,10 +547,9 @@ describe("hook architecture guards", () => {
   // get routed back. The prompt described how to write a reason without saying when
   // not to, so the judge filled the field in.
   it("tells the Stop judge not to write a reason it allows the turn with", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /omit `reason`|no other field/i,
       "the Stop prompt never tells the judge to drop `reason` on an allow, so it writes one"
     );
@@ -432,7 +558,7 @@ describe("hook architecture guards", () => {
   // A fired verdict costs the user their view of the turn. Stop runs after the work
   // is done and the answer is written, so whatever Claude says next is what they are
   // left looking at — and a continuation spent entirely on memory bookkeeping buries
-  // the work it interrupted, leaving them to scroll back for what they asked for.
+  // the work beneath it, leaving them to scroll back for what they asked for.
   //
   // Both halves of the fix live in `memory-capture/SKILL.md`, not in the fired reason.
   // The reason is read on every firing and is a payload — a skill name and a bullet
@@ -441,17 +567,32 @@ describe("hook architecture guards", () => {
   // separately below.
   //
   // Anchored on the terms that carry the meaning rather than the sentences around
-  // them: the artifact is named "TL;DR" and its position is the requirement. Reword
+  // them: there must be a closing summary of the work and it must come last. Reword
   // the prose freely; keep those.
-  it("makes a capture hand the turn back with a TL;DR, last", () => {
+  //
+  // The artifact used to be named "TL;DR" and this guard matched that literal. It was
+  // renamed deliberately — a fixed label reads as boilerplate, and a heading naming
+  // the actual work is worth more — so the anchor moved with it. Note the shape of
+  // that near-miss: had the rename landed without touching this file, the assertion
+  // would have failed loudly, which is the good case. The bad case is a guard whose
+  // string survives a rewrite while the property it stood for quietly leaves.
+  it("makes a capture close on a summary of the work, last", () => {
     const md = fs.readFileSync(
       path.join(ROOT, "gutt-core", "skills", "memory-capture", "SKILL.md"),
       "utf8"
     );
     assert.match(
       md,
-      /TL;DR/,
-      "the skill never asks for a summary of the interrupted work, so the capture becomes the turn"
+      /summary of\s+(that|the)\s+work/i,
+      "the skill never asks for a closing summary of the work, so the capture becomes the turn"
+    );
+    // The capture is part of finishing a turn. Framing it as a detour makes the reply
+    // read as an apology for having done the bookkeeping, and puts the emphasis on the
+    // interruption rather than on the work the user came for.
+    assert.match(
+      md,
+      /not an interruption/i,
+      "nothing stops the skill from framing the capture as an interruption of the work"
     );
     assert.match(
       md,
@@ -472,15 +613,14 @@ describe("hook architecture guards", () => {
   // subjects this turn produced, and nothing the skill already covers. The word cap
   // is what keeps a judge from re-deriving a briefing in the bullets.
   it("keeps the fired reason a payload — skill reference plus capped bullets", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /10 words/,
       "nothing bounds a bullet, so the reason grows back into the briefing it replaced"
     );
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /one bullet per subject|bullet per subject/i,
       "the reason no longer specifies a bullet per subject, leaving its shape to the judge"
     );
@@ -500,21 +640,20 @@ describe("hook architecture guards", () => {
   // No unit test covered either property, and `npm run test:all` excludes the e2e tier
   // where the pong-fixture detector lives, so nothing failed before this shipped.
   it("stops the judge's own format leaking into the answer", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /do not restate this response format|quotes the JSON gets echoed/i,
       "the clause naming the echo failure is gone; the verdict prints as the user's answer"
     );
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /format sample, not findings|never carry them/i,
       "nothing marks the example as a sample, so the judge fires carrying its bullets"
     );
     // The example must not be the last thing read: a completed fire verdict in final
     // position is what the judge copies.
-    const tail = stop.prompt.trim().split("\n").slice(-1)[0];
+    const tail = JUDGE_CONDITION.trim().split("\n").slice(-1)[0];
     assert.doesNotMatch(
       tail,
       /^-\s*(Insight|Incident):/,
@@ -550,15 +689,14 @@ describe("hook architecture guards", () => {
   // The negative half is the load-bearing one: re-adding any activity enumeration
   // reinstates the regression, and it reads as a harmless clarification.
   it("judges the finding rather than the activity that produced it", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /judge the finding|not what it \*?did\*?/i,
       "the prompt no longer separates the finding from the activity, so verification reads as routine"
     );
     assert.doesNotMatch(
-      stop.prompt,
+      JUDGE_CONDITION,
       /routine edits|reading or searching code|answering a question/i,
       "an activity list is back: these describe how findings get made, not what to ignore"
     );
@@ -571,10 +709,9 @@ describe("hook architecture guards", () => {
   // explicit role the judge joins the work instead of scoring it, and emits prose where
   // a verdict belongs. Anchored on the terms that carry it; reword the sentence freely.
   it("tells the Stop judge it is scoring the turn, not doing the work", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /not continuing it|capture nothing yourself|call no tool/i,
       "nothing states the judge's role, so it can answer as the agent doing the capture"
     );
@@ -586,10 +723,9 @@ describe("hook architecture guards", () => {
   // drop the single header line above them. Saying the reason *opens with* the line
   // took that to 100%.
   it("asks for the skill line rather than only showing it in the example", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     assert.match(
-      stop.prompt,
+      JUDGE_CONDITION,
       /opens with the line/i,
       "the skill reference is only illustrated, so the judge will copy the bullets and drop it"
     );
@@ -644,8 +780,7 @@ describe("hook architecture guards", () => {
   // that lands on Insight has written a gated class under the wrong label — the
   // mitigation succeeding by defeating the gate it was protecting.
   it("lets the Stop judge fire only on what memory-capture can write unprompted", () => {
-    const stop = ALL.find((h) => h.event === "Stop");
-    assert.ok(stop, "no Stop handler to check");
+    assert.ok(JUDGE_CONDITION, "no Stop judge condition to check");
     const { auto, gated } = captureTiers();
 
     // The fire condition is the prompt's bulleted list of bolded type names.
@@ -656,7 +791,7 @@ describe("hook architecture guards", () => {
     // policy — only the wording — broke the guard. A guard coupled to prose
     // punishes legitimate editing and teaches people to reword the test instead of
     // rechecking the claim. The bullet shape is the part that carries meaning.
-    const bulleted = [...stop.prompt.matchAll(/^- (?:an?|the) \*\*([A-Za-z]+)\*\*/gm)].map(
+    const bulleted = [...JUDGE_CONDITION.matchAll(/^- (?:an?|the) \*\*([A-Za-z]+)\*\*/gm)].map(
       (m) => m[1]
     );
     assert.deepEqual(
@@ -668,7 +803,7 @@ describe("hook architecture guards", () => {
     // And every gated class must still be named somewhere — in the prohibition. If
     // the skill adds a fourth gated type, this fails until the prompt rules it out,
     // rather than leaving the judge free to ask for something new and unwritable.
-    const unmentioned = gated.filter((t) => !stop.prompt.includes(t));
+    const unmentioned = gated.filter((t) => !JUDGE_CONDITION.includes(t));
     assert.deepEqual(
       unmentioned,
       [],

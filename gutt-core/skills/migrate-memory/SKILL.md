@@ -280,8 +280,8 @@ routing rules above do without being asked.
 
 Short. How many facts moved, the scope they went to, anything left behind and why,
 and where the backup is. Skip the procedure — nobody needs the dedup searches
-narrated. If this interrupted work the user actually asked for, close with a brief
-TL;DR of that work, last, per `memory-capture`.
+narrated. Where this followed work the user actually asked for, close with a short
+summary of that work, last, per `memory-capture`.
 
 ## References
 

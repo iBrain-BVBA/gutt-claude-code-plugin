@@ -20,9 +20,81 @@
 - **The subagent hooks plugin** (`plugins/gutt-subagent-hooks-plugin/`), which was
   never listed in `marketplace.json` and therefore never shipped. Decision O4
   keeps subagent hooks out of 3.0 (GP-868)
+- **`capture-queue.jsonl` and everything that maintained it.** The R37 state
+  contract named a third artifact — an append-only capture queue written at Stop
+  and drained at the next SessionStart — and its retention was implemented ahead of
+  its writer, on the reasoning that a sweep step appearing only alongside its first
+  writer is a step nobody notices is missing. The writer never arrived: GP-866 moved
+  the judge inline at Stop, where it fails open rather than deferring work, so there
+  was no deferred work to queue and GP-873 closed as not needed. Gone with it: the
+  `queue` sweep step and its `QUEUE_TTL_MS` / `QUEUE_MAX_ENTRIES` / `QUEUE_FILE`
+  constants in `shared/session-sweep.cjs`, the `pruneJsonl` helper in
+  `shared/plugin-state.cjs` (the step was its only caller), the artifact's rows in
+  `docs/runtime-state-convention.md`, and the nine sites in the tests that named the
+  file — four `pruneJsonl` cases, three fixtures, and the queue assertions in the
+  full-sweep test. No user-visible behaviour changes — nothing ever wrote the file,
+  so the sweep step reclaimed nothing on every session it ran. Nothing else in the
+  state contract is line-oriented JSON; `pruneJsonl` is recoverable from
+  `shared/plugin-state.cjs`'s history if that changes (GP-873)
 
 ### Added
 
+- **Coverage for two sweep behaviours that no test asserted.** The `root-debris` and
+  `session-debris` steps could both be deleted outright with the suite staying green;
+  the full-sweep test now asserts each reclaims its orphan and that a lock younger
+  than `DEBRIS_TTL_MS` survives, since reclaiming a live lock is the failure that
+  actually hurts. Separately, `trimLog` is now exercised on a log that is both past
+  `DISCARD_BYTES` and free of newlines — the one combination that reaches `readTail`'s
+  partial-line drop with nothing behind the cut. Removing the `rest.trim()` guard
+  there wipes a 5MB `hook-errors.log` to nothing while still reporting success, and
+  until now no test failed when it did (GP-873)
+
+- **`/gutt off` now silences the capture judge too, and `mode` finally does
+  something.** The `Stop` handler moved from a `type: "prompt"` hook to a command
+  hook (`hooks/stop-capture.cjs`) that shells out to `claude -p` for the verdict.
+  A prompt hook's `prompt` field takes one substitution and no shell expansion, so
+  it could not read `config.json` — it dispatched on every turn regardless of your
+  settings, which is why `/gutt off` used to stop recall while the judge kept
+  asking for captures. Off or snoozed now returns before any child is spawned, and
+  `mode: hitl` appends an instruction to confirm each subject with you through
+  `AskUserQuestion` before anything is written. `mode: auto` is unchanged, and the
+  judge's wording is byte-identical to what it replaces, so the only difference on
+  the default path is where the model runs.
+
+- **The `/gutt` settings command** — `/gutt config`, `/gutt on`,
+  `/gutt off [minutes|session]`, `/gutt mode auto|hitl`. The direct power-user ask
+  (R24): a timed snooze that expires on its own, plus a durable off that survives
+  restarts. Parsed and applied deterministically by the `UserPromptSubmit` hook,
+  which then reports the outcome as injected context — no model reads the arguments,
+  so a mistyped minute count cannot become a long silence. Writes go only to
+  `${CLAUDE_PLUGIN_DATA}/config.json`, through the existing locked
+  atomic-temp+rename path. `/gutt-claude-code-plugin:gutt …` and `/gutt:…` are
+  accepted spellings; the ticket's `/gutt:off` would have required renaming the
+  plugin, which moves `${CLAUDE_PLUGIN_DATA}` and orphans existing state (GP-866)
+  - `enabled` and `mode` now have readers as well as writers. They shipped in the
+    documented `config.json` shape in GP-863 and were used by nothing, so a
+    hand-written `{"enabled": false}` silently did nothing. The router's suppression
+    row reads both halves through one `isSuppressed()` call, so honouring `enabled`
+    costs no extra file read on a 50ms path.
+  - Out-of-range minute counts are rejected rather than clamped, and an out-of-scope
+    `/gutt off session` with no session id is refused rather than writing a snooze no
+    session could ever clear.
+  - The HUD's gutt segment shows ` off` or ` zzz` while suppressed.
+  - The judge **defers while background agents are still in flight**, reading
+    `background_tasks` off the Stop payload (Claude Code ≥ 2.1.145) and waiting only
+    on agent-shaped types — `subagent`, `workflow`, `teammate`, `cloud session`. A
+    background shell command or MCP monitor does not defer it, and an absent array
+    judges rather than defers, so an older CLI behaves as before. `session_crons` is
+    deliberately ignored: a recurring wakeup never drains, so gating on it would
+    silence capture for the rest of the session. One judge run per fan-out turn
+    instead of one per agent completion.
+  - The judge reports **why** it stayed quiet. A pass, a missing transcript, a
+    timeout, `claude` off the hook's PATH, a non-zero exit and an unparseable verdict
+    used to log the single word `quiet`, so a judge broken since an expired token was
+    indistinguishable from a quiet month; the failures now also reach
+    `hook-errors.log` with the child's `stderr`.
+  - A reason that quotes the verdict format is dropped rather than fed back, and an
+    over-long one is truncated — GP-921 route 1 in code rather than in prose alone.
 - `mentor` agent in `gutt-mentor` — the growth-goal counterpart to the onboarding
   agent, for asks with no new territory to map ("get better at code reviews",
   "grow toward tech lead"). Elicits the goal, grounds it in what the org graph
@@ -142,6 +214,13 @@
   Step 6 at length, now an observable-and-response table. An agent body is a system
   prompt with no staged loading, so a restatement competes with the original and
   can drift from it
+- `memory-capture`'s degradation note no longer promises a durable
+  `capture-queue.jsonl` "coming with the background pipeline". No queue is coming:
+  the Stop judge runs inline and fails open, so there is no deferred work to hold,
+  and GP-873 is closed as not needed. What the note described as a stopgap — hold
+  the drafts, retry when a write tool returns, surface them to the user if the
+  session ends first — is the permanent answer, and the surrounding sentences
+  already specify it (GP-873)
 
 ### Deprecated
 

@@ -685,7 +685,13 @@ describe("session lifecycle: snooze", () => {
     assert.ok(runtimeConfig.readConfig().snoozeUntil, "durable snooze outlives the session");
   });
 
-  it("clearing snooze leaves keys owned by the config commands untouched", () => {
+  // The sweep touches only the two snooze keys. That used to be phrased as "these
+  // keys belong to GP-866, not to this module", which is no longer why: GP-866
+  // landed `setEnabled`/`setMode` in this same module, so ownership is not what
+  // separates them any more — scope is. `clearExpiredSnooze` goes through
+  // `withoutSnooze`, and `restore()` (the `/gutt on` path) is the only thing here
+  // that deletes `enabled`. Routing the sweep through `restore()` would break this.
+  it("clearing snooze leaves the preference keys untouched", () => {
     pluginState.writeJson(runtimeConfig.configPath(), {
       enabled: false,
       mode: "manual",
@@ -693,7 +699,7 @@ describe("session lifecycle: snooze", () => {
     });
     runtimeConfig.clearExpiredSnooze();
     const raw = runtimeConfig.readRawConfig();
-    assert.equal(raw.enabled, false, "GP-866's keys survive");
+    assert.equal(raw.enabled, false, "a durable off survives a snooze sweep");
     assert.equal(raw.mode, "manual");
     assert.equal("snoozeUntil" in raw, false);
   });
@@ -813,6 +819,30 @@ describe("session lifecycle: TTL primitives", () => {
     assert.ok(fs.statSync(log).size > 1, "bounded, not emptied");
   });
 
+  it("trimLog bounds an oversized log that has no line structure at all", () => {
+    // Both axes at once: past DISCARD_BYTES *and* without a single newline. Only
+    // that combination reaches readTail's partial-line drop with nothing behind the
+    // cut. The test above is newline-free but small enough to take the plain
+    // readFileSync path; the one at the top of this block is oversized but has
+    // newlines. Neither gets there.
+    //
+    // What protects the file is the `rest.trim() !== ""` check — drop it and a 5MB
+    // structureless hook-errors.log trims to nothing, with trimLog still reporting
+    // {trimmed: true} and guard() seeing no throw, so the failure is invisible
+    // precisely because the log is what got wiped. (The `nl === -1` ternary beside
+    // it is belt-and-braces, not the guard: slice(-1 + 1) is slice(0), so without
+    // the ternary `rest` would be the whole tail and the outcome identical.)
+    const log = pluginState.statePath("hook-errors.log");
+    fs.writeFileSync(log, "x".repeat(5 * 1024 * 1024));
+    assert.ok(fs.statSync(log).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
+
+    const res = pluginState.trimLog(log, { maxBytes: 256 * 1024, keepLines: 200 });
+
+    assert.equal(res.discarded, true, "the tail read must report it dropped content");
+    assert.ok(fs.statSync(log).size <= 256 * 1024, "bounded to maxBytes");
+    assert.ok(fs.statSync(log).size > 1, "bounded, not wiped to a single newline");
+  });
+
   it("the byte bound holds when the cut lands mid-character", () => {
     // Every other trim fixture is ASCII, where a byte cut is always a character
     // cut. Slicing bytes and decoding afterwards turns a split multi-byte
@@ -829,97 +859,6 @@ describe("session lifecycle: TTL primitives", () => {
         assert.ok(size > 1, `${script} pad=${pad}: bounded, but emptied`);
       }
     }
-  });
-
-  it("pruneJsonl expires entries by their own timestamp, not the file's mtime", () => {
-    // The queue is append-only, so its mtime tracks the *newest* entry. Judging age
-    // by mtime would expire a busy queue wholesale and never expire an idle one.
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    const stale = new Date(Date.now() - 8 * 24 * HOUR).toISOString();
-    fs.writeFileSync(
-      queue,
-      [
-        JSON.stringify({ at: stale, text: "expired" }),
-        JSON.stringify({ at: new Date().toISOString(), text: "kept" }),
-      ].join("\n") + "\n"
-    );
-    // Stamped now, so an mtime-based implementation would keep both entries.
-    const now = new Date();
-    fs.utimesSync(queue, now, now);
-
-    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR });
-    assert.equal(res.expired, 1);
-    assert.equal(res.kept, 1);
-    assert.deepEqual(
-      fs
-        .readFileSync(queue, "utf8")
-        .trim()
-        .split("\n")
-        .map((l) => JSON.parse(l).text),
-      ["kept"]
-    );
-  });
-
-  it("pruneJsonl drops what cannot be parsed and keeps what cannot be dated", () => {
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    fs.writeFileSync(
-      queue,
-      [
-        "{ this line is not json",
-        JSON.stringify({ text: "no timestamp field at all" }),
-        JSON.stringify({ at: "not a date", text: "unparseable timestamp" }),
-      ].join("\n") + "\n"
-    );
-
-    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR });
-    assert.equal(res.malformed, 1, "the non-JSON line goes");
-    // An undatable entry is not a provably old one, and a queue entry is somebody's
-    // un-drained capture — dropping it on a missing field would lose real work.
-    assert.equal(res.expired, 0, "an entry with no usable timestamp is not 'old'");
-    assert.equal(res.kept, 2, "both undatable captures survive");
-  });
-
-  it("pruneJsonl keeps the newest maxLines, and rewrites nothing when nothing went", () => {
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    const at = new Date().toISOString();
-    fs.writeFileSync(
-      queue,
-      Array.from({ length: 12 }, (_, n) => JSON.stringify({ at, n })).join("\n") + "\n"
-    );
-
-    assert.equal(pluginState.pruneJsonl(queue, { maxLines: 5 }).overflow, 7);
-    assert.deepEqual(
-      fs
-        .readFileSync(queue, "utf8")
-        .trim()
-        .split("\n")
-        .map((l) => JSON.parse(l).n),
-      [7, 8, 9, 10, 11],
-      "the newest five survive"
-    );
-
-    // Steady state matters: this runs on the ≤50ms SessionStart path every session,
-    // so a queue already inside its bounds must cost one read and no write.
-    const before = fs.statSync(queue).mtimeMs;
-    const second = pluginState.pruneJsonl(queue, { maxLines: 5 });
-    assert.equal(second.pruned, false);
-    assert.equal(second.kept, 5);
-    assert.equal(fs.statSync(queue).mtimeMs, before, "an in-bounds queue is not rewritten");
-  });
-
-  it("pruneJsonl empties a queue that is one enormous unparseable blob", () => {
-    // The documented exception to "keep the tail": for a queue of JSON entries a
-    // multi-megabyte blob with no line structure is garbage by the same rule that
-    // drops any other unparseable line, and keeping it would mean re-reading it on
-    // every SessionStart forever.
-    const queue = pluginState.statePath("capture-queue.jsonl");
-    fs.writeFileSync(queue, "x".repeat(5 * 1024 * 1024));
-    assert.ok(fs.statSync(queue).size > 4 * 1024 * 1024, "fixture must exceed DISCARD_BYTES");
-
-    const res = pluginState.pruneJsonl(queue, { maxAgeMs: 7 * 24 * HOUR, maxLines: 500 });
-    assert.equal(res.kept, 0);
-    assert.equal(fs.existsSync(queue), true, "the file itself stays, emptied");
-    assert.equal(fs.statSync(queue).size, 0);
   });
 
   it("a long line does not take the short ones with it", () => {
@@ -1357,6 +1296,124 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     assert.ok(contextOf(submit("m-snz")), "flag survived the snooze");
   });
 
+  it("row 1: a durable off is silent, and does not burn the flag either", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-off", source: "startup" },
+      { dataDir: dir, home }
+    );
+    // The only test that proves `isSuppressed` is wired into the router rather than
+    // merely exported. Before GP-866 this file was read by nobody and this prompt
+    // would have spoken.
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ enabled: false }));
+    assert.equal(submit("m-off"), null, "a durable off must be silent");
+
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({}));
+    assert.ok(contextOf(submit("m-off")), "flag survived the durable off");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Row 0 — the /gutt config commands (GP-866)
+  // ---------------------------------------------------------------------------
+
+  it("row 0: a config command reports the configuration", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-cfg", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-cfg", "/gutt config"));
+    assert.ok(ctx, "a config command must be answered");
+    assert.match(ctx, /enabled: true/);
+    assert.match(ctx, /mode: auto/);
+    assert.match(ctx, /snooze: none/);
+  });
+
+  it("row 0: a config turn does not burn the first-prompt flag", () => {
+    runHook("session-start.cjs", { session_id: "m-nb", source: "startup" }, { dataDir: dir, home });
+    assert.ok(contextOf(submit("m-nb", "/gutt config")), "the command is answered");
+    assert.equal(
+      readSession(dir, "m-nb").firstPromptPending,
+      true,
+      "a config turn is bookkeeping — it must not spend the session's one pointer"
+    );
+    const ctx = contextOf(submit("m-nb"));
+    assert.match(ctx, /memory-search/, "the pointer is still owed after a config turn");
+  });
+
+  // The highest-value case here. Put row 0 below the suppression row and `/gutt on`
+  // can never un-stick the plugin: the off switch becomes one-way and hand-editing
+  // config.json is the only way back. Nothing else would report that.
+  it("row 0 beats row 1: /gutt on works while the plugin is off", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-unstick", source: "startup" },
+      { dataDir: dir, home }
+    );
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ enabled: false }));
+    assert.equal(submit("m-unstick"), null, "off, so an ordinary prompt is silent");
+
+    const ctx = contextOf(submit("m-unstick", "/gutt on"));
+    assert.ok(ctx, "/gutt on must be answered even while suppressed");
+    assert.match(ctx, /back on/);
+
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.equal("enabled" in raw, false, "`/gutt on` clears the key rather than storing true");
+    assert.ok(contextOf(submit("m-unstick")), "and the pointer flows again");
+  });
+
+  it("row 0 beats row 1: a config command answers under a session snooze", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-snzcfg", source: "startup" },
+      { dataDir: dir, home }
+    );
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ snoozeSessionId: "m-snzcfg" })
+    );
+    const ctx = contextOf(submit("m-snzcfg", "/gutt config"));
+    assert.match(ctx, /rest of this session/, "the snooze is reported, not obeyed");
+  });
+
+  it("row 0: a minute snooze suppresses the next prompt and expires at guard time", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-min", source: "startup" },
+      { dataDir: dir, home }
+    );
+    assert.match(contextOf(submit("m-min", "/gutt off 30")), /30 minutes/);
+    assert.equal(submit("m-min"), null, "snoozed by the command, so silent");
+
+    // Guard-time expiry, through the real hook: the deadline is in the past, so the
+    // row-1 check must let this through without waiting for a SessionStart sweep.
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
+    );
+    assert.ok(contextOf(submit("m-min")), "a lapsed deadline no longer suppresses");
+  });
+
+  it("row 0: an unrecognised /gutt form changes nothing and says so", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-bad", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-bad", "/gutt off 30 and fix the tests"));
+    assert.match(ctx, /did not recognise/);
+
+    // Asserted per key rather than by the file's absence: SessionStart already
+    // created config.json to record `migrationsVersion`, so "no file" was never the
+    // right shape for this claim.
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.deepEqual(
+      Object.keys(raw).filter((k) => runtimeConfig.OWNED_KEYS.includes(k)),
+      [],
+      `a malformed command must write nothing, got ${JSON.stringify(raw)}`
+    );
+  });
+
   it("never blocks: no decision field, and unparseable stdin still exits 0", () => {
     runHook(
       "session-start.cjs",
@@ -1365,6 +1422,13 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     );
     const parsed = submit("m-safe");
     assert.equal(parsed.decision, undefined, "must never set `decision` (R23)");
+
+    // The config commands are the one row that emits on a prompt the user typed
+    // deliberately, which makes a `decision` here the most tempting mistake in the
+    // hook: blocking would erase `/gutt off 30` and show the result to the user
+    // instead of Claude. R23 forbids it on every row.
+    const command = submit("m-safe", "/gutt config");
+    assert.equal(command.decision, undefined, "not on a config command either (R23)");
 
     const bad = spawnSync("node", [path.join(HOOKS, "user-prompt-submit.cjs")], {
       input: "{not json",
@@ -1396,7 +1460,7 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
 
   /**
    * Re-seed the worst dirty state a real machine can present: expired sessions,
-   * a queue with stale entries, an oversized log, a lapsed snooze, and debris.
+   * an oversized log, a lapsed snooze, and debris.
    *
    * Repeatable on purpose. It used to run once in before(), which meant the
    * latency loop swept an already-clean dir for 39 of its 40 samples and the
@@ -1421,20 +1485,6 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       path.join(dir, "config.json"),
       JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
     );
-    // A queue that is both too old and too long, so the sweep's queue step has both
-    // of its bounds to apply. Nothing writes this file until GP-873, but the
-    // retention policy is R37's and SessionStart is where the contract says it runs
-    // — a step that only appears alongside its first writer is a step nobody
-    // notices is missing.
-    const staleAt = new Date(Date.now() - 8 * 24 * HOUR).toISOString();
-    const freshAt = new Date().toISOString();
-    fs.writeFileSync(
-      path.join(dir, "capture-queue.jsonl"),
-      [
-        ...Array.from({ length: 40 }, (_, i) => JSON.stringify({ at: staleAt, n: `stale-${i}` })),
-        ...Array.from({ length: 600 }, (_, i) => JSON.stringify({ at: freshAt, n: `fresh-${i}` })),
-      ].join("\n") + "\n"
-    );
     // Debris from hooks killed mid-write: a lock whose session id will never be
     // reused (so nothing ever contends for it to trigger stale reclamation) and
     // an orphaned atomic-write temp. Backdated past DEBRIS_TTL_MS so the sweep
@@ -1447,7 +1497,7 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       // by the sweep's own clearExpiredSnooze, so a stale lock there is reclaimed
       // by withLock and would prove nothing about this step. A temp filename is
       // never reused, so nothing but root-debris will ever remove it.
-      path.join(dir, "capture-queue.jsonl.tmp.1234"),
+      path.join(dir, "config.json.tmp.1234"),
     ]) {
       fs.writeFileSync(f, "");
       fs.utimesSync(f, stale, stale);
@@ -1555,18 +1605,29 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       "exactly the 30 backdated files were reclaimed"
     );
 
-    // The capture queue, per the TTL table in docs/runtime-state-convention.md.
-    const queue = fs
-      .readFileSync(path.join(dir, "capture-queue.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
-    assert.equal(queue.length, 500, "queue bounded to its 500-entry cap");
+    // The two debris steps had no outcome assertion at all: deleting either one
+    // left this suite green. The fresh lock is the one that matters most — a wrong
+    // DEBRIS_TTL_MS, or an isDebris that stopped consulting mtime, would reclaim a
+    // lock out from under a hook that is still holding it.
     assert.equal(
-      queue.filter((e) => String(e.n).startsWith("stale")).length,
-      0,
-      "every entry past the 7d TTL was dropped"
+      fs.existsSync(path.join(dir, "config.json.tmp.1234")),
+      false,
+      "root-debris reclaimed the orphaned temp"
     );
-    assert.equal(queue[queue.length - 1].n, "fresh-599", "the newest entry survived");
+    assert.equal(
+      fs.existsSync(path.join(sessions, "bench-0.json.lock")),
+      false,
+      "session-debris reclaimed the stale lock"
+    );
+    assert.equal(
+      fs.existsSync(path.join(sessions, "bench-0.json.tmp.1234")),
+      false,
+      "session-debris reclaimed the orphaned temp"
+    );
+    assert.equal(
+      fs.existsSync(path.join(sessions, "live.json.lock")),
+      true,
+      "a lock younger than DEBRIS_TTL_MS must survive — it may still be held"
+    );
   });
 });

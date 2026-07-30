@@ -49,13 +49,23 @@ def judge_cwd():
 # run lost two variants to "hit your org's monthly spend limit" and reported them as 5%
 # and 2% accuracy on prompts that had measured 81% twenty minutes earlier. A run that
 # hits one of these is void, not bad — so `ask` flags it and `run_matrix` stops.
+# Matched as patterns, not bare substrings, and this matters more than it looks. The
+# earlier list contained plain "rate limit" and "overloaded", which a *model reply* can
+# legitimately contain — a prompt-pointer case asking about rate limiting drew the answer
+# "so I can implement rate limiting appropriately", and the whole run was declared void.
+# The failure inverts the one this guard exists for: a good run reported as no run.
+# So each pattern now requires the wording an *error* uses, not the topic.
 BLOCKED = (
-    "monthly spend limit",
-    "usage limit reached",
-    "hit your usage limit",
-    "Credit balance is too low",
-    "rate limit",
-    "overloaded",
+    r"monthly spend limit",
+    r"usage limit reached",
+    r"hit your usage limit",
+    r"credit balance is too low",
+    r"rate[ _]limit(_error)?\b[^.]{0,40}\b(exceed|reach|hit|retry|429)",
+    # Bare "429" is not enough — "return 429 with a Retry-After header" is ordinary advice
+    # about rate limiting, and it tripped this guard in self-check. Error framing is required.
+    r"error[^.]{0,20}\b429\b",
+    r"(api|server|service)[^.]{0,20}overloaded|overloaded_error",
+    r"quota (exceeded|exhausted)",
 )
 
 
@@ -75,9 +85,20 @@ def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=1
     out = r.stdout.strip()
     if not out:
         return f"<empty exit={r.returncode} {r.stderr.strip()[:200]}>"
-    if len(out) < 400 and any(m.lower() in out.lower() for m in BLOCKED):
+    if is_blocked(out):
         return f"<blocked {out[:200]}>"
     return out
+
+
+def is_blocked(out):
+    """Does this stdout look like a quota/availability wall rather than a reply?
+
+    Both conditions must hold. The length bound alone was the original guard and is kept
+    as the second line of defence: a real wall message is short, an agent's answer that
+    happens to quote a 429 is not. Unit-testable on purpose — `python3 -m evals.lib.runner`
+    self-checks it, because a regression here is invisible until it voids a paid run.
+    """
+    return len(out) < 400 and any(re.search(p, out, re.I) for p in BLOCKED)
 
 
 def parse_verdict(raw):
@@ -96,8 +117,14 @@ def parse_verdict(raw):
 
 
 def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
-               model=FAST_MODEL, allow_tools=False, out_path=None):
-    """Run every (variant, case, trial) and return the scored records."""
+               model=FAST_MODEL, allow_tools=False, out_path=None, system=JUDGE_SYS):
+    """Run every (variant, case, trial) and return the scored records.
+
+    `system` is a suite's choice, not a constant: JUDGE_SYS frames the model as a hook
+    evaluator returning one JSON object, which is right for the Stop judge and wrong for
+    any suite measuring what an *agent* does with injected context — there the framing
+    would be the largest thing in the prompt and would decide the result.
+    """
     jobs = [(v, c, t) for v in variants for c in cases for t in range(trials)]
     print(f"{len(jobs)} calls — {len(variants)} variants x {len(cases)} cases x {trials} trials")
     results, lock = [], threading.Lock()
@@ -113,7 +140,7 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
             return rec
         try:
             raw = ask(build_prompt(variants[vname], case), model=model,
-                      allow_tools=allow_tools, cwd=run_dir)
+                      system=system, allow_tools=allow_tools, cwd=run_dir)
             rec["raw"] = raw[:3000]
             if raw.startswith("<blocked"):
                 halted.set()
@@ -147,3 +174,33 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
     if errs:
         print(f"{len(errs)} job errors, e.g. {errs[0]['error'][:160]}")
     return results
+
+
+if __name__ == "__main__":
+    # Free self-check of the one heuristic here that costs money when it is wrong.
+    WALLS = [
+        "You've hit your org's monthly spend limit. Contact your admin.",
+        "Usage limit reached. Your limit will reset at 3pm.",
+        "Claude AI usage limit reached|1799884800",
+        "Your credit balance is too low to access the Anthropic API.",
+        "API Error: 429 rate_limit_error — please retry after 60s",
+        "Rate limit exceeded. Try again later.",
+        "API Error: Overloaded",
+        "quota exceeded for this organization",
+    ]
+    # Replies a suite legitimately produces. Every one of these voided a run once, or would.
+    REPLIES = [
+        "Please provide more details about your project so I can implement rate limiting.",
+        "Throttle at the gateway — it protects the app before a request costs you anything.",
+        "Return 429 with a Retry-After header so clients back off instead of hammering you.",
+        "Rate limiting belongs at the edge; the app should stay unaware of quota policy.",
+        "The pool was overloaded because every worker opened its own connection.",
+    ]
+    bad = [w for w in WALLS if not is_blocked(w)]
+    noise = [r for r in REPLIES if is_blocked(r)]
+    for w in bad:
+        print(f"MISSED WALL   {w}")
+    for r in noise:
+        print(f"FALSE POSITIVE {r}")
+    print("BLOCKED patterns OK" if not bad and not noise else "BLOCKED patterns BROKEN")
+    raise SystemExit(1 if bad or noise else 0)

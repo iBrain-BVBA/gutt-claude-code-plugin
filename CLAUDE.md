@@ -45,17 +45,24 @@ The Claude Code plugin and hook platform changes under us, and the changes are s
 field we were told does not exist starts working, an event appears, a constraint lifts.
 Designing from memory is how we end up ruling out an option that has since opened up.
 
-Two snapshots of the upstream docs live in `docs/`, each carrying its **source URL, the
+Three snapshots of the upstream docs live in `docs/`, each carrying its **source URL, the
 date it was read, and per-section confidence**:
 
-| File                                 | Covers                                                                            |
-| ------------------------------------ | --------------------------------------------------------------------------------- |
-| `docs/hook-platform-capabilities.md` | hook events, which accept `additionalContext`, Stop/SessionStart output contracts |
-| `docs/plugin-platform-reference.md`  | `plugin.json` schema, `userConfig`, env vars, caching, symlinks, component paths  |
+| File                                 | Covers                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `docs/hook-platform-capabilities.md` | hook events, which accept `additionalContext`, Stop/SessionStart output contracts      |
+| `docs/plugin-platform-reference.md`  | `plugin.json` schema, `userConfig`, env vars, caching, symlinks, component paths       |
+| `docs/headless-cli-reference.md`     | `claude -p` flags, `--bare` auth limits, `--json-schema` output, exit/signal behaviour |
 
 **Consult these before** choosing a hook event, adding a manifest field, reasoning about
-`${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}`, or concluding the platform cannot do
-something. They are more current than this file and than anything in the graph.
+`${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}`, invoking the CLI from a hook, or
+concluding the platform cannot do something. They are more current than this file and than
+anything in the graph.
+
+Sections headed **Measured** rather than **Read** were established by a real run against a
+real install and outrank a doc read where the two disagree — `hook-platform-capabilities.md`
+§6–§7 and `headless-cli-reference.md` §2 are the current examples, and each records how the
+probe was built so that a negative result could not be faked.
 
 **They are snapshots, not the source of truth.** Two rules:
 

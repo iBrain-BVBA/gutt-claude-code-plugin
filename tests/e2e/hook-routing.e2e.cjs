@@ -4,21 +4,23 @@
  * (GP-844) in real Claude Code sessions.
  *
  * `session-lifecycle.e2e.cjs` covers one startup session and the state contract.
- * This file covers the three claims that only a live session can settle, each with
- * its own run:
+ * This file covers the claims that only a live session can settle, each with its own
+ * run:
  *
  *   Run 2  the anti-nag guarantee — two prompts, one SessionStart, one injection
  *   Run 3  the snooze row suppresses the pointer without consuming it
  *   Run 4  the Stop router fires, and then stops firing
  *   Run 5  R23 coexistence with a second plugin in the same session
+ *   Run 6  a `/gutt` config command is applied, and the result reaches the model
  *
  * Why the debug log carries most of the weight here: a `type: "prompt"` hook has
  * no side effects at all. Its verdict never reaches disk, so a hook that was never
  * evaluated looks exactly like one that returned ok:true. The CLI's own log is the
  * only evidence that distinguishes them.
  *
- * Cost and prerequisites: four Haiku runs, a few cents, against the machine's
- * logged-in subscription. Not part of `npm test`; see tests/e2e/README.md.
+ * Cost and prerequisites: five Haiku runs plus one Sonnet run (run 4), a few cents,
+ * against the machine's logged-in subscription. Not part of `npm test`; see
+ * tests/e2e/README.md.
  *
  * Run with: npm run test:e2e
  */
@@ -38,18 +40,40 @@ const {
   createProject,
   findSessionStateFile,
   hookCompletions,
-  promptHookEvaluations,
   readJsonQuiet,
   removeDir,
   runClaude,
   runClaudeStream,
   sessionStartEvents,
-  stopHookActiveStates,
-  stopVerdicts,
+  stopJudgements,
+  stopOutcomes,
   withPlantedConfig,
 } = require("./lib/claude-run.cjs");
 
+const { OUTCOMES, BROKEN_OUTCOMES } = require("../../shared/stop-judge.cjs");
+
 const AUTO_LINT_DIR = path.join(REPO_ROOT, "auto-lint-plugin");
+
+/**
+ * The Stop outcomes this tier expects to see, read from the source of truth rather than
+ * duplicated — a label renamed in `stop-judge.cjs` must fail here, not silently widen
+ * what counts as recognised. The three router rows are not in `OUTCOMES` because the
+ * router owns them, so they are listed.
+ */
+const KNOWN_STOP_OUTCOMES = [...Object.values(OUTCOMES), "skipped, already active", "suppressed"];
+
+/** Outcomes that mean the judge failed rather than answering. */
+const BROKEN_STOP_OUTCOMES = [...BROKEN_OUTCOMES];
+
+/**
+ * `deferred, N agent task(s) in flight: …` carries a count and task labels, so it is
+ * matched by prefix rather than listed.
+ * @param {string} outcome
+ * @returns {boolean}
+ */
+function isKnownStopOutcome(outcome) {
+  return KNOWN_STOP_OUTCOMES.includes(outcome) || outcome.startsWith("deferred, ");
+}
 
 /**
  * A session id per run, chosen up front so a test can plant config keyed to the
@@ -68,6 +92,7 @@ const IDS = {
   stopRouterRetry: crypto.randomUUID(),
   stopRouterRetry2: crypto.randomUUID(),
   coexist: crypto.randomUUID(),
+  configCommand: crypto.randomUUID(),
 };
 
 /**
@@ -243,22 +268,27 @@ describe(
       assert.doesNotMatch(injected, /compacted/i, "a startup session got the re-ground text");
     });
 
-    it("evaluates the Stop judge once per turn", () => {
-      // Two turns, so two evaluations. Fewer means Stop is not wired; more means a
-      // turn was re-prompted, which run 4 covers in detail.
-      const evaluations = promptHookEvaluations(run.debug);
-      assert.equal(evaluations, 2, `expected 1 Stop evaluation per turn, saw ${evaluations}`);
+    it("convenes the Stop judge once per turn", () => {
+      // Two turns, so two judgements. Fewer means Stop is not wired; more means a turn
+      // was re-judged, which run 4 covers in detail.
+      const judgements = stopJudgements(run.dataDir);
+      assert.equal(judgements, 2, `expected 1 Stop judgement per turn, saw ${judgements}`);
     });
 
-    it("returns a parseable verdict from every Stop evaluation", () => {
-      const verdicts = stopVerdicts(run.debug);
-      assert.equal(verdicts.length, 2, `expected 2 verdicts, saw ${verdicts.length}`);
-      for (const verdict of verdicts) {
-        assert.ok(verdict.parsed, `unparseable Stop verdict: ${verdict.raw.slice(0, 200)}`);
-        assert.equal(
-          typeof verdict.parsed.ok,
-          "boolean",
-          `verdict carried no boolean ok: ${verdict.raw}`
+    it("records a recognised outcome for every Stop, and no broken judge", () => {
+      // Replaces a verdict-parsing assertion that read the CLI's debug log. A command
+      // hook logs its own outcome, which says more: it separates a judge that passed
+      // from one that could not answer at all.
+      const outcomes = stopOutcomes(run.dataDir);
+      assert.ok(outcomes.length > 0, "the Stop hook left no record of running");
+      for (const entry of outcomes) {
+        assert.ok(
+          isKnownStopOutcome(entry.outcome),
+          `unrecognised Stop outcome "${entry.outcome}" in: ${entry.line}`
+        );
+        assert.ok(
+          !BROKEN_STOP_OUTCOMES.includes(entry.outcome),
+          `the judge failed rather than answering: ${entry.line}`
         );
       }
     });
@@ -375,11 +405,9 @@ describe(
     const runs = [];
     let run;
 
-    /** Every ok:false verdict across all attempts. */
+    /** Every turn across all attempts where the judge asked for a capture. */
     function routedVerdicts() {
-      return runs
-        .flatMap((r) => stopVerdicts(r.debug))
-        .filter((v) => v.parsed && v.parsed.ok === false);
+      return runs.flatMap((r) => stopOutcomes(r.dataDir)).filter((o) => o.outcome === "fired");
     }
 
     before(
@@ -425,53 +453,52 @@ describe(
       // independent sessions at a measured 5/6 each, so a failure here means the
       // prompt has drifted conservative rather than the code breaking — read the
       // printed reasons, they say why the judge stayed quiet.
-      const verdicts = runs.flatMap((r) => stopVerdicts(r.debug));
-      assert.ok(verdicts.length > 0, "the Stop hook was never evaluated");
+      const outcomes = runs.flatMap((r) => stopOutcomes(r.dataDir));
+      assert.ok(outcomes.length > 0, "the Stop hook left no record of running");
       const routed = routedVerdicts();
       assert.ok(
         routed.length > 0,
-        `no verdict asked for a capture across ${runs.length} session(s) on a turn that ` +
+        `no turn asked for a capture across ${runs.length} session(s) on a turn that ` +
           `produced an Insight:\n` +
-          verdicts.map((v) => v.raw.slice(0, 300)).join("\n")
+          outcomes.map((o) => o.line).join("\n")
       );
-      assert.match(
-        String(routed[0].parsed.reason || ""),
-        /memory-capture/i,
-        "the reason fed back to Claude does not name the skill to run"
-      );
+      // That the reason names the skill is pinned by unit guards on JUDGE_CONDITION
+      // (`tests/hook-architecture.test.cjs`, "asks for the skill line"), which is where a
+      // wording claim belongs. Here the claim is only that the routing path fires.
     });
 
     it("bounds how many times one turn may be re-judged", () => {
-      // The regression this whole run exists for. Without a termination condition
-      // the judge re-asks on every re-entry: 16 consecutive ok:false verdicts on one
-      // turn, 16 model calls, and an empty answer for the user.
-      const evaluations = promptHookEvaluations(run.debug);
+      // The regression this whole run exists for. Without a termination condition the
+      // judge re-asks on every re-entry: 16 consecutive ok:false verdicts on one turn,
+      // 16 model calls, and an empty answer for the user.
+      //
+      // This used to count `Hooks: Processing prompt hook` lines in the CLI debug log.
+      // After GP-866 made Stop a command hook, that string is never emitted, so the
+      // count was always 0 and this assertion passed without testing anything — the
+      // vacuous-guard failure this PR is otherwise about, sitting on a P1.
+      const judgements = stopJudgements(run.dataDir);
+      assert.ok(judgements > 0, "no Stop judgement recorded — the bound below is vacuous");
       assert.ok(
-        evaluations <= MAX_STOP_EVALUATIONS_PER_TURN,
-        `the Stop hook re-judged one turn ${evaluations} times (limit ${MAX_STOP_EVALUATIONS_PER_TURN}) — ` +
+        judgements <= MAX_STOP_EVALUATIONS_PER_TURN,
+        `the Stop hook judged one turn ${judgements} times (limit ${MAX_STOP_EVALUATIONS_PER_TURN}) — ` +
           "the judge has no termination condition and is looping"
       );
     });
 
-    it("relents once Claude Code reports stop_hook_active", () => {
-      // The platform hands the hook its own loop breaker. If the flag went true and
-      // the very next verdict was still ok:false, the prompt is ignoring it.
-      const active = stopHookActiveStates(run.debug);
-      const verdicts = stopVerdicts(run.debug);
-      const firstActive = active.indexOf(true);
-      if (firstActive === -1) {
-        return; // never re-entered — nothing to relent from
+    it("never judges a turn it has already judged", () => {
+      // The router short-circuits on `stop_hook_active` in code now, before any child is
+      // spawned, so re-entry is observable as its own outcome. Asserting the log exists
+      // first keeps this from going quiet if Stop stops running altogether.
+      const outcomes = stopOutcomes(run.dataDir);
+      assert.ok(outcomes.length > 0, "the Stop hook left no record of running");
+      const reentries = outcomes.filter((o) => o.outcome === "skipped, already active");
+      for (const entry of reentries) {
+        assert.doesNotMatch(
+          entry.line,
+          /\(mode=/,
+          `a re-entered turn was judged again, which is what loops it: ${entry.line}`
+        );
       }
-      const verdictWhileActive = verdicts[firstActive];
-      assert.ok(
-        verdictWhileActive && verdictWhileActive.parsed,
-        "no verdict recorded for the re-entered evaluation"
-      );
-      assert.equal(
-        verdictWhileActive.parsed.ok,
-        true,
-        "the judge asked again after stop_hook_active went true, which is what loops the turn"
-      );
     });
 
     it("still gives the user an answer", () => {
@@ -576,6 +603,126 @@ describe(
       // Each plugin gets its own data dir, so auto-lint cannot reach gutt's state.
       assert.match(run.stateFile, /gutt-claude-code-plugin-inline/);
       assert.doesNotMatch(run.stateFile, /auto-lint/);
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Run 6 — the /gutt config command surface (GP-866)
+// ---------------------------------------------------------------------------
+
+describe(
+  "GP-892 run 6: a /gutt config command is applied deterministically and relayed",
+  { skip, timeout: 420000 },
+  () => {
+    let projectDir;
+    let run;
+    let configAfterRun;
+    const plantedAt = Date.now();
+
+    before(
+      async () => {
+        projectDir = createProject("config-command");
+        // Planted empty so the run starts from the documented defaults, and so the
+        // developer's own config is restored afterwards either way.
+        await withPlantedConfig({}, async (configFile) => {
+          run = await runClaudeStream({
+            projectDir,
+            sessionId: IDS.configCommand,
+            debugLabel: "claude-debug",
+            // The namespaced spelling first, deliberately: it is what the `/` menu
+            // inserts, so it is the form real users produce, and a parser that only
+            // handled the hand-typed variants would fail exactly here.
+            prompts: ["/gutt-claude-code-plugin:gutt off 30", "/gutt config"],
+          });
+          configAfterRun = readJsonQuiet(configFile);
+        });
+      },
+      { timeout: 400000 }
+    );
+
+    after(() => {
+      dropOwnState(IDS.configCommand);
+      if (projectDir) {
+        removeDir(projectDir);
+      }
+    });
+
+    it("answers both command turns without erroring", () => {
+      assert.equal(run.code, 0, `claude exited ${run.code}\nstderr: ${run.stderr}`);
+      assert.equal(run.turns.length, 2, `expected 2 turns, saw ${run.turns.length}`);
+      for (const turn of run.turns) {
+        assert.equal(turn.is_error, false);
+      }
+    });
+
+    it("applies the command and injects the outcome, on both turns", () => {
+      // Two injections and no memory pointer: row 0 returns before the pointer rows,
+      // so a config turn spends nothing. That is the whole reason it sits where it
+      // does.
+      const events = additionalContextEvents(run.debug);
+      assert.equal(
+        events.length,
+        2,
+        `expected one injection per command turn, got ${events.length}:\n${events.join("\n")}`
+      );
+      for (const event of events) {
+        assert.match(event, /user-prompt-submit\.cjs/, "the injection came from some other hook");
+      }
+    });
+
+    it("writes the snooze to config.json and nothing else", () => {
+      assert.ok(configAfterRun, "config.json vanished during the run");
+      const until = Date.parse(configAfterRun.snoozeUntil);
+      assert.ok(
+        Number.isFinite(until),
+        `no snooze deadline was written: ${configAfterRun.snoozeUntil}`
+      );
+      // Generous window: the run takes tens of seconds and the deadline is stamped
+      // when the hook fires, not when the test planted the file.
+      const minutesOut = (until - plantedAt) / 60000;
+      assert.ok(
+        minutesOut > 29 && minutesOut < 35,
+        `expected a deadline ~30 minutes out, got ${minutesOut.toFixed(1)} minutes`
+      );
+      assert.equal(
+        "enabled" in configAfterRun,
+        false,
+        "a minute snooze must not touch the durable off flag"
+      );
+    });
+
+    it("relays the outcome to the user rather than flagging it (GP-868)", () => {
+      // The one thing no other tier can settle. The injected text is factual prose,
+      // so the model should consume it and report; the failure mode this catches is
+      // Claude surfacing it as a suspicious out-of-band instruction, or ignoring it
+      // and improvising about config it never read.
+      const first = String(run.turns[0].result);
+      assert.match(
+        first,
+        /30 minutes|30-minute/i,
+        `the model did not relay the applied change:\n${first}`
+      );
+      const second = String(run.turns[1].result);
+      assert.match(second, /snooze|enabled|recall/i, `/gutt config was not relayed:\n${second}`);
+    });
+
+    it("does not consume the session's memory pointer on a command turn", () => {
+      assert.ok(run.samples.length > 0, "no session-state samples were captured during the run");
+      const armed = run.samples.filter((entry) => entry.state.firstPromptPending === true);
+      assert.ok(
+        armed.length > 0,
+        `firstPromptPending was never observed set across ${run.samples.length} samples — ` +
+          "a config turn burned the pointer it never used"
+      );
+    });
+
+    it("never blocks, on the one row the user typed on purpose (R23)", () => {
+      assert.doesNotMatch(
+        run.debug,
+        /"decision"\s*:\s*"block"/,
+        "the config row emitted a blocking decision — it would erase the user's command"
+      );
     });
   }
 );
