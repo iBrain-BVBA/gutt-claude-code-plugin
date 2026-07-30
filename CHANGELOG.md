@@ -23,6 +23,24 @@
 
 ### Added
 
+- `onboarding-guide` agent moved from gutt-core into `gutt-mentor` and rebased
+  onto dual scope. Reads the org graph for team, architecture, decisions, lessons
+  and experts, then builds the joiner's plan through the S7.1 skills and resumes
+  it across sessions. Self-service — personal scope follows the authenticated
+  login, so the joiner runs it themselves; preparing a brief about someone else
+  stays read-only and writes nothing. **The plan goes to both scopes** (personal
+  where it is tracked, org on confirmation so later joiners in the role benefit);
+  statuses, blockers and open questions stay personal. Registers in org scope only
+  and tags its one org write; the legacy person-named "brief prepared" note is
+  dropped rather than rebased. Also fixes four pre-convention defects carried by
+  the old file: a hardcoded MCP server prefix, an org write missing
+  `last_n_episodes=0`, `center_node_uuid` for `center_node_id`, and unscoped org
+  reads that silently covered personal memory (GP-884, E7-S7.4)
+- `gutt-mentor` declares `gutt-claude-code-plugin` as a plugin dependency — its
+  skills and agent reference gutt-core skills by name, and the agent preloads
+  `agent-memory-protocol` and `memory-search` across the plugin boundary using the
+  namespaced form (`gutt-claude-code-plugin:<skill>`), which resolves
+  deterministically where a bare name does not (GP-884)
 - New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
   memory scope, for the onboarding agent to consume. Ships no hooks.
   (GP-883, E7 mentor shared skill base)
@@ -43,6 +61,74 @@
   from `marketplace.json`, so a new plugin is covered without editing a second
   list (`tests/hook-architecture.test.cjs`)
 - `memory-search` skill (gutt-core): the adaptive, relevance-gated memory-search discipline — rung 1 = one `search_memory_nodes` + `search_memory_facts` pass, judged for relevance and reformulated (not paginated) when weak; a relevance gate that reports "no relevant memory found" rather than stretching a distractor; rung 2 narrowing filters; rung 3 traversal handoff to `graph-traversal`; summary-first episode rules and tool-tier degradation. Rung-1 shape validated on a 50-query live-graph benchmark (top-3 hit-rate 86% vs 58% for a fixed single pass; zero false answers on absent-topic queries). Exact tool contracts live in `skills/memory-search/references/tools.md` (GP-856, E2 core memory curriculum)
+
+### Fixed
+
+- Repo instructions said the group is determined automatically and must not be
+  passed — the opposite of what the shipped skills and the new agent require.
+  Omitting `group_id` on a write targets an unspecified one of the caller's groups
+  rather than a fixed default, and an unscoped read silently includes personal
+  scope. `CLAUDE.md` now points at `shared/agent-identity.md` as the normative
+  reference (GP-884)
+- `agent-memory-protocol` stated "Register first" unconditionally, omitting the
+  read-only exemption its own normative reference carries. A read-only agent's
+  scope is empty by construction, so registering buys it nothing — the exemption
+  now lives inside the numbered rule, where a weaker model reads it as binding
+  rather than advisory. The onboarding agent preloads this skill and runs
+  read-only when preparing a brief about someone else (GP-884)
+- The onboarding agent's org-reading step listed its twelve searches as one flat
+  block, mixing the first pass with the calls that can only follow it and opening
+  a group with the one tool `memory-search` says not to open with. Both live
+  validation rounds ran the whole battery unconditionally. The calls are now rows
+  keyed to the chosen scope, with the first pass and the gap-fillers in separate
+  columns; the rung-2 ceiling is stated deliberately, since centered fact searches
+  return current facts only while the traversal tools return superseded edges
+  unwarned and can fail on a hub
+- The onboarding brief asked for a UUID where the cited thing is a node, which
+  carries a readable id a joiner can follow; facts and episodes keep theirs. Also
+  corrects a scoped-recall pass described as running before the step that makes it
+  possible
+- The onboarding agent's resume check was a binary — same ramp or plainly
+  different — and most real cases fall between: a near-match, several candidates, a
+  record whose provenance is doubtful. It now asks which, and says what to do when
+  there is nobody to ask. Alongside it, a run with nobody present now writes
+  **nothing** in the literal sense, registration and lessons capture included,
+  since a run that writes nothing needs no memory identity; the program record uses
+  the design skill's headings verbatim, because the tracking skill reads status by
+  them and the published record's different shape had been bleeding in; and the org
+  group is taken from a returned `group_id` rather than a node's id prefix, which is
+  an alias and can differ from the group
+- The last two paths in the onboarding agent that could state a wrong answer as
+  fact are closed. A centered fact search that never mentions its center node is
+  discarded instead of quoted — two runs saw the center parameter silently
+  ignored, and the generic facts that come back are about something else. A record
+  or group that declares itself test, sandbox, or fabricated content is excluded
+  from the briefing rather than merely attributed: a weaker-model run applied
+  attribution mechanically and still briefed from a fabricated cluster, so
+  exclusion is the rule and attribution covers only what survives it. Alongside:
+  the role fallback no longer dead-ends when neither role nor system is stated,
+  and the draft variant names its exception to the milestones-track-stated-goals
+  rule instead of contradicting it silently
+
+### Changed
+
+- A second round of blind runs closed six more gaps in the onboarding agent. More
+  than one org group discovered is now treated as a question rather than a list,
+  because a graph can hold a sandbox or fixture group that looks like an org group
+  and reads as fact; with nobody to ask, each claim is attributed to the group it
+  came from. The role is never inferred to keep the workflow moving — a guessed role
+  goes into query strings and returns a briefing about the wrong job. Each row's
+  first pass now shows its uncentered fact search in the table rather than only in
+  prose, since a run followed the table and missed it. The briefing's final section
+  states what it holds on each path — stored, draft, or a brief about someone else.
+  And the org-group note no longer carries a worked example drawn from one
+  deployment's own group names
+- The onboarding agent no longer restates guidance its preloaded skills own —
+  degradation, the personal-scope locator rationale, the program cadence and status
+  vocabulary, and a failure-modes list that repeated Agent identity, Step 3 and
+  Step 6 at length, now an observable-and-response table. An agent body is a system
+  prompt with no staged loading, so a restatement competes with the original and
+  can drift from it
 
 ### Deprecated
 

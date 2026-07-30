@@ -123,11 +123,19 @@ longer edits that file for you — see
 ### Mentoring (gutt-mentor plugin)
 
 Individual development programs in the **personal** memory scope, shipped as a
-separate skills-only plugin: `individual-program-design` writes the program
-(goals, milestones, check-in cadence) as one self-contained episode, and
+separate plugin that depends on gutt-core: `individual-program-design` writes the
+program (goals, milestones, check-in cadence) as one self-contained episode, and
 `progress-tracking` reads it back, reports status from the record alone, and
 chains the next check-in — so a fresh session picks up where the person stands
-without re-explaining. No hooks.
+without re-explaining.
+
+The `onboarding-guide` agent joins the two halves for a new joiner: it reads the
+org graph for team, architecture, decisions, lessons and experts, then turns that
+grounding into their own plan. **The plan goes to both scopes — personal, where it
+is tracked, and (with their confirmation) org, where the next person joining that
+role can learn from it. Their progress, blockers and open questions stay personal.**
+Self-service: personal scope follows the authenticated login, so the joiner runs it
+themselves. No hooks.
 
 ## Usage
 
@@ -177,7 +185,9 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   ├── mcp.json                    # MCP config template
 │   └── config.json.example
 ├── auto-lint-plugin/               # standalone lint-on-edit plugin (no gutt dependency)
-├── gutt-mentor/                    # mentor plugin — personal-scope program design + progress tracking (no hooks)
+├── gutt-mentor/                    # mentor plugin — onboarding agent + personal-scope program design/tracking (no hooks)
+│   ├── agents/                     # onboarding-guide
+│   └── skills/                     # individual-program-design, progress-tracking
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide
 ├── tests/
 ├── package.json

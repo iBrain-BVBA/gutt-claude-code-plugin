@@ -20,7 +20,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 │   ├── skills/ agents/ commands/
 │   └── rules/ mcp.json config.json.example
 ├── auto-lint-plugin/       # standalone lint-on-edit plugin (no gutt dependency)
-├── gutt-mentor/            # skills-only mentor plugin — personal-scope program design + progress tracking
+├── gutt-mentor/            # mentor plugin (depends on gutt-core) — onboarding agent + personal-scope program design/tracking
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
 ├── evals/                  # prompt/skill bench — not shipped, not in test:all (see below)
@@ -137,7 +137,7 @@ When working on this project, use the gutt memory graph to:
 - Capture user preferences
 - Record project patterns
 
-Note: The MCP server determines the group_id automatically from authentication. Do not specify group_id manually.
+Note: pass the group explicitly. Omitting `group_id` on a write targets an unspecified one of your allowed groups, not a fixed default — so pass it whenever you can write to more than one; with exactly one group you may omit it. On reads, pass `group_ids` naming the groups you mean: omitting it includes personal scope. `shared/agent-identity.md` is the normative reference.
 
 ## Related Tickets
 
