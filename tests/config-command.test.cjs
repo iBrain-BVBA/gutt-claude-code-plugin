@@ -441,10 +441,30 @@ describe("config command: rendering", () => {
     }
   });
 
-  it("tells the user the capture prompt is a separate axis", () => {
-    // `/gutt off` does not silence the Stop judge: it is a prompt hook, dispatched
-    // unconditionally and reading no config. Saying so here is the whole mitigation
-    // for that gap, so it is asserted rather than left to survive by luck.
-    assert.match(render(), /does not silence the end-of-turn capture prompt/);
+  it("tells the user that off silences the capture judge too", () => {
+    // This assertion used to require the opposite sentence, because the Stop handler was a
+    // prompt hook that read no config. GP-866 converted it, `stop-capture.cjs` returns on
+    // `isSuppressed` before spawning anything, and the old wording became false in the same
+    // change that made it wrong — while this test kept it alive, so correcting the prose
+    // reddened the build. Asserting the *current* truth is what stops that recurring: the
+    // guard now defends accuracy instead of pinning a stale claim.
+    const text = render();
+    assert.match(text, /capture judge does not run|capture judge runs/);
+    assert.doesNotMatch(
+      text,
+      /does not silence the end-of-turn capture prompt/,
+      "the pre-conversion claim is false since GP-866"
+    );
+  });
+
+  it("does not claim that mode is inert", () => {
+    // Same failure class as above, one line up: `mode` was written and read by nobody until
+    // stop-capture.cjs began reading it and stop-judge.cjs began appending HITL_TAIL.
+    for (const mode of ["auto", "hitl"]) {
+      plant({ mode });
+      const text = render();
+      assert.doesNotMatch(text, /no behaviour reads this key yet/, `mode: ${mode}`);
+      assert.match(text, new RegExp(`mode: ${mode} — \\w`), "the mode line must state an effect");
+    }
   });
 });

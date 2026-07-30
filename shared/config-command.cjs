@@ -187,6 +187,21 @@ function enabledLine(raw) {
 }
 
 /**
+ * What each mode actually does at the Stop judge.
+ *
+ * Until GP-866 this key was written and read by nobody, and every surface said so.
+ * `gutt-core/hooks/stop-capture.cjs` now reads it and `shared/stop-judge.cjs`
+ * appends the confirmation instruction on `hitl`, so the old "no behaviour reads
+ * this key yet" wording became false in the same commit that made it consumable.
+ * Keyed by mode so a mode added to `MODES` without an effect here renders a bare
+ * label rather than `undefined`.
+ */
+const MODE_EFFECTS = {
+  auto: "a capture is written without a confirmation step",
+  hitl: "the end-of-turn capture judge asks you to confirm each subject before writing",
+};
+
+/**
  * @param {Object|null} raw
  * @returns {string}
  */
@@ -199,9 +214,7 @@ function modeLine(raw) {
       `the known modes are ${config.MODES.join(" and ")}`
     );
   }
-  // No behavioural claim: the key is written and read back, and nothing consumes
-  // it until the capture work lands.
-  return `mode: ${mode} — capture mode; no behaviour reads this key yet`;
+  return `mode: ${mode} — ${MODE_EFFECTS[mode] ?? "capture mode"}`;
 }
 
 /**
@@ -254,7 +267,20 @@ function renderConfig(sessionId, now) {
       "capture mode auto, no snooze."
     );
   }
-  const raw = config.readRawConfig();
+  // Not `readRawConfig`: that returns null for both "no file yet" and "file is
+  // corrupt", and rendering the defaults for the second case reports values that were
+  // never read, under a header saying they were. This is the one command whose job is
+  // to explain a broken config, so it must be able to say the file is broken.
+  const { state, raw } = config.readRawConfigState();
+  if (state === "unreadable") {
+    return (
+      `gutt configuration could not be read from ${file}: the file is present but is not ` +
+      "valid JSON. The built-in defaults are in force — recall enabled, capture mode auto, " +
+      "no snooze — and no setting can be saved until it is fixed, because a write would have " +
+      "to overwrite state gutt could not read. Move the file aside or delete it and gutt " +
+      "will recreate it."
+    );
+  }
   const suppressed = config.isSuppressed(sessionId, now);
   return [
     `gutt configuration, read from ${file}:`,
@@ -263,11 +289,13 @@ function renderConfig(sessionId, now) {
     `  ${snoozeLine(raw, sessionId, now)}`,
     `  in force right now: ${
       suppressed
-        ? "suppressed, so no memory recall pointer will be injected"
-        : "active, so memory recall pointers can be injected"
+        ? "suppressed — no memory recall pointer is injected, and the end-of-turn capture " +
+          "judge does not run"
+        : "active — memory recall pointers can be injected, and the end-of-turn capture " +
+          "judge runs"
     }`,
-    "Turning recall off does not silence the end-of-turn capture prompt; that is what " +
-      "capture mode will govern.",
+    "Off and snooze silence both halves; mode governs only how a capture is confirmed " +
+      "once the judge has fired.",
     `Change it with ${FORMS}.`,
   ].join("\n");
 }
@@ -287,8 +315,10 @@ function renderConfig(sessionId, now) {
  */
 function writeFailed() {
   return (
-    "gutt could not save that: the plugin data directory is unavailable, so nothing was " +
-    "written and nothing changed."
+    "gutt could not save that: the write to config.json did not land, so nothing changed. " +
+    "The usual causes are an unavailable plugin data directory and a config.json that is " +
+    "present but unreadable — gutt refuses to overwrite a file it could not parse. " +
+    "hook-errors.log in the plugin data directory records which it was."
   );
 }
 
@@ -410,7 +440,7 @@ function runMode(arg) {
     return writeFailed();
   }
   const change = was === next ? `is ${next}, unchanged` : `is now ${next}, was ${was}`;
-  return `gutt capture mode ${change}. No behaviour reads this key yet.`;
+  return `gutt capture mode ${change} — ${MODE_EFFECTS[next]}.`;
 }
 
 /**

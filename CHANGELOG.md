@@ -54,11 +54,21 @@
     `/gutt off session` with no session id is refused rather than writing a snooze no
     session could ever clear.
   - The HUD's gutt segment shows ` off` or ` zzz` while suppressed.
-  - Known gap: turning recall off does **not** silence the end-of-turn capture
-    prompt. That hook is a `type: "prompt"` judge, dispatched unconditionally and
-    reading no config; gating it is capture mode's job, and nothing consumes that key
-    yet. Every message the command emits says "memory recall" rather than "gutt is
-    off" for exactly this reason.
+  - The judge **defers while background agents are still in flight**, reading
+    `background_tasks` off the Stop payload (Claude Code ≥ 2.1.145) and waiting only
+    on agent-shaped types — `subagent`, `workflow`, `teammate`, `cloud session`. A
+    background shell command or MCP monitor does not defer it, and an absent array
+    judges rather than defers, so an older CLI behaves as before. `session_crons` is
+    deliberately ignored: a recurring wakeup never drains, so gating on it would
+    silence capture for the rest of the session. One judge run per fan-out turn
+    instead of one per agent completion.
+  - The judge reports **why** it stayed quiet. A pass, a missing transcript, a
+    timeout, `claude` off the hook's PATH, a non-zero exit and an unparseable verdict
+    used to log the single word `quiet`, so a judge broken since an expired token was
+    indistinguishable from a quiet month; the failures now also reach
+    `hook-errors.log` with the child's `stderr`.
+  - A reason that quotes the verdict format is dropped rather than fed back, and an
+    over-long one is truncated — GP-921 route 1 in code rather than in prose alone.
 - New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
   memory scope, for the onboarding agent to consume. Ships no hooks.
   (GP-883, E7 mentor shared skill base)
