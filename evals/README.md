@@ -34,6 +34,7 @@ unit of comparison here.
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `stop-judge`     | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
 | `prompt-pointer` | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious          |
+| `capture-close`  | After a fired capture has been written: does the reply report it _and_ close on the work, or drop one of the two              |
 
 A suite is no longer confined to scoring verdicts. `run_matrix` takes a `system` argument
 and `run.py` passes a suite's own `SYSTEM` when it defines one, so a suite can frame the
@@ -56,6 +57,15 @@ python3 -m suites.migrate_offer.variants                 # diff the wordings, sp
 ceiling (24/24), and the eleven words `in one line at the end of your next reply` are the
 whole mechanism — removing them costs 24/24 → 4/24. It defaults to `claude-sonnet-5`, not
 `FAST_MODEL`, because the offer is largely a property of the session model (25% on Haiku).
+
+`suites/capture_close/FINDINGS.md` has round 1 of the closing suite. Headline: the shipped
+block beats both the reason-only baseline (88% against 54%) and the `memory-capture` rule it
+replaced (67%), and the dominant failure in the baselines is not the predicted one — the
+reply drops the capture silently rather than closing on it. Its other lesson is
+methodological and cost a whole round: the first version told the model to run a tool it did
+not have, so no capture appeared in any reply, nothing was buried, and all five variants
+scored the same for reasons unrelated to their wording. Presenting the capture as already
+complete is what made the property measurable.
 
 `suites/prompt_pointer/FINDINGS.md` has round 1 of the pointer suite. Headline: the retired
 2.x "MANDATORY / SYSTEM-LEVEL DIRECTIVE" framing is measurably the failure GP-868 predicted —

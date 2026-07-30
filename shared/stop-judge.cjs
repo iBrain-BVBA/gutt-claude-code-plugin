@@ -52,6 +52,7 @@
 
 const fs = require("node:fs");
 const os = require("node:os");
+const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { childEnv } = require("./nested-run.cjs");
 
@@ -130,6 +131,140 @@ const HITL_TAIL =
   "tool — one question per subject, offering to store it, skip it, or store it reworded — " +
   "and write only what they approve. This session is in hitl mode, so an unconfirmed " +
   "episode is not to be written even where the capture skill would allow it unprompted.";
+
+/**
+ * The output-style skill, as the id the platform would invoke it by.
+ *
+ * Namespaced rather than a bare stem on purpose, and not only for correctness: the guard
+ * in `tests/hook-architecture.test.cjs` reads a bare quoted literal matching a skill
+ * directory as an unreachable pointer, because shipping one made the model guess the
+ * prefix. The directory name is derived from the id rather than written twice.
+ */
+const STYLE_SKILL = "gutt-claude-code-plugin:output-style";
+const STYLE_SKILL_DIR = STYLE_SKILL.split(":")[1];
+
+/**
+ * The markers delimiting the injected region of that skill's `SKILL.md`.
+ *
+ * ## Why the text is read from the skill instead of held here as a constant
+ *
+ * GP-927 had three homes to choose between, and the repo had been arguing two of them at
+ * once. A hook-only constant loses the human-readable, user-invocable skill. A skill-only
+ * rule never applies on the capture path, because the fired reason names `memory-capture`
+ * and nothing loads the style skill — so the rule would be written down and inert exactly
+ * when it matters. Reading a delimited region of the skill is the only option where the
+ * bytes the agent receives and the bytes a human reads are the same bytes.
+ *
+ * That resolves the objection recorded in `memory-capture/SKILL.md`, which argued against
+ * procedural text in the reason. The argument was about **duplication** — a rule stated in
+ * the reason and again in a skill loaded moments later is paid for twice — and it holds
+ * for anything `memory-capture` itself covers. It does not reach text that exists in one
+ * place and is loaded on no other path, which is this. The capture *procedure* stays in
+ * that file; the closing style is injected, because otherwise it arrives nowhere.
+ *
+ * Cost is one small file read per fire. Stop is not the ≤50ms path (R25 bounds the guard
+ * and the prompt hook), and this hook already spawns a `claude -p` child, so a 1KB read is
+ * not the term that matters.
+ */
+const STYLE_BEGIN = "<!-- INJECTED:BEGIN -->";
+const STYLE_END = "<!-- INJECTED:END -->";
+
+/**
+ * Candidate paths to that `SKILL.md`, in resolution order.
+ *
+ * `${CLAUDE_PLUGIN_ROOT}` first because it is what the platform sets for a hook process
+ * and the only one that is right in every layout. The two fallbacks exist because
+ * `__dirname` is not stable across them: installed, this file is a real file at
+ * `<root>/hooks/lib/`, so `../..` is the plugin root; in local development it is
+ * `shared/stop-judge.cjs` reached through a symlink, and Node resolves `__dirname` to the
+ * realpath, which puts `../..` outside the repo entirely. Hence the explicit `gutt-core`
+ * candidate rather than one more `..`.
+ *
+ * @returns {string[]}
+ */
+function styleBlockPaths() {
+  const rel = path.join("skills", STYLE_SKILL_DIR, "SKILL.md");
+  const paths = [];
+  if (process.env.CLAUDE_PLUGIN_ROOT) {
+    paths.push(path.join(process.env.CLAUDE_PLUGIN_ROOT, rel));
+  }
+  paths.push(path.resolve(__dirname, "..", "..", rel));
+  paths.push(path.resolve(__dirname, "..", "gutt-core", rel));
+  return paths;
+}
+
+/**
+ * The injected region of the style skill, or `""` if it cannot be read.
+ *
+ * Fails open and silently to the turn: a missing or malformed block must cost the style,
+ * never the capture, because this sits between the user and the end of their turn. It is
+ * not silent to the log — `judgeTurn` records it in the fired outcome's detail, so a
+ * marker someone deleted shows up as a line in the invocations log rather than as replies
+ * that quietly stopped closing on the work.
+ *
+ * @returns {string}
+ */
+function readStyleBlock() {
+  for (const file of styleBlockPaths()) {
+    let text;
+    try {
+      text = fs.readFileSync(file, "utf8");
+    } catch {
+      continue; // not this layout; try the next candidate
+    }
+    const start = text.indexOf(STYLE_BEGIN);
+    const end = text.indexOf(STYLE_END, start + 1);
+    if (start === -1 || end === -1) {
+      return ""; // the file is there and the markers are not — a defect, not a layout miss
+    }
+    return text.slice(start + STYLE_BEGIN.length, end).trim();
+  }
+  return "";
+}
+
+/**
+ * The bound on the whole reason the platform is asked to inject, constants included.
+ *
+ * `MAX_REASON_CHARS` bounds only the judge's half, and did so when that half was the
+ * whole reason. With `HITL_TAIL` and the style block appended by this script there was no
+ * guard on the total at all, so this caps what actually reaches the conversation.
+ *
+ * Enforced by giving the judge's half whatever the constants leave rather than by
+ * truncating the composed string: the constants are fixed text that has been measured, and
+ * chopping the end off the block would remove the closing instruction — the one part of
+ * the reason this story exists to deliver. The variable-length half is the judge's, so
+ * that is the half that yields. `tests/stop-capture.test.cjs` measures the worst case
+ * (`hitl`, both constants present) and asserts the slack is real, so growing the block
+ * past the budget fails a test instead of silently squeezing the judge's bullets.
+ *
+ * Measured 2026-07-30, worst case: style block 1213 + `HITL_TAIL` 339 + 2 separators =
+ * 1554 of constants, plus the judge's 800 and a truncation ellipsis, for 2355. The value
+ * below is that measurement plus room to reword the block — roughly a third of its length —
+ * and not a round number chosen first. At 2400 the slack was 45 characters, which would
+ * have made every edit to the skill a test failure; the guard is meant to catch a block
+ * that has doubled, not one that gained a clause.
+ */
+const MAX_COMPOSED_REASON_CHARS = 2800;
+
+/**
+ * Assemble the reason the platform will inject: the judge's verdict, then the constants.
+ *
+ * Order is chronological for the agent that reads it — capture these subjects, confirm
+ * them if this session is `hitl`, then close the reply on the work. The style block goes
+ * last because it governs the end of the reply and is the instruction most easily lost in
+ * the middle of a system message.
+ *
+ * @param {string} reason the judge's reason, already screened
+ * @param {string} mode one of runtime-config's MODES
+ * @param {string} style the injected style block, or `""`
+ * @returns {string}
+ */
+function composeReason(reason, mode, style) {
+  const tail = `${mode === "hitl" ? HITL_TAIL : ""}${style ? `\n\n${style}` : ""}`;
+  const budget = Math.max(0, Math.min(MAX_REASON_CHARS, MAX_COMPOSED_REASON_CHARS - tail.length));
+  const head = reason.length > budget ? `${reason.slice(0, budget).trimEnd()}…` : reason;
+  return `${head}${tail}`;
+}
 
 /**
  * The JSON shape the child is forced into, so the verdict is parsed rather than guessed.
@@ -345,7 +480,9 @@ function stderrTail(result) {
  *
  * @param {object} payload
  * @param {string} mode one of runtime-config's MODES
- * @param {{ spawn?: Function, cwd?: string }} [deps] seam for tests; nothing else injects
+ * @param {{ spawn?: Function, cwd?: string, styleBlock?: string }} [deps] seam for tests;
+ *   nothing else injects. `styleBlock` is honoured when present including as `""`, so a
+ *   test can exercise the unreadable-block path without moving the skill file
  * @returns {{outcome: string, reason: string|null, detail: string|null}} `reason` is
  *   non-null only for `FIRED`; `detail` carries the diagnostic for the log
  */
@@ -428,22 +565,26 @@ function judgeTurn(payload, mode, deps = {}) {
   if (verdict.ok !== false) {
     return quiet(OUTCOMES.PASS);
   }
-  let reason = String(verdict.reason || "").trim();
+  const reason = String(verdict.reason || "").trim();
   if (!reason) {
     // ok:false with no reason is not actionable — there is nothing to tell the agent to
     // capture, and blocking on it would re-enter the turn with an empty instruction.
     return quiet(OUTCOMES.NO_REASON);
   }
+  // Screened before the constants are appended, not after. The shape test is about what
+  // the *judge* wrote; composing first would run it over our own text as well, where a
+  // match could only ever be our bug, and would drop a healthy verdict to report it.
   if (VERDICT_SHAPE.test(reason)) {
     return quiet(OUTCOMES.RESTATED_FORMAT, reason.slice(0, 200));
   }
-  if (reason.length > MAX_REASON_CHARS) {
-    reason = `${reason.slice(0, MAX_REASON_CHARS).trimEnd()}…`;
-  }
+  const style = deps.styleBlock === undefined ? readStyleBlock() : deps.styleBlock;
   return {
     outcome: OUTCOMES.FIRED,
-    reason: mode === "hitl" ? `${reason}${HITL_TAIL}` : reason,
-    detail: null,
+    reason: composeReason(reason, mode, style),
+    // A fire is not a failure, so this never reaches the error log. But an unreadable
+    // style block is the difference between the capture path closing on the work and
+    // trailing off into bookkeeping, and this log line is the only place it would show.
+    detail: style ? null : "style block unreadable",
   };
 }
 
@@ -502,14 +643,22 @@ module.exports = {
   JUDGE_CONDITION,
   HITL_TAIL,
   VERDICT_SCHEMA,
+  VERDICT_SHAPE,
   TAIL_BYTES,
   OUTCOMES,
   BROKEN_OUTCOMES,
   MAX_REASON_CHARS,
+  MAX_COMPOSED_REASON_CHARS,
+  STYLE_SKILL,
+  STYLE_BEGIN,
+  STYLE_END,
   AGENT_TASK_TYPES,
   pendingAgentTasks,
   lastAssistantMessage,
   buildJudgePrompt,
   parseVerdict,
+  styleBlockPaths,
+  readStyleBlock,
+  composeReason,
   judgeTurn,
 };

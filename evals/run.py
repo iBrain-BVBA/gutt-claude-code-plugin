@@ -22,6 +22,7 @@ from lib.runner import FAST_MODEL, run_matrix  # noqa: E402
 SUITES = {
     "stop-judge": "suites.stop_judge.suite",
     "prompt-pointer": "suites.prompt_pointer.suite",
+    "capture-close": "suites.capture_close.suite",
 }
 
 

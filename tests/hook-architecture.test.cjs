@@ -45,7 +45,8 @@ const ALL = PLUGIN_DIRS.flatMap(handlers);
  * guards instead of surfacing later as a judge that never fires.
  */
 const STOP_JUDGE_LIB = path.join(ROOT, "gutt-core", "hooks", "lib", "stop-judge.cjs");
-const JUDGE_CONDITION = require(STOP_JUDGE_LIB).JUDGE_CONDITION;
+const STOP_JUDGE = require(STOP_JUDGE_LIB);
+const JUDGE_CONDITION = STOP_JUDGE.JUDGE_CONDITION;
 
 /**
  * Plugin directories as the marketplace actually lists them, so adding a plugin
@@ -560,52 +561,167 @@ describe("hook architecture guards", () => {
   // left looking at — and a continuation spent entirely on memory bookkeeping buries
   // the work beneath it, leaving them to scroll back for what they asked for.
   //
-  // Both halves of the fix live in `memory-capture/SKILL.md`, not in the fired reason.
-  // The reason is read on every firing and is a payload — a skill name and a bullet
-  // per subject — so procedure written there is duplicated by the moment it applies.
-  // These assertions therefore target the skill; the reason's own shape is guarded
-  // separately below.
+  // These guards used to read `memory-capture/SKILL.md` for both halves of the fix, and
+  // the comment here argued that the fired reason was the wrong home for either: the
+  // reason is a payload read on every firing, so procedure written there is duplicated by
+  // the moment it applies. GP-927 kept that argument and narrowed it. It is about
+  // *duplication*, and it never reached text that exists in exactly one place and is
+  // loaded on no other path — which is what the closing style now is. Nothing on the
+  // capture path loads `output-style`, so a rule left only in that file would be written
+  // down and inert precisely when it is needed.
   //
-  // Anchored on the terms that carry the meaning rather than the sentences around
-  // them: there must be a closing summary of the work and it must come last. Reword
-  // the prose freely; keep those.
+  // So the two halves now have two homes, and each is guarded where it lives: the length
+  // of the capture *account* stays with `memory-capture`, and everything below it belongs
+  // to `output-style`, whose injected region is the single source the hook reads. The
+  // reason's own shape is guarded separately below.
   //
-  // The artifact used to be named "TL;DR" and this guard matched that literal. It was
-  // renamed deliberately — a fixed label reads as boilerplate, and a heading naming
-  // the actual work is worth more — so the anchor moved with it. Note the shape of
-  // that near-miss: had the rename landed without touching this file, the assertion
-  // would have failed loudly, which is the good case. The bad case is a guard whose
-  // string survives a rewrite while the property it stood for quietly leaves.
-  it("makes a capture close on a summary of the work, last", () => {
-    const md = fs.readFileSync(
-      path.join(ROOT, "gutt-core", "skills", "memory-capture", "SKILL.md"),
-      "utf8"
+  // Anchored on the terms that carry the meaning rather than the sentences around them.
+  // Reword the prose freely; keep those. The artifact these once named was a "TL;DR", and
+  // the guard matched that literal until the label was deliberately dropped — a fixed
+  // heading reads as boilerplate. Note the shape of that near-miss: had the rename landed
+  // without touching this file the assertion would have failed loudly, which is the good
+  // case. The bad case is a guard whose string survives a rewrite while the property it
+  // stood for quietly leaves.
+  describe("closing the reply on the work rather than the bookkeeping", () => {
+    const CAPTURE_MD = path.join(ROOT, "gutt-core", "skills", "memory-capture", "SKILL.md");
+    const STYLE_MD = path.join(
+      ROOT,
+      "gutt-core",
+      "skills",
+      STOP_JUDGE.STYLE_SKILL.split(":")[1],
+      "SKILL.md"
     );
-    assert.match(
-      md,
-      /summary of\s+(that|the)\s+work/i,
-      "the skill never asks for a closing summary of the work, so the capture becomes the turn"
-    );
-    // The capture is part of finishing a turn. Framing it as a detour makes the reply
-    // read as an apology for having done the bookkeeping, and puts the emphasis on the
-    // interruption rather than on the work the user came for.
-    assert.match(
-      md,
-      /not an interruption/i,
-      "nothing stops the skill from framing the capture as an interruption of the work"
-    );
-    assert.match(
-      md,
-      /last, after everything|after everything else/i,
-      "a TL;DR that is not required to come last can be buried by the capture account above it"
-    );
-    // The other half of the same problem: a brief TL;DR under a long capture report
-    // is still a buried TL;DR.
-    assert.match(
-      md,
-      /a few lines, not a report/i,
-      "nothing caps the length of the capture account the TL;DR has to follow"
-    );
+
+    it("caps the capture account, where that rule still lives", () => {
+      // A brief closing block under a long capture report is still a buried one, so the
+      // account above it needs a bound and that bound is capture's own business.
+      assert.match(
+        fs.readFileSync(CAPTURE_MD, "utf8"),
+        /a few lines, not a report/i,
+        "nothing caps the length of the capture account the closing block has to follow"
+      );
+    });
+
+    it("makes the closing block the work, last, and not a recap of it", () => {
+      const block = STOP_JUDGE.readStyleBlock();
+      assert.ok(block, "the style skill's injected region is empty or unreadable");
+      // Both accounts are required, in order. Demanding only the summary invites a reply
+      // that silently drops the fact a capture was written; demanding only the capture
+      // account is the defect itself.
+      assert.match(
+        block,
+        /two parts, in this order/i,
+        "the block does not demand both the bookkeeping account and the closing summary"
+      );
+      assert.match(
+        block,
+        /closing summary of the turn/i,
+        "the block never names the closing summary, so the bookkeeping becomes the turn"
+      );
+      assert.match(
+        block,
+        /whatever sits at the bottom/i,
+        "a closing summary not pinned to the bottom can be buried by the account above it"
+      );
+      // The capture is part of finishing a turn. Framing it as a detour makes the reply
+      // read as an apology for having done the bookkeeping, and puts the emphasis on the
+      // interruption rather than on the work the user came for.
+      assert.match(
+        block,
+        /not an interruption/i,
+        "nothing stops the reply framing the capture as an interruption of the work"
+      );
+      // GP-927's definition question. "Repeat the output" read literally produces a
+      // verbatim echo, which doubles a long reply; read loosely it produces "I did X then
+      // captured Y", which is the recap that is roughly the defect. Both must be excluded
+      // in the injected text, not only in the prose around it.
+      assert.match(
+        block,
+        /not a verbatim echo/i,
+        "the block permits a verbatim echo, which doubles the reply on exactly the turns that fire"
+      );
+      assert.match(
+        block,
+        /not an account of what you just did/i,
+        "the block permits a recap of the turn, which is roughly the defect it exists to fix"
+      );
+    });
+
+    it("holds the closing style in exactly one place", () => {
+      const capture = fs.readFileSync(CAPTURE_MD, "utf8");
+      // The reference has to survive, or the skill that owns the rule is unreachable from
+      // the one file the capture path does load.
+      assert.match(
+        capture,
+        new RegExp(`\`${STOP_JUDGE.STYLE_SKILL.split(":")[1]}\``),
+        "memory-capture no longer points at the skill that owns how the reply closes"
+      );
+      // And the rule must not have been left behind as a second copy. These are the
+      // phrases that carried it while it lived there; any of them still in that file
+      // means the repo ships both positions, which is what GP-927 forbids.
+      const moved = [
+        /summary of\s+(that|the)\s+work/i,
+        /last, after everything|after everything else/i,
+        /whatever sits at\s+the bottom/i,
+        /no "returning to"/i,
+      ].filter((re) => re.test(capture));
+      assert.deepEqual(
+        moved,
+        [],
+        `memory-capture still restates the closing rule (${moved.join(", ")}) — one source, ` +
+          `and it is the output-style skill's injected region`
+      );
+    });
+
+    it("keeps the injected region a delimited slice, not the whole skill", () => {
+      const md = fs.readFileSync(STYLE_MD, "utf8");
+      assert.ok(md.includes(STOP_JUDGE.STYLE_BEGIN), "the skill lost its opening marker");
+      assert.ok(md.includes(STOP_JUDGE.STYLE_END), "the skill lost its closing marker");
+      // The bound that matters is the reason budget, not a share of the file: the block is
+      // appended to every fired reason, and what it may not do is crowd out the judge's
+      // bullets. Expressed as the slack the composed cap leaves once both constants are
+      // present, which is the `hitl` worst case.
+      const block = STOP_JUDGE.readStyleBlock();
+      const room =
+        STOP_JUDGE.MAX_COMPOSED_REASON_CHARS -
+        STOP_JUDGE.MAX_REASON_CHARS -
+        STOP_JUDGE.HITL_TAIL.length;
+      assert.ok(
+        block.length <= room,
+        `the injected region is ${block.length} chars and only ${room} fit beside a full ` +
+          `judge reason and HITL_TAIL — shorten it, or raise MAX_COMPOSED_REASON_CHARS ` +
+          `deliberately`
+      );
+      // Rationale and attribution are what must stay outside the markers: they argue from
+      // the hook that interposes, which is background the agent reading a fired reason does
+      // not need, and it would ship on every fire. They live in references/origin.md.
+      assert.doesNotMatch(
+        block,
+        /ayghri|MIT|baseline/i,
+        "attribution or rationale is inside the markers, so it ships in every fired reason"
+      );
+    });
+
+    // The reason is fed back and lands in the conversation, so more text in it is more
+    // surface for GP-921 — a payload reaching the user as the assistant's answer.
+    // `VERDICT_SHAPE` screens the judge's half; nothing screens ours, because ours is a
+    // constant. This is that screen, run once at build time instead.
+    it("gives the leak detectors nothing to catch in the injected region", () => {
+      const block = STOP_JUDGE.readStyleBlock();
+      assert.doesNotMatch(
+        block,
+        STOP_JUDGE.VERDICT_SHAPE,
+        "the style block is verdict-shaped, so composing it would trip the GP-921 screen"
+      );
+      // The same alphabet `tests/e2e/session-lifecycle.e2e.cjs` uses on injected context:
+      // imperative out-of-band framing is documented to trigger Claude's prompt-injection
+      // defenses, which surfaces the text to the user instead of being consumed.
+      assert.doesNotMatch(
+        block,
+        /MANDATORY|you MUST|NOT optional|CRITICAL violation|NEVER skip/i,
+        "the style block reads as an out-of-band system command"
+      );
+    });
   });
 
   // The reason's shape is the counterpart. It is generated fresh on every firing and
