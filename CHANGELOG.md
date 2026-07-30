@@ -88,6 +88,16 @@
   carries a readable id a joiner can follow; facts and episodes keep theirs. Also
   corrects a scoped-recall pass described as running before the step that makes it
   possible
+- The onboarding agent's resume check was a binary — same ramp or plainly
+  different — and most real cases fall between: a near-match, several candidates, a
+  record whose provenance is doubtful. It now asks which, and says what to do when
+  there is nobody to ask. Alongside it, a run with nobody present now writes
+  **nothing** in the literal sense, registration and lessons capture included,
+  since a run that writes nothing needs no memory identity; the program record uses
+  the design skill's headings verbatim, because the tracking skill reads status by
+  them and the published record's different shape had been bleeding in; and the org
+  group is taken from a returned `group_id` rather than a node's id prefix, which is
+  an alias and can differ from the group
 
 ### Changed
 
