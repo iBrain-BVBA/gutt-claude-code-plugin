@@ -83,11 +83,11 @@
   keyed to the chosen scope, with the first pass and the gap-fillers in separate
   columns; the rung-2 ceiling is stated deliberately, since centered fact searches
   return current facts only while the traversal tools return superseded edges
-  unwarned and can fail on a hub (GP-884)
+  unwarned and can fail on a hub
 - The onboarding brief asked for a UUID where the cited thing is a node, which
   carries a readable id a joiner can follow; facts and episodes keep theirs. Also
   corrects a scoped-recall pass described as running before the step that makes it
-  possible (GP-884)
+  possible
 
 ### Changed
 
@@ -96,7 +96,7 @@
   vocabulary, and a failure-modes list that repeated Agent identity, Step 3 and
   Step 6 at length, now an observable-and-response table. An agent body is a system
   prompt with no staged loading, so a restatement competes with the original and
-  can drift from it (GP-884)
+  can drift from it
 
 ### Deprecated
 
