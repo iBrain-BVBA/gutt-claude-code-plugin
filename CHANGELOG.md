@@ -98,6 +98,17 @@
   them and the published record's different shape had been bleeding in; and the org
   group is taken from a returned `group_id` rather than a node's id prefix, which is
   an alias and can differ from the group
+- The last two paths in the onboarding agent that could state a wrong answer as
+  fact are closed. A centered fact search that never mentions its center node is
+  discarded instead of quoted — two runs saw the center parameter silently
+  ignored, and the generic facts that come back are about something else. A record
+  or group that declares itself test, sandbox, or fabricated content is excluded
+  from the briefing rather than merely attributed: a weaker-model run applied
+  attribution mechanically and still briefed from a fabricated cluster, so
+  exclusion is the rule and attribution covers only what survives it. Alongside:
+  the role fallback no longer dead-ends when neither role nor system is stated,
+  and the draft variant names its exception to the milestones-track-stated-goals
+  rule instead of contradicting it silently
 
 ### Changed
 

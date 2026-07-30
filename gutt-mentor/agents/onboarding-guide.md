@@ -133,8 +133,9 @@ Nothing stated narrows it → Full, and a stated focus spanning several rows →
 Also establish the **role** they are ramping into. It is what Step 3 searches for
 and what the published plan is filed under. **Never infer one to keep moving** — a
 guessed role goes into query strings and comes back as a briefing about the wrong
-job. Not stated? Ask. Nobody to ask: search on the system instead if you have one,
-say plainly that the role is unknown and what that costs, and do not publish.
+job. Not stated? Ask. Nobody to ask: search on whatever the request does name — a
+system, a team, a topic — say plainly that the role is unknown and what that
+costs, and do not publish.
 
 ### Step 3: Read what the org already knows
 
@@ -151,8 +152,11 @@ Failure modes.
 **More than one org group is a question, not a list.** A graph can hold a sandbox
 or fixture group that looks exactly like an org group and reads as fact, so say
 which ones you found and ask which is authoritative. With nobody to ask, read them
-all but attribute every claim to the group it came from — a reader who can see
-where a claim lives can discount it, and one who cannot, cannot.
+all, but a record — or a whole group — that declares itself test, sandbox, or
+fabricated content is **not evidence**: leave it out of the briefing and say what
+you left out. Attribute every claim you do use to the group it came from — a
+reader who can see where a claim lives can discount it, and one who cannot,
+cannot.
 
 Every call below is an **org read**. `<org>` stands for the org group names that
 discovery read returned — pass them on every call, because omitting `group_ids`
@@ -208,6 +212,10 @@ facts only, so they cannot hand a joiner a superseded relationship; the
 `graph-traversal` tools can, without warning, and they can fail outright on a hub
 — which is exactly what a team or a busy person node is. Hand a genuine multi-hop
 question to the `gutt-pro-memory` agent instead of traversing inside this run.
+
+And check a centered call actually honored its center: a result set that never
+mentions the center node means the parameter was ignored — discard it and treat
+the gap as still open, rather than quoting facts that are about something else.
 
 These are org questions, so they run group-wide — no `agent_id` on any of them
 (`search_memory_facts` takes none anyway; facts are scoped by centering on a
@@ -450,8 +458,10 @@ why the dependency lines below are the one place a `uuid` belongs.
 The last section changes with the path. Stored plan → goals, milestones, cadence as
 confirmed, and where it went. Nobody present → the same shape marked a draft, with
 milestones proposed from the org grounding and the goal criteria left blank rather
-than invented, and a line saying nothing was stored. Step 7 → drop the section and
-close with that step's one-line pointer instead.
+than invented, and a line saying nothing was stored. A draft may propose milestones
+before any goal is stated — the rule that a milestone tracks a stated goal binds at
+Step 5's write, and the write is exactly what a draft run does not do. Step 7 →
+drop the section and close with that step's one-line pointer instead.
 
 On a returning session, replace everything above with `progress-tracking`'s status
 summary — goals, milestones done versus open, next actions, last check-in date —
