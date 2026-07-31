@@ -397,7 +397,9 @@ describe("stop-judge: deciding what to feed back", () => {
       assert.match(out.detail, /transcript unreadable|transcript \d+B/);
       assert.ok(
         judge.BROKEN_OUTCOMES.has(out.outcome),
-        "an unreadable turn reads as a negative result rather than a failure to read"
+        `${judge.OUTCOMES.NO_SUMMARY} is outside BROKEN_OUTCOMES again, so a turn the hook ` +
+          `could not read is filed with turns that had nothing worth capturing — the ` +
+          `misclassification that hid this for 6 invocations`
       );
     });
   });
