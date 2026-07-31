@@ -37,15 +37,15 @@ This plugin provides a memory backbone for Claude Code, enabling:
 
 ### Via Marketplace (Recommended)
 
-1. **Install:** `claude plugin add gutt-claude-code-plugin@gutt-plugins`
-2. **Setup:** Run `/gutt-claude-code-plugin:onboard`
+1. **Install:** `claude plugin add gutt-pro@gutt-plugins`
+2. **Setup:** Run `/gutt-pro:onboard`
 3. **Done** — memory integration is active
 
 ### Manual Install (Developers)
 
 1. **Clone:** `git clone https://github.com/iBrain-BVBA/gutt-claude-code-plugin ~/.claude-plugins/gutt-claude-code-plugin`
 2. **Enable:** Add to `.claude/settings.json` under `"plugins"`
-3. **Setup:** Run `/gutt-claude-code-plugin:onboard`
+3. **Setup:** Run `/gutt-pro:onboard`
 
 > **Shared hook libs:** Hook libraries have a single source in `shared/`; each plugin's `hooks/lib/*` symlinks into it. Running from a cloned repo resolves those symlinks in place. Note that `--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks — to test a real install, use the git marketplace source. Marketplace installs dereference them automatically into real files.
 
@@ -89,42 +89,56 @@ longer edits that file for you — see
 
 > A `statusLine` in your own settings takes precedence over the plugin's. If you
 > upgraded from 2.x, the retired auto-setup may have left one there — run
-> `/gutt-claude-code-plugin:health` to check.
+> `/gutt-pro:health` to check.
 
 ### Hooks
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                       | Event            | Purpose                                                                                                         |
-| -------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                              |
-| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                                                        |
-| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                             |
-| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt` config commands; points at `memory-search` on a new session or after a compaction               |
-| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours `/gutt off` and `mode`, defers while background agents run |
-| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                                               |
+| Hook                       | Event            | Purpose                                                                                                            |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                                 |
+| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                                                           |
+| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                                |
+| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt-pro:*` config commands; points at `memory-search` on a new session or after a compaction            |
+| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours an off/disable and `mode`, defers while background agents run |
+| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                                                  |
 
-### Settings — the `/gutt` command
+### Settings — the `/gutt-pro:` commands
 
 Type these at any time; the change is applied by the UserPromptSubmit hook before the
 model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
 
-| Command                 | Effect                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------ |
-| `/gutt config`          | Show the stored settings and the state they add up to                                      |
-| `/gutt off`             | Turn memory recall off until `/gutt on` — survives restarts                                |
-| `/gutt off 30`          | Snooze recall for 30 minutes (1–10080), then it resumes on its own                         |
-| `/gutt off session`     | Snooze recall for the rest of this session                                                 |
-| `/gutt on`              | Clear any off or snooze                                                                    |
-| `/gutt mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
+| Command                     | Effect                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `/gutt-pro:config`          | Show the stored settings and the state they add up to                                      |
+| `/gutt-pro:off`             | Turn recall off for the rest of this session — it comes back on its own                    |
+| `/gutt-pro:off session`     | The explicit spelling of the same thing                                                    |
+| `/gutt-pro:off 30`          | Turn recall off for 30 minutes (1–10080), then it resumes on its own                       |
+| `/gutt-pro:disable`         | Turn recall off until `/gutt-pro:on` — survives restarts                                   |
+| `/gutt-pro:on`              | Clear an off, a snooze, and a disable                                                      |
+| `/gutt-pro:mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
 
-`/gutt-claude-code-plugin:gutt <subcommand>` and `/gutt:<subcommand>` are accepted too.
+**`off` is temporary and `disable` is durable.** The cheap, reversible action gets the
+short word; turning recall off for good has to be typed on purpose. If you used the 3.0
+`/gutt off` for a durable off, `/gutt-pro:disable` is what you now want — see
+[docs/migration-3.0.md](docs/migration-3.0.md).
+
+The 3.0 spellings `/gutt …`, `/gutt:<sub>` and `/gutt-claude-code-plugin:gutt <sub>` no
+longer do anything at all. They are ordinary prompt text now, not aliases — a hard cut,
+because `off` reversed meaning in the same release and an alias would have quietly done
+something other than what you typed.
+
+Bare `/off`, `/on`, `/disable` and `/mode` also reach the plugin, and it says so in its
+reply when they do. Bare `/config` does not — Claude Code's own `/config` takes it first,
+so `/gutt-pro:config` is the only spelling that works for that one.
+
 The HUD shows ` off` or ` zzz` in the gutt segment while recall is suppressed, since a
 durable off is otherwise invisible.
 
 Two things worth knowing. An out-of-range minute count is **rejected, not clamped** —
-`/gutt off 300000` changes nothing rather than silencing recall for seven months. And off
-or snooze silences **both** halves: no recall pointer is injected, and the end-of-turn
+`/gutt-pro:off 300000` changes nothing rather than silencing recall for seven months. And
+off or snooze silences **both** halves: no recall pointer is injected, and the end-of-turn
 capture judge is not run at all (no subprocess is spawned). Capture mode is the other
 axis — it governs only how a capture is confirmed once the judge has fired.
 
@@ -136,11 +150,11 @@ whole session.
 
 ### Skills
 
-| Skill            | Command                                     | Purpose                                    |
-| ---------------- | ------------------------------------------- | ------------------------------------------ |
-| memory-search    | `/gutt-claude-code-plugin:memory-search`    | Shallow-first, summary-first memory search |
-| memory-capture   | `/gutt-claude-code-plugin:memory-capture`   | Structured lesson capture with 4 patterns  |
-| memory-retrieval | `/gutt-claude-code-plugin:memory-retrieval` | Deprecated alias → use memory-search       |
+| Skill            | Command                      | Purpose                                    |
+| ---------------- | ---------------------------- | ------------------------------------------ |
+| memory-search    | `/gutt-pro:memory-search`    | Shallow-first, summary-first memory search |
+| memory-capture   | `/gutt-pro:memory-capture`   | Structured lesson capture with 4 patterns  |
+| memory-retrieval | `/gutt-pro:memory-retrieval` | Deprecated alias → use memory-search       |
 
 ### Agents
 
@@ -191,7 +205,7 @@ and gives general best practice, labeled as general.
 Search organizational memory before starting work:
 
 ```
-/gutt-claude-code-plugin:memory-search "authentication patterns"
+/gutt-pro:memory-search "authentication patterns"
 ```
 
 Returns:
@@ -205,7 +219,7 @@ Returns:
 Capture learnings using one of 4 patterns:
 
 ```
-/gutt-claude-code-plugin:memory-capture "We decided to use relative paths instead of env vars for cross-platform compatibility"
+/gutt-pro:memory-capture "We decided to use relative paths instead of env vars for cross-platform compatibility"
 ```
 
 **Patterns:**
@@ -222,7 +236,7 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── .claude-plugin/
 │   └── marketplace.json           # lists gutt-core + auto-lint-plugin + gutt-mentor
 ├── shared/                         # single source for hook libs; plugins symlink these
-├── gutt-core/                      # core plugin — name: gutt-claude-code-plugin, displayName: gutt-core
+├── gutt-core/                      # core plugin — name/displayName: gutt-pro (dir keeps its name)
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
 │   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery
@@ -263,7 +277,7 @@ This plugin works on:
 
 ### Hook not firing
 
-1. Verify plugin is installed: run `/plugins` to check gutt-claude-code-plugin is listed
+1. Verify plugin is installed: run `/plugins` to check gutt-pro is listed
 2. Verify Node.js is in PATH
 3. Restart Claude Code to reload hooks
 

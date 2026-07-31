@@ -32,7 +32,7 @@ import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from lib.runner import ask, judge_cwd  # noqa: E402
 
-SKILL = "gutt-claude-code-plugin:memory-capture"
+SKILL = "gutt-pro:memory-capture"
 
 # The turn being finished, and the reason a firing judge appends. Both realistic: this is
 # the shape the live probe produced, skill line plus two typed bullets.

@@ -59,7 +59,7 @@ any test was written. They are the load-bearing assumptions of the suite.
   `config.json` keyed to the session it is about to run instead of discovering the
   id afterwards.
 - **Plugin skills do load under `--plugin-dir`, and they are namespaced.**
-  `skill_listing` in the transcript contains `gutt-claude-code-plugin:memory-search`,
+  `skill_listing` in the transcript contains `gutt-pro:memory-search`,
   `:memory-capture` and the rest, so the routers' targets exist at runtime — but only
   under the `<plugin>:<stem>` form. The injected text originally named the bare
   `memory-search`, which is not invocable; it now carries the namespace, and
@@ -117,7 +117,7 @@ Haiku except run 4, which needs a Sonnet turn to have something worth judging:
 | 3   | `hook-routing.e2e.cjs`      | **row 1 snooze** suppresses without burning the flag         |
 | 4   | `hook-routing.e2e.cjs`      | **Stop router fires and terminates**, reply stays clean      |
 | 5   | `hook-routing.e2e.cjs`      | **R23 coexistence** with `auto-lint-plugin`                  |
-| 6   | `hook-routing.e2e.cjs`      | **row 0 `/gutt` config command** applied, and relayed        |
+| 6   | `hook-routing.e2e.cjs`      | **row 0 `/gutt-pro:` config command** applied, and relayed   |
 
 ## Per-run assertions
 
@@ -143,7 +143,7 @@ A session-scoped snooze is planted for a known session id before launch.
 - `SessionEnd` removed `snoozeSessionId`/`snoozeUntil` and left `enabled`/`mode`
   untouched. GP-866 made those keys writable from `runtime-config.cjs` too, so the
   claim is now about scope rather than ownership: the sweep goes through
-  `withoutSnooze` and only `restore()` (the `/gutt on` path) deletes `enabled`.
+  `withoutSnooze` and only `restore()` (the `/gutt-pro:on` path) deletes `enabled`.
 - the run still answers the user normally
 
 ### Run 4 — the Stop router fires, and stops firing
@@ -171,14 +171,19 @@ reply cleanliness are the deterministic parts and the real guards.
 - no hook emits a blocking decision, and the session is not interrupted
 - `auto-lint-plugin` contributes its `PostToolUse` handler without disturbing gutt
 
-### Run 6 — the `/gutt` config command (GP-866)
+### Run 6 — the `/gutt-pro:` config command (GP-866, GP-931)
 
 Two command prompts in one session, config planted empty so the run starts from the
-documented defaults: `/gutt-claude-code-plugin:gutt off 30`, then `/gutt config`.
+documented defaults: `/gutt-pro:off 30`, then `/gutt-pro:config`.
 
-The namespaced spelling is used on purpose. It is what the `/` menu inserts, so it is
-the form real users produce; a parser that only handled the hand-typed `/gutt off 30`
-would fail exactly here, and nowhere else in the suite would notice.
+The namespaced spelling is used on purpose, and after GP-931 it is the only one that
+works for `config`: Claude Code's own `/config` intercepts the bare form before any hook
+sees it (measured, `docs/plugin-platform-reference.md` §8). It is also what the `/` menu
+inserts, so it is the form real users produce.
+
+Note what `off 30` writes after the GP-931 D3 reversal: `snoozeUntil`, never `enabled`.
+The durable flag is `/gutt-pro:disable`'s alone, so a run that found `enabled` set here
+would be a regression of the reversal rather than a snooze that happened to persist.
 
 - both turns return `is_error: false`
 - **exactly two** `additionalContext` events, both from `user-prompt-submit.cjs` —

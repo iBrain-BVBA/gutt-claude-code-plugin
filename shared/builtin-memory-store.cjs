@@ -75,7 +75,7 @@ const MARKER_NOTE = [
   "# Project memory",
   "",
   "gutt is the store of record for this project's memory. Write new memories to the",
-  "gutt knowledge graph over MCP — see the `gutt-claude-code-plugin:memory-capture`",
+  "gutt knowledge graph over MCP — see the `gutt-pro:memory-capture`",
   "skill — so they are visible to teammates, to your other projects, and to gutt search.",
   "",
   "This local store is a fallback for when the gutt MCP server is unreachable. Its",

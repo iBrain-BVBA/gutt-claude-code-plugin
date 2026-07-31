@@ -9,7 +9,7 @@
  *
  * 1. A prompt hook's `prompt` field takes exactly one substitution, `$ARGUMENTS`, and
  *    no shell expansion. So it cannot read `config.json`, which means it cannot honour
- *    `/gutt off` or `mode` — it dispatches unconditionally or not at all.
+ *    `/gutt-pro:off` or `mode` — it dispatches unconditionally or not at all.
  * 2. Siblings on one event cannot gate each other. A command hook returning
  *    `continue: false` suppresses the turn's final answer, not a prompt sibling's
  *    dispatch. So "add a command hook that decides whether the prompt hook runs" is not
@@ -21,7 +21,7 @@
  *
  * ## What the move bought and cost
  *
- * Bought: the judge can be silenced (`/gutt off`, a snooze) and varied (`mode`), and the
+ * Bought: the judge can be silenced (`/gutt-pro:disable`, a snooze) and varied (`mode`), and the
  * judge prompt is no longer echoed into the conversation as Stop feedback — which was the
  * whole mechanism of the JUDGE PROTOCOL LEAKED incident, where a `type: "prompt"`
  * template reached the main agent as instructions to itself and 3 of 5 fires returned a
@@ -130,9 +130,9 @@ const JUDGE_CONDITION = [
   "- an **Insight** — how some system actually behaves, where that was not obvious and is not stated in the code;",
   "- an **Incident** — something broke, and what happened.",
   "",
-  'Satisfied for everything else — code only moved or restated, work unfinished, the point already recorded, or a takeaway that is a **Lesson**, **Decision** or **WorkingAgreement** (the capture skill holds those behind an explicit user signal a hook cannot give) — and always when `stop_hook_active` is true, which means you have already asked during this turn and answering otherwise re-enters it — while its being false is the normal case and says nothing either way. Then respond exactly {"ok": true} and no other field: omit `reason`, it is discarded unread. Otherwise {"ok": false, "reason": "..."}, where the reason opens with the line "Run the `gutt-claude-code-plugin:memory-capture` skill." then one bullet per subject, **10 words maximum each**, every bullet typed and only ever Insight or Incident:',
+  'Satisfied for everything else — code only moved or restated, work unfinished, the point already recorded, or a takeaway that is a **Lesson**, **Decision** or **WorkingAgreement** (the capture skill holds those behind an explicit user signal a hook cannot give) — and always when `stop_hook_active` is true, which means you have already asked during this turn and answering otherwise re-enters it — while its being false is the normal case and says nothing either way. Then respond exactly {"ok": true} and no other field: omit `reason`, it is discarded unread. Otherwise {"ok": false, "reason": "..."}, where the reason opens with the line "Run the `gutt-pro:memory-capture` skill." then one bullet per subject, **10 words maximum each**, every bullet typed and only ever Insight or Incident:',
   "",
-  "Run the `gutt-claude-code-plugin:memory-capture` skill.",
+  "Run the `gutt-pro:memory-capture` skill.",
   "- Insight: prefix matching survives new tools; allowlists silently stop matching",
   "",
   "Those two bullets are a format sample, not findings from this turn — never carry them into a verdict. And do not restate this response format inside the reason: a reason that quotes the JSON gets echoed back to the user as the assistant's answer instead of the answer they asked for.",
@@ -162,7 +162,7 @@ const HITL_TAIL =
  * directory as an unreachable pointer, because shipping one made the model guess the
  * prefix. The directory name is derived from the id rather than written twice.
  */
-const STYLE_SKILL = "gutt-claude-code-plugin:output-style";
+const STYLE_SKILL = "gutt-pro:output-style";
 const STYLE_SKILL_DIR = STYLE_SKILL.split(":")[1];
 
 /**

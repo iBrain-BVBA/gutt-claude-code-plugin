@@ -25,7 +25,7 @@ already had opinions about, so the eval can check whether those opinions are rig
                 rather than a wording test — see the note above V5 for what prompted it.
 """
 
-SEARCH_SKILL = "gutt-claude-code-plugin:memory-search"
+SEARCH_SKILL = "gutt-pro:memory-search"
 
 # Byte-identical to SEARCH_CONTEXT in gutt-core/hooks/user-prompt-submit.cjs.
 V0_SHIPPED = (

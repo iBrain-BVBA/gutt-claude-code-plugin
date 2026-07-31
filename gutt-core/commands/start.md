@@ -4,7 +4,7 @@ description: "Quick start for gutt memory integration (alias for setup)"
 
 # gutt Quick Start
 
-This is an alias for `/gutt-claude-code-plugin:setup`.
+This is an alias for `/gutt-pro:setup`.
 
 Run the full setup wizard to configure your gutt MCP server connection.
 
@@ -17,11 +17,11 @@ Run the full setup wizard to configure your gutt MCP server connection.
 **Usage:**
 
 ```
-/gutt-claude-code-plugin:start
+/gutt-pro:start
 ```
 
 Or use the full command:
 
 ```
-/gutt-claude-code-plugin:setup
+/gutt-pro:setup
 ```

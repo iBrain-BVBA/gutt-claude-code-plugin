@@ -191,6 +191,62 @@ bare command.
 The second is worth internalizing: our repo-root `CLAUDE.md` is project context because
 the repo root is not a plugin. `gutt-core/CLAUDE.md` would do nothing.
 
+## 8. Bare command resolution, and the `/config` collision — **Measured**
+
+**Measured 2026-07-31** against a real `claude` run with the plugin loaded from this
+working tree (GP-931). Not a doc read: the probe sent one prompt per verb through the e2e
+harness (`tests/e2e/lib/claude-run.cjs`) and read the resulting `additionalContext`
+attachments out of the session transcript. Only `shared/config-command.cjs` produces those
+strings, so an injection is proof the raw text reached `UserPromptSubmit` **and** the
+parser matched it. Script: `tests/e2e/probes/bare-verb-resolution.cjs`, committed so this
+result can be reproduced rather than taken on trust. It is not named `*.e2e.cjs` on
+purpose — it costs real model calls and has no pass/fail, so it stays out of
+`npm run test:e2e`.
+
+Plugin `name` was `gutt-pro`, commands `config|on|off|disable|mode`, no other plugin
+declaring those names.
+
+| Typed        | Reached `UserPromptSubmit` as typed | Result                                                            |
+| ------------ | ----------------------------------- | ----------------------------------------------------------------- |
+| `/mode hitl` | yes                                 | our command ran; outcome injected                                 |
+| `/off`       | yes                                 | our command ran; outcome injected                                 |
+| `/on`        | yes                                 | our command ran; outcome injected                                 |
+| `/disable`   | yes                                 | our command ran; outcome injected                                 |
+| `/config`    | **no**                              | Claude Code's built-in `/config` answered with its own usage text |
+
+**A bare plugin command does resolve unprefixed and does reach the hook**, arguments
+included — four of five verbs behaved exactly as the namespaced form does.
+
+**`/config` is not reachable bare.** The built-in wins, and it wins _before_
+`UserPromptSubmit`: that turn produced no injection at all, not even the first-prompt
+memory pointer every other ordinary prompt draws. So the built-in intercepts the token
+rather than passing it through as prompt text — a plugin cannot observe, shadow, or
+recover it. `/gutt-pro:config` is the only spelling that reaches us, which is why the
+migration guide and every in-product forms line quote the namespaced form.
+
+The parser still accepts a bare `config`. It costs one array lookup on a path that never
+receives it, and removing it would encode a platform behaviour we would then have to
+re-probe if the built-in list ever changes.
+
+**Not established:** whether an _interactive_ session behaves as this `-p` run did, and
+whether the built-in list is fixed or version-dependent. Both would need their own probe.
+
+**A precondition, not a finding.** This run had no other plugin declaring `on`, `off`,
+`mode` or `disable`, so it says nothing about what happens when one does. Routing and
+text-matching are independent: `parseCommand` sees raw prompt text, so a bare `/off`
+routed to _another_ plugin still matches here and still writes. Nothing enforces the
+precondition at runtime, and no probe would — it is a property of the user's install, not
+of the platform. What the code does instead is announce itself: a bare-form match
+prepends the verb it ran, so a collision is visible the first time rather than never.
+Making the four mutating verbs namespaced-only would prevent the write instead of
+exposing it, and remains open.
+
+**Also not established:** whether the count in the table rules out `/config` reaching a
+hook by any path, or only rules out `configCommandResult` running. Only the second is
+claimed. The probe's census is flat across the session, so it cannot attribute a
+non-injection to a specific turn — and a config-verb turn emits no recall pointer anyway,
+so the absence of one proves nothing extra.
+
 ## Follow-ups
 
 Recorded, none done.
@@ -200,12 +256,18 @@ Recorded, none done.
 3. Add `claude plugin validate --strict` to CI.
 4. Document the uninstall/`--keep-data` caveat in `migrate-memory`, or move the backup.
 5. Consider `bin/` for `store-cli.cjs`.
+6. Re-probe §8 interactively, and check whether the built-in command list that beats a
+   plugin's own is version-dependent.
 
 ## Provenance
 
 One `WebFetch` pass on 2026-07-29; the response exceeded the inline limit and was
 persisted, then read directly — so §1–§7 are quoted from the page text rather than from a
 model's summary of it, which makes them more reliable than a summarized fetch.
+
+§8 has a different and stronger provenance: it is not from the page at all, but from a real
+`claude` run on 2026-07-31 whose evidence is a session transcript. Where §8 and any doc read
+disagree, §8 wins.
 
 Everything under "Follow-ups", and every judgement about what this means for our design,
 is our inference and not upstream text. §3 is explicitly an unresolved conflict, not a

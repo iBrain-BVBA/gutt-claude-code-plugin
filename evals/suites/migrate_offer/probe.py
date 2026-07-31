@@ -84,7 +84,7 @@ CASES = {
             "Stop hook feedback:\n"
             "[Nothing from this finished turn needs to be written to the team's long-term "
             "memory ... output one JSON verdict on the conversation above.]: "
-            "Run the `gutt-claude-code-plugin:memory-capture` skill.\n"
+            "Run the `gutt-pro:memory-capture` skill.\n"
             "- Insight: rev-list counts reachable commits, not repository size\n\n"
             "The memory-capture skill's reporting rule applies: say little about the "
             "capture itself, and when the capture interrupted work that was already "

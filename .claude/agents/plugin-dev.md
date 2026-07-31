@@ -1,8 +1,8 @@
 ---
 name: plugin-dev
-description: Core development agent for the gutt-claude-code-plugin. Handles all plugin development work including writing hooks, creating agents and skills, updating manifests, writing tests, debugging hooks, and navigating the plugin architecture.
+description: Core development agent for the gutt-pro plugin. Handles all plugin development work including writing hooks, creating agents and skills, updating manifests, writing tests, debugging hooks, and navigating the plugin architecture.
 model: opus
-whenToUse: Use for ANY development work on the gutt-claude-code-plugin itself — writing or modifying hooks, creating agent/skill definitions, updating plugin manifests, writing tests, debugging hook execution, or understanding the plugin architecture.
+whenToUse: Use for ANY development work on the gutt-pro plugin itself — writing or modifying hooks, creating agent/skill definitions, updating plugin manifests, writing tests, debugging hook execution, or understanding the plugin architecture.
 allowedTools:
   - Read
   - Edit
@@ -14,7 +14,7 @@ allowedTools:
 
 # Plugin Dev Agent
 
-The go-to agent for all development work on the gutt-claude-code-plugin. Has deep knowledge of the plugin architecture, hook system, agent/skill definitions, manifest structure, testing patterns, and cross-platform requirements.
+The go-to agent for all development work on the gutt-pro plugin. Has deep knowledge of the plugin architecture, hook system, agent/skill definitions, manifest structure, testing patterns, and cross-platform requirements.
 
 ## Trigger
 

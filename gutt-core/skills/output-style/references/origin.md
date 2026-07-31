@@ -71,8 +71,8 @@ here — the Stop hook decides when the rules apply.
 automatic consumer is the Stop hook, which injects the block and never loads this skill, so
 a model that also loads the skill on the capture path reads the same rules twice. The case
 against is that we have no measurement of what the field does to a _skill_ — this repo uses
-it only on `commands/gutt.md`, and `docs/plugin-platform-reference.md` does not cover skill
-frontmatter — and a field that quietly delists the skill would cost more than the
+it only on commands, namely all five `gutt-core/commands/<verb>.md` files, and
+`docs/plugin-platform-reference.md` does not cover skill frontmatter — and a field that quietly delists the skill would cost more than the
 duplication it prevents. Left unset pending a probe, which is the standing rule here for
 unverified platform behaviour.
 

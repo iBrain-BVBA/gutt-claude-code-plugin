@@ -333,14 +333,15 @@ describe("hook architecture guards", () => {
     );
   });
 
-  // The `/gutt` config surface (GP-866). Both guards below cover failures that are
-  // silent at runtime: nothing logs, nothing errors, the command just stops working.
-  describe("the /gutt config command surface", () => {
+  // The `/gutt-pro:*` config surface (GP-866, GP-931). Every guard below covers a
+  // failure that is silent at runtime: nothing logs, nothing errors, the command just
+  // stops working.
+  describe("the /gutt-pro config command surface", () => {
     const ROUTER = path.join(ROOT, "gutt-core", "hooks", "user-prompt-submit.cjs");
     const LIB = path.join(ROOT, "shared", "config-command.cjs");
 
     // Row order is load-bearing and invisible. Put the config branch below the
-    // suppression check and `/gutt on` can never un-stick a plugin that is off:
+    // suppression check and `/gutt-pro:on` can never un-stick a plugin that is off:
     // the off switch becomes one-way, with hand-editing config.json the only way
     // back. A source-order check is crude but catches exactly the edit that would
     // do it — moving the branch, or wrapping it in the suppression guard.
@@ -352,15 +353,15 @@ describe("hook architecture guards", () => {
       assert.ok(suppressed > -1, "the router no longer checks suppression");
       assert.ok(
         command < suppressed,
-        "the config-command row must run first, or `/gutt on` cannot reach a plugin that is off"
+        "the config-command row must run first, or `/gutt-pro:on` cannot reach a plugin that is off"
       );
     });
 
     // The parser hardcodes the namespace so it does not read plugin.json on a 50ms
     // path. That trade only holds while the constant is right: rename the plugin and
-    // the autocompleted `/gutt-claude-code-plugin:gutt …` spelling — the one the `/`
-    // menu inserts, and so the common case — silently stops parsing, while the
-    // hand-typed forms keep working and hide it.
+    // the autocompleted `/gutt-pro:<verb>` spelling — the one the `/` menu inserts,
+    // and so the common case — silently stops parsing, while the bare forms keep
+    // working and hide it. GP-931 is the rename that proved the guard earns its keep.
     it("hardcodes the plugin namespace the manifest actually declares", () => {
       const pluginName = JSON.parse(
         fs.readFileSync(path.join(ROOT, "gutt-core", ".claude-plugin", "plugin.json"), "utf8")
@@ -374,15 +375,42 @@ describe("hook architecture guards", () => {
     });
 
     // A command file is what makes the token a recognised command with autocomplete;
-    // without it the hook may never be dispatched at all.
-    it("ships the command file the hook's results are relayed through", () => {
-      const file = path.join(ROOT, "gutt-core", "commands", "gutt.md");
-      assert.ok(fs.existsSync(file), "gutt-core/commands/gutt.md is missing");
-      const body = fs.readFileSync(file, "utf8");
-      // Model-invoked, there is no UserPromptSubmit event and so no result in
-      // context — and `/gutt off` must never be something Claude decides to do.
-      assert.match(body, /^disable-model-invocation: true$/m);
-      assert.match(body, /already been applied/, "the body must not re-run the command itself");
+    // without it the hook may never be dispatched at all. One file per verb since
+    // GP-931 dissolved the stem, so the guard iterates the parser's own list — a verb
+    // added to `VERBS` with no command file is the failure this catches.
+    it("ships a command file for every verb the parser accepts", () => {
+      const { VERBS } = require(path.join(ROOT, "shared", "config-command.cjs"));
+      assert.ok(VERBS.length > 0, "the parser accepts no verbs");
+      for (const verb of VERBS) {
+        const file = path.join(ROOT, "gutt-core", "commands", `${verb}.md`);
+        assert.ok(fs.existsSync(file), `gutt-core/commands/${verb}.md is missing`);
+        const body = fs.readFileSync(file, "utf8");
+        // Model-invoked, there is no UserPromptSubmit event and so no result in
+        // context — and `/gutt-pro:disable` must never be something Claude decides to
+        // do.
+        assert.match(body, /^disable-model-invocation: true$/m, verb);
+        // Claude Code resolves the typed token from the frontmatter `name`, not from
+        // the filename. A drift between them makes `/gutt-pro:<verb>` unresolvable
+        // while the parser, the hook and every test here stay green — the silent
+        // no-op shape this whole section exists to catch.
+        assert.match(
+          body,
+          new RegExp(`^name: ${verb}$`, "m"),
+          `${verb}.md declares a name that is not "${verb}"`
+        );
+        assert.match(
+          body,
+          /already been (applied|read)/,
+          `${verb}.md must not re-run the command itself`
+        );
+      }
+      // And the stem is gone: leaving it would keep a `/gutt-pro:gutt config` path
+      // alive that the parser no longer recognises (GP-931 D1/D2).
+      assert.equal(
+        fs.existsSync(path.join(ROOT, "gutt-core", "commands", "gutt.md")),
+        false,
+        "the retired /gutt stem command is still shipped"
+      );
     });
   });
 
@@ -461,20 +489,25 @@ describe("hook architecture guards", () => {
     // time the prompt was reworded, silently. This is that check, committed.
     //
     // The fixture is the `prompt` field of the `type: "prompt"` Stop entry as it stood on
-    // release/3.0. Exactly two deviations are allowed, and both are forced by the new
-    // mechanism rather than chosen:
+    // release/3.0. Exactly three deviations are allowed, and all three are forced by
+    // the new mechanism rather than chosen:
     //   1. `$ARGUMENTS` → `__PAYLOAD__`, substituted by buildJudgePrompt instead of by the
     //      platform.
     //   2. "on the conversation above" → "on the turn quoted below", because
     //      buildJudgePrompt puts the condition first and appends the turn, so "above"
     //      pointed the judge at nothing but the condition's own opening sentence.
-    // A third difference fails here and has to be argued for — which is the point.
+    //   3. `gutt-claude-code-plugin:memory-capture` → `gutt-pro:memory-capture`, because
+    //      GP-931 renamed the plugin and a skill id is namespaced by its plugin's `name`.
+    //      Keeping the old id would name a skill that cannot be resolved — the failure
+    //      the namespace guard above exists to prevent. The fixture is left alone on
+    //      purpose: it is the historical artifact, and rewriting it would erase the
+    //      evidence this test compares against.
+    // A fourth difference fails here and has to be argued for — which is the point.
     const fixture = path.join(__dirname, "fixtures", "stop-judge-condition-prompt-hook.txt");
     const original = fs.readFileSync(fixture, "utf8");
-    const rebuilt = JUDGE_CONDITION.replace("__PAYLOAD__", "$ARGUMENTS").replace(
-      "on the turn quoted below",
-      "on the conversation above"
-    );
+    const rebuilt = JUDGE_CONDITION.replace("__PAYLOAD__", "$ARGUMENTS")
+      .replace("on the turn quoted below", "on the conversation above")
+      .replaceAll("`gutt-pro:memory-capture`", "`gutt-claude-code-plugin:memory-capture`");
     assert.equal(
       rebuilt,
       original,

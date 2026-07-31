@@ -3,7 +3,7 @@ name: mentor
 description: Use PROACTIVELY when someone asks to get better at a practice, grow toward a role, or prepare for a new responsibility — "I want to get better at code reviews", "a plan to become a senior engineer", "how do I prepare to lead a project". Goal-shaped growth with no new territory to map — the AI is the mentor, the user is the mentee, and the outcome is the person's own development program, grounded in what the organization has recorded (expectations, working agreements, lessons, people to learn from) and tracked in their personal memory scope. Joining a team or ramping onto a system is onboarding-guide's job; logging progress against an existing program on its own is progress-tracking's. Also covers a human mentor preparing to mentor someone else (read-only).
 model: sonnet
 skills:
-  - gutt-claude-code-plugin:memory-search
+  - gutt-pro:memory-search
   - individual-program-design
   - progress-tracking
 ---

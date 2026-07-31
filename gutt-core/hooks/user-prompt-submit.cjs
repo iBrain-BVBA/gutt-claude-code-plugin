@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * UserPromptSubmit — a router into the memory skills (GP-864) and the `/gutt`
- * config commands (GP-866).
+ * UserPromptSubmit — a router into the memory skills (GP-864) and the `/gutt-pro:*`
+ * config commands (GP-866, GP-931).
  *
  * Two jobs, both deterministic. Usually it emits `additionalContext` naming a
  * skill and stops there: the behaviour lives in `skills/memory-search` and
  * `skills/memory-capture`, and this hook only decides *whether* to point at one,
- * from state, on fixed rows. The exception is row 0 — when the prompt is a `/gutt`
- * config command, it applies the change through `lib/config-command.cjs` and emits
+ * from state, on fixed rows. The exception is row 0 — when the prompt is a
+ * `/gutt-pro:*` config command, it applies the change through `lib/config-command.cjs` and emits
  * the outcome instead of a pointer.
  *
  * Row 0 lives on this event because the platform gives us nothing better: a
@@ -51,7 +51,7 @@ if (isNestedRun()) {
 /**
  * Skills are namespaced by their plugin at runtime, so the bare stem is not
  * invocable — `skill_listing` in a real session shows
- * `gutt-claude-code-plugin:memory-search`, not `memory-search`. Naming the stem
+ * `gutt-pro:memory-search`, not `memory-search`. Naming the stem
  * alone left the model to guess the prefix. Written without a leading slash
  * because this text is addressed to Claude, which resolves a skill by name; the
  * `/`-prefixed form is the human's way of typing it.
@@ -61,7 +61,7 @@ if (isNestedRun()) {
  * directory — because a pointer at a skill that cannot be resolved is the
  * quietest failure this hook has.
  */
-const SEARCH_SKILL = "gutt-claude-code-plugin:memory-search";
+const SEARCH_SKILL = "gutt-pro:memory-search";
 
 /**
  * Context for the first prompt of a new session.
@@ -155,15 +155,15 @@ process.stdin.on("end", () => {
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 19);
     appendLine(statePath(LOG_FILES.invocations), `[${timestamp}] Prompt: ${prompt}`);
 
-    // Row 0: the user typed a `/gutt` config command (GP-866). Apply it and report
+    // Row 0: the user typed a `/gutt-pro:*` config command (GP-866, GP-931). Apply it and report
     // the outcome; the behaviour is in `lib/config-command.cjs`.
     //
-    // Above row 1 because `/gutt on` has to work while the plugin is off. Gate this
+    // Above row 1 because `/gutt-pro:on` has to work while the plugin is off. Gate this
     // on suppression and the off switch becomes one-way, with hand-editing
     // config.json the only way back.
     //
     // Above `advanceTurn()` for the same reason row 1 is: a config turn is
-    // bookkeeping, not conversation. Burning `firstPromptPending` on `/gutt config`
+    // bookkeeping, not conversation. Burning `firstPromptPending` on `/gutt-pro:config`
     // would cost the session its one memory pointer.
     const commandResult = configCommandResult(rawPrompt, sessionId);
     if (commandResult) {

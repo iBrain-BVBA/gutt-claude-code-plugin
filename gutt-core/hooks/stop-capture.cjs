@@ -6,7 +6,7 @@
  * with the verdict. The judging, the prompt and the child process live in
  * `lib/stop-judge.cjs`, which also records why this stopped being a `type: "prompt"`
  * hook (GP-866) — in short, a prompt hook cannot read config, so it could honour neither
- * `/gutt off` nor `mode`.
+ * `/gutt-pro:off` nor `mode`.
  *
  * Four rows return before the judge is convened, cheapest first: a nested run, a turn
  * that already fired, a suppressed plugin, and a turn with background agents still in
@@ -87,7 +87,7 @@ process.stdin.on("end", () => {
 
     // Off or snoozed → silent, and no child is spawned. This is the row that a
     // `type: "prompt"` hook could not have: it is the whole reason for the conversion,
-    // since `/gutt off` used to silence recall while the judge kept asking for captures.
+    // since `/gutt-pro:off` used to silence recall while the judge kept asking for captures.
     if (isSuppressed(sessionId)) {
       log("suppressed");
       return;

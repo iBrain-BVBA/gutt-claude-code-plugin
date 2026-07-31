@@ -76,7 +76,7 @@ process.stdin.on("end", () => {
     console.log(`💡 gutt memory status could not be determined (${diag.error}).`);
   } else if (!diag.configured) {
     console.log(
-      "💡 gutt memory not configured. Run /gutt-claude-code-plugin:setup or /gutt-claude-code-plugin:onboard to get started."
+      "💡 gutt memory not configured. Run /gutt-pro:setup or /gutt-pro:onboard to get started."
     );
   } else if (diag.url) {
     const display = diag.url.length > 50 ? `${diag.url.slice(0, 47)}...` : diag.url;

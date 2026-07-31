@@ -22,10 +22,10 @@ const { readConfig, isSnoozed } = require("./lib/runtime-config.cjs");
 /**
  * `off` / `zzz` when the plugin is suppressed, empty otherwise (GP-866).
  *
- * A durable `/gutt off` is otherwise invisible: it survives restarts, nothing else
+ * A durable `/gutt-pro:disable` is otherwise invisible: it survives restarts, nothing else
  * reports it, and a user who forgot they typed it just sees a plugin that stopped
  * working. The two states are distinguished because the recovery differs — a snooze
- * lapses on its own, a durable off waits for `/gutt on`.
+ * lapses on its own, a durable off waits for `/gutt-pro:on`.
  *
  * Two reads in the snoozed case, which would matter on the UserPromptSubmit path
  * and does not here: the statusline is off it.

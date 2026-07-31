@@ -5,7 +5,7 @@ description: "Show plugin health status — MCP connectivity, hook registration,
 
 # Plugin Health Dashboard
 
-Run a quick diagnostic of the gutt-claude-code-plugin and display a status report.
+Run a quick diagnostic of the gutt-pro plugin and display a status report.
 
 ## Steps
 

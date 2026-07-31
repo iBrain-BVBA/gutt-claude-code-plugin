@@ -23,7 +23,7 @@ cat .claude/settings.json 2>/dev/null | grep -q "gutt"
 - **If configured:** Announce "gutt MCP server found in settings." and proceed to Step 2.
 - **If NOT configured:** Ask the user for their MCP server URL and guide them through setup:
   1. Ask: "What is your gutt MCP server URL? (e.g., https://your-instance.gutt.io/mcp)"
-  2. Explain they can also run `/gutt-claude-code-plugin:setup` to configure it.
+  2. Explain they can also run `/gutt-pro:setup` to configure it.
   3. Once URL is provided, help add it to `.claude/settings.json`.
 
 ### Step 2: Verify Connectivity
@@ -34,12 +34,12 @@ Run a test query to confirm the MCP connection is live:
 search_memory_nodes(query="test connectivity", max_nodes=1)
 ```
 
-| Result                 | Action                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| Success (any response) | "MCP connection verified." Proceed to Step 3.                                  |
-| Not configured error   | "MCP server not configured. Run `/gutt-claude-code-plugin:setup` first." Stop. |
-| Unreachable / timeout  | "MCP server unreachable. Check your network and server URL." Stop.             |
-| Auth failure           | "Authentication failed. Check your API key or token." Stop.                    |
+| Result                 | Action                                                             |
+| ---------------------- | ------------------------------------------------------------------ |
+| Success (any response) | "MCP connection verified." Proceed to Step 3.                      |
+| Not configured error   | "MCP server not configured. Run `/gutt-pro:setup` first." Stop.    |
+| Unreachable / timeout  | "MCP server unreachable. Check your network and server URL." Stop. |
+| Auth failure           | "Authentication failed. Check your API key or token." Stop.        |
 
 ### Step 3: First Search
 
@@ -72,7 +72,7 @@ Demonstrate memory capture by storing an onboarding record:
 ```python
 add_memory(
   name="Onboarding: plugin activated",
-  episode_body="gutt-claude-code-plugin onboarding completed for this project. Plugin active with memory integration.",
+  episode_body="gutt-pro onboarding completed for this project. Plugin active with memory integration.",
   source="text",
   source_description="onboard skill - first capture"
 )
@@ -88,7 +88,7 @@ Explain the statusline that appears at the bottom of the terminal:
 The HUD statusline shows gutt connection status:
 
   [gutt🟢 your-group]   connected
-  [gutt⚪! your-group]  not configured — run /gutt-claude-code-plugin:setup
+  [gutt⚪! your-group]  not configured — run /gutt-pro:setup
 
 Configure it in your own ~/.claude/settings.json; the plugin does not edit
 that file for you.

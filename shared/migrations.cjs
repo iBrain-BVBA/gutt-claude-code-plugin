@@ -50,7 +50,14 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { statePath, readJson, writeJson, remove, withLock } = require("./plugin-state.cjs");
+const {
+  stateRoot,
+  statePath,
+  readJson,
+  writeJson,
+  remove,
+  withLock,
+} = require("./plugin-state.cjs");
 const { debugLog } = require("./debug.cjs");
 
 /**
@@ -60,8 +67,14 @@ const { debugLog } = require("./debug.cjs");
  * mechanism got this wrong twice — first an existence check that never re-ran on
  * upgrade, then a semver comparison. An integer cannot be misordered. Bump it when
  * adding a step.
+ *
+ * 2 (GP-931): report the data directory the rename orphaned. Steps are gated
+ * individually on `from` — see `runMigrations`. Before that gate existed, bumping
+ * this re-ran every earlier step, which for step 1 means deleting a `statusLine`
+ * key again; the rename had already forced that re-run by resetting the recorded
+ * version to 0 in a fresh directory.
  */
-const MIGRATIONS_VERSION = 1;
+const MIGRATIONS_VERSION = 2;
 
 /** Where the recorded version lives inside the R37 config artifact. */
 const VERSION_KEY = "migrationsVersion";
@@ -116,6 +129,46 @@ const ORPHANED_HOME = [
  * shared directory holds.
  */
 const ORPHANED_PATTERNS = [/^gutt-session-.+\.json$/, /^gutt-routing-.+\.(json|log)$/];
+
+/**
+ * The plugin's `name` before GP-931, and the current one.
+ *
+ * Claude Code derives `${CLAUDE_PLUGIN_DATA}` from the plugin's `name`, so the
+ * rename moved the whole data directory and left the old one in place, full and
+ * unreferenced. `<dataRoot>/<name>-<marketplace>` is the layout, which is why the
+ * legacy sibling is found by swapping the *prefix* of our own basename rather than
+ * by guessing a marketplace.
+ *
+ * The current name is duplicated from `plugin.json` here rather than read from it:
+ * this runs on the SessionStart path, and a manifest read to recover a constant
+ * that changes once in the plugin's lifetime is the wrong trade. A test asserts
+ * the two agree.
+ */
+const LEGACY_PLUGIN_NAME = "gutt-claude-code-plugin";
+const PLUGIN_NAME = "gutt-pro";
+
+/**
+ * State in the orphaned directory worth naming, and the verb that re-applies it.
+ *
+ * Only preferences the user *set* are listed. `migrationsVersion` and `sessions/`
+ * orphan too, but re-deriving them costs nothing and naming them would bury the
+ * two that matter. `enabled` leads because its loss is the one that silently
+ * *reverses* a user's intent: recall they turned off comes back on, and the HUD
+ * marker that would have shown it reads the new directory.
+ */
+const LEGACY_SETTINGS = [
+  {
+    key: "enabled",
+    describe: (v) =>
+      v === false
+        ? "recall was turned off durably — it is ON again here; re-apply with /gutt-pro:disable"
+        : null,
+  },
+  {
+    key: "mode",
+    describe: (v) => (v ? `capture mode was "${v}" — re-apply with /gutt-pro:mode ${v}` : null),
+  },
+];
 
 /**
  * Basenames a `statusLine` command may point at for it to be considered ours.
@@ -302,6 +355,117 @@ function cleanOrphans(claudeDir) {
 }
 
 /**
+ * The data directory the GP-931 rename orphaned, or null when there isn't one.
+ *
+ * `<dataRoot>/gutt-pro-<marketplace>` is ours; `<dataRoot>/gutt-claude-code-plugin-<marketplace>`
+ * is what the same install used before the rename. Derived from our own basename
+ * so it works for any marketplace id, including a local one.
+ *
+ * @param {string|null} [ourRoot] - defaults to ${CLAUDE_PLUGIN_DATA}
+ * @returns {string|null}
+ */
+function legacyStateDir(ourRoot = stateRoot()) {
+  if (!ourRoot) {
+    return null;
+  }
+  const base = path.basename(ourRoot);
+  if (!base.startsWith(PLUGIN_NAME)) {
+    return null;
+  }
+  const legacy = path.join(
+    path.dirname(ourRoot),
+    LEGACY_PLUGIN_NAME + base.slice(PLUGIN_NAME.length)
+  );
+  return fs.existsSync(legacy) ? legacy : null;
+}
+
+/**
+ * Report what the rename left behind. Read-only, by design (GP-931 D4).
+ *
+ * D4 accepted the state reset knowingly, so this does not undo it: copying a
+ * config across would resurrect settings the user has had no chance to review, and
+ * the two directories can both be live if someone runs both plugins. What D4 did
+ * not accept is the reset being *silent* — a user who turned recall off finds it
+ * back on with nothing to explain why, and the one indicator that would have shown
+ * it (the HUD's ` off`) reads the new directory too.
+ *
+ * The memory backup is called out separately and in bytes because it is the sole
+ * surviving copy of a migrated user's local notes, and a plain `/plugin uninstall`
+ * of the old plugin destroys it.
+ *
+ * @param {string|null} [ourRoot]
+ * @returns {string[]} notices, empty when there is nothing to report
+ */
+function findOrphanedPluginData(ourRoot = stateRoot()) {
+  const legacy = legacyStateDir(ourRoot);
+  if (!legacy) {
+    return [];
+  }
+  const notices = [];
+  const old = readJson(path.join(legacy, "config.json"), null);
+
+  for (const { key, describe } of LEGACY_SETTINGS) {
+    const line = old && key in old ? describe(old[key]) : null;
+    if (line) {
+      notices.push(line);
+    }
+  }
+
+  const projects = Object.keys(old?.projects || {}).length;
+  if (projects) {
+    notices.push(
+      `${plural(projects, "project")} had a recorded answer to the memory-migration offer — ` +
+        "you may be asked again"
+    );
+  }
+
+  const backups = listBackups(path.join(legacy, "migrations"));
+  if (backups.bytes) {
+    notices.push(
+      `${plural(backups.count, "memory backup")} (${formatBytes(backups.bytes)}) is still there ` +
+        "and may be the only copy — uninstall the old plugin with --keep-data, or copy it out first"
+    );
+  }
+
+  if (notices.length === 0) {
+    return [];
+  }
+  return [`gutt's settings did not carry over from ${legacy}:`, ...notices];
+}
+
+/**
+ * Total size of the built-in-memory backups in a legacy `migrations/` dir.
+ * @param {string} dir
+ * @returns {{count: number, bytes: number}}
+ */
+function listBackups(dir) {
+  let count = 0;
+  let bytes = 0;
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith(".json")) {
+        continue;
+      }
+      count += 1;
+      bytes += fs.statSync(path.join(dir, name)).size;
+    }
+  } catch {
+    /* no migrations dir, or unreadable — nothing to report */
+  }
+  return { count, bytes };
+}
+
+/** @param {number} n @param {string} word @returns {string} */
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** @param {number} bytes @returns {string} */
+function formatBytes(bytes) {
+  return bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`;
+}
+
+/**
  * The version recorded on this machine, or 0 when nothing is recorded.
  *
  * A non-numeric value reads as 0 rather than throwing. That matters for real
@@ -343,15 +507,23 @@ function needsMigration() {
  * sessions' writes without deciding which one should do the work, so both would
  * run the steps and the second would find nothing to do only by luck.
  *
+ * Steps are gated individually on `from`, not just collectively on the version
+ * compare above. Without that, adding step 2 would re-run step 1 on every machine
+ * already at 1 — and step 1 deletes a key from `~/.claude/settings.json`, which the
+ * module header promises happens "at most once per machine". Collective gating made
+ * that promise true only until the next bump.
+ *
  * @param {Object} [opts]
  * @param {string} [opts.claudeDir] - the user's ~/.claude
  * @param {string} [opts.settingsFile]
+ * @param {string} [opts.stateRoot] - our data dir, for the step-2 orphan probe
  * @param {number} [opts.now]
- * @returns {{ran: boolean, from: number, to: number, actions: string[], notCovered: string[]}}
+ * @returns {{ran: boolean, from: number, to: number, actions: string[], notices: string[], notCovered: string[]}}
  */
 function runMigrations(opts = {}) {
   const claudeDir = opts.claudeDir || path.join(os.homedir(), ".claude");
   const settingsFile = opts.settingsFile || path.join(claudeDir, "settings.json");
+  const ourRoot = opts.stateRoot || stateRoot();
   const now = opts.now || Date.now();
 
   const configFile = statePath("config.json");
@@ -360,6 +532,7 @@ function runMigrations(opts = {}) {
     from,
     to: MIGRATIONS_VERSION,
     actions: [],
+    notices: [],
     notCovered: NOT_COVERED,
   });
 
@@ -381,7 +554,10 @@ function runMigrations(opts = {}) {
       return;
     }
 
-    const actions = [...cleanStatusLine(settingsFile, now), ...cleanOrphans(claudeDir)];
+    // Step 1 (2.x cleanup) — deletes. Step 2 (GP-931 orphan report) — read-only.
+    const actions =
+      from < 1 ? [...cleanStatusLine(settingsFile, now), ...cleanOrphans(claudeDir)] : [];
+    const notices = from < 2 ? findOrphanedPluginData(ourRoot) : [];
 
     // Touch only our own key. `enabled`/`mode` belong to the config commands and
     // the snooze keys to the session lifecycle; materialising defaults for those
@@ -389,7 +565,14 @@ function runMigrations(opts = {}) {
     config[VERSION_KEY] = MIGRATIONS_VERSION;
     writeJson(configFile, config);
 
-    result = { ran: true, from, to: MIGRATIONS_VERSION, actions, notCovered: NOT_COVERED };
+    result = {
+      ran: true,
+      from,
+      to: MIGRATIONS_VERSION,
+      actions,
+      notices,
+      notCovered: NOT_COVERED,
+    };
   });
 
   return result;
@@ -403,18 +586,40 @@ function runMigrations(opts = {}) {
  * indistinguishable from a plugin that has a bug, so the session that does it says
  * exactly what it did — and what it left alone, since a clean report otherwise
  * reads as a claim to have cleaned everything.
- * @param {{ran: boolean, actions: string[], notCovered: string[]}|undefined} result
+ *
+ * `actions` and `notices` are kept apart because they are different claims:
+ * actions are things this code *did*, notices are things it *found* and left
+ * alone. Folding the rename report into "cleaned up leftovers" would say the
+ * opposite of what happened — nothing was cleaned, and the whole point is that the
+ * old directory is still sitting there with the user's only memory backup in it.
+ * @param {{ran: boolean, actions: string[], notices?: string[], notCovered: string[]}|undefined} result
  * @returns {string|null}
  */
 function describeMigration(result) {
-  if (!result?.ran || result.actions.length === 0) {
+  if (!result?.ran) {
     return null;
   }
-  return [
-    "🧹 gutt cleaned up leftovers from an earlier version:",
-    ...result.actions.map((a) => `   • ${a}`),
-    `   ${result.notCovered.length} categories were left alone deliberately — see docs/runtime-state-convention.md.`,
-  ].join("\n");
+  const blocks = [];
+  if (result.actions.length) {
+    blocks.push(
+      [
+        "🧹 gutt cleaned up leftovers from an earlier version:",
+        ...result.actions.map((a) => `   • ${a}`),
+        `   ${result.notCovered.length} categories were left alone deliberately — see docs/runtime-state-convention.md.`,
+      ].join("\n")
+    );
+  }
+  const [heading, ...notices] = result.notices || [];
+  if (heading) {
+    blocks.push(
+      [
+        `⚠ ${heading}`,
+        ...notices.map((n) => `   • ${n}`),
+        "   Nothing was moved or deleted. See docs/migration-3.0.md.",
+      ].join("\n")
+    );
+  }
+  return blocks.length ? blocks.join("\n\n") : null;
 }
 
 /**
@@ -440,6 +645,10 @@ module.exports = {
   ORPHANED_STATE,
   ORPHANED_HOME,
   ORPHANED_PATTERNS,
+  LEGACY_PLUGIN_NAME,
+  PLUGIN_NAME,
+  legacyStateDir,
+  findOrphanedPluginData,
   matchesOrphanPattern,
   isDeadPluginStatusLine,
   statusLineTarget,
