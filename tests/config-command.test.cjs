@@ -71,8 +71,26 @@ describe("config command: parsing", () => {
       verb: "off",
       arg: "30",
       typed: "/gutt-pro:off 30",
+      bare: false,
     });
-    assert.deepEqual(parseCommand("/off 30"), { verb: "off", arg: "30", typed: "/off 30" });
+    assert.deepEqual(parseCommand("/off 30"), {
+      verb: "off",
+      arg: "30",
+      typed: "/off 30",
+      bare: true,
+    });
+  });
+
+  it("flags which spelling was used, so the caller can attribute a bare match", () => {
+    // A bare match cannot prove the prompt was addressed to us — `off`, `on`, `mode`
+    // and `disable` are names another plugin can own. `bare` is what lets the outcome
+    // say so instead of writing silently.
+    for (const verb of command.VERBS) {
+      assert.equal(parseCommand(`/${verb}`).bare, true, `/${verb}`);
+      assert.equal(parseCommand(`/gutt-pro:${verb}`).bare, false, `/gutt-pro:${verb}`);
+    }
+    assert.equal(parseCommand("/off 1 2").bare, true, "carried on a bad-tail parse too");
+    assert.equal(parseCommand("/gutt-pro:off 1 2").bare, false);
   });
 
   it("is insensitive to case and to surrounding whitespace", () => {
@@ -240,6 +258,35 @@ describe("config command: mutations", () => {
     );
   });
 
+  it("a bare verb mutates, and says which command it ran", () => {
+    // Bare forms match on prompt text alone, which cannot tell us the prompt was
+    // addressed to us: another plugin owning `/off` would route there while this
+    // still writes. The write is not prevented, so it has to be visible.
+    const text = run("/off");
+    assert.match(text, /read the bare command in this prompt as \/gutt-pro:off/);
+    assert.match(text, /rest of this session/, "and the outcome still follows the attribution");
+    assert.equal(stored().snoozeSessionId, SESSION);
+  });
+
+  it("the namespaced form carries no attribution line", () => {
+    const text = run("/gutt-pro:off");
+    assert.doesNotMatch(text, /read the bare command/, "unambiguous — the note would be noise");
+  });
+
+  it("a namespaced foreign command is never claimed", () => {
+    // `/other:off` yields the verb `other:off`, which is not in VERBS. Only the
+    // *bare* spelling can collide.
+    for (const foreign of [
+      "/otherplugin:off",
+      "/otherplugin:disable 30",
+      "/some-plugin:mode auto",
+    ]) {
+      assert.equal(parseCommand(foreign), null, foreign);
+      assert.equal(run(foreign), null, foreign);
+      assert.equal(stored(), null, `${foreign} must write nothing`);
+    }
+  });
+
   it("/gutt-pro:off session is the same command as bare off", () => {
     assert.match(run("/gutt-pro:off session"), /rest of this session/);
     const explicit = stored();
@@ -255,6 +302,32 @@ describe("config command: mutations", () => {
     assert.equal(runtimeConfig.isSuppressed(SESSION, NOW), true);
     // Durable means durable: it is not scoped to the session that set it.
     assert.equal(runtimeConfig.isSuppressed("another-session", NOW), true);
+  });
+
+  it("/gutt-pro:on takes no argument and says so rather than dropping it", () => {
+    // `on` was the one argument-less verb with no guard. `/gutt-pro:on 30` is a
+    // plausible typo now that `off` is the verb taking a deadline, and silently
+    // discarding the 30 reports a restore the user reads as a 30-minute one.
+    run("/gutt-pro:disable");
+    const text = run("/gutt-pro:on 30");
+    assert.match(text, /takes no argument/);
+    assert.match(text, /Nothing was changed\./);
+    assert.deepEqual(stored(), { enabled: false }, "the durable off must survive a rejected on");
+  });
+
+  it("/gutt-pro:on reports a write failure on an unreadable config, not 'already on'", () => {
+    // readRawConfig collapses absent and unreadable into null, which made the
+    // "nothing changed" short-circuit fire before restore() ever ran — the one verb
+    // that answered a broken file with reassurance.
+    fs.writeFileSync(path.join(dir, "config.json"), "{ not json");
+    const text = run("/gutt-pro:on");
+    assert.match(text, /could not save that/);
+    assert.doesNotMatch(text, /already on/);
+    assert.equal(
+      fs.readFileSync(path.join(dir, "config.json"), "utf8"),
+      "{ not json",
+      "and it must not overwrite the file it could not parse"
+    );
   });
 
   it("/gutt-pro:disable takes no argument and says so rather than silencing durably", () => {

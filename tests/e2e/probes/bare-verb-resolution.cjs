@@ -6,9 +6,20 @@
  *
  * Built on the e2e harness so it is a real `claude` run against the working tree,
  * not a simulation. One session, one prompt per verb, config planted empty and
- * restored afterwards. The evidence is per-turn: whether the hook injected a
- * config-command outcome (which only `configCommandResult` produces) and what the
- * turn's own reply looked like.
+ * restored afterwards.
+ *
+ * The evidence is a whole-session census of `additionalContext` injections — which
+ * only `configCommandResult` produces — plus each turn's own reply. The census is
+ * flat rather than per-turn, so what it supports is a count, not an attribution:
+ * five config-verb prompts producing four of our injections is what rules `/config`
+ * out. It cannot show that `/config` produced *no* injection of any kind, because a
+ * config-verb turn never emits the recall pointer anyway.
+ *
+ * A run with zero injections is a harness failure, not a negative result — every
+ * verb here is one we already know resolves. It exits non-zero rather than printing
+ * an all-negative table that would read as Measured evidence for the opposite
+ * conclusion. Same for a short turn count: the reply loop pairs `PROMPTS[i]` with
+ * `turns[i]`, so a dropped turn mislabels every reply after it.
  *
  * Deliberately **not** named `*.e2e.cjs`: `npm run test:e2e` globs that suffix, and this
  * is a probe rather than a guard — it costs real model calls and has no pass/fail. Its
@@ -68,6 +79,23 @@ const OURS = /gutt configuration, read from|gutt memory recall is|gutt capture m
         `prompt ${JSON.stringify(PROMPTS[i])} err=${turn.is_error} :: ${reply.slice(0, 220)}`
       );
     });
+
+    // Soundness gates. Neither is a finding about the platform — both mean the run
+    // did not happen properly and its table must not be recorded as Measured.
+    if (injected.length === 0) {
+      console.log(
+        "\nPROBE UNSOUND: no additionalContext at all. Either the transcript is missing " +
+          "or the hook never ran — this is not evidence that the verbs failed to resolve."
+      );
+      process.exitCode = 1;
+    }
+    if ((run.turns || []).length !== PROMPTS.length) {
+      console.log(
+        `\nPROBE UNSOUND: ${run.turns?.length ?? 0} turns for ${PROMPTS.length} prompts — ` +
+          "the per-turn replies above are misaligned from the first missing turn onward."
+      );
+      process.exitCode = 1;
+    }
   } catch (err) {
     console.log(`PROBE FAILED: ${err && err.message}`);
     process.exitCode = 1;

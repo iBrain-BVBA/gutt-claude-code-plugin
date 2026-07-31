@@ -127,11 +127,25 @@ function plural(n, word) {
  * typed text including arguments.
  *
  * The bare form is accepted because a plugin command with no name collision also
- * resolves unprefixed. Whether every verb here actually resolves that way — and
- * whether bare `/config` reaches us at all or is swallowed by Claude Code's own
- * `/config` — is recorded from a real run in `docs/plugin-platform-reference.md`
- * §8. Parsing it costs nothing when it never arrives; not parsing it would strand
- * the shortest form a user will try.
+ * resolves unprefixed. Measured, `docs/plugin-platform-reference.md` §8: bare
+ * `/on`, `/off`, `/disable` and `/mode` do resolve here with their arguments;
+ * bare `/config` does not, because Claude Code's own `/config` intercepts it
+ * before any hook sees it. `config` stays in `VERBS` anyway — one array lookup on
+ * a path that never receives it, against having to re-probe if the built-in list
+ * changes.
+ *
+ * What a bare match does *not* prove is that the prompt was addressed to us.
+ * Routing and text-matching are independent: this parser sees raw prompt text and
+ * has no idea which command Claude Code resolved. `off`, `on`, `mode` and
+ * `disable` are generic names, so another plugin — or a user's own
+ * `~/.claude/commands/off.md` — can own `/off` while we still match it and write.
+ * §8's measurement assumed no such collision; nothing enforces that at runtime.
+ * Hence `bare` on the parse: the caller prepends a line naming the verb it ran, so
+ * a collision announces itself the first time it fires instead of silently
+ * suppressing recall for a session. Loud beats quiet, the same rule the bad-tail
+ * branch below follows. Requiring the namespaced form for the four mutating verbs
+ * would prevent the write rather than expose it, at the cost of the shortest form
+ * a user will type; that trade is open, and this is the reversible half of it.
  *
  * `null` means "not addressed to us" and the hook stays silent. That covers every
  * legacy spelling (GP-931 D2): `/gutt off`, `/gutt:off` and
@@ -145,7 +159,7 @@ function plural(n, word) {
  * answer; that is rare enough, and loud beats quiet in both directions.
  *
  * @param {unknown} raw
- * @returns {{verb: string|null, arg: string|null, typed: string}|null}
+ * @returns {{verb: string|null, arg: string|null, typed: string, bare: boolean}|null}
  */
 function parseCommand(raw) {
   const typed = typeof raw === "string" ? raw.trim() : "";
@@ -161,10 +175,13 @@ function parseCommand(raw) {
   const namespaced = `/${PLUGIN_PREFIX}:`;
   // Namespaced or bare. `/gutt-pro` with no verb falls through to the bare branch,
   // yields "gutt-pro", and is rejected below — there is no stem command (D1).
-  const verb = head.startsWith(namespaced) ? head.slice(namespaced.length) : head.slice(1);
+  const bare = !head.startsWith(namespaced);
+  const verb = bare ? head.slice(1) : head.slice(namespaced.length);
 
-  // Anything else — another plugin command, a legacy `/gutt` spelling, or prose
-  // that happens to start with a slash — is not ours.
+  // A *namespaced* foreign command can never reach here — `/other:off` yields the
+  // verb `other:off`, which is not in `VERBS`. A *bare* one can, and does match;
+  // see the note on `bare` above. A legacy `/gutt` spelling, and prose that happens
+  // to start with a slash, are both rejected here.
   if (!VERBS.includes(verb)) {
     return null;
   }
@@ -174,9 +191,9 @@ function parseCommand(raw) {
   // A second argument is always wrong — no form takes two — so it is carried
   // through as an unrecognised parse rather than ignored.
   if (rest.length > 1) {
-    return { verb: null, arg: null, typed };
+    return { verb: null, arg: null, typed, bare };
   }
-  return { verb, arg, typed };
+  return { verb, arg, typed, bare };
 }
 
 // ---------------------------------------------------------------------------
@@ -354,14 +371,28 @@ function renderConfig(sessionId, now) {
  * a missing plugin data directory, where every write in `plugin-state.cjs` is a
  * silent no-op. Reporting success there would be the quietest bug this surface
  * could ship, so each mutator checks the boolean it gets back.
+ *
+ * The two causes get different sentences because only one of them leaves evidence.
+ * An unreadable config.json is logged by `updateConfig`. A missing data directory
+ * cannot be: `debug.cjs` resolves its log path from the same `CLAUDE_PLUGIN_DATA`
+ * that is absent, so there is no `hook-errors.log`, no directory to hold one, and
+ * nothing written. Naming that file in this branch sent the user to a path that
+ * structurally cannot exist. One `configPath()` call tells the two apart.
  * @returns {string}
  */
 function writeFailed() {
+  if (!config.configPath()) {
+    return (
+      "gutt could not save that: this session has no plugin data directory, so no setting " +
+      "can be stored and nothing changed. There is no log to check — the directory that " +
+      "would hold one does not exist. This is usually a local --plugin-dir run."
+    );
+  }
   return (
     "gutt could not save that: the write to config.json did not land, so nothing changed. " +
-    "The usual causes are an unavailable plugin data directory and a config.json that is " +
-    "present but unreadable — gutt refuses to overwrite a file it could not parse. " +
-    "hook-errors.log in the plugin data directory records which it was."
+    "The likeliest cause is a config.json that is present but unreadable — gutt refuses to " +
+    "overwrite a file it could not parse. hook-errors.log in the plugin data directory " +
+    "records what happened."
   );
 }
 
@@ -446,12 +477,23 @@ function runDisable(arg, typed) {
  * The pre-read is what lets the reply be honest: `restore()` returns false both
  * when there was nothing to clear and when the write failed, and those deserve
  * different sentences.
+ *
+ * It reads through `readRawConfigState` rather than `readRawConfig` because the
+ * latter collapses *absent* and *unreadable* into the same `null` (by design, see
+ * `plugin-state.readJson`). On a corrupt config.json that collapse made `wasOff`
+ * false and `snooze` null, so the "nothing changed" short-circuit below fired
+ * *before* `restore()` — and `updateConfig`'s refusal-to-overwrite never ran. This
+ * was the one verb that answered a broken file with reassurance while `config`,
+ * `off`, `disable` and `mode` all reported the failure.
  * @param {string|null} sessionId
  * @param {number} now
  * @returns {string}
  */
 function runOn(sessionId, now) {
-  const raw = config.readRawConfig();
+  const { state, raw } = config.readRawConfigState();
+  if (state === "unreadable") {
+    return writeFailed();
+  }
   const wasOff = raw?.enabled === false;
   const snooze = describeClearedSnooze(raw, now);
   if (!wasOff && !snooze) {
@@ -513,6 +555,29 @@ function runMode(arg) {
 }
 
 /**
+ * Attribution prepended to a bare-form outcome.
+ *
+ * A bare `/off` matches on prompt text alone, and the text does not say which
+ * command Claude Code routed (see `parseCommand`). If another plugin owns `/off`,
+ * the user gets its output *and* a silent write here. Naming the verb we ran makes
+ * that visible on the first occurrence rather than never — the user can read one
+ * line and see that gutt acted on a prompt they aimed elsewhere.
+ *
+ * Only on the bare form: the namespaced spelling is unambiguous, and prefixing it
+ * would be noise on the documented path.
+ * @param {string} outcome
+ * @param {string|null} verb
+ * @returns {string}
+ */
+function attributeBare(outcome, verb) {
+  const form = verb ? `/${PLUGIN_PREFIX}:${verb}` : `a /${PLUGIN_PREFIX} command`;
+  return (
+    `gutt read the bare command in this prompt as ${form} and acted on it. ` +
+    `Use ${form} explicitly if another plugin also provides that name.\n${outcome}`
+  );
+}
+
+/**
  * Run the config command in `rawPrompt`, if there is one.
  *
  * @param {unknown} rawPrompt - the prompt exactly as submitted, untruncated
@@ -526,6 +591,18 @@ function configCommandResult(rawPrompt, sessionId = null, now = Date.now()) {
   if (!parsed) {
     return null;
   }
+  const outcome = runVerb(parsed, sessionId, now);
+  return parsed.bare ? attributeBare(outcome, parsed.verb) : outcome;
+}
+
+/**
+ * Dispatch a parsed command to its handler.
+ * @param {{verb: string|null, arg: string|null, typed: string}} parsed
+ * @param {string|null} sessionId
+ * @param {number} now
+ * @returns {string}
+ */
+function runVerb(parsed, sessionId, now) {
   switch (parsed.verb) {
     case "config":
       // `config` takes no argument, so one is a typo worth naming rather than
@@ -535,7 +612,15 @@ function configCommandResult(rawPrompt, sessionId = null, now = Date.now()) {
         : `gutt did not recognise "${parsed.typed}" — /gutt-pro:config takes no argument. ` +
             `The forms are: ${FORMS}. Nothing was changed.`;
     case "on":
-      return runOn(sessionId, now);
+      // Same reasoning as `config` and `disable`: `on` takes no argument, and
+      // `/gutt-pro:on 30` is a plausible typo now that `off` is the verb that takes
+      // a deadline. Dropping the `30` silently would report a restore the user
+      // reads as a 30-minute one.
+      return parsed.arg === null
+        ? runOn(sessionId, now)
+        : `gutt did not recognise "${parsed.typed}" — /gutt-pro:on takes no argument, and ` +
+            "it restores recall immediately. /gutt-pro:off <minutes> is the one that takes " +
+            `a deadline. The forms are: ${FORMS}. Nothing was changed.`;
     case "off":
       return runOff(parsed.arg, sessionId, now);
     case "disable":

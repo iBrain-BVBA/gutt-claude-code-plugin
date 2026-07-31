@@ -16,7 +16,7 @@
 - **HUD counters (`mem:` / `lessons:`) and the toast ticker.** The `PostToolUse`
   hooks that fed them (`post-memory-ops.cjs`, `cowork-periodic-capture.cjs`) are
   removed along with `memory-cache.cjs` and `seed-registry.cjs`; the
-  `/gutt-claude-code-plugin:reset-counters` command is deleted (GP-844)
+  `/gutt-pro:reset-counters` command is deleted (GP-844)
 - **The subagent hooks plugin** (`plugins/gutt-subagent-hooks-plugin/`), which was
   never listed in `marketplace.json` and therefore never shipped. Decision O4
   keeps subagent hooks out of 3.0 (GP-868)
@@ -58,8 +58,9 @@
   asking for captures. Off or snoozed now returns before any child is spawned, and
   `mode: hitl` appends an instruction to confirm each subject with you through
   `AskUserQuestion` before anything is written. `mode: auto` is unchanged, and the
-  judge's wording is byte-identical to what it replaces, so the only difference on
-  the default path is where the model runs.
+  judge's wording is unchanged apart from the skill id the GP-931 rename moved
+  (`gutt-pro:memory-capture`), so the only difference on the default path is where the
+  model runs.
 
 - **The settings commands** — `/gutt-pro:config`, `/gutt-pro:on`,
   `/gutt-pro:off [minutes|session]`, `/gutt-pro:disable`, `/gutt-pro:mode auto|hitl`.
@@ -125,10 +126,10 @@
   the old file: a hardcoded MCP server prefix, an org write missing
   `last_n_episodes=0`, `center_node_uuid` for `center_node_id`, and unscoped org
   reads that silently covered personal memory (GP-884, E7-S7.4)
-- `gutt-mentor` declares `gutt-claude-code-plugin` as a plugin dependency — its
+- `gutt-mentor` declares `gutt-pro` as a plugin dependency — its
   skills and agent reference gutt-core skills by name, and the agent preloads
   `agent-memory-protocol` and `memory-search` across the plugin boundary using the
-  namespaced form (`gutt-claude-code-plugin:<skill>`), which resolves
+  namespaced form (`gutt-pro:<skill>`), which resolves
   deterministically where a bare name does not (GP-884)
 - New `gutt-mentor` plugin: two domain-neutral skills over the **personal**
   memory scope, for the onboarding agent to consume. Ships no hooks.
@@ -211,9 +212,12 @@
   users get no update offer and must `/plugin uninstall gutt-claude-code-plugin` then
   `/plugin install gutt-pro@gutt-plugins`. `${CLAUDE_PLUGIN_DATA}` moves with the name,
   so `config.json`, `sessions/`, `migrationsVersion` and the `migrations/` memory
-  backup all orphan; settings reset and must be re-applied. Finish and verify any
-  in-flight built-in-memory migration **before** uninstalling, and prefer
-  `--keep-data`. Never run both plugins at once — duplicate hook registration means
+  backup all orphan; settings reset and must be re-applied. The first session after
+  the rename reports what it found in the old directory and what it did not carry
+  over — it never moves or deletes anything. Finish and verify any in-flight
+  built-in-memory migration **before** uninstalling, and use `--keep-data`: without
+  it, uninstalling the old plugin destroys a memory backup that may be the only
+  remaining copy of your notes. Never run both plugins at once — duplicate hook registration means
   two recall injections per prompt, two Stop judges, two status lines. The GitHub
   repository keeps its name, so existing `/plugin marketplace add` URLs still work.
   See `docs/migration-3.0.md` (GP-931)
@@ -223,7 +227,9 @@
   action is what the short word gets, and turning recall off for good has to be typed
   on purpose. `/gutt-pro:config` now states the _scope_ of whatever is in force — "for
   this session" versus "until `/gutt-pro:on`" — because the reversal is otherwise
-  invisible at the point of use (GP-931)
+  invisible at the point of use. Like the stem removal below, the `off` that changed
+  meaning never appeared in a tagged release, so this only affects anyone running 3.0
+  from source (GP-931)
 - A second round of blind runs closed six more gaps in the onboarding agent. More
   than one org group discovered is now treated as a question rather than a list,
   because a graph can hold a sandbox or fixture group that looks like an org group
@@ -251,7 +257,7 @@
 
 ### Deprecated
 
-- `memory-retrieval` skill redirected to `memory-search`: its trigger phrases moved to `memory-search` so it no longer auto-fires, and the `/gutt-claude-code-plugin:memory-retrieval` command remains only as an alias (GP-856)
+- `memory-retrieval` skill redirected to `memory-search`: its trigger phrases moved to `memory-search` so it no longer auto-fires, and the `/gutt-pro:memory-retrieval` command remains only as an alias (GP-856)
 
 ### Removed
 

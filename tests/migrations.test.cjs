@@ -474,6 +474,125 @@ describe("SessionStart drives the migration", () => {
   });
 });
 
+/**
+ * Step 2 (GP-931): report the data directory the rename orphaned.
+ *
+ * Read-only on purpose. D4 accepted the state reset knowingly, so the fix is not to
+ * undo it — copying settings across would resurrect choices the user has not seen —
+ * but to stop it being silent. These tests pin both halves: that it reports, and
+ * that it never touches either directory.
+ */
+describe("the orphaned data directory (GP-931)", () => {
+  /** Build the `<name>-<marketplace>` pair the platform lays out. */
+  function renamedPair() {
+    const root = path.join(sandbox, "plugins", "data");
+    const ours = path.join(root, "gutt-pro-gutt-plugins");
+    const legacy = path.join(root, "gutt-claude-code-plugin-gutt-plugins");
+    fs.mkdirSync(ours, { recursive: true });
+    fs.mkdirSync(legacy, { recursive: true });
+    return { ours, legacy };
+  }
+
+  it("finds the pre-rename sibling from our own basename", () => {
+    const { ours, legacy } = renamedPair();
+    assert.equal(migrations.legacyStateDir(ours), legacy);
+  });
+
+  it("finds nothing when there is no sibling, no root, or an unfamiliar layout", () => {
+    const { ours, legacy } = renamedPair();
+    fs.rmSync(legacy, { recursive: true, force: true });
+    assert.equal(migrations.legacyStateDir(ours), null, "no sibling on disk");
+    assert.equal(migrations.legacyStateDir(null), null, "no data dir at all");
+    assert.equal(
+      migrations.legacyStateDir(path.join(sandbox, "somewhere-else")),
+      null,
+      "a root that is not ours must not be guessed at"
+    );
+  });
+
+  it("names each orphaned setting and the verb that re-applies it", () => {
+    const { ours, legacy } = renamedPair();
+    fs.writeFileSync(
+      path.join(legacy, "config.json"),
+      JSON.stringify({
+        enabled: false,
+        mode: "hitl",
+        projects: { "-Users-me-repo": { memoryMigration: { status: "declined" } } },
+      })
+    );
+    fs.mkdirSync(path.join(legacy, "migrations"), { recursive: true });
+    fs.writeFileSync(path.join(legacy, "migrations", "builtin-memory-1.json"), "x".repeat(2048));
+
+    const notices = migrations.findOrphanedPluginData(ours);
+    const text = notices.join("\n");
+
+    assert.match(text, /did not carry over/);
+    // The one that silently reverses intent: recall they turned off is back on.
+    assert.match(text, /recall was turned off durably — it is ON again here/);
+    assert.match(text, /\/gutt-pro:disable/);
+    assert.match(text, /capture mode was "hitl".*\/gutt-pro:mode hitl/);
+    assert.match(text, /1 project had a recorded answer/);
+    assert.match(text, /1 memory backup \(2 KB\).*only copy/);
+    assert.match(text, /--keep-data/);
+  });
+
+  it("says nothing about settings that were never set", () => {
+    const { ours, legacy } = renamedPair();
+    fs.writeFileSync(path.join(legacy, "config.json"), JSON.stringify({ enabled: true }));
+    assert.deepEqual(
+      migrations.findOrphanedPluginData(ours),
+      [],
+      "an enabled:true and nothing else is not a loss worth a warning"
+    );
+  });
+
+  it("reports an empty legacy dir as nothing to say", () => {
+    const { ours } = renamedPair();
+    assert.deepEqual(migrations.findOrphanedPluginData(ours), []);
+  });
+
+  it("never writes to or deletes from either directory", () => {
+    const { ours, legacy } = renamedPair();
+    const config = JSON.stringify({ enabled: false, mode: "hitl" });
+    fs.writeFileSync(path.join(legacy, "config.json"), config);
+
+    assert.ok(migrations.findOrphanedPluginData(ours).length, "precondition: it reported");
+
+    assert.equal(
+      fs.readFileSync(path.join(legacy, "config.json"), "utf8"),
+      config,
+      "the old config must be left byte-identical"
+    );
+    assert.deepEqual(fs.readdirSync(ours), [], "and nothing may be copied into the new dir");
+  });
+
+  it("is reported by runMigrations and rendered as found, not as cleaned", () => {
+    const { ours, legacy } = renamedPair();
+    fs.writeFileSync(path.join(legacy, "config.json"), JSON.stringify({ enabled: false }));
+
+    const result = migrations.runMigrations({ claudeDir, settingsFile, stateRoot: ours });
+    assert.ok(result.notices.length, "the step ran");
+
+    const note = migrations.describeMigration(result);
+    assert.match(note, /did not carry over/);
+    assert.match(note, /Nothing was moved or deleted/);
+    assert.doesNotMatch(note, /cleaned up leftovers/, "found is not the same claim as cleaned");
+  });
+
+  it("runs once — a machine already at version 2 does not report again", () => {
+    const { ours, legacy } = renamedPair();
+    fs.writeFileSync(path.join(legacy, "config.json"), JSON.stringify({ enabled: false }));
+    fs.writeFileSync(
+      path.join(dataDir, "config.json"),
+      JSON.stringify({ [migrations.VERSION_KEY]: migrations.MIGRATIONS_VERSION })
+    );
+
+    const result = migrations.runMigrations({ claudeDir, settingsFile, stateRoot: ours });
+    assert.equal(result.ran, false);
+    assert.deepEqual(result.notices, []);
+  });
+});
+
 describe("the version gate", () => {
   // The two ways the retired marker mechanism got this wrong: an existence check
   // (never re-ran) and a semver comparison (fiddly). An integer compared with >=
@@ -483,13 +602,40 @@ describe("the version gate", () => {
       path.join(dataDir, "config.json"),
       JSON.stringify({ [migrations.VERSION_KEY]: migrations.MIGRATIONS_VERSION - 1 })
     );
-    fs.writeFileSync(path.join(dataDir, "memory-cache.json"), "{}");
 
     const result = run();
 
     assert.equal(result.ran, true);
     assert.equal(result.from, migrations.MIGRATIONS_VERSION - 1);
-    assert.equal(fs.existsSync(path.join(dataDir, "memory-cache.json")), false);
+    const config = JSON.parse(fs.readFileSync(path.join(dataDir, "config.json"), "utf8"));
+    assert.equal(
+      config[migrations.VERSION_KEY],
+      migrations.MIGRATIONS_VERSION,
+      "and it records the new version"
+    );
+  });
+
+  it("does not re-run an earlier step when a later one is added", () => {
+    // The whole reason steps are gated individually. Step 1 deletes from
+    // ~/.claude/settings.json, and the module header promises that happens at most
+    // once per machine; collective gating made that true only until the next bump.
+    fs.writeFileSync(
+      path.join(dataDir, "config.json"),
+      JSON.stringify({ [migrations.VERSION_KEY]: 1 })
+    );
+    fs.writeFileSync(path.join(dataDir, "memory-cache.json"), "{}");
+    writeSettings({ statusLine: { command: `node "${deadTarget()}"` } });
+
+    const result = run();
+
+    assert.equal(result.ran, true, "the version still advances");
+    assert.deepEqual(result.actions, [], "but step 1 must not fire a second time");
+    assert.equal(
+      fs.existsSync(path.join(dataDir, "memory-cache.json")),
+      true,
+      "the 2.x cleanup is done; re-running it is not idempotent for settings.json"
+    );
+    assert.ok(readSettings().statusLine, "and a dead statusLine is not deleted twice");
   });
 
   it("skips when the recorded version is ahead (a downgrade must not re-migrate)", () => {

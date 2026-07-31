@@ -25,7 +25,13 @@ platform is concerned.
    notes is the backup under `${CLAUDE_PLUGIN_DATA}/migrations/` — and that directory is
    deleted when you uninstall the last scope of the plugin.
 2. **Write down your settings.** They do not carry over (see below). Run
-   `/gutt-claude-code-plugin:gutt config` on the old install and keep the output.
+   `/gutt-claude-code-plugin:gutt config` on the old install and keep the output — that
+   spelling only exists if you are running 3.0 from source, which is the only way to
+   have these settings at all (see the note under "Your settings reset").
+
+   If you have already switched, you have not lost the values: the first session after
+   the rename reads the old directory and reports what did not carry over, naming the
+   verb that re-applies each one. It never moves or deletes anything.
 
 ### The move
 
@@ -34,9 +40,11 @@ platform is concerned.
 /plugin install gutt-pro@gutt-plugins
 ```
 
-`--keep-data` is not required, but it is strongly preferred: it leaves
-`~/.claude/plugins/data/gutt-claude-code-plugin-<marketplace>/` in place, so if anything
-above was missed the memory backup is still recoverable by hand.
+**Use `--keep-data`.** It is not enforced, but omitting it deletes
+`~/.claude/plugins/data/gutt-claude-code-plugin-<marketplace>/` outright — and if you
+have ever run `migrate-memory`, the backup in that directory is the only remaining copy
+of the notes the migration deleted locally. Keeping it costs nothing; it is the
+difference between a recoverable mistake and an unrecoverable one.
 
 The marketplace itself is unchanged. The GitHub repository keeps its name
 (`iBrain-BVBA/gutt-claude-code-plugin`), so every existing
@@ -64,14 +72,24 @@ Nothing is migrated across. What you lose, and what to re-apply:
 | `migrationsVersion`        | the one-time 2.x cleanup marker           | nothing; it re-runs once, see below |
 | `migrations/`              | **the built-in-memory backup**            | nothing — read the warning above    |
 
-Two consequences worth naming:
+**If you are upgrading from 2.7.1** — the last tagged release — the `config.json` rows
+above do not apply to you. `enabled`, `mode` and the snooze keys were all added in the
+unreleased 3.0 line, so there is nothing of yours in them. You lose `sessions/`,
+`migrationsVersion` and `migrations/` only.
+
+Three consequences worth naming:
 
 - **The per-project migration answers are gone**, so a project where you declined the
-  built-in-memory migration may be offered it again. Declining again is one prompt.
+  built-in-memory migration may be offered it again — as an `AskUserQuestion` prompt,
+  not a line of prose. Declining again is one click.
 - **The 2.x cleanup re-runs.** `MIGRATIONS_VERSION` resets with the data directory, so
   `shared/migrations.cjs` executes once more on first run. It only ever removes
   provably-dead files, so the second pass should be a no-op — but note that its
-  `~/.claude/settings.json` exemption re-opens for that one run.
+  `~/.claude/settings.json` exemption re-opens for that one run, and that the rename
+  can make your `statusLine` target genuinely dead, in which case the re-run removes
+  that key. It says so when it does.
+- **The first session reports the orphaned directory.** A read-only probe names what
+  it found there and how to re-apply it. It runs once, gated on `migrationsVersion`.
 
 ## The config commands changed shape
 

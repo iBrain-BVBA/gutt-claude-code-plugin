@@ -234,6 +234,14 @@ function isSuppressed(sessionId = null, now = Date.now()) {
 function updateConfig(mutate) {
   const file = configPath();
   if (!file) {
+    // Logged for symmetry with the UNREADABLE refusal below, even though this is
+    // the one branch whose log cannot land: `debug.cjs` resolves hook-errors.log
+    // from the same missing CLAUDE_PLUGIN_DATA, so this call is a no-op by
+    // construction. Kept because a bare `return false` on a write path is the
+    // pattern this module is otherwise scrupulous about, and because the call
+    // starts working the moment the directory does. The user-facing half of this
+    // case is `writeFailed()`, which says there is no log rather than naming one.
+    debugLog("runtime-config", "no plugin data dir; config write skipped");
     return false;
   }
   return (

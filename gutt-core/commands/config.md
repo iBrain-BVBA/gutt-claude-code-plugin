@@ -21,6 +21,7 @@ and stop.
 /gutt-pro:config             show the current settings and the state they add up to
 /gutt-pro:on                 turn memory recall back on, clearing an off or a disable
 /gutt-pro:off                turn recall off for the rest of this session
+/gutt-pro:off session        the explicit spelling of the same thing
 /gutt-pro:off 30             turn recall off for 30 minutes (1 to 10080), then it resumes
 /gutt-pro:disable            turn recall off until /gutt-pro:on — survives restarts
 /gutt-pro:mode auto|hitl     set the capture mode

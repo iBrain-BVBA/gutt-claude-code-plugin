@@ -1050,9 +1050,14 @@ describe("session lifecycle: hooks end to end", () => {
       { session_id: "e2e-end", source: "startup" },
       { dataDir: dir, home }
     );
+    // `enabled: false` is planted alongside the snooze because SessionEnd is the one
+    // place "survives restarts" is actually delivered (GP-931 D3). If `SNOOZE_KEYS` or
+    // `withoutSnooze` ever grew `enabled`, every `/gutt-pro:disable` would quietly
+    // decay into a session-scoped off — the reversal undoing itself in the one
+    // direction the in-process tests cannot see.
     fs.writeFileSync(
       path.join(dir, "config.json"),
-      JSON.stringify({ mode: "auto", snoozeSessionId: "e2e-end" })
+      JSON.stringify({ mode: "auto", enabled: false, snoozeSessionId: "e2e-end" })
     );
 
     const r = runHook(
@@ -1070,6 +1075,7 @@ describe("session lifecycle: hooks end to end", () => {
     const config = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
     assert.equal(config.snoozeSessionId, undefined, "session-scoped snooze cleared");
     assert.equal(config.mode, "auto");
+    assert.equal(config.enabled, false, "a durable disable must outlive the session that saw it");
   });
 
   it("SessionEnd defaults the reason when the payload omits it", () => {
@@ -1392,6 +1398,28 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
       JSON.stringify({ snoozeUntil: new Date(Date.now() - HOUR).toISOString() })
     );
     assert.ok(contextOf(submit("m-min")), "a lapsed deadline no longer suppresses");
+  });
+
+  it("row 0: bare /gutt-pro:off scopes to the session id the hook was handed", () => {
+    // The one form whose success depends on session_id surviving the trip through the
+    // hook: user-prompt-submit defaults a missing id to "unknown", and runOff refuses
+    // on "unknown" rather than writing a snooze SessionEnd could never reclaim. Every
+    // in-process test passes the id directly, so a break in that wiring would make the
+    // flagship verb answer "could not scope a snooze" for every user while the unit
+    // suite stayed green.
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-bareoff", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-bareoff", "/gutt-pro:off"));
+    assert.match(ctx, /rest of this session/);
+    assert.doesNotMatch(ctx, /could not scope/, "the session id did not reach the hook");
+
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.equal(raw.snoozeSessionId, "m-bareoff");
+    assert.equal("enabled" in raw, false, "a session off must not write the durable flag");
+    assert.equal(submit("m-bareoff"), null, "and it suppresses the next prompt");
   });
 
   it("row 0: an unrecognised /gutt-pro form changes nothing and says so", () => {

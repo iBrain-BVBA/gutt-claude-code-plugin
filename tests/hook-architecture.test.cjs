@@ -389,6 +389,15 @@ describe("hook architecture guards", () => {
         // context — and `/gutt-pro:disable` must never be something Claude decides to
         // do.
         assert.match(body, /^disable-model-invocation: true$/m, verb);
+        // Claude Code resolves the typed token from the frontmatter `name`, not from
+        // the filename. A drift between them makes `/gutt-pro:<verb>` unresolvable
+        // while the parser, the hook and every test here stay green — the silent
+        // no-op shape this whole section exists to catch.
+        assert.match(
+          body,
+          new RegExp(`^name: ${verb}$`, "m"),
+          `${verb}.md declares a name that is not "${verb}"`
+        );
         assert.match(
           body,
           /already been (applied|read)/,
@@ -480,14 +489,14 @@ describe("hook architecture guards", () => {
     // time the prompt was reworded, silently. This is that check, committed.
     //
     // The fixture is the `prompt` field of the `type: "prompt"` Stop entry as it stood on
-    // release/3.0. Exactly two deviations are allowed, and both are forced by the new
-    // mechanism rather than chosen:
+    // release/3.0. Exactly three deviations are allowed, and all three are forced by
+    // the new mechanism rather than chosen:
     //   1. `$ARGUMENTS` → `__PAYLOAD__`, substituted by buildJudgePrompt instead of by the
     //      platform.
     //   2. "on the conversation above" → "on the turn quoted below", because
     //      buildJudgePrompt puts the condition first and appends the turn, so "above"
     //      pointed the judge at nothing but the condition's own opening sentence.
-    //   3. `gutt-pro:memory-capture` → `gutt-pro:memory-capture`, because
+    //   3. `gutt-claude-code-plugin:memory-capture` → `gutt-pro:memory-capture`, because
     //      GP-931 renamed the plugin and a skill id is namespaced by its plugin's `name`.
     //      Keeping the old id would name a skill that cannot be resolved — the failure
     //      the namespace guard above exists to prevent. The fixture is left alone on

@@ -231,6 +231,22 @@ re-probe if the built-in list ever changes.
 **Not established:** whether an _interactive_ session behaves as this `-p` run did, and
 whether the built-in list is fixed or version-dependent. Both would need their own probe.
 
+**A precondition, not a finding.** This run had no other plugin declaring `on`, `off`,
+`mode` or `disable`, so it says nothing about what happens when one does. Routing and
+text-matching are independent: `parseCommand` sees raw prompt text, so a bare `/off`
+routed to _another_ plugin still matches here and still writes. Nothing enforces the
+precondition at runtime, and no probe would — it is a property of the user's install, not
+of the platform. What the code does instead is announce itself: a bare-form match
+prepends the verb it ran, so a collision is visible the first time rather than never.
+Making the four mutating verbs namespaced-only would prevent the write instead of
+exposing it, and remains open.
+
+**Also not established:** whether the count in the table rules out `/config` reaching a
+hook by any path, or only rules out `configCommandResult` running. Only the second is
+claimed. The probe's census is flat across the session, so it cannot attribute a
+non-injection to a specific turn — and a config-verb turn emits no recall pointer anyway,
+so the absence of one proves nothing extra.
+
 ## Follow-ups
 
 Recorded, none done.

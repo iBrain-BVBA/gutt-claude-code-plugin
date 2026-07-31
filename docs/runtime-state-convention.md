@@ -61,13 +61,13 @@ because they keep the transcript the recall is still sitting in.
 
 ### Keys in `config.json`
 
-| Key                              | Producer                       | Written by                    | Scope           |
-| -------------------------------- | ------------------------------ | ----------------------------- | --------------- |
-| `enabled`                        | `/gutt off` / `/gutt on`       | `runtime-config.cjs` (GP-866) | machine-global  |
-| `mode`                           | `/gutt mode`                   | `runtime-config.cjs` (GP-866) | machine-global  |
-| `snoozeUntil`, `snoozeSessionId` | `/gutt off N\|session`, sweeps | `runtime-config.cjs` (GP-863) | machine-global  |
-| `migrationsVersion`              | `migrations.cjs` (GP-895)      | `migrations.cjs`              | machine-global  |
-| `projects`                       | migration offer (GP-922)       | `runtime-config.cjs` (GP-922) | **per project** |
+| Key                              | Producer                             | Written by                    | Scope           |
+| -------------------------------- | ------------------------------------ | ----------------------------- | --------------- |
+| `enabled`                        | `/gutt-pro:disable` / `/gutt-pro:on` | `runtime-config.cjs` (GP-866) | machine-global  |
+| `mode`                           | `/gutt-pro:mode`                     | `runtime-config.cjs` (GP-866) | machine-global  |
+| `snoozeUntil`, `snoozeSessionId` | `/gutt-pro:off [N\|session]`, sweeps | `runtime-config.cjs` (GP-863) | machine-global  |
+| `migrationsVersion`              | `migrations.cjs` (GP-895)            | `migrations.cjs`              | machine-global  |
+| `projects`                       | migration offer (GP-922)             | `runtime-config.cjs` (GP-922) | **per project** |
 
 `runtime-config.cjs` may mutate only the keys in its `OWNED_KEYS` list — the two
 preference keys, the two snooze keys, and `projects`. `migrationsVersion` is the one
@@ -76,17 +76,17 @@ key in this file it must not touch.
 Until GP-866 the rule here was stronger: `enabled` and `mode` were declared in
 `DEFAULTS`, read by nobody, and documented as "must not be written from a hook". That
 could not survive the command surface, because the command surface **is** a hook —
-`/gutt` is parsed and applied on `UserPromptSubmit`, the only event whose process is
+`/gutt-pro:<verb>` is parsed and applied on `UserPromptSubmit`, the only event whose process is
 given `${CLAUDE_PLUGIN_DATA}`. What the old rule protected is still enforced, by
 scope rather than by prohibition: every mutator touches only the keys it names, so a
-SessionStart sweep cannot clobber a preference and `/gutt on` cannot clobber a
+SessionStart sweep cannot clobber a preference and `/gutt-pro:on` cannot clobber a
 migration record. `PREFERENCE_KEYS`, `SNOOZE_KEYS` and `RESTORE_KEYS` exist to keep
-those scopes separate — notably `RESTORE_KEYS` omits `mode`, so `/gutt on` does not
+those scopes separate — notably `RESTORE_KEYS` omits `mode`, so `/gutt-pro:on` does not
 silently reset a `hitl` choice.
 
 **`enabled` is read as `false` only on a strict boolean `false`.** A hand-edited
 `"enabled": "no"` therefore does nothing, the same way an unrecognised
-`memoryMigration.status` reads as unrecorded. `/gutt config` prints the raw stored
+`memoryMigration.status` reads as unrecorded. `/gutt-pro:config` prints the raw stored
 value so a hand-edit that has no effect is visible rather than assumed to be working.
 
 #### The `projects` key space (GP-922)

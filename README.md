@@ -95,36 +95,50 @@ longer edits that file for you — see
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                       | Event            | Purpose                                                                                                         |
-| -------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                              |
-| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                                                        |
-| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                             |
-| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt` config commands; points at `memory-search` on a new session or after a compaction               |
-| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours `/gutt off` and `mode`, defers while background agents run |
-| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                                               |
+| Hook                       | Event            | Purpose                                                                                                            |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                                 |
+| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                                                           |
+| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                                |
+| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt-pro:*` config commands; points at `memory-search` on a new session or after a compaction            |
+| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours an off/disable and `mode`, defers while background agents run |
+| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                                                  |
 
-### Settings — the `/gutt` command
+### Settings — the `/gutt-pro:` commands
 
 Type these at any time; the change is applied by the UserPromptSubmit hook before the
 model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
 
-| Command                 | Effect                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------ |
-| `/gutt config`          | Show the stored settings and the state they add up to                                      |
-| `/gutt off`             | Turn memory recall off until `/gutt on` — survives restarts                                |
-| `/gutt off 30`          | Snooze recall for 30 minutes (1–10080), then it resumes on its own                         |
-| `/gutt off session`     | Snooze recall for the rest of this session                                                 |
-| `/gutt on`              | Clear any off or snooze                                                                    |
-| `/gutt mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
+| Command                     | Effect                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `/gutt-pro:config`          | Show the stored settings and the state they add up to                                      |
+| `/gutt-pro:off`             | Turn recall off for the rest of this session — it comes back on its own                    |
+| `/gutt-pro:off session`     | The explicit spelling of the same thing                                                    |
+| `/gutt-pro:off 30`          | Turn recall off for 30 minutes (1–10080), then it resumes on its own                       |
+| `/gutt-pro:disable`         | Turn recall off until `/gutt-pro:on` — survives restarts                                   |
+| `/gutt-pro:on`              | Clear an off, a snooze, and a disable                                                      |
+| `/gutt-pro:mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
 
-`/gutt-pro:gutt <subcommand>` and `/gutt:<subcommand>` are accepted too.
+**`off` is temporary and `disable` is durable.** The cheap, reversible action gets the
+short word; turning recall off for good has to be typed on purpose. If you used the 3.0
+`/gutt off` for a durable off, `/gutt-pro:disable` is what you now want — see
+[docs/migration-3.0.md](docs/migration-3.0.md).
+
+The 3.0 spellings `/gutt …`, `/gutt:<sub>` and `/gutt-claude-code-plugin:gutt <sub>` no
+longer do anything at all. They are ordinary prompt text now, not aliases — a hard cut,
+because `off` reversed meaning in the same release and an alias would have quietly done
+something other than what you typed.
+
+Bare `/off`, `/on`, `/disable` and `/mode` also reach the plugin, and it says so in its
+reply when they do. Bare `/config` does not — Claude Code's own `/config` takes it first,
+so `/gutt-pro:config` is the only spelling that works for that one.
+
 The HUD shows ` off` or ` zzz` in the gutt segment while recall is suppressed, since a
 durable off is otherwise invisible.
 
 Two things worth knowing. An out-of-range minute count is **rejected, not clamped** —
-`/gutt off 300000` changes nothing rather than silencing recall for seven months. And off
-or snooze silences **both** halves: no recall pointer is injected, and the end-of-turn
+`/gutt-pro:off 300000` changes nothing rather than silencing recall for seven months. And
+off or snooze silences **both** halves: no recall pointer is injected, and the end-of-turn
 capture judge is not run at all (no subprocess is spawned). Capture mode is the other
 axis — it governs only how a capture is confirmed once the judge has fired.
 

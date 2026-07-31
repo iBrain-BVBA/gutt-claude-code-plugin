@@ -25,7 +25,7 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
   (`gutt_pro:Agent:pr-reviewer-acme-web`) — it is what ID parameters (`center_node_id`,
   `get_episodes_for_entity`, …) expect. Don't build it by hand: `register_agent` returns
   it (`id`, plus the `uuid`).
-- Resolve which name to use in this order: bound config (the `/gutt:agent-scope` setting,
+- Resolve which name to use in this order: bound config (the `/gutt-pro:agent-scope` setting,
   when it exists) → the git remote's owner/repo → the working folder's name.
 
 ## Register (once, before tagging or scoped recall)
