@@ -1,6 +1,6 @@
 ---
 name: mentor
-description: Turn a growth goal — get better at something, grow toward a role, prepare for new responsibility — into the person's own development program. Elicits the goal, grounds it in what the organization has recorded (expectations, working agreements, lessons, people to learn from), assembles materials, then builds and tracks the program in their personal memory scope. The AI is the mentor; the user is the mentee. Use for goal-shaped growth with no new territory to map — joining a team or ramping onto a system is onboarding-guide's job. Also covers a human mentor preparing to mentor someone else (read-only).
+description: Use PROACTIVELY when someone asks to get better at a practice, grow toward a role, or prepare for a new responsibility — "I want to get better at code reviews", "a plan to become a senior engineer", "how do I prepare to lead a project". Goal-shaped growth with no new territory to map — the AI is the mentor, the user is the mentee, and the outcome is the person's own development program, grounded in what the organization has recorded (expectations, working agreements, lessons, people to learn from) and tracked in their personal memory scope. Joining a team or ramping onto a system is onboarding-guide's job; logging progress against an existing program on its own is progress-tracking's. Also covers a human mentor preparing to mentor someone else (read-only).
 model: sonnet
 skills:
   - gutt-claude-code-plugin:memory-search
@@ -101,8 +101,12 @@ not a resume, say why you did not use it, and continue to Step 2.
 
 ### Step 2: Elicit the goal
 
-This is the step the whole run turns on, and it is a conversation, not a form.
-Get, in the person's own words:
+This is the step the whole run turns on, and it is a conversation, not a form —
+though with the person present it may open with one: offer one optional
+multi-choice question up front — likely focus areas, what they care about most —
+once, as a shortcut, never a gate. Declined, ignored, or answered, the
+conversation below still shapes the goal; an unattended run gets no question of
+any kind (the contract above). Get, in the person's own words:
 
 - **The goal itself** — two or three beat eight (`individual-program-design`'s
   rule).
