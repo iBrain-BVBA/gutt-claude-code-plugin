@@ -144,11 +144,19 @@ whole session.
 
 ### Agents
 
-| Agent              | Purpose                                           |
-| ------------------ | ------------------------------------------------- |
-| `gutt-pro-memory`  | Multi-hop graph exploration and search strategies |
-| `memory-keeper`    | Autonomous lesson capture after significant work  |
-| `config-discovery` | Scan repos for Claude Code config drift           |
+Two, deliberately. An agent earns its place here only when the **separate context
+window** is the point; anything that is a procedure the main agent should follow is a
+skill instead.
+
+| Agent             | Purpose                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `gutt-pro-memory` | Multi-hop graph exploration — traverses in its own context and returns a short cited answer, so it doesn't consume the caller's window |
+| `agent-creator`   | Scaffolds agent and skill definitions with correct frontmatter, a registered memory identity, and the grounding/learning protocol      |
+
+Autonomous end-of-turn capture is **not** an agent: the Stop hook judges the turn and
+the `memory-capture` skill does the write, with the trust-tier gate applied. Twelve
+further agents shipped up to 3.0 and were retired in GP-929 — they duplicated skills,
+predated the memory curriculum, or belong to a role plugin (E6). `git log` has them.
 
 ### Mentoring (gutt-mentor plugin)
 
@@ -218,7 +226,7 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
 │   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery
-│   ├── agents/                     # gutt-pro-memory, memory-keeper, and other memory agents
+│   ├── agents/                     # gutt-pro-memory, agent-creator
 │   ├── commands/                   # setup, start, health
 │   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow
 │   ├── mcp.json                    # MCP config template

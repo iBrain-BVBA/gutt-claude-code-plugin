@@ -11,7 +11,8 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
 
 - A registered agent is a node `{alias}:Agent:{name}` — you supply `{name}`; the server
   derives the `{alias}:Agent:` prefix from the memory group (e.g. `gutt_pro:Agent:pr-reviewer`).
-- Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`).
+- Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`). Those two, and every
+  `pr-reviewer` below, are illustrative — no agent by that name ships in this repo.
 - Identity is keyed on **name + group** (see Register), so different groups separate
   same-named agents on their own. Add a `--<scope>` suffix — `pr-reviewer--acme-web` —
   only to run separate instances of one agent **inside the same group** (per team,

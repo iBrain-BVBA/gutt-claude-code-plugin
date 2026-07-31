@@ -172,5 +172,3 @@ drafts to the user so they aren't lost. State the degradation in one line.
   says and how long it runs. The block `output-style` injects deliberately stops
   short of specifying either, so the two do not state one rule twice on the path
   where both are in context.
-- Autonomous end-of-session capture is done by the **memory-keeper** agent (being
-  brought in line with these rules).
