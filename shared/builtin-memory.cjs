@@ -207,7 +207,7 @@ function hasMigratableStore(payload = {}) {
  * `hook-architecture.test.cjs`, which checks both that the stem is a real skill
  * directory and that the prefix is this plugin's declared name.
  */
-const MIGRATE_SKILL = "gutt-claude-code-plugin:migrate-memory";
+const MIGRATE_SKILL = "gutt-pro:migrate-memory";
 
 /**
  * The offer text.
@@ -274,7 +274,7 @@ function offerContext(count) {
 function migrationOffer(payload = {}, sessionId = null) {
   // A suppressed plugin says nothing at all — the same gate the UserPromptSubmit
   // router honours on its row 1. GP-866 widened this from snooze-only to include a
-  // durable `/gutt off`, which is the whole point of that switch: a user who turned
+  // durable `/gutt-pro:disable`, which is the whole point of that switch: a user who turned
   // the plugin off should not be met by an unprompted migration offer at the next
   // session start.
   if (isSuppressed(sessionId)) {

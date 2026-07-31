@@ -11,7 +11,7 @@ skills:
 
 # Agent Creator
 
-Scaffold complete agent and skill definitions that follow the gutt-claude-code-plugin
+Scaffold complete agent and skill definitions that follow the gutt-pro
 conventions. Every agent you produce ships memory-aware: an identity appropriate to whether it
 writes, a grounding protocol it runs before work, and a learning protocol it runs after — with
 no hand-editing needed afterwards.

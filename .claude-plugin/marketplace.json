@@ -9,7 +9,7 @@
   },
   "plugins": [
     {
-      "name": "gutt-claude-code-plugin",
+      "name": "gutt-pro",
       "source": "./gutt-core",
       "description": "Persistent organizational memory for Claude Code via GUTT",
       "category": "productivity"

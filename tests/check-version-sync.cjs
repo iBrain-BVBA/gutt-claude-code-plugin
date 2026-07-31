@@ -24,9 +24,9 @@ if (!Array.isArray(market.plugins)) {
   process.exit(1);
 }
 
-// package.json holds the root/repo version; exactly one published plugin (gutt-core)
-// has the same plugin.json `name` as package.json (`gutt-claude-code-plugin`) and must
-// track it. Guard the anchor itself — a check that
+// package.json holds the root/repo version; exactly one published plugin (the core
+// plugin, in `gutt-core/`) has the same plugin.json `name` as package.json
+// (`gutt-pro`) and must track it. Guard the anchor itself — a check that
 // silently matches nothing is worse than one that fails loudly (this repo has a
 // history of silent no-op guards).
 let rootAnchored = false;

@@ -49,35 +49,39 @@
   there wipes a 5MB `hook-errors.log` to nothing while still reporting success, and
   until now no test failed when it did (GP-873)
 
-- **`/gutt off` now silences the capture judge too, and `mode` finally does
+- **Turning recall off now silences the capture judge too, and `mode` finally does
   something.** The `Stop` handler moved from a `type: "prompt"` hook to a command
   hook (`hooks/stop-capture.cjs`) that shells out to `claude -p` for the verdict.
   A prompt hook's `prompt` field takes one substitution and no shell expansion, so
   it could not read `config.json` — it dispatched on every turn regardless of your
-  settings, which is why `/gutt off` used to stop recall while the judge kept
+  settings, which is why turning recall off used to stop recall while the judge kept
   asking for captures. Off or snoozed now returns before any child is spawned, and
   `mode: hitl` appends an instruction to confirm each subject with you through
   `AskUserQuestion` before anything is written. `mode: auto` is unchanged, and the
   judge's wording is byte-identical to what it replaces, so the only difference on
   the default path is where the model runs.
 
-- **The `/gutt` settings command** — `/gutt config`, `/gutt on`,
-  `/gutt off [minutes|session]`, `/gutt mode auto|hitl`. The direct power-user ask
-  (R24): a timed snooze that expires on its own, plus a durable off that survives
-  restarts. Parsed and applied deterministically by the `UserPromptSubmit` hook,
-  which then reports the outcome as injected context — no model reads the arguments,
-  so a mistyped minute count cannot become a long silence. Writes go only to
-  `${CLAUDE_PLUGIN_DATA}/config.json`, through the existing locked
-  atomic-temp+rename path. `/gutt-claude-code-plugin:gutt …` and `/gutt:…` are
-  accepted spellings; the ticket's `/gutt:off` would have required renaming the
-  plugin, which moves `${CLAUDE_PLUGIN_DATA}` and orphans existing state (GP-866)
+- **The settings commands** — `/gutt-pro:config`, `/gutt-pro:on`,
+  `/gutt-pro:off [minutes|session]`, `/gutt-pro:disable`, `/gutt-pro:mode auto|hitl`.
+  The direct power-user ask (R24): a timed snooze that expires on its own, plus a durable
+  off that survives restarts. Parsed and applied deterministically by the
+  `UserPromptSubmit` hook, which then reports the outcome as injected context — no model
+  reads the arguments, so a mistyped minute count cannot become a long silence. Writes go
+  only to `${CLAUDE_PLUGIN_DATA}/config.json`, through the existing locked
+  atomic-temp+rename path. GP-866 shipped this as one `/gutt` command with subcommands
+  specifically to avoid the rename; GP-931 did the rename and dissolved the stem, so this
+  release only ever had the sibling spelling (GP-866, GP-931)
+  - The bare forms `/on`, `/off`, `/disable` and `/mode` also resolve, measured against a
+    real install. `/config` does **not** — Claude Code's own `/config` intercepts it
+    before any hook sees it, so `/gutt-pro:config` is the only spelling that works
+    (`docs/plugin-platform-reference.md` §8)
   - `enabled` and `mode` now have readers as well as writers. They shipped in the
     documented `config.json` shape in GP-863 and were used by nothing, so a
     hand-written `{"enabled": false}` silently did nothing. The router's suppression
     row reads both halves through one `isSuppressed()` call, so honouring `enabled`
     costs no extra file read on a 50ms path.
   - Out-of-range minute counts are rejected rather than clamped, and an out-of-scope
-    `/gutt off session` with no session id is refused rather than writing a snooze no
+    `/gutt-pro:off session` with no session id is refused rather than writing a snooze no
     session could ever clear.
   - The HUD's gutt segment shows ` off` or ` zzz` while suppressed.
   - The judge **defers while background agents are still in flight**, reading
@@ -197,6 +201,29 @@
 
 ### Changed
 
+- **BREAKING — the core plugin is now `gutt-pro`.** `name` and `displayName` in
+  `gutt-core/.claude-plugin/plugin.json`, the `marketplace.json` entry, `package.json`,
+  and `gutt-mentor`'s `dependencies` all move from `gutt-claude-code-plugin` to
+  `gutt-pro`. Every namespaced id moves with it: skills are now
+  `gutt-pro:memory-search`, `gutt-pro:memory-capture`, `gutt-pro:output-style`,
+  `gutt-pro:migrate-memory`, and commands are `/gutt-pro:setup`, `/gutt-pro:health`,
+  `/gutt-pro:onboard`. **A rename is a new plugin identity, not an update** — installed
+  users get no update offer and must `/plugin uninstall gutt-claude-code-plugin` then
+  `/plugin install gutt-pro@gutt-plugins`. `${CLAUDE_PLUGIN_DATA}` moves with the name,
+  so `config.json`, `sessions/`, `migrationsVersion` and the `migrations/` memory
+  backup all orphan; settings reset and must be re-applied. Finish and verify any
+  in-flight built-in-memory migration **before** uninstalling, and prefer
+  `--keep-data`. Never run both plugins at once — duplicate hook registration means
+  two recall injections per prompt, two Stop judges, two status lines. The GitHub
+  repository keeps its name, so existing `/plugin marketplace add` URLs still work.
+  See `docs/migration-3.0.md` (GP-931)
+- **BREAKING — `off` and `disable` swapped meanings.** `/gutt-pro:off` is now
+  session-scoped and comes back on its own; the durable off that survives restarts is
+  `/gutt-pro:disable`. In 3.0 a bare `off` was the durable one. The cheap, reversible
+  action is what the short word gets, and turning recall off for good has to be typed
+  on purpose. `/gutt-pro:config` now states the _scope_ of whatever is in force — "for
+  this session" versus "until `/gutt-pro:on`" — because the reversal is otherwise
+  invisible at the point of use (GP-931)
 - A second round of blind runs closed six more gaps in the onboarding agent. More
   than one org group discovered is now treated as a question rather than a list,
   because a graph can hold a sandbox or fixture group that looks like an org group
@@ -228,6 +255,15 @@
 
 ### Removed
 
+- **BREAKING — the `/gutt` command stem is gone.** `gutt-core/commands/gutt.md` is
+  deleted and replaced by one command per verb: `config.md`, `on.md`, `off.md`,
+  `disable.md`, `mode.md`. `/gutt …`, `/gutt:<sub>` and
+  `/gutt-claude-code-plugin:gutt <sub>` stop parsing entirely — they are ordinary
+  prompt text now, not aliases and not deprecation warnings. A hard cut is the safer
+  failure precisely because `off` reversed meaning in the same change: an alias would
+  have done something other than what the user typed. Note the stem never appeared in a
+  tagged release — it was added and retired inside this same unreleased section — so this
+  only affects anyone running 3.0 from source (GP-931)
 - Dead routing/intent-extraction engine and orphaned libs with no live callers: `agent-discovery`, `router`, `memory-routing`, `intent-extractor`, `transcript-parser`, `lesson-builder`, `plan-feedback-detector`, root `text-utils`, and the write-only `cross-session-learner` analytics (nothing reads `gutt-analytics.json`) — ~1,840 lines (GP-851, part of the 3.0 E1 foundation)
 - Stale `docs/hook-test-plan.md` (described the pre-split hook layout)
 

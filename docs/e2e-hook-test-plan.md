@@ -59,7 +59,7 @@ any test was written. They are the load-bearing assumptions of the suite.
   `config.json` keyed to the session it is about to run instead of discovering the
   id afterwards.
 - **Plugin skills do load under `--plugin-dir`, and they are namespaced.**
-  `skill_listing` in the transcript contains `gutt-claude-code-plugin:memory-search`,
+  `skill_listing` in the transcript contains `gutt-pro:memory-search`,
   `:memory-capture` and the rest, so the routers' targets exist at runtime — but only
   under the `<plugin>:<stem>` form. The injected text originally named the bare
   `memory-search`, which is not invocable; it now carries the namespace, and
@@ -174,7 +174,7 @@ reply cleanliness are the deterministic parts and the real guards.
 ### Run 6 — the `/gutt` config command (GP-866)
 
 Two command prompts in one session, config planted empty so the run starts from the
-documented defaults: `/gutt-claude-code-plugin:gutt off 30`, then `/gutt config`.
+documented defaults: `/gutt-pro:gutt off 30`, then `/gutt config`.
 
 The namespaced spelling is used on purpose. It is what the `/` menu inserts, so it is
 the form real users produce; a parser that only handled the hand-typed `/gutt off 30`

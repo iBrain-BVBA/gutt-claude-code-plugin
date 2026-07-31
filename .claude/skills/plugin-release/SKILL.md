@@ -1,6 +1,6 @@
 ---
 name: plugin-release
-description: "Handles the gutt-claude-code-plugin release process: version bump, tag creation, GitHub release, and marketplace update. Also use for diagnosing version sync issues. Triggers on: release, bump version, publish, tag, new version, ship it, cut a release, marketplace update, version mismatch, can't update, up to date but wrong version, plugin won't update, version out of sync, wrong version."
+description: "Handles the gutt-pro release process: version bump, tag creation, GitHub release, and marketplace update. Also use for diagnosing version sync issues. Triggers on: release, bump version, publish, tag, new version, ship it, cut a release, marketplace update, version mismatch, can't update, up to date but wrong version, plugin won't update, version out of sync, wrong version."
 ---
 
 # Plugin Release
@@ -39,7 +39,7 @@ Use semantic versioning (semver):
 
 ## Step 2: Bump Version
 
-Each plugin's `.claude-plugin/plugin.json` `"version"` is the **single source of truth** for that plugin — `marketplace.json` deliberately carries no version fields (GP-852), and the update mechanism reads `plugin.json`'s version as its cache key. The root `package.json` version tracks the **root plugin**, `gutt-core` (whose `name` is `gutt-claude-code-plugin`, same as `package.json`).
+Each plugin's `.claude-plugin/plugin.json` `"version"` is the **single source of truth** for that plugin — `marketplace.json` deliberately carries no version fields (GP-852), and the update mechanism reads `plugin.json`'s version as its cache key. The root `package.json` version tracks the **root plugin**, `gutt-core` (whose `name` is `gutt-pro`, same as `package.json`).
 
 ### Files to update:
 
@@ -135,7 +135,7 @@ Use this template:
 Users with auto-update enabled will receive this version automatically. Manual install:
 
 ```
-/plugin install gutt-claude-code-plugin@gutt-plugins
+/plugin install gutt-pro@gutt-plugins
 ```
 ````
 
@@ -164,14 +164,14 @@ After the release is created:
 3. **Test install:**
 
    ```
-   /plugin install gutt-claude-code-plugin@gutt-plugins
+   /plugin install gutt-pro@gutt-plugins
    ```
 
 4. **Capture the release in memory:**
    ```
    mcp__gutt-mcp-remote__add_memory(
      name="Plugin Release vX.Y.Z",
-     episode_body="Released gutt-claude-code-plugin vX.Y.Z. Changes: <summary>. Tag: vX.Y.Z.",
+     episode_body="Released gutt-pro vX.Y.Z. Changes: <summary>. Tag: vX.Y.Z.",
      source="text",
      source_description="plugin-release skill",
      last_n_episodes=0
@@ -225,4 +225,4 @@ The **jira-ticket-creation** skill lives in the user's Cowork skills directory a
 ## Version
 
 Version: 1.0.0
-Compatible with: gutt-claude-code-plugin v1.2.0+
+Compatible with: gutt-pro v1.2.0+

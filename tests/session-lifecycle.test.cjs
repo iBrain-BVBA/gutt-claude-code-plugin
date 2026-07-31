@@ -1168,7 +1168,7 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     assert.match(ctx, /memory-search/);
 
     // Namespaced, because the bare stem is not invocable: a real session lists the
-    // skill as `gutt-claude-code-plugin:memory-search`, so pointing at
+    // skill as `gutt-pro:memory-search`, so pointing at
     // `memory-search` alone leaves the model guessing the prefix. This asserts the
     // text the hook actually emitted — the static guard in
     // hook-architecture.test.cjs cannot see a name composed at runtime, which is
@@ -1177,7 +1177,7 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     // stem like `memory-searchh` fails instead of matching as a substring.
     assert.match(
       ctx,
-      /`gutt-claude-code-plugin:memory-search`/,
+      /`gutt-pro:memory-search`/,
       `the pointer must name the skill's full namespaced id, got: ${ctx}`
     );
   });
@@ -1322,7 +1322,7 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
       { session_id: "m-cfg", source: "startup" },
       { dataDir: dir, home }
     );
-    const ctx = contextOf(submit("m-cfg", "/gutt config"));
+    const ctx = contextOf(submit("m-cfg", "/gutt-pro:config"));
     assert.ok(ctx, "a config command must be answered");
     assert.match(ctx, /enabled: true/);
     assert.match(ctx, /mode: auto/);
@@ -1331,7 +1331,7 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
 
   it("row 0: a config turn does not burn the first-prompt flag", () => {
     runHook("session-start.cjs", { session_id: "m-nb", source: "startup" }, { dataDir: dir, home });
-    assert.ok(contextOf(submit("m-nb", "/gutt config")), "the command is answered");
+    assert.ok(contextOf(submit("m-nb", "/gutt-pro:config")), "the command is answered");
     assert.equal(
       readSession(dir, "m-nb").firstPromptPending,
       true,
@@ -1341,10 +1341,10 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     assert.match(ctx, /memory-search/, "the pointer is still owed after a config turn");
   });
 
-  // The highest-value case here. Put row 0 below the suppression row and `/gutt on`
+  // The highest-value case here. Put row 0 below the suppression row and `/gutt-pro:on`
   // can never un-stick the plugin: the off switch becomes one-way and hand-editing
   // config.json is the only way back. Nothing else would report that.
-  it("row 0 beats row 1: /gutt on works while the plugin is off", () => {
+  it("row 0 beats row 1: /gutt-pro:on works while the plugin is off", () => {
     runHook(
       "session-start.cjs",
       { session_id: "m-unstick", source: "startup" },
@@ -1353,12 +1353,12 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ enabled: false }));
     assert.equal(submit("m-unstick"), null, "off, so an ordinary prompt is silent");
 
-    const ctx = contextOf(submit("m-unstick", "/gutt on"));
-    assert.ok(ctx, "/gutt on must be answered even while suppressed");
+    const ctx = contextOf(submit("m-unstick", "/gutt-pro:on"));
+    assert.ok(ctx, "/gutt-pro:on must be answered even while suppressed");
     assert.match(ctx, /back on/);
 
     const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
-    assert.equal("enabled" in raw, false, "`/gutt on` clears the key rather than storing true");
+    assert.equal("enabled" in raw, false, "`/gutt-pro:on` clears the key rather than storing true");
     assert.ok(contextOf(submit("m-unstick")), "and the pointer flows again");
   });
 
@@ -1372,7 +1372,7 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
       path.join(dir, "config.json"),
       JSON.stringify({ snoozeSessionId: "m-snzcfg" })
     );
-    const ctx = contextOf(submit("m-snzcfg", "/gutt config"));
+    const ctx = contextOf(submit("m-snzcfg", "/gutt-pro:config"));
     assert.match(ctx, /rest of this session/, "the snooze is reported, not obeyed");
   });
 
@@ -1382,7 +1382,7 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
       { session_id: "m-min", source: "startup" },
       { dataDir: dir, home }
     );
-    assert.match(contextOf(submit("m-min", "/gutt off 30")), /30 minutes/);
+    assert.match(contextOf(submit("m-min", "/gutt-pro:off 30")), /30 minutes/);
     assert.equal(submit("m-min"), null, "snoozed by the command, so silent");
 
     // Guard-time expiry, through the real hook: the deadline is in the past, so the
@@ -1394,13 +1394,13 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     assert.ok(contextOf(submit("m-min")), "a lapsed deadline no longer suppresses");
   });
 
-  it("row 0: an unrecognised /gutt form changes nothing and says so", () => {
+  it("row 0: an unrecognised /gutt-pro form changes nothing and says so", () => {
     runHook(
       "session-start.cjs",
       { session_id: "m-bad", source: "startup" },
       { dataDir: dir, home }
     );
-    const ctx = contextOf(submit("m-bad", "/gutt off 30 and fix the tests"));
+    const ctx = contextOf(submit("m-bad", "/gutt-pro:off 30 and fix the tests"));
     assert.match(ctx, /did not recognise/);
 
     // Asserted per key rather than by the file's absence: SessionStart already
@@ -1411,6 +1411,34 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
       Object.keys(raw).filter((k) => runtimeConfig.OWNED_KEYS.includes(k)),
       [],
       `a malformed command must write nothing, got ${JSON.stringify(raw)}`
+    );
+  });
+
+  // GP-931 D2, at the router. The in-process half is covered in
+  // `config-command.test.cjs`; this is the half that matters to a user, because a
+  // legacy spelling reaching row 0 at all would mean `/gutt off` still mutating
+  // config after D3 reversed what `off` means.
+  it("row 0: a 3.0 spelling is ordinary prompt text now, not a command", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-legacy", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const ctx = contextOf(submit("m-legacy", "/gutt off 30"));
+    // It may still draw the first-prompt memory pointer — it is a prompt like any
+    // other now — but nothing from the config surface may appear in it.
+    if (ctx) {
+      assert.doesNotMatch(
+        ctx,
+        /did not recognise|memory recall is off|configuration, read from/,
+        "a retired spelling must not reach the config surface"
+      );
+    }
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.deepEqual(
+      Object.keys(raw).filter((k) => runtimeConfig.OWNED_KEYS.includes(k)),
+      [],
+      `a retired spelling must write nothing, got ${JSON.stringify(raw)}`
     );
   });
 
@@ -1425,9 +1453,9 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
 
     // The config commands are the one row that emits on a prompt the user typed
     // deliberately, which makes a `decision` here the most tempting mistake in the
-    // hook: blocking would erase `/gutt off 30` and show the result to the user
+    // hook: blocking would erase `/gutt-pro:off 30` and show the result to the user
     // instead of Claude. R23 forbids it on every row.
-    const command = submit("m-safe", "/gutt config");
+    const command = submit("m-safe", "/gutt-pro:config");
     assert.equal(command.decision, undefined, "not on a config command either (R23)");
 
     const bad = spawnSync("node", [path.join(HOOKS, "user-prompt-submit.cjs")], {

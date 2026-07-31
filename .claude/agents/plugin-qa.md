@@ -12,7 +12,7 @@ allowedTools:
 
 # Plugin QA Agent
 
-Unified quality gate for the gutt-claude-code-plugin. Runs five validation passes covering structure, agent definitions, hooks, IDE compatibility, and MCP integration, then produces a single consolidated report with pass/fail verdicts.
+Unified quality gate for the gutt-pro plugin. Runs five validation passes covering structure, agent definitions, hooks, IDE compatibility, and MCP integration, then produces a single consolidated report with pass/fail verdicts.
 
 ## Trigger
 

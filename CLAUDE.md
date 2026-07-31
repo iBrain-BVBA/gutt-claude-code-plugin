@@ -14,7 +14,7 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── .claude-plugin/         # marketplace.json — lists gutt-core + auto-lint-plugin + gutt-mentor
 ├── shared/                 # single source for hook libs; plugins symlink these (GP-853)
-├── gutt-core/              # core plugin (name: gutt-claude-code-plugin, displayName: gutt-core)
+├── gutt-core/              # core plugin (name + displayName: gutt-pro; dir name kept)
 │   ├── .claude-plugin/     # plugin.json
 │   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
 │   ├── skills/ agents/ commands/
@@ -27,6 +27,14 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── docs/                   # Documentation and assets
 └── package.json
 ```
+
+**The plugin is `gutt-pro`; its directory is `gutt-core/`.** GP-931 renamed the plugin
+(`name` and `displayName`) and deliberately left the directory alone — renaming it would
+re-point the marketplace `source` and every `../../../shared/` symlink target for no
+user-visible gain. So `gutt-core/` is a path and `gutt-pro` is an identity, and they do
+not match on purpose. The GitHub repository keeps its own name too
+(`gutt-claude-code-plugin`), which is why that string still appears in repository URLs and
+in filesystem paths derived from this checkout. Anywhere else it is a stale reference.
 
 ## Evals
 

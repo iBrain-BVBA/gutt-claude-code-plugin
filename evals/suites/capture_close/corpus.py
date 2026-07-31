@@ -34,7 +34,7 @@ ids, a queued-not-verified caveat. A terse "written OK" would leave nothing to b
 and the suite would score every variant the same. See the suite docstring.
 """
 
-SKILL_LINE = "Run the `gutt-claude-code-plugin:memory-capture` skill."
+SKILL_LINE = "Run the `gutt-pro:memory-capture` skill."
 
 
 def build():

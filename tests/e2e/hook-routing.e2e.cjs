@@ -561,7 +561,7 @@ describe(
       assert.equal(run.code, 0, `claude exited ${run.code}\nstderr: ${run.stderr}`);
       const gutt = run.debug
         .split("\n")
-        .filter((l) => /Read hooks\.json for plugin gutt-claude-code-plugin/.test(l));
+        .filter((l) => /Read hooks\.json for plugin gutt-pro/.test(l));
       const lint = run.debug
         .split("\n")
         .filter((l) => /Read hooks\.json for plugin auto-lint-plugin/.test(l));
@@ -601,7 +601,7 @@ describe(
 
     it("keeps its own state file, untouched by the other plugin", () => {
       // Each plugin gets its own data dir, so auto-lint cannot reach gutt's state.
-      assert.match(run.stateFile, /gutt-claude-code-plugin-inline/);
+      assert.match(run.stateFile, /gutt-pro-inline/);
       assert.doesNotMatch(run.stateFile, /auto-lint/);
     });
   }
@@ -633,7 +633,7 @@ describe(
             // The namespaced spelling first, deliberately: it is what the `/` menu
             // inserts, so it is the form real users produce, and a parser that only
             // handled the hand-typed variants would fail exactly here.
-            prompts: ["/gutt-claude-code-plugin:gutt off 30", "/gutt config"],
+            prompts: ["/gutt-pro:off 30", "/gutt-pro:config"],
           });
           configAfterRun = readJsonQuiet(configFile);
         });

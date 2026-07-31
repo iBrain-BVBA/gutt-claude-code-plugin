@@ -113,7 +113,7 @@ reason. It is a pointer to this file, not a copy of it:
 
 <!-- INJECTED:BEGIN -->
 
-Then run the `gutt-claude-code-plugin:output-style` skill and follow it when writing the reply.
+Then run the `gutt-pro:output-style` skill and follow it when writing the reply.
 
 <!-- INJECTED:END -->
 

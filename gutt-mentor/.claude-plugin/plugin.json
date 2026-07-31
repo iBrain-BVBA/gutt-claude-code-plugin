@@ -1,7 +1,7 @@
 {
   "name": "gutt-mentor",
   "version": "0.1.0",
-  "dependencies": ["gutt-claude-code-plugin"],
+  "dependencies": ["gutt-pro"],
   "author": {
     "name": "iBRAIN BV",
     "email": "support@gutt.pro"

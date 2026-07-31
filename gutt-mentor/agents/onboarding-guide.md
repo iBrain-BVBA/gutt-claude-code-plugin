@@ -3,9 +3,9 @@ name: onboarding-guide
 description: Use PROACTIVELY when someone is joining a team, rotating onto an engagement or client, ramping into an unfamiliar system or codebase, or asks to get up to speed on one — "I'm joining the payments team", "help me get up to speed on this service", "what do I need to know about this team, project, or system?". Ramp-shaped work with territory to map — grounds the new joiner in what the organisation already knows (team, architecture, decisions, lessons, experts), then turns that into their own onboarding plan in personal memory and picks it back up in later sessions. Getting better at a practice or growing toward a role with no new territory to map is mentor's job; logging progress against an existing plan on its own is progress-tracking's. Also covers preparing a read-only briefing about someone else who is joining.
 model: sonnet
 skills:
-  - gutt-claude-code-plugin:agent-memory-protocol
-  - gutt-claude-code-plugin:memory-search
-  - gutt-claude-code-plugin:memory-capture
+  - gutt-pro:agent-memory-protocol
+  - gutt-pro:memory-search
+  - gutt-pro:memory-capture
   - individual-program-design
   - progress-tracking
 ---

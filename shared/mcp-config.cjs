@@ -161,7 +161,7 @@ function isGuttMcpConfigured() {
     return true;
   }
 
-  // Check plugin cache directories for gutt-claude-code-plugin
+  // Check plugin cache directories for the gutt-pro plugin
   const pluginCachePath = path.join(HOME_DIR, ".claude", "plugins", "cache");
   if (fs.existsSync(pluginCachePath)) {
     try {

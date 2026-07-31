@@ -321,12 +321,12 @@ describe("builtin-memory: the SessionStart offer", () => {
     const offer = mem.migrationOffer(payload, "s1");
     assert.ok(offer, "expected an offer");
     assert.match(offer, /2 notes/);
-    assert.match(offer, /gutt-claude-code-plugin:migrate-memory/);
+    assert.match(offer, /gutt-pro:migrate-memory/);
   });
 
   it("names the skill with its plugin prefix, since a bare stem is not invocable", () => {
-    assert.equal(mem.MIGRATE_SKILL, "gutt-claude-code-plugin:migrate-memory");
-    assert.match(mem.offerContext(3), /`gutt-claude-code-plugin:migrate-memory`/);
+    assert.equal(mem.MIGRATE_SKILL, "gutt-pro:migrate-memory");
+    assert.match(mem.offerContext(3), /`gutt-pro:migrate-memory`/);
   });
 
   it("counts one note in the singular", () => {

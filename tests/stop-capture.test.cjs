@@ -648,7 +648,7 @@ describe("stop-judge: the injected output style", () => {
       fs.mkdirSync(path.join(root, ".claude-plugin"), { recursive: true });
       fs.writeFileSync(
         path.join(root, ".claude-plugin", "plugin.json"),
-        JSON.stringify({ name: "gutt-claude-code-plugin" })
+        JSON.stringify({ name: "gutt-pro" })
       );
       delete process.env.CLAUDE_PLUGIN_ROOT;
       const installed = require(path.join(lib, "stop-judge.cjs"));

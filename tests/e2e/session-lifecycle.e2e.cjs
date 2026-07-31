@@ -182,7 +182,7 @@ describe(
     it("loads the plugin from this working tree, shadowing any installed copy", () => {
       const loads = run.debug
         .split("\n")
-        .filter((line) => /Read hooks\.json for plugin gutt-claude-code-plugin/.test(line));
+        .filter((line) => /Read hooks\.json for plugin gutt-pro/.test(line));
       assert.equal(
         loads.length,
         1,

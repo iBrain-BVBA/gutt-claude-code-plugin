@@ -17,7 +17,7 @@ import json
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-SKILL = "gutt-claude-code-plugin:memory-capture"
+SKILL = "gutt-pro:memory-capture"
 EXAMPLE = (
     f"Run the `{SKILL}` skill.\n"
     "- Insight: prefix matching survives new tools; allowlists silently stop matching\n"
