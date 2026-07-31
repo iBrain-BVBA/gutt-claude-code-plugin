@@ -625,58 +625,51 @@ describe("hook architecture guards", () => {
       return md.slice(start, next === -1 ? undefined : next);
     };
 
-    // Every pattern here is whitespace-tolerant. Prettier owns line breaks in markdown and
-    // reflows this section freely, and moving the rule out of the payload is what exposed
-    // that: inside the markers it was three unwrapped lines, so literal spaces matched. The
-    // sibling test below already learned this lesson once — a guard that breaks on
-    // reformatting teaches people to loosen the guard.
+    // The phrases that carry the closing rule, in one list, asserted **present** in the skill
+    // body and **absent** from the payload by the two tests below. They are the same claim
+    // seen from both sides — the rule is stated here and only here — and keeping two
+    // hand-maintained literal lists is what let the recap exclusion be checked in the body
+    // while the payload guard omitted it, which review caught. Add a phrase here and both
+    // directions enforce it.
+    //
+    // Every pattern is whitespace-tolerant. Prettier owns line breaks in markdown and reflows
+    // this section freely, and moving the rule out of the payload is what exposed it: inside
+    // the markers the rule was three unwrapped lines, so literal spaces matched. The sibling
+    // test further down already learned this once — a guard that breaks on reformatting
+    // teaches people to loosen the guard.
+    const RULE_PHRASES = [
+      // Both accounts are required, in order. Demanding only the summary invites a reply that
+      // silently drops the fact a capture was written; demanding only the capture account is
+      // the defect itself.
+      [/two\s+parts,\s+in\s+this\s+order/i, "the two-part demand"],
+      [/closing\s+summary\s+of\s+the\s+turn/i, "the closing summary named"],
+      [/whatever\s+sits\s+at\s+the\s+bottom/i, "the bottom-of-the-reply rule"],
+      // The capture is part of finishing a turn. Framing it as a detour makes the reply read
+      // as an apology for having done the bookkeeping, and puts the emphasis on the
+      // interruption rather than on the work the user came for.
+      [/not\s+an\s+interruption/i, "the not-an-interruption clause"],
+      // GP-927's definition question. "Repeat the output" read literally produces a verbatim
+      // echo, which doubles a long reply; read loosely it produces "I did X then captured Y",
+      // which is the recap that is roughly the defect. Both have to be excluded where the rule
+      // is stated, not only in the commentary around it.
+      [/not\s+a\s+verbatim\s+echo/i, "the verbatim-echo exclusion"],
+      [/not\s+an\s+account\s+of\s+what\s+you\s+just\s+did/i, "the recap exclusion"],
+    ];
+
     it("states the closing rule in the skill that owns it", () => {
       const rules = rulesSection();
-      // Both accounts are required, in order. Demanding only the summary invites a reply
-      // that silently drops the fact a capture was written; demanding only the capture
-      // account is the defect itself.
-      assert.match(
-        rules,
-        /two\s+parts,\s+in\s+this\s+order/i,
-        "the rule does not demand both the bookkeeping account and the closing summary"
-      );
-      assert.match(
-        rules,
-        /closing\s+summary\s+of\s+the\s+turn/i,
-        "the rule never names the closing summary, so the bookkeeping becomes the turn"
-      );
-      assert.match(
-        rules,
-        /whatever\s+sits\s+at\s+the\s+bottom/i,
-        "a closing summary not pinned to the bottom can be buried by the account above it"
-      );
-      // The capture is part of finishing a turn. Framing it as a detour makes the reply
-      // read as an apology for having done the bookkeeping, and puts the emphasis on the
-      // interruption rather than on the work the user came for.
-      assert.match(
-        rules,
-        /not\s+an\s+interruption/i,
-        "nothing stops the reply framing the capture as an interruption of the work"
-      );
-      // GP-927's definition question. "Repeat the output" read literally produces a
-      // verbatim echo, which doubles a long reply; read loosely it produces "I did X then
-      // captured Y", which is the recap that is roughly the defect. Both must be excluded
-      // where the rule is stated, not only in the commentary around it.
-      assert.match(
-        rules,
-        /not\s+a\s+verbatim\s+echo/i,
-        "the rule permits a verbatim echo, which doubles the reply on exactly the turns that fire"
-      );
-      assert.match(
-        rules,
-        /not\s+an\s+account\s+of\s+what\s+you\s+just\s+did/i,
-        "the rule permits a recap of the turn, which is roughly the defect it exists to fix"
+      const missing = RULE_PHRASES.filter(([re]) => !re.test(rules)).map(([, name]) => name);
+      assert.deepEqual(
+        missing,
+        [],
+        `the \`## The rules\` section no longer states: ${missing.join("; ")} — the payload is ` +
+          `a pointer now, so a rule missing here is missing everywhere`
       );
     });
 
     // The payload's side of the same split. A pointer is only worth shipping if it routes
     // somewhere, and it stops being a pointer the moment someone pastes the rule back beside
-    // it — that would restore the duplication on every fire while still passing every guard
+    // it — that would restore the duplication on every fire while still passing the guard
     // above, since the rule would be in both places.
     it("injects a pointer to the skill, not a copy of the rule", () => {
       const block = STOP_JUDGE.readStyleBlock();
@@ -687,14 +680,7 @@ describe("hook architecture guards", () => {
         `the injected region does not name \`<plugin>:${STOP_JUDGE.STYLE_SKILL_DIR}\`, so a ` +
           `reply that follows it has no way to reach the rule`
       );
-      const restated = [
-        [/two\s+parts,\s+in\s+this\s+order/i, "the two-part demand"],
-        [/whatever\s+sits\s+at\s+the\s+bottom/i, "the bottom-of-the-reply rule"],
-        [/not\s+an\s+interruption/i, "the not-an-interruption clause"],
-        [/verbatim\s+echo/i, "the verbatim-echo exclusion"],
-      ]
-        .filter(([re]) => re.test(block))
-        .map(([, name]) => name);
+      const restated = RULE_PHRASES.filter(([re]) => re.test(block)).map(([, name]) => name);
       assert.deepEqual(
         restated,
         [],
@@ -738,8 +724,8 @@ describe("hook architecture guards", () => {
     // than merely longer, retracting the earlier reading of it as merely a cost. Quote that
     // pair as round 4's and not as a standing fact: the 96% describes an 878-character block
     // the skill no longer contains, and round 5 put the same arm at 54%. Since the pointer
-    // change nothing at all ships from this file, so the list's position is no longer what is
-    // at stake here — its *survival* is.
+    // change, the only thing this file contributes to a fired reason is the pointer itself, so
+    // the list's position is no longer what is at stake here — its *survival* is.
     //
     // Being unshipped is what made it the easiest thing in this change to lose by accident: no
     // hook reads it, so deleting it would break nothing at runtime and — before the test below

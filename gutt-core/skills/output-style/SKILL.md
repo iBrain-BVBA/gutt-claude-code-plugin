@@ -30,8 +30,9 @@ it carried. Show finished work concretely. Cap lists at five and rank them. Conc
 estimates, not vague ones. Matter-of-fact about failures — cause, then fix. Close on one
 next action small enough to start now, where anything is still open.
 
-Nothing in this file ships inside the fired reason any more — see **What the hook injects**
-below — so every rule here is stated once and costs nothing at fire time.
+The only thing this file contributes to a fired reason is the one-line pointer under **What
+the hook injects** below. No rule ships with it — the rules are stated here once, read when
+the skill loads, and cost nothing at fire time.
 
 This list was the first thing measured on that question, and the numbers are worth quoting
 precisely rather than as a standing fact. `evals/suites/capture_close` **round 4** scored the
