@@ -33,20 +33,44 @@ _whether you may write it without asking_.
    intentionally chaining check-ins. This bans the _blind_ recent-N window, not
    provenance: naming specific related episodes is rule 7, and the two do not
    conflict.
-4. **Discover the write tool — don't assume its name.** Depending on the
-   deployment you'll see per-group `add_memory_to_<group>` tools (pick the one
-   for your target group; there is **no `group_id` argument**), or a generic
-   `add_memory` (pass `group_id` to target a group), or `add_personal_memory`. A
-   user who can write to 2+ groups often sees **only** the per-group tools —
-   generic `add_memory` is hidden. Read your tool list; never hardcode a tool
-   name or the `mcp__…__` prefix. (`references/tools.md` has the full map.)
+4. **Discover the write surface — the tool _and_ the group. Hardcode neither.**
+   Two questions, two sources, both read at call time:
+   - **Which tool?** Read your **tool list**. Depending on the deployment you'll
+     see per-group `add_memory_to_<alias>` tools (pick the one for your target
+     group; there is **no `group_id` argument**), or a generic `add_memory` (pass
+     `group_id` to target a group), or `add_personal_memory`. A user who can
+     write to 2+ groups often sees **only** the per-group tools — generic
+     `add_memory` is hidden. Never hardcode a tool name or the `mcp__…__` prefix.
+   - **Which group?** Read the **`group://<group_id>/instructions` MCP
+     resources**. Listing them _is_ the discovery step: the listing is
+     ABAC-filtered, so the `group://` resources you can see are the scopes you
+     may touch, and each payload carries the `group_id` to pass, a display name,
+     and — when the deployment has filled them in — prose on what belongs in that
+     group. `group://personal/instructions` is the private-scope sibling.
+
+   **A tool alias is not a `group_id`.** The `<alias>` in
+   `add_memory_to_<alias>` is frequently _not_ the id of the group it writes to —
+   ids carry suffixes aliases drop. Sometimes the two do match, which is what
+   makes guessing dangerous: you cannot tell from the tool name which case you're
+   in. Read the id from the resource, call the tool by its listed name.
+   (`references/tools.md` §"Finding the group" has the full map, the payload
+   shape, and what to do when `instructions` comes back `null`.)
+
 5. **One focused episode, ≤15,000 chars.** The server hard-rejects anything
    larger, so split it into several self-contained episodes rather than let the
    write fail. Never store raw payloads, logs, secrets, PII, or one-off noise —
    capture the insight, not the transcript.
-6. **A write is queued, not confirmed.** A success response means the episode was
-   _enqueued_; extraction can still fail silently server-side. Don't treat
-   success as proof it landed — verify (see Batching).
+6. **A write is queued, not confirmed — but don't go looking for it.** A success
+   response means the episode was _enqueued_; extraction runs later and can fail
+   silently server-side. So **don't claim it landed** — report it as captured, not
+   as confirmed. Equally, **don't search to check.** Indexing lags the write by
+   long enough that a search straight afterwards returns nothing whether the
+   write succeeded or not, which makes the result worthless: it can't distinguish
+   pending from lost, and re-queueing on a false negative manufactures the
+   duplicate rule 1 forbids. The one exception is a write you are about to take an
+   **irreversible action** on — deleting the local source, as `migrate-memory`
+   does before removing files. There, verification is mandatory and its cost is
+   the point; everywhere else it is waste.
 7. **Name what the episode builds on — `previous_episodes`.** When rule 1's
    dedup surfaced related episodes and you have their **episode** ids, pass them
    as `previous_episodes` on the write. A delta episode whose antecedents are
@@ -90,10 +114,14 @@ fight the tier gate: a Decision you inferred without the user saying so is a
    `episode_body` as Context → Insight → Outcome → Guidance, ≤15,000 chars;
    `source="json"` for structured runs, `"text"` for narrative; tz-aware ISO
    `reference_time` only when backdating.
-5. **Write.** Choose the tool per rule 4; pass `last_n_episodes=0`, and
+5. **Write.** Resolve tool and group per rule 4. If more than one scope is
+   writable, list the `group://` resources and choose deliberately — a write with
+   the group left to the server lands in an unspecified one of your groups, which
+   is a misfile you cannot undo from here. Pass `last_n_episodes=0`, and
    `previous_episodes` with step 3's ids when there are any (rule 7). Omit
    `group_id` unless you're on the generic tool and must target a specific group.
-6. **Verify.** After the batch, confirm with a search (see Batching).
+6. **Report — don't verify.** Say what you captured and stop; no confirmation
+   search (rule 6). Verify only if you're about to delete the source.
 
 ## Trust tiers
 
@@ -119,15 +147,21 @@ operative map, from the program's capture policy:
 
 Anything you can't cleanly place → treat as gated.
 
-## Batching and verification
+## Batching
 
 Don't write one episode at a time in a tight loop. Collect up to **5–10**
-episodes, write them, then run **one** verification search to confirm they're in
-the graph — a success response only means _queued_ (rule 6). Extraction is
-asynchronous, so an immediate empty result may just mean not-yet-processed:
-re-check after a moment before concluding anything was lost, and re-queue only
-what's still missing — re-queueing a still-processing write manufactures the
-duplicate rule 1 forbids.
+episodes and write them together.
+
+Then stop. Don't run a verification search (rule 6): extraction is asynchronous
+and lags far enough behind the write that an immediate search tells you nothing —
+an empty result means "not indexed yet" and "never landed" equally, so it cannot
+justify either re-queueing or reporting a loss. Report what you wrote and move
+on.
+
+Verify only when something irreversible depends on the write having landed — the
+`migrate-memory` path, which deletes local files and so treats an unverified
+write as unfinished. That skill owns the mechanics; it is the exception, not the
+pattern.
 
 ## Reporting back after a capture
 
@@ -158,11 +192,20 @@ draft(s) — name, body, type, intended scope — in your working notes and retr
 when a write tool returns; if the write can't complete this session, surface the
 drafts to the user so they aren't lost. State the degradation in one line.
 
+**A missing `group://` resource is not that case.** Resources can be unlistable,
+absent, or carry `instructions: null` on a server whose write tools work fine —
+rule 4's two halves fail independently. Losing the group prose costs you routing
+guidance, not the ability to write: fall back to the tool list, and if it offers
+exactly one writable scope, use it. Only an ambiguous choice between several
+groups is worth pausing to ask about.
+
 ## References
 
 - `references/tools.md` — exact write-tool contracts (`add_memory`,
   `add_memory_to_<group>`, `add_personal_memory`), params and defaults, the
-  group-targeting model, and the queued-not-persisted caveat.
+  group-targeting model, and the queued-not-persisted caveat. Its §"Finding the
+  group" covers the `group://` resources: how to enumerate them, the payload
+  shape, and what to do when the payload is empty or the resource is missing.
 - Dedup and read tools: `memory-search`. Relationship checks: `graph-traversal`.
 - Deciding which of two contradicting memories should stand:
   `conflict-adjudication`. It recommends only — the approved correction is

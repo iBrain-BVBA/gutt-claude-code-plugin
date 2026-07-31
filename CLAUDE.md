@@ -98,6 +98,38 @@ Hook libraries have a single source in `shared/*.cjs`. Each plugin's `hooks/lib/
 
 When adding a new shared lib: put the real file in `shared/`, then symlink it into each consuming plugin's `hooks/lib/`.
 
+## Writing Skills — instructions for an agent, not documentation
+
+A `SKILL.md` and its `references/*.md` are **prompt text an agent reads at
+call time to decide what to do**. They are not changelogs, design records, or
+release notes. Everything in them should still be true and still be worth reading
+in a year, on a deployment nobody here has seen. Concretely:
+
+- **No ticket references.** Never `GP-123` in skill text. The ticket explains why
+  the guidance was added — the agent needs the guidance. Rationale that survives
+  belongs as prose; rationale that only makes sense next to a ticket belongs in
+  the commit message or the PR.
+- **No implementation or provenance notes.** No `_Measured 2026-07-31_`, no "on
+  this install", no "verified by a probe", no dated observations. Those are
+  authoring evidence. Write the behaviour as a standing rule and let the
+  behaviour be the claim. (This is the opposite of `docs/` — see Platform
+  Reference Docs above, where dated `Read:` / **Measured** markers are the whole
+  point. Skills instruct; `docs/` records.)
+- **No real group names, tenant ids, org names, or user names.** Use placeholders
+  (`<group_id>`, `<alias>`, `add_memory_to_<alias>`). A real name both dates the
+  file and tells an agent on another deployment that a scope exists which does
+  not — a naming coincidence read as a rule is worse than no example.
+- **Describe shapes, not instances.** "ids carry suffixes aliases drop" beats
+  "`add_memory_to_foo` writes to `foo_v2`". The agent needs the invariant it can
+  apply to whatever it actually sees in its tool list.
+- **Prefer discovery over enumeration.** Where the platform exposes a live
+  surface for something — MCP resources, the tool list, a status endpoint — tell
+  the agent to read it, and say what to do when it comes back empty or missing.
+  A hardcoded list is stale by the next deployment.
+- **Renumbering hard rules is a breaking change.** Rules are cross-referenced by
+  number from other skills, hooks, and tests (`grep -rn "rule [0-9]"`). Extend a
+  rule in place rather than inserting one and shifting the rest.
+
 ## Development Guidelines
 
 ### Code Style
