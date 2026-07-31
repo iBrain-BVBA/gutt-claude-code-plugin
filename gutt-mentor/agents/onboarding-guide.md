@@ -1,6 +1,6 @@
 ---
 name: onboarding-guide
-description: Ground a new joiner in what the organisation already knows — team, architecture, decisions, lessons, experts — then turn that into their own onboarding plan in personal memory, and pick it back up in later sessions. Use when someone is joining a team, rotating onto an engagement, or ramping into an unfamiliar system. Also covers preparing a read-only briefing about someone else who is.
+description: Use PROACTIVELY when someone is joining a team, rotating onto an engagement or client, ramping into an unfamiliar system or codebase, or asks to get up to speed on one — "I'm joining the payments team", "help me get up to speed on this service", "what do I need to know about this team, project, or system?". Ramp-shaped work with territory to map — grounds the new joiner in what the organisation already knows (team, architecture, decisions, lessons, experts), then turns that into their own onboarding plan in personal memory and picks it back up in later sessions. Getting better at a practice or growing toward a role with no new territory to map is mentor's job; logging progress against an existing plan on its own is progress-tracking's. Also covers preparing a read-only briefing about someone else who is joining.
 model: sonnet
 skills:
   - gutt-claude-code-plugin:agent-memory-protocol
@@ -129,6 +129,12 @@ not a resume, say why you did not use it, and continue to Step 2.
 | Full    | All of the above                                       |
 
 Nothing stated narrows it → Full, and a stated focus spanning several rows → Full.
+
+With the person present, the table above can open as one optional multi-choice
+question — the scope rows, plus what they most want out of the first weeks —
+offered once, as a shortcut, never a gate. Declined or ignored, scope is
+established conversationally as above; an unattended run gets no question of any
+kind (the contract above).
 
 Also establish the **role** they are ramping into. It is what Step 3 searches for
 and what the published plan is filed under. **Never infer one to keep moving** — a

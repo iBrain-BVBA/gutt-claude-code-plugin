@@ -1,6 +1,6 @@
 ---
 name: individual-program-design
-description: "Turn what a person says they want into a written development program — elicit the goals and the constraint that shapes them, set milestones and a check-in cadence, then persist it to that individual's personal memory scope as one self-contained episode a later session can pick up cold. Use when starting an onboarding, a ramp-up, or a coaching engagement, or when an existing program has to be replaced. Triggers on: design a program, build me a plan, onboarding plan, ramp-up plan, my goals, 30 60 90, learning path, development plan, set milestones, personal roadmap, what should I focus on."
+description: "Write a development program record — goals, milestones, check-in cadence — into the individual's personal memory scope as one self-contained episode a later session can pick up cold. This is the record-shaping half the mentor and onboarding-guide agents run after grounding a request in org memory — a fresh ask to grow toward a role, get better at a practice, join a team, or get up to speed belongs to those agents, not directly here. Use directly when a program record itself needs designing, revising, or replacing and the goals are already in hand. Triggers on: design the program record, set milestones, check-in cadence, 30 60 90 structure, replace my program."
 ---
 
 # Individual Program Design
