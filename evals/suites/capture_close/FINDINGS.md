@@ -8,15 +8,32 @@ the harness has not either, so all four pool. Round 4 is a prompt-tuning round: 
 candidates (`W1`–`W3`) built to match the longest wording's quality at or below the shipped
 block's length.
 
-> **The shipped block changed after round 4 and has not been re-measured.** A PR review found
-> that one clause of it — the one bounding the capture account's length — restated
-> `memory-capture/SKILL.md` almost verbatim, on the one path where that file is always loaded
-> already. Removing it took the block from 878 to **804 characters**. Every `V0-shipped` number
-> below therefore describes the 878-character text, not what ships now. The edit only deletes a
-> clause the surrounding rules do not depend on, and shorter has won every comparison this
-> suite has run — but that is an argument for expecting no regression, not a measurement of
-> one. A round 5 at n≥24 would settle it, and `R1-reanchor` in `variants.py` is a second
-> candidate waiting on the same round.
+> **`V0-shipped` has named three different texts, and every table below describes the first.**
+> The arm is read live out of the skill's injected region, so it silently re-baselines whenever
+> that region is edited — and it has been edited twice since round 4:
+>
+> 1. **878 → 804 characters.** A PR review found that one clause — the one bounding the capture
+>    account's length — restated `memory-capture/SKILL.md` almost verbatim, on the one path
+>    where that file is always loaded already. Removing it left the rules the surrounding text
+>    depends on intact.
+> 2. **804 characters → a 95-character pointer.** The rules moved into the skill body and the
+>    payload became one line naming the skill, so nothing below is a measurement of what ships
+>    today.
+>
+> How to read the tables, therefore: a `V0-shipped` row is the **878-character prose block**.
+> Its 804-character successor is now the `V6-prose-block` arm, frozen in `variants.py` as a
+> literal so it cannot re-baseline again — the only control this suite has ever had that is
+> bytes rather than a view onto a file. `R1-reanchor` is still waiting on a round.
+>
+> **Round 5 ran and is in `results/capture-close-report.md`, unpooled and deliberately so.**
+> It put the 804-character block at 54% and the empty `V1-none` at 54%, against 96% and 67% for
+> the same two arms in round 4. `V1-none` is byte-identical across both rounds by construction,
+> so its 13-point move is this suite's noise floor measured directly, and it is wider than most
+> gaps these tables have been used to decide. The 804-character block's 42-point drop is outside
+> that floor but confounded — its text and the round changed together — which is the mistake
+> item 1 above turns out to have caused, and the reason `V6-prose-block` is frozen. Round 5 is
+> not pooled into the tables below because the arm labels do not mean the same thing across the
+> boundary; treat the pooled columns as rounds 1–4 only.
 
 **One hazard when reading the older rounds.** Variant _labels_ changed meaning after round 2,
 when the shipped block was shortened from 1213 to 878 characters — `V4-terse` became
