@@ -28,7 +28,7 @@ A plain "what is X?" lookup does not need this agent — invoke the `memory-sear
 skill directly in the caller's context instead.
 
 **Read-only.** This agent never writes to the graph. Writing belongs to the
-`memory-capture` skill, or to the `memory-keeper` agent for end-of-session capture.
+`memory-capture` skill — every write, including the autonomous end-of-turn one.
 
 ## Depth policy
 

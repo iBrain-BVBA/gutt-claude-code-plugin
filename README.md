@@ -148,12 +148,10 @@ Two, deliberately. An agent earns its place here only when the **separate contex
 window** is the point; anything that is a procedure the main agent should follow is a
 skill instead.
 
-| Agent             | Purpose                                                                    |
-| ----------------- | -------------------------------------------------------------------------- |
-| `gutt-pro-memory` | Multi-hop graph exploration — traverses in its own context, returns a short |
-|                   | cited answer, so the traversal doesn't consume the caller's window          |
-| `agent-creator`   | Scaffolds agent and skill definitions with correct frontmatter, a           |
-|                   | registered memory identity, and the grounding/learning protocol             |
+| Agent             | Purpose                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `gutt-pro-memory` | Multi-hop graph exploration — traverses in its own context and returns a short cited answer, so it doesn't consume the caller's window |
+| `agent-creator`   | Scaffolds agent and skill definitions with correct frontmatter, a registered memory identity, and the grounding/learning protocol      |
 
 Autonomous end-of-turn capture is **not** an agent: the Stop hook judges the turn and
 the `memory-capture` skill does the write, with the trust-tier gate applied. Twelve
