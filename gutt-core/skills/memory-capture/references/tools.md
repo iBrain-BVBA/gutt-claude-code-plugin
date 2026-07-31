@@ -29,6 +29,64 @@ Rule of thumb for the skill: **if you see `add_memory_to_*` tools, use them and
 pass no `group_id`; otherwise use `add_memory`.** Never assume a fixed name —
 your tool list is the practical source of truth for what you can target.
 
+## Finding the group — the `group://` MCP resources
+
+Your tool list tells you _that_ you can write somewhere. The **`group://`
+resources** tell you _where_, and _what belongs there_. Read them instead of
+carrying a hardcoded list of groups — the server's list is current, yours goes
+stale the moment a group is added or renamed.
+
+**Discovery is a resource listing.** List the memory server's resources and keep
+the `group://` ones. Team-group resources are tagged `group:<group_id>` and the
+listing is access-filtered, so **the `group://` resources you can see are the
+scopes you may touch** — the listing is your roster. Never guess a group id or
+probe for one.
+
+**Payload** — `application/json`, one object:
+
+| field          | notes                                                                     |
+| -------------- | ------------------------------------------------------------------------- |
+| `group_id`     | the exact string to pass as `group_id`, or inside `group_ids` on reads    |
+| `display_name` | human label for prose and prompts — a label, not an id; never pass it     |
+| `instructions` | prose on what the group holds and when to write to it — **may be `null`** |
+
+`group://personal/instructions` is the private-scope sibling: untagged, visible
+to every authenticated user, and authoritative on personal mechanics — write with
+`add_personal_memory`, read by putting the literal `"personal"` in `group_ids`
+(`get_episodes` takes the singular `group_id="personal"` instead). Expect it to
+carry prose even when the team groups don't.
+
+**`instructions: null` is normal, not a failure.** The prose comes from a
+server-side config a deployment may simply not have filled in, and team groups
+returning `null` while `personal` returns prose is a common shape. Null means _no
+routing guidance available_: fall back to `display_name` plus the tool
+description, and ask the user if the choice is still ambiguous. It does **not**
+mean the group is unwritable.
+
+**Enumerate per-group resources; don't depend on an aggregate.** A
+`group://all/instructions` returning every accessible group at once may or may not
+be reachable on a given deployment — it can be absent, or present but restricted.
+A denial does **not** tell you which: the URI template matches any segment, so
+`Access denied for group: all` is what you get either way, and it is not evidence
+about whether an aggregate exists. Don't infer a cause from it and don't report it
+as a permissions fault. Treat the aggregate as unavailable, fall back to
+enumerating the per-group resources, and never make it a prerequisite.
+
+**The alias in a tool name is not a `group_id`.** The `<alias>` in
+`add_memory_to_<alias>` is often not the id of the group it writes to — ids carry
+suffixes aliases drop. Sometimes the two do match, and that is the trap: stripping
+`add_memory_to_` yields a string that may or may not be a real id, and the tool
+name alone never tells you which. Read the id from the resource; call the tool by
+its listed name.
+
+On the read side this is **fail-loud**: an id you hold no grant for is rejected
+with `Access denied: you are not authorized for the requested group scope` — not
+silently ignored, and not an empty result set. So a guessed id fails visibly
+instead of quietly narrowing a search to nothing. This is narrower than
+`memory-search` §Scoping's "treat scope as server-decided": the server may
+override or widen a scope you are **entitled** to, but an unauthorized id is an
+error, not an override.
+
 ## add_memory (v1.0, `core`)
 
 | param              | type          | default | notes                                                                                            |
@@ -94,8 +152,11 @@ personal scope being enabled and a resolvable login.
 
 - **Queued ≠ persisted.** A success response means the episode was _enqueued_.
   Background extraction (entity/edge, LLM, DB) can fail and is only logged
-  server-side — the caller is not told. Verify a batch with a search before
-  trusting it landed. This is why the skill batches then verifies.
+  server-side — the caller is not told. So don't report a write as confirmed. But
+  don't search to check either: indexing lags the write, so a search taken
+  straight afterwards returns nothing whether or not the write will land, and
+  reads as a loss when it isn't. Verify only when an irreversible step depends on
+  it (see the skill's rule 6).
 - **`uuid` is not an idempotency key.** A fresh/unknown `uuid` raises (silently,
   in the background) instead of creating that id; an existing `uuid` reprocesses
   that episode's _stored_ content and ignores your new body. Dedup by
