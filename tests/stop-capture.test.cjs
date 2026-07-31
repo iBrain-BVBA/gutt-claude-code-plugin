@@ -318,6 +318,92 @@ describe("stop-judge: deciding what to feed back", () => {
     assert.equal(spawned, false, "spawned a judge for a turn it could not read");
   });
 
+  /**
+   * Where the closing message comes from (the transcript-lag fix).
+   *
+   * `transcript_path` is written asynchronously, so at the moment Stop fires it can still be
+   * missing the turn that just ended — which is why the platform puts the text on stdin as
+   * `last_assistant_message` and documents that as the source to use. Reading the file first
+   * cost `no-closing-prose` on 6 of 53 real invocations; the field is now preferred and the
+   * walk is the fallback for CLIs that predate it.
+   */
+  describe("the closing message comes from the payload before the transcript", () => {
+    const capture = () => {
+      const seen = {};
+      const spawn = (_cmd, _args, opts) => {
+        seen.input = opts.input;
+        return fired;
+      };
+      return { seen, spawn };
+    };
+
+    it("judges a turn the transcript has not caught up with yet", () => {
+      // The regression, stated as its own case: the file is not there at all and the turn is
+      // still judged, because the text never depended on the file.
+      const { seen, spawn } = capture();
+      const out = judge.judgeTurn(
+        {
+          transcript_path: path.join(dir, "not-flushed-yet.jsonl"),
+          last_assistant_message: "the turn the transcript is missing",
+        },
+        "auto",
+        { spawn, styleBlock: "" }
+      );
+      assert.equal(out.outcome, judge.OUTCOMES.FIRED, "a lagging transcript still costs the turn");
+      assert.match(seen.input, /the turn the transcript is missing/);
+    });
+
+    it("prefers the field when both are present and they disagree", () => {
+      // Both readable, different text. The field wins, so a stale tail cannot outrank the
+      // copy the platform handed over for this turn.
+      const { seen, spawn } = capture();
+      judge.judgeTurn(
+        { transcript_path: file, last_assistant_message: "from the payload" },
+        "auto",
+        { spawn, styleBlock: "" }
+      );
+      assert.match(seen.input, /from the payload/);
+      assert.doesNotMatch(
+        seen.input,
+        /a turn that found something/,
+        "the transcript was read even though the payload carried the message"
+      );
+    });
+
+    it("falls back to the transcript when the field is absent", () => {
+      // The pre-field CLI path. Deleting the walk would silently stop judging on those.
+      const { seen, spawn } = capture();
+      judge.judgeTurn({ transcript_path: file }, "auto", { spawn, styleBlock: "" });
+      assert.match(seen.input, /a turn that found something/);
+    });
+
+    it("treats a blank field as absent rather than as an empty turn", () => {
+      // A field present but whitespace is not a closing message. Returning early on it would
+      // report `no-closing-prose` for a turn whose text the transcript has.
+      const { seen, spawn } = capture();
+      judge.judgeTurn({ transcript_path: file, last_assistant_message: "   \n  " }, "auto", {
+        spawn,
+        styleBlock: "",
+      });
+      assert.match(seen.input, /a turn that found something/);
+    });
+
+    it("names which source failed when neither has anything", () => {
+      const out = judge.judgeTurn({ transcript_path: "/nope/missing.jsonl" }, "auto", {
+        spawn: stub(fired),
+      });
+      assert.equal(out.outcome, judge.OUTCOMES.NO_SUMMARY);
+      assert.match(out.detail, /last_assistant_message absent/);
+      assert.match(out.detail, /transcript unreadable|transcript \d+B/);
+      assert.ok(
+        judge.BROKEN_OUTCOMES.has(out.outcome),
+        `${judge.OUTCOMES.NO_SUMMARY} is outside BROKEN_OUTCOMES again, so a turn the hook ` +
+          `could not read is filed with turns that had nothing worth capturing — the ` +
+          `misclassification that hid this for 6 invocations`
+      );
+    });
+  });
+
   it("runs the child outside the user's project", () => {
     // Non-bare discovers CLAUDE.md from the cwd upward, so judging from the repo hands the
     // judge this project's instructions on top of the prompt under test — the bias
@@ -770,8 +856,28 @@ describe("stop-capture: the router", () => {
 
   it("logs an outcome that distinguishes a broken judge from a quiet one", () => {
     const out = run({ session_id: "s1", stop_hook_active: false, transcript_path: "/nope" });
-    assert.match(out.log, /Stop: no-closing-prose \(mode=auto\)/);
+    assert.match(out.log, /Stop: no-closing-prose — /, "the outcome logged without a diagnostic");
+    assert.match(out.log, /\(mode=auto\)/);
     assert.doesNotMatch(out.log, /Stop: quiet/, "the undifferentiated label is back");
+  });
+
+  it("routes an unreadable turn to the error log, and says which cause", () => {
+    // `no-closing-prose` sat outside BROKEN_OUTCOMES and therefore outside this file, which
+    // is how a transcript the hook could not read stayed indistinguishable from a turn with
+    // nothing worth capturing for 6 invocations. The detail is the other half: without it
+    // every occurrence in the log is equally unexplainable afterwards.
+    const out = run({ session_id: "s1", stop_hook_active: false, transcript_path: "/nope" });
+    assert.equal(out.status, 0, "a turn it cannot read must still not block");
+    assert.equal(out.stdout, "");
+    const errors = path.join(dir, "hook-errors.log");
+    assert.ok(fs.existsSync(errors), "an unreadable turn left no diagnostic");
+    const text = fs.readFileSync(errors, "utf8");
+    assert.match(text, /no-closing-prose/);
+    assert.match(
+      text,
+      /last_assistant_message absent/,
+      "the diagnostic does not say whether the platform supplied the field"
+    );
   });
 
   it("exits 0 on unparseable stdin, and leaves a trace of it", () => {

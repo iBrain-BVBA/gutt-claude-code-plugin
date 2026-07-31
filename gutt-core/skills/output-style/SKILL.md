@@ -10,15 +10,18 @@ summary that closes a turn — the part the user actually reads and carries away
 
 ## The rules
 
-<!-- INJECTED:BEGIN -->
+The reply ends in two parts, in this order. Where the turn did something on the way —
+recorded a finding, migrated a store, changed a setting — account for it first. Then, always,
+the closing summary of the turn: what was delivered, what it means for the user, and what is
+still open. Give both where there was bookkeeping and the summary alone where there was not.
+Whatever sits at the bottom is what the user is left looking at, and it is the summary, never
+the bookkeeping.
 
-The reply ends in two parts, in this order. Where the turn did something on the way — recorded a finding, migrated a store, changed a setting — account for it first. Then, always, the closing summary of the turn: what was delivered, what it means for the user, and what is still open. Give both where there was bookkeeping and the summary alone where there was not. Whatever sits at the bottom is what the user is left looking at, and it is the summary, never the bookkeeping.
+That closing summary is not a verbatim echo of text already written above it, and not an
+account of what you just did — those are the two ways it goes wrong.
 
-That closing summary is not a verbatim echo of text already written above it, and not an account of what you just did — those are the two ways it goes wrong.
-
-Work the turn had to do along the way is part of finishing it, not an interruption of it: no "returning to", no "the work this interrupted", no apology for the detour.
-
-<!-- INJECTED:END -->
+Work the turn had to do along the way is part of finishing it, not an interruption of it: no
+"returning to", no "the work this interrupted", no apology for the detour.
 
 ## Style for the whole reply
 
@@ -27,13 +30,18 @@ it carried. Show finished work concretely. Cap lists at five and rank them. Conc
 estimates, not vague ones. Matter-of-fact about failures — cause, then fix. Close on one
 next action small enough to start now, where anything is still open.
 
-These sit outside the markers deliberately, and it is the same one source either way — the
-rules are stated here, not duplicated. `evals/suites/capture_close` measured them as costing
-335 characters on every fire and scoring _worse_ with them than without — 67% against 96% at
-n=24 — so they are stated for whoever loads this skill rather than shipped in a payload.
-`FINDINGS.md` records what that measurement does and does not support; in particular it
-cannot separate dilution from the list being actively confusing, so "worse" is the finding
-and the mechanism is not.
+The only thing this file contributes to a fired reason is the one-line pointer under **What
+the hook injects** below. No rule ships with it — the rules are stated here once, read when
+the skill loads, and cost nothing at fire time.
+
+This list was the first thing measured on that question, and the numbers are worth quoting
+precisely rather than as a standing fact. `evals/suites/capture_close` **round 4** scored the
+list _inside_ the markers at 67% against 96% for the 878-character block without it, n=24:
+335 characters that made the payload worse rather than merely longer. Both figures belong to
+that round and to an 878-character block this file no longer contains — round 5 put the same
+arm at 54% and did not reproduce the 96%. `FINDINGS.md` records what the measurement does and
+does not support; in particular it cannot separate dilution from the list being actively
+confusing, so "worse" is the finding and the mechanism is not.
 
 ## Writing the closing summary
 
@@ -61,11 +69,10 @@ not what they came for, and it arrives last, which is the worst position for it.
 reply carries both accounts, in this order, and neither substitutes for the other:
 
 1. **What the turn did on the way.** A few lines: what happened, and anything the user still
-   has to decide. The injected block deliberately does not say that — whichever skill owns
-   the work also bounds its account, and `memory-capture` states this same sentence almost
-   verbatim, so injecting it too would pay for one clause twice on the one path where the
-   other file is guaranteed to be loaded already. Omitting the account itself is not an
-   improvement; the user is entitled to know a capture was written.
+   has to decide. That bound is `memory-capture`'s, not this file's — whichever skill owns
+   the work also bounds the account of it, and `memory-capture` states the same sentence
+   almost verbatim. Omitting the account itself is not an improvement; the user is entitled
+   to know a capture was written.
 2. **The closing summary.** Last, per the rules above. This is the answer.
 
 Dropping either one is a failure of a different kind: without the first the write is
@@ -99,9 +106,40 @@ not with one path — the options are the substance. Where the user asks to be w
 through something, the body runs as long as the topic needs; still no preamble, still no
 closing pleasantry, and still a closing summary.
 
+## What the hook injects
+
+`shared/stop-judge.cjs` appends the region between these markers to every fired capture
+reason. It is a pointer to this file, not a copy of it:
+
+<!-- INJECTED:BEGIN -->
+
+Then run the `gutt-claude-code-plugin:output-style` skill and follow it when writing the reply.
+
+<!-- INJECTED:END -->
+
+One line, and it is the whole payload. "Then" is load-bearing rather than decorative: the
+region is appended after the judge's own `memory-capture` line, so the two instructions read
+in the order they are meant to run.
+
+⚠ **This replaced an 804-character prose copy of the rules above, and the swap is not yet
+measured.** What the bench says today, in both directions:
+
+- Against the pointer: the prose block scored **89% pooled over rounds 1–4** against 62% for
+  no instruction at all and 66% for a 312-character short rule. On that evidence brevity here
+  costs accuracy, and `prompt_pointer` separately confirmed in every run that cutting the
+  rationale out of a pointer costs recall outright.
+- For the pointer: round 5 put the same block at **54% against 54%** for no instruction, and
+  the suite's own zero-length control moved 13 points between rounds — wider than most gaps
+  the bench has been used to decide.
+
+So the prose block is the better-evidenced wording and this is a deliberate bet against it,
+taken because a payload that restates a skill it could name is duplication on every fire.
+`V6-prose-block` in `evals/suites/capture_close/variants.py` is the frozen arm that settles
+it; run that suite before treating the pointer as proven.
+
 ## References
 
 - `references/origin.md` — where these rules came from, the attribution and licence owed
   for them, and the design decisions behind how they are stored. Read it before rewording
-  the block above, or to cite the source.
+  the rules above, or to cite the source.
 - `memory-capture` — the account of what was recorded, which sits above the closing summary.

@@ -7,6 +7,15 @@ baseline is meaningless — the same reason `prompt_pointer.suite` re-derives it
 hook source. Here the read is trivial rather than a string-literal reconstruction: the
 skill file *is* the deployed artifact.
 
+Since the pointer change, what `shipped()` returns is one line naming this skill rather than a
+copy of its rules, so V0 and the prose it replaced are now two different arms:
+
+  V0-shipped       the live injected region — the pointer. Read from the file, so it tracks
+                   whatever ships.
+  V6-prose-block   the 804-character prose block V0 used to be, frozen as a literal below.
+                   This is the arm the pointer has to beat, and freezing it is the point: it
+                   is the first control in this suite's history that cannot re-baseline.
+
 The ablations exist to answer specific questions rather than to fill a table:
 
   V1-none          what the capture path did before GP-927: the reason alone. This is the
@@ -119,6 +128,35 @@ V2_TEXT = (
 )
 
 
+# The prose block that shipped from GP-927 until the pointer replaced it, at the 804-character
+# length it reached after the duplicated capture-account clause came out.
+#
+# Frozen as a literal, deliberately, and this is the one arm in the file that must not be
+# derived. `shipped()` reads the live injected region, which is now one line naming this skill,
+# so the prose is no longer reachable from the file at all — and a variant set that can only
+# measure the pointer cannot answer the question the pointer raises. Nine rounds of derived-V0
+# also taught the narrower lesson: a live-derived arm is a *baseline*, not a *control*. It
+# silently re-baselines whenever anyone edits the skill, which is exactly how round 4's
+# 878-character V0 and round 5's 804-character V0 came to be reported under one name and one
+# label as though they were the same measurement. A control has to be bytes.
+#
+# Reproduced verbatim, unwrapped, as it sat between the markers — the newlines and the em
+# dashes are part of what was scored.
+PROSE_BLOCK = """The reply ends in two parts, in this order. Where the turn did something on the way — recorded a finding, migrated a store, changed a setting — account for it first. Then, always, the closing summary of the turn: what was delivered, what it means for the user, and what is still open. Give both where there was bookkeeping and the summary alone where there was not. Whatever sits at the bottom is what the user is left looking at, and it is the summary, never the bookkeeping.
+
+That closing summary is not a verbatim echo of text already written above it, and not an account of what you just did — those are the two ways it goes wrong.
+
+Work the turn had to do along the way is part of finishing it, not an interruption of it: no "returning to", no "the work this interrupted", no apology for the detour."""
+
+# The length is asserted rather than commented because every table in FINDINGS.md is keyed on
+# it, and a stray reflow here would renumber the history without failing anything.
+if len(PROSE_BLOCK) != 804:
+    raise SystemExit(
+        f"PROSE_BLOCK is {len(PROSE_BLOCK)} chars, not the 804 that FINDINGS.md's tables are "
+        "keyed on — it has been reflowed or edited, and the frozen arm is no longer frozen."
+    )
+
+
 # The tuning round (W1–W3). Target: match V5-plus-style's quality at or below the shipped
 # block's 878 characters.
 #
@@ -207,24 +245,41 @@ def _reanchor(block):
 
 
 def all_variants():
-    block = shipped()
+    pointer = shipped()
+    # The prose-derived arms are built from `PROSE_BLOCK`, not from `pointer`. Each of the three
+    # asks a question *about the prose* — drop one of its paragraphs, add the style list back,
+    # re-anchor its opening sentence — and none of them is answerable against a one-line pointer.
+    # Left deriving from `shipped()` they did not degrade, they raised: `_drop_paragraph` found no
+    # paragraph to remove and `_reanchor` found no opening sentence to rewrite, both by design.
     variants = {
-        "V0-shipped": block,
+        "V0-shipped": pointer,
         "V1-none": "",
         "V2-summary-only": V2_TEXT,
-        "V3-no-negatives": _drop_paragraph(block, "verbatim echo"),
-        "V5-plus-style": f"{block}\n\n{style_paragraph()}",
+        "V3-no-negatives": _drop_paragraph(PROSE_BLOCK, "verbatim echo"),
+        "V5-plus-style": f"{PROSE_BLOCK}\n\n{style_paragraph()}",
+        "V6-prose-block": PROSE_BLOCK,
         "W1-numbered": W1_NUMBERED,
         "W2-omission": W2_OMISSION,
         "W3-presend": W3_PRESEND,
-        "R1-reanchor": _reanchor(block),
+        "R1-reanchor": _reanchor(PROSE_BLOCK),
     }
-    # The round's own premise is "at or below the shipped length". A candidate that quietly
-    # grew past it would still be scored and might well win on the extra words, which is not
-    # the question being asked.
-    over = {k: len(v) for k, v in variants.items() if k.startswith("W") and len(v) > len(block)}
+    # V0 is the live region, so a round would silently score the prose twice under two names if
+    # someone put it back between the markers. That is a real edit someone might make to revert
+    # this change, and it would make V0 and V6 an accidental duplicate pair rather than the
+    # comparison the round exists for.
+    if pointer == PROSE_BLOCK:
+        raise SystemExit(
+            "the injected region is the prose block again, so V0-shipped and V6-prose-block are "
+            "the same arm — drop V6 if the revert is intended, rather than scoring it twice."
+        )
+    # The tuning round's own premise is "at or below the length of the block being tuned". That
+    # block is the prose one — W1-W3 were built against it — so the gate stays keyed to it and
+    # not to whatever is currently shipped. Keyed to `pointer` it would now reject all three.
+    over = {
+        k: len(v) for k, v in variants.items() if k.startswith("W") and len(v) > len(PROSE_BLOCK)
+    }
     if over:
         raise SystemExit(
-            f"tuning candidates must not exceed the shipped block's {len(block)} chars: {over}"
+            f"tuning candidates must not exceed the prose block's {len(PROSE_BLOCK)} chars: {over}"
         )
     return variants

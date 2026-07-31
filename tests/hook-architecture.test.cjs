@@ -134,14 +134,26 @@ describe("hook architecture guards", () => {
   });
 
   // The hook must outlive the child it waits on, or the platform kills the handler
-  // mid-judge and every verdict is lost with the tier still green.
-  it("gives the Stop hook longer than the judge child it spawns", () => {
+  // mid-judge and every verdict is lost with the tier still green. Worse than losing the
+  // verdict: a platform kill emits no outcome line, so it is invisible where our own
+  // `timeout` classification is at least logged.
+  //
+  // A strict `>` was the original assertion and it is too weak — 1ms of slack satisfies it,
+  // and the handler has its own work either side of the spawn: node startup, reading config,
+  // taking the closing message off the payload, composing, and two log writes. The margin is
+  // asserted so that raising `JUDGE_TIMEOUT_MS` to just under the handler's cap fails here
+  // rather than in production. A `command` hook's platform default is 600s, so the explicit
+  // `timeout` in hooks.json is a deliberate tightening and there is room to move both.
+  const HANDLER_SLACK_MS = 10_000;
+  it("gives the Stop hook longer than the judge child it spawns, with room to spare", () => {
     const [stop] = ALL.filter((h) => h.event === "Stop");
     const { JUDGE_TIMEOUT_MS } = require(STOP_JUDGE_LIB);
     assert.ok(stop.timeout, "the Stop hook declares no timeout, so the default may cut the judge");
+    const slack = stop.timeout * 1000 - JUDGE_TIMEOUT_MS;
     assert.ok(
-      stop.timeout * 1000 > JUDGE_TIMEOUT_MS,
-      `hook timeout ${stop.timeout}s does not exceed the judge's ${JUDGE_TIMEOUT_MS}ms`
+      slack >= HANDLER_SLACK_MS,
+      `hook timeout ${stop.timeout}s leaves ${slack}ms over the judge's ${JUDGE_TIMEOUT_MS}ms, ` +
+        `under the ${HANDLER_SLACK_MS}ms the handler needs for its own work`
     );
   });
 
@@ -596,48 +608,96 @@ describe("hook architecture guards", () => {
       );
     });
 
-    it("makes the closing block the work, last, and not a recap of it", () => {
+    // The rule used to *be* the payload, and these guards read it out of the injected region.
+    // It is now stated in the skill body with a one-line pointer shipping in its place, so the
+    // guards follow the rule rather than the region. The property they defend is unchanged and
+    // was never about the delivery mechanism: the closing rule is stated, in full, in exactly
+    // one place. What the payload must now contain is guarded separately, below.
+    //
+    // Both slices are computed by locating the markers rather than by `split(END)[1]`, so
+    // neither depends on where in the file the markers sit. The earlier version took the tail
+    // after the end marker; when the markers moved below the rules it would have gone empty
+    // and passed every `doesNotMatch` in this describe for the wrong reason.
+    const outsideMarkers = () => {
+      const md = fs.readFileSync(STYLE_MD, "utf8");
+      const begin = md.indexOf(STOP_JUDGE.STYLE_BEGIN);
+      const end = md.indexOf(STOP_JUDGE.STYLE_END, begin + STOP_JUDGE.STYLE_BEGIN.length);
+      assert.ok(begin !== -1 && end !== -1, "the skill lost its injection markers");
+      return md.slice(0, begin) + md.slice(end + STOP_JUDGE.STYLE_END.length);
+    };
+
+    // Narrower than `outsideMarkers`: just the section that states the rule. The ordering
+    // assertions below locate phrases by index, and against the whole file another section
+    // using the same words could satisfy them without the rule itself being in order.
+    const rulesSection = () => {
+      const md = fs.readFileSync(STYLE_MD, "utf8");
+      const start = md.indexOf("## The rules");
+      assert.notEqual(start, -1, "the skill has no `## The rules` section stating the rule");
+      const next = md.indexOf("\n## ", start + 1);
+      return md.slice(start, next === -1 ? undefined : next);
+    };
+
+    // The phrases that carry the closing rule, in one list, asserted **present** in the skill
+    // body and **absent** from the payload by the two tests below. They are the same claim
+    // seen from both sides — the rule is stated here and only here — and keeping two
+    // hand-maintained literal lists is what let the recap exclusion be checked in the body
+    // while the payload guard omitted it, which review caught. Add a phrase here and both
+    // directions enforce it.
+    //
+    // Every pattern is whitespace-tolerant. Prettier owns line breaks in markdown and reflows
+    // this section freely, and moving the rule out of the payload is what exposed it: inside
+    // the markers the rule was three unwrapped lines, so literal spaces matched. The sibling
+    // test further down already learned this once — a guard that breaks on reformatting
+    // teaches people to loosen the guard.
+    const RULE_PHRASES = [
+      // Both accounts are required, in order. Demanding only the summary invites a reply that
+      // silently drops the fact a capture was written; demanding only the capture account is
+      // the defect itself.
+      [/two\s+parts,\s+in\s+this\s+order/i, "the two-part demand"],
+      [/closing\s+summary\s+of\s+the\s+turn/i, "the closing summary named"],
+      [/whatever\s+sits\s+at\s+the\s+bottom/i, "the bottom-of-the-reply rule"],
+      // The capture is part of finishing a turn. Framing it as a detour makes the reply read
+      // as an apology for having done the bookkeeping, and puts the emphasis on the
+      // interruption rather than on the work the user came for.
+      [/not\s+an\s+interruption/i, "the not-an-interruption clause"],
+      // GP-927's definition question. "Repeat the output" read literally produces a verbatim
+      // echo, which doubles a long reply; read loosely it produces "I did X then captured Y",
+      // which is the recap that is roughly the defect. Both have to be excluded where the rule
+      // is stated, not only in the commentary around it.
+      [/not\s+a\s+verbatim\s+echo/i, "the verbatim-echo exclusion"],
+      [/not\s+an\s+account\s+of\s+what\s+you\s+just\s+did/i, "the recap exclusion"],
+    ];
+
+    it("states the closing rule in the skill that owns it", () => {
+      const rules = rulesSection();
+      const missing = RULE_PHRASES.filter(([re]) => !re.test(rules)).map(([, name]) => name);
+      assert.deepEqual(
+        missing,
+        [],
+        `the \`## The rules\` section no longer states: ${missing.join("; ")} — the payload is ` +
+          `a pointer now, so a rule missing here is missing everywhere`
+      );
+    });
+
+    // The payload's side of the same split. A pointer is only worth shipping if it routes
+    // somewhere, and it stops being a pointer the moment someone pastes the rule back beside
+    // it — that would restore the duplication on every fire while still passing the guard
+    // above, since the rule would be in both places.
+    it("injects a pointer to the skill, not a copy of the rule", () => {
       const block = STOP_JUDGE.readStyleBlock();
       assert.ok(block, "the style skill's injected region is empty or unreadable");
-      // Both accounts are required, in order. Demanding only the summary invites a reply
-      // that silently drops the fact a capture was written; demanding only the capture
-      // account is the defect itself.
       assert.match(
         block,
-        /two parts, in this order/i,
-        "the block does not demand both the bookkeeping account and the closing summary"
+        new RegExp(`\`[\\w.-]+:${STOP_JUDGE.STYLE_SKILL_DIR}\``),
+        `the injected region does not name \`<plugin>:${STOP_JUDGE.STYLE_SKILL_DIR}\`, so a ` +
+          `reply that follows it has no way to reach the rule`
       );
-      assert.match(
-        block,
-        /closing summary of the turn/i,
-        "the block never names the closing summary, so the bookkeeping becomes the turn"
-      );
-      assert.match(
-        block,
-        /whatever sits at the bottom/i,
-        "a closing summary not pinned to the bottom can be buried by the account above it"
-      );
-      // The capture is part of finishing a turn. Framing it as a detour makes the reply
-      // read as an apology for having done the bookkeeping, and puts the emphasis on the
-      // interruption rather than on the work the user came for.
-      assert.match(
-        block,
-        /not an interruption/i,
-        "nothing stops the reply framing the capture as an interruption of the work"
-      );
-      // GP-927's definition question. "Repeat the output" read literally produces a
-      // verbatim echo, which doubles a long reply; read loosely it produces "I did X then
-      // captured Y", which is the recap that is roughly the defect. Both must be excluded
-      // in the injected text, not only in the prose around it.
-      assert.match(
-        block,
-        /not a verbatim echo/i,
-        "the block permits a verbatim echo, which doubles the reply on exactly the turns that fire"
-      );
-      assert.match(
-        block,
-        /not an account of what you just did/i,
-        "the block permits a recap of the turn, which is roughly the defect it exists to fix"
+      const restated = RULE_PHRASES.filter(([re]) => re.test(block)).map(([, name]) => name);
+      assert.deepEqual(
+        restated,
+        [],
+        `the injected region restates the rule (${restated.join(", ")}) instead of pointing at ` +
+          `it, so it ships on every fire and there are two copies to keep in step`
       );
     });
 
@@ -648,7 +708,7 @@ describe("hook architecture guards", () => {
     // survives a rewrite while the property it stood for quietly leaves — so the two
     // orderings that carry the meaning are asserted as relations instead.
     it("orders the two parts, and gives the bottom of the reply to the summary", () => {
-      const block = STOP_JUDGE.readStyleBlock().toLowerCase();
+      const block = rulesSection().toLowerCase();
       const account = block.indexOf("account for it first");
       const summary = block.indexOf("closing summary of the turn");
       assert.ok(
@@ -670,18 +730,21 @@ describe("hook architecture guards", () => {
       );
     });
 
-    // The whole-reply style list sits *outside* the markers: `capture_close` measured it at
-    // 335 characters on every fire and scoring worse with them than without (67% against 96%
-    // at n=24), so it is stated for whoever loads the skill instead of shipped in a payload.
-    // Round 4 retracted the earlier reading of it as merely a cost.
+    // The whole-reply style list was the first thing measured on the in-payload question:
+    // `capture_close` **round 4** scored it inside the markers at 67% against 96% for the
+    // 878-character block without it, n=24 — 335 characters that made the payload worse rather
+    // than merely longer, retracting the earlier reading of it as merely a cost. Quote that
+    // pair as round 4's and not as a standing fact: the 96% describes an 878-character block
+    // the skill no longer contains, and round 5 put the same arm at 54%. Since the pointer
+    // change, the only thing this file contributes to a fired reason is the pointer itself, so
+    // the list's position is no longer what is at stake here — its *survival* is.
     //
-    // That position also made it the easiest thing in this change to lose by accident: no hook
-    // reads it, so deleting it would break nothing at runtime and — before the test below
+    // Being unshipped is what made it the easiest thing in this change to lose by accident: no
+    // hook reads it, so deleting it would break nothing at runtime and — before the test below
     // existed — no test either, and the skill would quietly stop stating the style AC1 asks
     // for. The test below is what closes that gap; the hazard is past tense because of it.
     it("keeps the whole-reply style in the skill, outside the injected region", () => {
-      const md = fs.readFileSync(STYLE_MD, "utf8");
-      const outside = md.split(STOP_JUDGE.STYLE_END)[1] || "";
+      const outside = outsideMarkers();
       // Every pattern is whitespace-tolerant, because Prettier owns line breaks in markdown
       // and reflows this paragraph freely. An earlier version used literal spaces and failed
       // the moment "Concrete estimates" landed either side of a wrap — a guard that breaks on

@@ -1,7 +1,8 @@
 # Hook platform capabilities (upstream)
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
-**Read:** 2026-07-30 (§5; §1–§4 read 2026-07-29) · **Measured:** 2026-07-30 (§5 argv, §6, §7) ·
+**Read:** 2026-07-31 (§8.1) · 2026-07-30 (§5; §1–§4 read 2026-07-29) ·
+**Measured:** 2026-07-30 (§5 argv, §6, §7) ·
 **Reported:** 2026-07-30 (§8, by the maintainer — not yet re-read from source) ·
 **Method:** `WebFetch` passes plus live CLI runs for §5–§7 (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
@@ -297,6 +298,41 @@ Why it matters beyond tidiness: each background agent completion re-invokes the 
 and produces another Stop, so before this the judge ran once per completion on a fan-out
 turn — every one of them scoring a summary whose findings had not arrived. Deferring
 collapses that to one judgement per turn.
+
+### 8.1 Stop and SubagentStop hand over the closing message — don't read the transcript
+
+**Read: 2026-07-31** from the source URL above. A doc read, not a measurement — see the
+verification note at the end of this subsection.
+
+Stop and SubagentStop stdin carry **`last_assistant_message`**: the assistant's final message
+text for the current turn, alongside the common fields (`session_id`, `prompt_id`,
+`transcript_path`, `cwd`, `permission_mode`, `effort`, `hook_event_name`, `agent_id`,
+`agent_type`). Upstream is explicit about which source to use:
+
+> Hooks that need the final assistant text of the current turn should use
+> `last_assistant_message` on Stop and SubagentStop instead of reading the transcript
+
+and states the reason: **`transcript_path` is written asynchronously and may lag behind the
+in-memory conversation.** So at the moment Stop fires, the file can still be missing the turn
+that just ended.
+
+**We were on the wrong side of this, and it cost real captures.** `shared/stop-judge.cjs`
+derived the closing message by tail-reading `transcript_path` from the day it was written.
+`hook-invocations.log` records `no-closing-prose` — `OUTCOMES.NO_SUMMARY`, returned before the
+judge child is ever spawned — on **6 of 53 Stop invocations**. In the one occurrence examined
+closely, the assistant record was present in the file afterwards (2377 chars of `text`, a few
+KB from EOF, only skippable metadata records after it, well inside the 192 KB `TAIL_BYTES`
+window), and replaying the walk against that file later returned the text correctly. Nothing
+was wrong with the parser. The read had happened before the write landed.
+
+Two changes followed, both in GP-927's pointer PR: `closingMessage()` prefers the field and
+keeps the walk as a fallback for CLIs predating it, and `NO_SUMMARY` moved into
+`BROKEN_OUTCOMES` with a diagnostic naming which source failed — it had been filed with the
+outcomes that mean "nothing here", which is how the bug survived unnoticed.
+
+**What would make this Measured rather than Read:** one line logging `Object.keys(payload)` on
+a real fire. That also settles §8's `background_tasks` shape, which is still the
+weakest-provenance claim in this file, so the two should be probed together.
 
 ## Implications for this plugin
 

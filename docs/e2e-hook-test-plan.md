@@ -86,10 +86,16 @@ any test was written. They are the load-bearing assumptions of the suite.
   `claude-haiku-4-5`. R25 sets a ≤2s target for the prompt hook and the GP-862 spike
   already recorded that target as unmet (p95 5.4s, max 8.4s over 21–30 runs) — so
   these numbers corroborate a known finding rather than reporting a new problem. The
-  `timeout: 45` in hooks.json is what actually bounds it (it must outlive the judge
-  child's own 30s cap); the 30s platform hard
-  timeout is never reached. Part of the cost is structural: `$ARGUMENTS` expands to
-  the transcript-context JSON including the whole `last_assistant_message`.
+  explicit `timeout` in hooks.json is what actually bounds it — it must outlive the judge
+  child's own cap, and both were raised on 2026-07-31 (judge 30s → 60s, handler 45s → 75s)
+  after four `timeout` outcomes, all on turns whose closing message ran past ~2400 chars.
+  **Correction, 2026-07-31:** this bullet previously said "the 30s platform hard timeout is
+  never reached". There is no 30s platform cap on a `command` hook — the documented default is
+  **600s** (30s is the default for `prompt` hooks, which is likely where the number came from).
+  So the explicit `timeout` is a tightening of a generous default rather than a value pressing
+  against a ceiling, and there is headroom above 75s if it is ever needed. Part of the cost is
+  structural: `$ARGUMENTS` expands to the transcript-context JSON including the whole
+  `last_assistant_message`.
 - **A prompt hook's model call has no tools.** Every evaluation logs
   `Tool search disabled: ToolSearchTool is not available`, plus one
   `Filtering out tool_reference for unavailable tool` warning per MCP tool the main

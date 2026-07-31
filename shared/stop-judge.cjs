@@ -60,9 +60,31 @@ const { childEnv } = require("./nested-run.cjs");
  *  reproducible across CLI versions, which an alias that follows the platform is not. */
 const JUDGE_MODEL = "claude-sonnet-5";
 
-/** The child gets 30s. A judge that has not answered by then has already cost more than
- *  the capture is worth, and Stop sits between the user and their answer. */
-const JUDGE_TIMEOUT_MS = 30_000;
+/**
+ * The child's own cap, in ms.
+ *
+ * Raised from 30s to 60s. 30s was being hit consistently rather than exceptionally: four
+ * `timeout` outcomes in `hook-invocations.log`, every one on a turn whose closing message ran
+ * past ~2400 characters, which is the ordinary length once a reply carries both a capture
+ * account and a closing summary. Judge latency scales with the message it scores, so the old
+ * cap was not bounding a stuck judge — it was cutting off working ones.
+ *
+ * Two constraints this sits between, and it must stay strictly inside both:
+ *
+ * - **Above**, the Stop handler's `timeout` in `hooks.json`, which the platform enforces on
+ *   the whole hook. If the child outlives the handler the platform kills the handler
+ *   mid-judge, and a kill produces no outcome line at all — strictly worse than a `timeout`
+ *   we classify and log. `tests/hook-architecture.test.cjs` guards the ordering; raising this
+ *   constant alone fails that test, which is how it is supposed to behave. The handler is at
+ *   75s. Note that a `command` hook's platform *default* is 600s, so that number is a
+ *   deliberate tightening rather than a ceiling we are pressing against.
+ * - **Below**, the user. Stop sits between them and the end of their turn, so this is time
+ *   they wait. 60s is defensible only because the outcome is a capture they would otherwise
+ *   have to write by hand; it is not a number to keep raising. If it is being hit again, the
+ *   fix is to bound what the judge is *given* — see `TAIL_BYTES` and `buildJudgePrompt` — not
+ *   to buy more seconds.
+ */
+const JUDGE_TIMEOUT_MS = 60_000;
 
 /**
  * How much of the transcript tail to read, in bytes.
@@ -466,6 +488,70 @@ function lastAssistantMessage(transcriptPath) {
 }
 
 /**
+ * The turn's closing assistant text, preferring the copy the platform hands us.
+ *
+ * `last_assistant_message` is on Stop and SubagentStop stdin, and it is the documented
+ * source for exactly this: upstream says hooks needing the final assistant text should use
+ * it *instead of* reading the transcript, because `transcript_path` is written
+ * asynchronously and can lag the in-memory conversation.
+ *
+ * This hook read the transcript first for its whole life and paid for it — `no-closing-prose`
+ * on 6 of 53 invocations, and in the one occurrence examined closely the assistant record
+ * was in the file afterwards, 2377 chars of text, a few KB from EOF, with only skippable
+ * metadata records after it and comfortably inside `TAIL_BYTES`. Nothing was wrong with the
+ * walk. The read had simply happened before the write landed, which is the race this field
+ * exists to remove.
+ *
+ * The walk stays as a fallback rather than being deleted: the field postdates this hook, so
+ * an older CLI supplies none and the transcript is the only source there. Absent and empty
+ * both fall through the same test on purpose — an empty string is not a closing message
+ * either, and re-reading the transcript in that case costs one `stat` on a path that was
+ * already going to fail.
+ *
+ * @param {object} payload the Stop hook's stdin, already parsed
+ * @returns {string}
+ */
+function closingMessage(payload) {
+  const handed = payload?.last_assistant_message;
+  if (typeof handed === "string" && handed.trim()) {
+    return handed.trim();
+  }
+  return lastAssistantMessage(payload?.transcript_path);
+}
+
+/**
+ * Why there was nothing to score, in the terms that separate the causes.
+ *
+ * `NO_SUMMARY` logged bare until now, so every occurrence was equally unexplainable after
+ * the fact: a missing `transcript_path`, a path that does not resolve, a transcript that had
+ * not been flushed, and a genuinely text-less turn are four different defects with four
+ * different fixes, and they shared one word. This is what makes a residual occurrence — now
+ * that the payload field is preferred — a report rather than a mystery.
+ *
+ * Deliberately cheap and non-throwing: it runs on a path that is already failing, and a
+ * diagnostic that can throw would convert a quiet outcome into a crashed hook.
+ *
+ * @param {object} payload
+ * @returns {string}
+ */
+function noSummaryDetail(payload) {
+  // Only reachable when the field was absent, or present and blank — `closingMessage`
+  // returns early on anything else, so there is no third case to report.
+  const handed = payload?.last_assistant_message;
+  const field =
+    typeof handed === "string" ? "last_assistant_message blank" : "last_assistant_message absent";
+  const file = payload?.transcript_path;
+  if (!file) {
+    return `${field}, no transcript_path`;
+  }
+  try {
+    return `${field}, transcript ${fs.statSync(file).size}B`;
+  } catch (err) {
+    return `${field}, transcript unreadable (${err?.code || "unknown"})`;
+  }
+}
+
+/**
  * @param {object} payload the Stop hook's stdin, already parsed
  * @param {string} summary the closing assistant message
  * @returns {string}
@@ -541,8 +627,23 @@ const OUTCOMES = {
   FIRED: "fired",
 };
 
-/** Outcomes that mean the judge did not answer, as opposed to answering "nothing here". */
+/**
+ * Outcomes that mean the judge did not answer, as opposed to answering "nothing here".
+ *
+ * `NO_SUMMARY` belongs here and was missing, which is how the transcript-lag bug survived 6
+ * invocations unnoticed. It reads like a negative result — "no closing prose, nothing to
+ * score" — but the judge is never spawned on it, so it is the strongest form of not
+ * answering: not even asked. Filed with the quiet outcomes it shared a bucket with a real
+ * negative, and the one signal that would have exposed it was the one thing not being
+ * written.
+ *
+ * The cost of the reclassification is a false entry in the error log for a turn that
+ * genuinely ends with no assistant text. That is the right trade — such a turn is rare
+ * enough that nobody has produced one, and `noSummaryDetail` names it (`blank` rather than
+ * `absent`) if it happens.
+ */
 const BROKEN_OUTCOMES = new Set([
+  OUTCOMES.NO_SUMMARY,
   OUTCOMES.SPAWN_FAILED,
   OUTCOMES.TIMEOUT,
   OUTCOMES.EXIT_NONZERO,
@@ -593,9 +694,9 @@ function stderrTail(result) {
  */
 function judgeTurn(payload, mode, deps = {}) {
   const spawn = deps.spawn || spawnSync;
-  const summary = lastAssistantMessage(payload?.transcript_path);
+  const summary = closingMessage(payload);
   if (!summary) {
-    return quiet(OUTCOMES.NO_SUMMARY);
+    return quiet(OUTCOMES.NO_SUMMARY, noSummaryDetail(payload));
   }
 
   const args = [
@@ -779,6 +880,7 @@ module.exports = {
   AGENT_TASK_TYPES,
   pendingAgentTasks,
   lastAssistantMessage,
+  closingMessage,
   buildJudgePrompt,
   parseVerdict,
   styleBlockPaths,
