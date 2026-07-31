@@ -134,14 +134,26 @@ describe("hook architecture guards", () => {
   });
 
   // The hook must outlive the child it waits on, or the platform kills the handler
-  // mid-judge and every verdict is lost with the tier still green.
-  it("gives the Stop hook longer than the judge child it spawns", () => {
+  // mid-judge and every verdict is lost with the tier still green. Worse than losing the
+  // verdict: a platform kill emits no outcome line, so it is invisible where our own
+  // `timeout` classification is at least logged.
+  //
+  // A strict `>` was the original assertion and it is too weak — 1ms of slack satisfies it,
+  // and the handler has its own work either side of the spawn: node startup, reading config,
+  // taking the closing message off the payload, composing, and two log writes. The margin is
+  // asserted so that raising `JUDGE_TIMEOUT_MS` to just under the handler's cap fails here
+  // rather than in production. A `command` hook's platform default is 600s, so the explicit
+  // `timeout` in hooks.json is a deliberate tightening and there is room to move both.
+  const HANDLER_SLACK_MS = 10_000;
+  it("gives the Stop hook longer than the judge child it spawns, with room to spare", () => {
     const [stop] = ALL.filter((h) => h.event === "Stop");
     const { JUDGE_TIMEOUT_MS } = require(STOP_JUDGE_LIB);
     assert.ok(stop.timeout, "the Stop hook declares no timeout, so the default may cut the judge");
+    const slack = stop.timeout * 1000 - JUDGE_TIMEOUT_MS;
     assert.ok(
-      stop.timeout * 1000 > JUDGE_TIMEOUT_MS,
-      `hook timeout ${stop.timeout}s does not exceed the judge's ${JUDGE_TIMEOUT_MS}ms`
+      slack >= HANDLER_SLACK_MS,
+      `hook timeout ${stop.timeout}s leaves ${slack}ms over the judge's ${JUDGE_TIMEOUT_MS}ms, ` +
+        `under the ${HANDLER_SLACK_MS}ms the handler needs for its own work`
     );
   });
 

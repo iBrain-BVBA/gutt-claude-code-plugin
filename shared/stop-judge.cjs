@@ -60,9 +60,31 @@ const { childEnv } = require("./nested-run.cjs");
  *  reproducible across CLI versions, which an alias that follows the platform is not. */
 const JUDGE_MODEL = "claude-sonnet-5";
 
-/** The child gets 30s. A judge that has not answered by then has already cost more than
- *  the capture is worth, and Stop sits between the user and their answer. */
-const JUDGE_TIMEOUT_MS = 30_000;
+/**
+ * The child's own cap, in ms.
+ *
+ * Raised from 30s to 60s. 30s was being hit consistently rather than exceptionally: four
+ * `timeout` outcomes in `hook-invocations.log`, every one on a turn whose closing message ran
+ * past ~2400 characters, which is the ordinary length once a reply carries both a capture
+ * account and a closing summary. Judge latency scales with the message it scores, so the old
+ * cap was not bounding a stuck judge — it was cutting off working ones.
+ *
+ * Two constraints this sits between, and it must stay strictly inside both:
+ *
+ * - **Above**, the Stop handler's `timeout` in `hooks.json`, which the platform enforces on
+ *   the whole hook. If the child outlives the handler the platform kills the handler
+ *   mid-judge, and a kill produces no outcome line at all — strictly worse than a `timeout`
+ *   we classify and log. `tests/hook-architecture.test.cjs` guards the ordering; raising this
+ *   constant alone fails that test, which is how it is supposed to behave. The handler is at
+ *   75s. Note that a `command` hook's platform *default* is 600s, so that number is a
+ *   deliberate tightening rather than a ceiling we are pressing against.
+ * - **Below**, the user. Stop sits between them and the end of their turn, so this is time
+ *   they wait. 60s is defensible only because the outcome is a capture they would otherwise
+ *   have to write by hand; it is not a number to keep raising. If it is being hit again, the
+ *   fix is to bound what the judge is *given* — see `TAIL_BYTES` and `buildJudgePrompt` — not
+ *   to buy more seconds.
+ */
+const JUDGE_TIMEOUT_MS = 60_000;
 
 /**
  * How much of the transcript tail to read, in bytes.
