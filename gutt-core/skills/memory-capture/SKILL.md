@@ -52,9 +52,17 @@ _whether you may write it without asking_.
    `add_memory_to_<alias>` is frequently _not_ the id of the group it writes to —
    ids carry suffixes aliases drop. Sometimes the two do match, which is what
    makes guessing dangerous: you cannot tell from the tool name which case you're
-   in. Read the id from the resource, call the tool by its listed name.
-   (`references/tools.md` §"Finding the group" has the full map, the payload
-   shape, and what to do when `instructions` comes back `null`.)
+   in.
+
+   **So pair the two by description, never by name.** Having picked a group, find
+   its tool by reading the **tool descriptions** — the per-group write tools name
+   their target namespace in the description text, which is the one place the
+   `group_id` and the tool are stated together. Never pair them by string-matching
+   the alias against the id. If no description names your group unambiguously,
+   **ask the user** rather than picking the closest-looking tool: a write to the
+   wrong group cannot be moved from here. (`references/tools.md` §"Finding the
+   group" has the full map, the payload shape, and what to do when `instructions`
+   comes back `null`.)
 
 5. **One focused episode, ≤15,000 chars.** The server hard-rejects anything
    larger, so split it into several self-contained episodes rather than let the
@@ -195,9 +203,11 @@ drafts to the user so they aren't lost. State the degradation in one line.
 **A missing `group://` resource is not that case.** Resources can be unlistable,
 absent, or carry `instructions: null` on a server whose write tools work fine —
 rule 4's two halves fail independently. Losing the group prose costs you routing
-guidance, not the ability to write: fall back to the tool list, and if it offers
-exactly one writable scope, use it. Only an ambiguous choice between several
-groups is worth pausing to ask about.
+guidance, not the ability to write: fall back to the **tool descriptions**, which
+name each tool's target namespace and are what you pair a group to anyway
+(rule 4). If exactly one writable scope is on offer, use it. Only an ambiguous
+choice between several groups is worth pausing to ask about — and there, ask
+rather than guess.
 
 ## References
 

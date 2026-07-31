@@ -65,10 +65,12 @@ mean the group is unwritable.
 
 **Enumerate per-group resources; don't depend on an aggregate.** A
 `group://all/instructions` returning every accessible group at once may or may not
-exist on a given deployment — where it doesn't, the URI template still matches
-with `group_id="all"` and you get `Access denied for group: all`, which is absence
-rather than a permissions problem worth reporting. Read the per-group resources
-and treat any aggregate as a shortcut you never rely on.
+be reachable on a given deployment — it can be absent, or present but restricted.
+A denial does **not** tell you which: the URI template matches any segment, so
+`Access denied for group: all` is what you get either way, and it is not evidence
+about whether an aggregate exists. Don't infer a cause from it and don't report it
+as a permissions fault. Treat the aggregate as unavailable, fall back to
+enumerating the per-group resources, and never make it a prerequisite.
 
 **The alias in a tool name is not a `group_id`.** The `<alias>` in
 `add_memory_to_<alias>` is often not the id of the group it writes to — ids carry
