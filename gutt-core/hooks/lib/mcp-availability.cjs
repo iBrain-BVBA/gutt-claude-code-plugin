@@ -33,8 +33,30 @@ const fs = require("node:fs");
 
 const { debugLog } = require("./debug.cjs");
 
-/** How much of the transcript's end to read. Bounded work on any session length. */
-const TAIL_BYTES = 256 * 1024;
+/**
+ * How much of the transcript to read at a time, walking back from the end.
+ *
+ * Chunked rather than one fixed tail, because a fixed tail cannot be sized: the
+ * answer sits wherever availability last changed, which on a busy session is
+ * hundreds of kilobytes of conversation ago and on a quiet one is the previous
+ * line. A 256 KB tail measured against a real 4.3 MB session missed the answer by
+ * 90 KB and reported "unknown" — the degradation looks honest and is useless, since
+ * a signal that abstains on every long session is not a signal.
+ *
+ * So: start at the end, stop at the first answer. The common case still reads one
+ * chunk; only a session that genuinely has not touched gutt in a long while pays
+ * for more.
+ */
+const CHUNK_BYTES = 256 * 1024;
+
+/**
+ * The most this will read before giving up.
+ *
+ * A session with no gutt server at all has no answer anywhere in its transcript, so
+ * without a cap that case walks the entire file on every prompt. Bounded, it costs
+ * a fixed amount and returns "unknown", which is the right answer for it anyway.
+ */
+const MAX_SCAN_BYTES = 4 * 1024 * 1024;
 
 /** Matches a gutt MCP tool name, whatever prefix the deployment gives it. */
 const GUTT_TOOL = /^mcp__.*gutt.*__./i;
@@ -43,35 +65,26 @@ const GUTT_TOOL = /^mcp__.*gutt.*__./i;
 const GUTT_SERVER = /gutt/i;
 
 /**
- * Read the last `TAIL_BYTES` of a file as text, or null.
+ * What one transcript line says about gutt, or null.
  *
- * Byte-sliced rather than line-read, so the first line is usually a fragment. That
- * is fine and expected: the caller parses per line and discards what will not
- * parse, and a truncated leading line is the oldest of them.
+ * The `includes` is a cheap reject before the parse — the overwhelming majority of
+ * lines are conversation, and `JSON.parse` on each is the expensive way to learn
+ * that. It is only a filter: this repo's own transcripts contain assistant messages
+ * and file edits that *discuss* `deferred_tools_delta`, so the string matching
+ * proves nothing and every decision below is made structurally.
  *
- * @param {string} filePath
- * @returns {string|null}
+ * @param {string} line
+ * @returns {"available"|"pending"|"absent"|null}
  */
-function readTail(filePath) {
-  let fd;
-  try {
-    const { size } = fs.statSync(filePath);
-    const length = Math.min(size, TAIL_BYTES);
-    const buffer = Buffer.alloc(length);
-    fd = fs.openSync(filePath, "r");
-    fs.readSync(fd, buffer, 0, length, size - length);
-    return buffer.toString("utf8");
-  } catch (err) {
-    debugLog("mcp-availability", `could not read transcript tail: ${err.message}`);
+function lineVerdict(line) {
+  if (!line || !line.includes("deferred_tools_delta")) {
     return null;
-  } finally {
-    if (fd !== undefined) {
-      try {
-        fs.closeSync(fd);
-      } catch {
-        /* nothing useful to do */
-      }
-    }
+  }
+  try {
+    return verdictFor(JSON.parse(line).attachment);
+  } catch {
+    // A chunk-boundary fragment, or a record shape we do not know.
+    return null;
   }
 }
 
@@ -118,36 +131,60 @@ function guttToolAvailability(transcriptPath) {
   if (!transcriptPath) {
     return "unknown";
   }
-  const tail = readTail(transcriptPath);
-  if (tail === null) {
+
+  let fd;
+  let size;
+  try {
+    size = fs.statSync(transcriptPath).size;
+    fd = fs.openSync(transcriptPath, "r");
+  } catch (err) {
+    debugLog("mcp-availability", `could not open transcript: ${err.message}`);
     return "unknown";
   }
-  const lines = tail.split("\n");
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const line = lines[i];
-    // Cheap reject before the parse: the overwhelming majority of transcript lines
-    // are conversation, and JSON.parse on each of them is the expensive way to
-    // learn that.
-    if (!line || !line.includes("deferred_tools_delta")) {
-      continue;
+
+  try {
+    let end = size;
+    let scanned = 0;
+    // The head of the chunk read previously — which sits *after* this one in the
+    // file — whose line began somewhere in the chunk about to be read.
+    let carry = "";
+
+    while (end > 0 && scanned < MAX_SCAN_BYTES) {
+      const length = Math.min(CHUNK_BYTES, end);
+      const buffer = Buffer.alloc(length);
+      fs.readSync(fd, buffer, 0, length, end - length);
+      end -= length;
+      scanned += length;
+
+      const lines = `${buffer.toString("utf8")}${carry}`.split("\n");
+      // The first line is a fragment unless this chunk reached the start of the
+      // file; carry it into the next read rather than parsing half a record.
+      carry = end > 0 ? lines.shift() : "";
+
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const verdict = lineVerdict(lines[i]);
+        if (verdict !== null) {
+          return verdict;
+        }
+      }
     }
-    let verdict = null;
+    return "unknown";
+  } catch (err) {
+    debugLog("mcp-availability", `could not read transcript: ${err.message}`);
+    return "unknown";
+  } finally {
     try {
-      verdict = verdictFor(JSON.parse(line).attachment);
+      fs.closeSync(fd);
     } catch {
-      // A truncated first line, or a record shape we do not know. Keep walking.
-      continue;
-    }
-    if (verdict !== null) {
-      return verdict;
+      /* nothing useful to do */
     }
   }
-  return "unknown";
 }
 
 module.exports = {
   guttToolAvailability,
   verdictFor,
-  readTail,
-  TAIL_BYTES,
+  lineVerdict,
+  CHUNK_BYTES,
+  MAX_SCAN_BYTES,
 };

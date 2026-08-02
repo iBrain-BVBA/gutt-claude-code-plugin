@@ -12,7 +12,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { describe, it, beforeEach, afterEach } = require("node:test");
 
-const { guttToolAvailability, verdictFor, TAIL_BYTES } = require(
+const { guttToolAvailability, verdictFor, CHUNK_BYTES, MAX_SCAN_BYTES } = require(
   path.join(__dirname, "..", "gutt-core", "hooks", "lib", "mcp-availability.cjs")
 );
 
@@ -124,20 +124,50 @@ describe("reading gutt tool availability from a transcript", () => {
     assert.equal(guttToolAvailability(transcript), "available");
   });
 
-  it("reads only the tail, and is not defeated by the truncated first line", () => {
-    // Byte-slicing the end of a large file usually cuts a line in half. That line
-    // must be discarded without taking the walk down with it.
+  it("keeps reading back past the first chunk to reach the answer", () => {
+    // The bug a fixed 256 KB tail actually shipped with: measured against a real
+    // 4.3 MB session, the last availability change sat 340 KB from the end and the
+    // reader reported "unknown". A signal that abstains on every long session is
+    // not a signal, so it now walks back until it finds something.
     const filler = Array.from({ length: 4000 }, (_, i) => chatter(`padding line ${i} `.repeat(20)));
-    write([delta({ removed: GUTT_TOOLS }), ...filler, delta({ added: GUTT_TOOLS })]);
-    assert.ok(fs.statSync(transcript).size > TAIL_BYTES, "fixture must exceed the tail window");
+    write([delta({ added: GUTT_TOOLS }), ...filler]);
+    assert.ok(
+      fs.statSync(transcript).size > CHUNK_BYTES * 2,
+      "fixture must span several chunks for this to prove anything"
+    );
     assert.equal(guttToolAvailability(transcript), "available");
   });
 
-  it("says unknown when the only answer is older than the tail window", () => {
-    // Honest degradation: the answer exists but is out of reach, and inventing one
-    // would be worse than admitting the window was too small.
-    const filler = Array.from({ length: 4000 }, (_, i) => chatter(`padding line ${i} `.repeat(20)));
-    write([delta({ added: GUTT_TOOLS }), ...filler]);
+  it("stitches a record that straddles a chunk boundary", () => {
+    // Chunks are byte-sliced, so a record is routinely cut in half. Parsing the
+    // fragment would silently drop the one answer in the file.
+    const pad = (n) => Array.from({ length: n }, (_, i) => chatter(`line ${i} `.repeat(30)));
+    // Enough filler either side that the delta cannot land neatly on a boundary.
+    write([...pad(600), delta({ added: GUTT_TOOLS }), ...pad(600)]);
+    assert.ok(fs.statSync(transcript).size > CHUNK_BYTES, "fixture must exceed one chunk");
+    assert.equal(guttToolAvailability(transcript), "available");
+  });
+
+  it("is not fooled by conversation that merely discusses the record type", () => {
+    // This plugin's own transcripts contain assistant messages and file edits about
+    // `deferred_tools_delta`, which is why the string match is a filter and every
+    // decision is made structurally.
+    write([
+      delta({ removed: GUTT_TOOLS, pending: ["claude.ai gutt-pro-memory"] }),
+      chatter("the deferred_tools_delta attachment carries addedNames for gutt tools"),
+      JSON.stringify({
+        type: "attachment",
+        attachment: { type: "edited_text_file", content: "deferred_tools_delta gutt addedNames" },
+      }),
+    ]);
+    assert.equal(guttToolAvailability(transcript), "pending");
+  });
+
+  it("gives up rather than walking an unbounded file forever", () => {
+    assert.ok(MAX_SCAN_BYTES > CHUNK_BYTES, "the cap has to leave room for real sessions");
+    const pad = Array.from({ length: 3000 }, (_, i) => chatter(`line ${i} `.repeat(30)));
+    write(pad);
+    // No delta anywhere: the honest answer, reached without reading the file twice.
     assert.equal(guttToolAvailability(transcript), "unknown");
   });
 });
