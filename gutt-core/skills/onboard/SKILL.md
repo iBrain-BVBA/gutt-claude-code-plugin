@@ -89,7 +89,7 @@ writes the user's own settings file only when they run it.
 ```
 An optional HUD can show gutt's state in your status bar:
 
-  [gutt 🟢 on <group>]  38% ctx  ↺3     connected, recall live
+  [gutt 🟢 on <group>]  ↺3              configured, recall live
   [gutt ⚪ on !]                         no gutt MCP server — run /gutt-pro:setup
   [gutt 🟢 off]                          recall disabled — /gutt-pro:on restores it
   [gutt 🟢 zzz→14:30 <group>]            snoozed until then

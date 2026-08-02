@@ -33,12 +33,12 @@ const { readConfig, isSnoozed, snoozeDeadline } = require("./lib/runtime-config.
  * guessing a narrow one would hide information from someone with a wide terminal —
  * so the default is to show everything.
  *
- * Ordered least-valuable-first. Recall recency and context both go before the group
- * name, because a user who has narrowed their terminal that far still needs to know
- * *which graph* they are writing to.
+ * Ordered least-valuable-first. Recall recency goes before the group name, because
+ * a user who has narrowed their terminal that far still needs to know *which graph*
+ * they are writing to.
  */
-const DROP_ORDER = ["recall", "context", "group"];
-const MIN_WIDTH = { recall: 60, context: 48, group: 36 };
+const DROP_ORDER = ["recall", "group"];
+const MIN_WIDTH = { recall: 60, group: 36 };
 
 /**
  * Terminal width, or null when it cannot be determined.
@@ -118,21 +118,6 @@ function connectionGlyph(status) {
   return status === "error" ? "🔴" : "⚪";
 }
 
-/**
- * Percentage of the context window used, or null when it is not yet known.
- *
- * Null before the first API response and again after a compaction, which is why
- * this is a distinct case rather than a zero: `0%` claims an empty context, and
- * "not measured yet" is a different statement.
- *
- * @param {*} contextWindow
- * @returns {number|null}
- */
-function contextPercent(contextWindow) {
-  const pct = contextWindow?.used_percentage;
-  return typeof pct === "number" && Number.isFinite(pct) ? Math.round(pct) : null;
-}
-
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -186,11 +171,6 @@ process.stdin.on("end", () => {
   }
 
   const segments = [`[gutt ${parts.join(" ")}]`];
-
-  const pct = contextPercent(data.context_window);
-  if (pct !== null && visible.has("context")) {
-    segments.push(`${pct}% ctx`);
-  }
 
   // `null` means nothing has been recalled in this conversation and gates nothing;
   // `0` means a recall just happened. Only the second is worth a glyph — showing

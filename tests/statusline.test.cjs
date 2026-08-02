@@ -229,17 +229,13 @@ describe("metrics never render as a permanent zero", () => {
     assert.match(render(PAYLOAD), /↺3/);
   });
 
-  it("omits context usage before the first API response reports it", () => {
+  it("never shows context window usage, however the payload reports it", () => {
+    // Dropped from the HUD by choice: Claude Code shows it already, and the bar is
+    // for gutt state. The payload still carries it, so this pins the omission
+    // rather than leaving it to be reintroduced as an obvious freebie.
     writeState({ connectionStatus: "ok", mcpConfigured: true });
-    // `used_percentage` is null early in a session and again after a compaction.
-    // `0% ctx` would claim an empty context, which is a different statement.
-    const line = render({ ...PAYLOAD, context_window: { used_percentage: null } });
-    assert.doesNotMatch(line, /ctx/);
-  });
-
-  it("shows context usage once it is known", () => {
-    writeState({ connectionStatus: "ok", mcpConfigured: true });
-    assert.match(render(PAYLOAD), /38% ctx/);
+    assert.doesNotMatch(render(PAYLOAD), /ctx/);
+    assert.doesNotMatch(render({ ...PAYLOAD, context_window: { used_percentage: 91 } }), /91/);
   });
 });
 
@@ -250,25 +246,16 @@ describe("the HUD degrades rather than wrapping", () => {
 
   it("shows everything when the width is unknown", () => {
     // Guessing narrow would hide information from someone with a wide terminal.
-    const line = render(PAYLOAD);
-    assert.match(line, /ctx/);
-    assert.match(line, /↺/);
+    assert.match(render(PAYLOAD), /↺/);
   });
 
   it("shows everything on a wide terminal", () => {
-    const line = render(PAYLOAD, { columns: 120 });
-    assert.match(line, /ctx/);
-    assert.match(line, /↺/);
+    assert.match(render(PAYLOAD, { columns: 120 }), /↺/);
   });
 
-  it("drops recall first, then context, as the terminal narrows", () => {
-    const medium = render(PAYLOAD, { columns: 52 });
-    assert.doesNotMatch(medium, /↺/);
-    assert.match(medium, /ctx/);
-
-    const narrow = render(PAYLOAD, { columns: 40 });
-    assert.doesNotMatch(narrow, /↺/);
-    assert.doesNotMatch(narrow, /ctx/);
+  it("drops recall as the terminal narrows", () => {
+    assert.match(render(PAYLOAD, { columns: 80 }), /↺/);
+    assert.doesNotMatch(render(PAYLOAD, { columns: 52 }), /↺/);
   });
 
   it("never drops the state segment, however narrow", () => {
@@ -288,7 +275,7 @@ describe("the HUD degrades rather than vanishing", () => {
   });
 
   it("tolerates a byte-order mark, which some shells prepend", () => {
-    assert.match(render({}, { raw: `\uFEFF${JSON.stringify(PAYLOAD)}` }), /38% ctx/);
+    assert.match(render({}, { raw: `\uFEFF${JSON.stringify(PAYLOAD)}` }), /\| \[Opus 5\]/);
   });
 
   it("renders the model and cost Claude Code supplies", () => {

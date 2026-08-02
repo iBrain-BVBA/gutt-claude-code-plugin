@@ -80,20 +80,27 @@ where things stand. Your existing settings are backed up before either change, a
 status line you wrote yourself is never touched or overwritten.
 
 ```
-[gutt 🟢 on acme-eng]  38% ctx  ↺3  | [Opus 5] ~$1.24
+[gutt 🟢 on acme-eng]  ↺3  | [Opus 5] ~$1.24
 ```
 
-| Segment      | Means                                                                          |
-| ------------ | ------------------------------------------------------------------------------ |
-| 🟢 / ⚪ / 🔴 | connected · not yet known (or unprobeable, e.g. a stdio server) · probe failed |
-| `on`         | recall is live                                                                 |
-| `off`        | durably disabled — `/gutt-pro:on` brings it back                               |
-| `zzz→14:30`  | snoozed until then; `zzz` alone means for the rest of this session             |
-| `hitl`       | capture mode is human-in-the-loop (shown only when it is not `auto`)           |
-| `!`          | no gutt MCP server is configured — run `/gutt-pro:setup`                       |
-| `acme-eng`   | the group this session writes to                                               |
-| `38% ctx`    | context window used                                                            |
-| `↺3`         | turns since memory was last searched                                           |
+| Segment      | Means                                                                      |
+| ------------ | -------------------------------------------------------------------------- |
+| 🟢 / ⚪ / 🔴 | configured with a URL · not yet known (or stdio) · the check itself failed |
+| `on`         | recall is live                                                             |
+| `off`        | durably disabled — `/gutt-pro:on` brings it back                           |
+| `zzz→14:30`  | snoozed until then; `zzz` alone means for the rest of this session         |
+| `hitl`       | capture mode is human-in-the-loop (shown only when it is not `auto`)       |
+| `!`          | no gutt MCP server is configured — run `/gutt-pro:setup`                   |
+| `acme-eng`   | the group this session writes to                                           |
+| `↺3`         | turns since memory was last searched                                       |
+
+🟢 reports **configuration, not reachability**. The check reads your settings files
+at session start; a hook cannot make network calls, so a server that is configured
+but down still shows green. 🔴 means the check could not be run at all, not that the
+server is unreachable.
+
+Context window usage is deliberately absent — Claude Code already displays it, and
+this bar is for gutt state.
 
 Segments drop from the right as the terminal narrows; the state segment always stays.
 
