@@ -65,6 +65,17 @@ as `0`: it means "nothing recalled in this conversation" and gates nothing, wher
 `null` because those begin with an empty context; `resume` and `compact` keep it,
 because they keep the transcript the recall is still sitting in.
 
+The two statusline fields carry different shapes, and both are rewritten on every
+SessionStart rather than only on failure — the event fires again on resume, `/clear`
+and compaction against the same record, so a field written only when something goes
+wrong is written once and never corrected:
+
+- `statuslineReassert` — `null`, or `{status, detail}`. The `detail` is what
+  `/gutt-pro:statusline status` prints, and on the `settings-lost` path it is the only
+  copy of the sentence naming where the user's `settings.json` went: running the
+  install again finds no file, takes the "create one" branch, and reports success.
+- `statuslineShim` — `null`, or a string naming the shim that could not be written.
+
 ### Keys in `config.json`
 
 | Key                              | Producer                             | Written by                    | Scope           |

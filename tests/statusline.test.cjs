@@ -692,6 +692,13 @@ describe("the shim is what makes an upgrade invisible", () => {
       const run = spawnSync(process.execPath, [shim], { input: "{}", encoding: "utf8" });
       assert.equal(run.status, 0, `shim exited ${run.status}: ${run.stderr}`);
       assert.doesNotMatch(run.stderr, /Cannot find module/);
+      // Quietly, which is the half of this the asserts above do not cover. The shim
+      // also has a *loud* path, for a renderer that is present and will not load, and
+      // nothing stopped that firing here too: an uninstalled plugin would then print
+      // "statusline failed to load" on every refresh, several times a second, from
+      // something the user deliberately removed. Silence is the whole point of this
+      // branch and has to be asserted, not assumed.
+      assert.equal(run.stdout.trim(), "", "an uninstalled plugin must say nothing at all");
     } finally {
       if (previous === undefined) {
         delete process.env.CLAUDE_PLUGIN_ROOT;
@@ -764,6 +771,41 @@ describe("the shim is what makes an upgrade invisible", () => {
     fs.mkdirSync(path.dirname(stale), { recursive: true });
     fs.writeFileSync(stale, "// an older but perfectly loadable renderer\n");
     assert.deepEqual(install.shimResolves(), { shim: true, current: false, renderer: true });
+  });
+
+  it("reads the target out of shims it did not write", () => {
+    // The entire reason to open the shim is to learn about shims *this* version did
+    // not write — so a parser anchored on this version's exact formatting answers the
+    // one case it exists for with "no target". That is not a harmless miss: it was
+    // reported as a missing renderer, which is a claim about a file rather than about
+    // our ability to read one, and it sent people to repair a bar that was rendering.
+    const target = path.join(sandbox, "v-old", "hooks", "statusline.cjs");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, "// loadable\n");
+    const json = JSON.stringify(target);
+
+    const spellings = [
+      `var TARGET = ${json};`,
+      `const TARGET = ${json};`,
+      `let TARGET  =  ${json}`,
+      `  var TARGET = ${json};`,
+      `require(${json});`, // the shape the first generated shim used
+      `var TARGET = ${json.replace(/^"|"$/g, "'")};`, // single quotes
+    ];
+    for (const line of spellings) {
+      fs.writeFileSync(install.shimPath(), `${line}\ntry { require(TARGET); } catch (e) {}\n`);
+      const result = install.shimResolves();
+      assert.equal(result.renderer, true, `must follow the target in: ${line}`);
+      assert.equal(result.current, false, "and still know it is not this version's");
+    }
+  });
+
+  it("says it could not tell, rather than claiming the renderer is gone", () => {
+    // The distinction the tri-state exists for. "The file it names is missing" and "I
+    // cannot work out what it names" have different remedies, and collapsing the
+    // second into the first is how a working bar gets diagnosed as broken.
+    fs.writeFileSync(install.shimPath(), "// nothing here names anything at all\n");
+    assert.deepEqual(install.shimResolves(), { shim: true, current: false, renderer: null });
   });
 
   it("repoints itself when the plugin root moves, without touching settings", () => {
@@ -1329,17 +1371,43 @@ describe("the /gutt-pro:statusline command surface", () => {
 });
 
 describe("the async SessionStart hook maintains the HUD", () => {
-  /** Run session-connectivity.cjs against the sandbox. */
-  function runHook(home) {
+  /**
+   * Run session-connectivity.cjs against the sandbox.
+   *
+   * `preload` is a `--require` script, which runs before the hook loads and can
+   * therefore replace an export the hook destructures at load time. It is the only way
+   * to reach the whole-file loss outcome: that is produced by a `rename` onto an
+   * existing file failing with EPERM after the target has already been unlinked, which
+   * no arrangement of files provokes on POSIX. The behaviour under test here is not
+   * the rename — it is what this hook does with the outcome.
+   */
+  function runHook(home, preload) {
     return spawnSync(
       process.execPath,
-      [path.join(ROOT, "gutt-core", "hooks", "session-connectivity.cjs")],
+      [
+        ...(preload ? ["--require", preload] : []),
+        path.join(ROOT, "gutt-core", "hooks", "session-connectivity.cjs"),
+      ],
       {
         input: JSON.stringify({ session_id: "s1", hook_event_name: "SessionStart" }),
         encoding: "utf8",
         env: { ...process.env, HOME: home, CLAUDE_PLUGIN_DATA: dataDir },
       }
     );
+  }
+
+  /** A `--require` script forcing the repair to report a lost settings.json. */
+  function forceSettingsLost(detail) {
+    const file = path.join(sandbox, "force-lost.cjs");
+    fs.writeFileSync(
+      file,
+      `const t = require.resolve(${JSON.stringify(INSTALL_LIB)});\n` +
+        `require(t);\n` +
+        `require.cache[t].exports.reassertEntry = () => ({\n` +
+        `  restored: false, status: "settings-lost", detail: ${JSON.stringify(detail)},\n` +
+        `});\n`
+    );
+    return file;
   }
 
   it("writes the shim so an upgraded plugin repairs its own entry point", () => {
@@ -1383,6 +1451,61 @@ describe("the async SessionStart hook maintains the HUD", () => {
       JSON.stringify({ statusline: { installed: true } })
     );
     assert.equal(runHook(home).status, 0);
+  });
+
+  it("says a lost settings.json out loud, on one line, without being asked", () => {
+    // The only message on this hook that is not a courtesy. Everything else here
+    // reports something the user can rediscover whenever they like; this reports that
+    // their settings.json is gone and names the file holding its contents, and nothing
+    // else says so unprompted — re-running the install finds no settings.json, takes
+    // the "create one" branch, and reports plain success.
+    const home = path.join(sandbox, "home");
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    const detail = "it is missing. The replacement is at /tmp/settings.json.gutt.99";
+    const r = runHook(home, forceSettingsLost(detail));
+
+    assert.equal(r.status, 0, "even this must not fail the session");
+    assert.match(r.stdout, /lost in the attempt/, "the loss must be announced");
+    assert.match(r.stdout, /settings\.json\.gutt\.99/, "and the remedy must reach the user");
+    // One line. A source hard-wrap inside a template literal puts a real newline in
+    // the output, which splits the sentence across two lines in the transcript.
+    const announced = r.stdout.split("\n").filter((line) => line.includes("lost in the attempt"));
+    assert.equal(announced.length, 1);
+    assert.match(announced[0], /settings\.json\.gutt\.99/, "the whole sentence on one line");
+  });
+
+  it("keeps the reason for a failed repair, not just its label", () => {
+    // `status` is the surface that prints this, and it can only print what reached the
+    // state file. The label alone is an internal token; the sentence naming where the
+    // user's settings went is the entire remedy, and this is its only path there.
+    const home = path.join(sandbox, "home");
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    const detail = "it is missing. The replacement is at /tmp/settings.json.gutt.42";
+    assert.equal(runHook(home, forceSettingsLost(detail)).status, 0);
+
+    const recorded = readSessionState().statuslineReassert;
+    assert.equal(recorded.status, "settings-lost");
+    assert.equal(recorded.detail, detail, "the reason must survive into state");
+  });
+
+  it("records why the shim could not be repointed, and says so when asked", () => {
+    // The value case of a field whose only tested value was `null`. It exists for a
+    // data dir that cannot be written — a read-only or full one — which leaves the
+    // entry point aimed at a renderer the last update moved. Nothing downstream can
+    // rediscover that: the stale target usually still exists, so the shim reads and
+    // resolves and looks healthy.
+    const home = path.join(sandbox, "home");
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    // A directory where the shim has to go: every write to that path fails, and it is
+    // the one failure that does not also break the state file next to it.
+    fs.rmSync(path.join(dataDir, "statusline.cjs"), { force: true });
+    fs.mkdirSync(path.join(dataDir, "statusline.cjs"), { recursive: true });
+
+    assert.equal(runHook(home).status, 0, "an unwritable shim must not fail the session");
+    const recorded = readSessionState().statuslineShim;
+    assert.match(String(recorded), /could not write/, "the failure must be recorded at all");
+
+    fs.rmSync(path.join(dataDir, "statusline.cjs"), { recursive: true, force: true });
   });
 
   it("stops reporting a repair failure once a later attempt works", () => {

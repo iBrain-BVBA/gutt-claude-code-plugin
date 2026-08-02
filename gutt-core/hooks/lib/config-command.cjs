@@ -575,26 +575,38 @@ function runStatusline(arg, typed) {
           "nothing renders. Run /gutt-pro:statusline to write it again."
         );
       }
-      if (!renderer) {
-        return (
-          "The gutt HUD is in your settings.json and its entry point is there, but the " +
-          "renderer it forwards to is missing — usually a plugin update that could not " +
-          "finish. Run /gutt-pro:statusline to repoint it."
-        );
+      // Why this session could not fix it by itself, when it tried and failed. Appended
+      // to whichever diagnosis follows rather than replacing it: the state of the files
+      // is what the user needs to know, and this is why it is still that way.
+      const shimFailure = sessionState.getState().statuslineShim;
+      const because = shimFailure
+        ? ` gutt tried to repoint it automatically this session and could not (${shimFailure}).`
+        : "";
+
+      // `renderer === false` means the shim names a file that is not there. `null`
+      // means the shim is in a shape this version cannot read, which is *not* the same
+      // claim — an older or hand-edited shim can be rendering perfectly, and reporting
+      // it as a missing renderer sends the user to fix a bar that is working. Both are
+      // repaired by repointing, so the untellable case falls through to the stale
+      // branch below and gets the remedy without the diagnosis.
+      if (renderer === false) {
+        return current
+          ? "The gutt HUD is in your settings.json and its entry point is there, but the " +
+              "renderer it forwards to is missing — usually a plugin update that could not " +
+              `finish.${because} Run /gutt-pro:statusline to repoint it.`
+          : "The gutt HUD is in your settings.json, but its entry point still points into a " +
+              "previous version of the plugin, and that version is gone — so nothing renders." +
+              `${because} Run /gutt-pro:statusline to repoint it.`;
       }
       // Resolves, but not to this version. The bar is not blank, so this is a report
       // rather than a fault — and it is the one the user cannot see any other way,
       // because everything downstream of a stale shim works exactly as well as it did
       // in the version it still points at.
-      const shimFailure = sessionState.getState().statuslineShim;
       if (!current) {
         return (
-          "The gutt HUD is installed and rendering, but its entry point still points at a " +
-          "previous version of the plugin, so you are not seeing this version's status bar. " +
-          (shimFailure
-            ? `gutt tried to repoint it this session and could not (${shimFailure}). `
-            : "") +
-          "Run /gutt-pro:statusline to repoint it."
+          "The gutt HUD is installed and rendering, but its entry point is not the one this " +
+          "version writes, so you may not be seeing this version's status bar." +
+          `${because} Run /gutt-pro:statusline to repoint it.`
         );
       }
       return `The gutt HUD is installed. /gutt-pro:statusline off removes it.`;

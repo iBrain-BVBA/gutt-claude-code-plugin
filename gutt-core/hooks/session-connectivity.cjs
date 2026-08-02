@@ -183,8 +183,13 @@ process.stdin.on("end", () => {
   // nothing else will say so unprompted. Printed first, and unconditionally, because
   // it does not compete for attention with a note about memory configuration.
   if (lostSettings) {
-    console.log(`⚠️ gutt could not restore your status line and your settings.json was lost in
-the attempt. ${lostSettings}`);
+    // Concatenated, not a wrapped template literal: the newline a source hard-wrap
+    // leaves in the string is a newline in the output, and this is the one message
+    // here that must read as a single sentence.
+    console.log(
+      "⚠️ gutt could not restore your status line and your settings.json was lost in the " +
+        `attempt. ${lostSettings}`
+    );
   }
 
   // Best-effort user-facing note. An async hook's stdout is not guaranteed to

@@ -218,20 +218,44 @@ function refreshShim() {
  * with `JSON.parse` round-trips exactly — including the backslashes in a Windows
  * path, which is the case a hand-rolled unquote would get wrong.
  *
+ * **Deliberately looser than the one spelling this version writes.** The point of
+ * reading the shim at all is to learn about shims *this* version did not write —
+ * that is the whole failing case — so anchoring on the exact current formatting
+ * defeats the purpose. A first pass at this matched only `^var TARGET = "…";$`, and a
+ * shim in any earlier or hand-edited spelling then parsed as "no target", which
+ * `shimResolves` reported as a missing renderer while the thing was rendering
+ * perfectly. So: any declaration keyword, either quote style, optional indent and
+ * semicolon, and the bare `require("…")` form the first generated shim used.
+ *
  * @param {string} body contents of an existing shim
- * @returns {string|null} the required path, or null if this is not a shim we wrote
+ * @returns {string|null} the required path, or null if no target could be read
  */
 function shimTarget(body) {
-  const match = /^var TARGET = (".*");$/m.exec(body);
-  if (!match) {
-    return null;
+  const patterns = [
+    /^\s*(?:var|let|const)\s+TARGET\s*=\s*(".*?"|'.*?')\s*;?\s*$/m,
+    /^\s*require\(\s*(".*?"|'.*?')\s*\)\s*;?\s*$/m,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(body);
+    if (!match) {
+      continue;
+    }
+    // Single quotes are not JSON, so they are normalised before parsing rather than
+    // unquoted by hand — the escapes inside still have to be read as JS reads them.
+    const literal = match[1].startsWith("'")
+      ? JSON.stringify(match[1].slice(1, -1).replace(/\\'/g, "'"))
+      : match[1];
+    try {
+      const target = JSON.parse(literal);
+      if (typeof target === "string" && target !== "") {
+        return target;
+      }
+    } catch {
+      // Try the next shape rather than giving up: an unparseable match here is not
+      // evidence that the other spelling is absent.
+    }
   }
-  try {
-    const target = JSON.parse(match[1]);
-    return typeof target === "string" && target !== "" ? target : null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**
@@ -256,7 +280,12 @@ function shimTarget(body) {
  * from "stale and dead": a shim can point at a real renderer from an older version
  * that will happily run, which is not broken but is not what an upgrade intended.
  *
- * @returns {{shim: boolean, current: boolean, renderer: boolean}}
+ * **`renderer` is `null` when the shim could not be read, not `false`.** "The file it
+ * names is gone" and "I could not work out what it names" have different remedies and
+ * must not collapse: reported as a missing renderer, the second sends someone to fix
+ * a bar that is rendering. The caller has to handle three values.
+ *
+ * @returns {{shim: boolean, current: boolean, renderer: boolean|null}}
  */
 function shimResolves() {
   const shim = shimPath();
@@ -276,7 +305,7 @@ function shimResolves() {
   return {
     shim: true,
     current: body === shimContents(rendererPath()),
-    renderer: target !== null && fs.existsSync(target),
+    renderer: target === null ? null : fs.existsSync(target),
   };
 }
 
