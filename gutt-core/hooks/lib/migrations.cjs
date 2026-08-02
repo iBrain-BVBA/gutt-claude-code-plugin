@@ -653,6 +653,7 @@ module.exports = {
   isDeadPluginStatusLine,
   statusLineTarget,
   OUR_STATUSLINE_FILES,
+  PLUGIN_PATH_MARKERS,
   needsMigration,
   runMigrations,
   describeMigration,

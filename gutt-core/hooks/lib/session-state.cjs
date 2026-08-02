@@ -97,11 +97,62 @@ function defaultState() {
     // Whether gutt's tools are in the model's tool list right now, from the
     // transcript. The one signal that survives a server nobody is calling.
     mcpToolsAvailable: "unknown",
+    // When that reading was taken. Null means never, which is why the per-tool
+    // path always walks once before it starts debouncing.
+    mcpToolsAvailableAt: null,
   };
 }
 
-/** How long an observation stays authoritative before the HUD calls it unknown. */
-const OBSERVATION_TTL_MS = 10 * 60 * 1000;
+/** A gutt MCP tool, whatever prefix the deployment gives its server. */
+const GUTT_TOOL_NAME = /^mcp__.*gutt.*__./i;
+
+/**
+ * Is this the name of a gutt MCP tool?
+ *
+ * Load-bearing now that the PostToolUse hook is matched on every tool rather than
+ * on gutt's alone: without this gate, an ordinary Bash or Read response would be
+ * classified and recorded as evidence about the memory connection.
+ *
+ * @param {*} toolName
+ * @returns {boolean}
+ */
+function isGuttTool(toolName) {
+  return GUTT_TOOL_NAME.test(typeof toolName === "string" ? toolName : "");
+}
+
+/**
+ * How long a tool-availability reading stands before the hot path re-walks the
+ * transcript, which is the only expensive thing either of these hooks does.
+ *
+ * Asymmetric on purpose. A reading of `available` is the steady state and costs
+ * nothing to be slightly late about, so it is held for a long time. Every other
+ * reading is a problem the user is waiting to see resolve — a sign-in they just
+ * completed, a server coming back — so those re-check quickly, and the recovery
+ * shows up almost immediately.
+ *
+ * This governs the per-tool path only. The per-turn hook ignores it and always
+ * reads, so the asymmetry can never delay noticing a drop beyond the next prompt:
+ * without that, a healthy reading would license ten minutes of stale green.
+ */
+const AVAILABILITY_HOLD_OK_MS = 10 * 60 * 1000;
+const AVAILABILITY_HOLD_MS = 5 * 1000;
+
+/**
+ * Is the stored availability reading recent enough to reuse?
+ *
+ * @param {Object} state
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+function availabilityIsFresh(state, now = Date.now()) {
+  const at = Date.parse(state?.mcpToolsAvailableAt ?? "");
+  if (!Number.isFinite(at) || now - at < 0) {
+    return false;
+  }
+  const hold =
+    state.mcpToolsAvailable === "available" ? AVAILABILITY_HOLD_OK_MS : AVAILABILITY_HOLD_MS;
+  return now - at < hold;
+}
 
 /** Error text that names an authentication or authorization problem. */
 const AUTH_PATTERN =
@@ -183,11 +234,13 @@ function classifyToolResponse(toolResponse) {
 /**
  * Record what a real round trip established, with the time it established it.
  *
- * The timestamp is what lets the HUD stop trusting this. Traffic-based observation
- * cannot see a server nobody is calling — when a connection drops, its tools leave
- * the tool list, so nothing calls them and nothing here ever fires again. Without an
- * age the last success would read as current indefinitely, which is precisely the
- * lie the settings-file probe used to tell.
+ * The timestamp is provenance, not an expiry. The HUD used to age this out after ten
+ * minutes, because a remembered success was once the only liveness signal and traffic
+ * observation cannot see a server nobody is calling — when a connection drops its tools
+ * leave the tool list, so nothing calls them and nothing here fires again. The tool-list
+ * reading now covers that, and it is ranked above this, so the age no longer decides
+ * anything: it is kept because "when did this last work" is the first question asked of a
+ * HUD nobody believes, and answering it costs one field.
  *
  * @param {"ok"|"auth"|"error"} status
  * @param {number} [now]
@@ -208,25 +261,26 @@ function noteConnection(status, now = Date.now()) {
  * Holding the previous value on an unknown would make a transcript that briefly
  * could not be read look like a connection state that had not changed.
  *
- * @param {"available"|"pending"|"absent"|"unknown"} availability
+ * SessionStart writes it too, but only when it has an answer: at that point the
+ * transcript is usually empty or still unwritten, and an abstention there would
+ * overwrite the per-prompt writer's verdict on a resumed session for no gain.
+ *
+ * `auth` is distinct from `absent`: the tools are in the list, but the only ones
+ * there exist to get the user signed in. Nothing that watches tool traffic can
+ * discover that, because the tools it matches on are the missing ones.
+ *
+ * @param {"available"|"auth"|"pending"|"absent"|"unknown"} availability
  * @returns {Object} the persisted state
  */
-function noteToolAvailability(availability) {
+function noteToolAvailability(availability, now = Date.now()) {
   return updateState((state) => {
     state.mcpToolsAvailable = availability;
+    // Stamped so the per-tool path can debounce the transcript walk, and so this
+    // reading — which outranks the round trip in the HUD — can be told apart from
+    // one nobody has refreshed since the session began.
+    state.mcpToolsAvailableAt = new Date(now).toISOString();
     return state;
   });
-}
-
-/**
- * Is an observation recent enough to still speak for the connection?
- * @param {*} observedAt
- * @param {number} [now]
- * @returns {boolean}
- */
-function isObservationFresh(observedAt, now = Date.now()) {
-  const at = Date.parse(observedAt ?? "");
-  return Number.isFinite(at) && now - at >= 0 && now - at < OBSERVATION_TTL_MS;
 }
 
 function getState() {
@@ -325,7 +379,7 @@ function isRecallRecent(turnsSinceSearch) {
  */
 function isRecallTool(toolName) {
   const name = typeof toolName === "string" ? toolName : "";
-  if (!/^mcp__.*gutt.*__./i.test(name)) {
+  if (!isGuttTool(name)) {
     return false;
   }
   const action = name.split("__").pop() || "";
@@ -507,12 +561,14 @@ module.exports = {
   noteMemorySearch,
   isRecallRecent,
   isRecallTool,
+  isGuttTool,
+  availabilityIsFresh,
+  AVAILABILITY_HOLD_OK_MS,
+  AVAILABILITY_HOLD_MS,
   RECENT_SEARCH_TURNS,
   // GP-867 connection observation — what a real round trip proved, and when
   classifyToolResponse,
   responseErrorText,
   noteConnection,
   noteToolAvailability,
-  isObservationFresh,
-  OBSERVATION_TTL_MS,
 };

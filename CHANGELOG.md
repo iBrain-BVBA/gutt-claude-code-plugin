@@ -8,9 +8,23 @@
   with `/gutt-pro:statusline`; `off` removes it, `status` reports it. It shows
   connection state, whether recall is `on`, `off` or snoozed (with the time a
   snooze lapses), the capture mode when it is not `auto`, the group being written
-  to, context-window usage, and turns since the last recall. Segments drop from
+  to, the model, and how much of the context window is spent. Segments drop from
   the right as the terminal narrows and the state segment always survives; a
   segment whose data does not exist is omitted rather than rendered as a zero.
+
+  ```
+  [gutt 🟢 on acme-eng] | [Opus 5] ctx 38%
+  ```
+
+  **Neither session cost nor turns-since-recall is on the bar.** The bar is narrow
+  and a segment has to change what you do next to earn the space. A turn counter
+  never did. Cost was worse: the figure Claude Code reports is an API price, so on a
+  subscription it was a bill you will never be charged, redrawn several times a
+  second — and reading it was the one piece of unguarded arithmetic in the renderer,
+  so a `total_cost_usd` arriving as `null` or a string threw, and a status line that
+  throws prints nothing at all. A single malformed field used to blank the whole HUD
+  on every refresh. Context usage is validated the same way now: a bad field costs
+  that one segment and never the line.
 
   It is opt-in because it cannot be anything else: Claude Code accepts a
   `statusLine` only from the user's own `settings.json`, never from a plugin's, so
@@ -18,10 +32,48 @@
   ran. Nothing writes your settings unless you run the command, your existing file
   is backed up first, and a status line you wrote yourself is never touched.
 
+  **The prefix is required for this one command.** Claude Code has its own
+  `/statusline`, so a bare one is left entirely alone — gutt does not read it, reply
+  to it, or write anything. `/gutt-pro:statusline` is the only spelling that installs
+  the HUD. The plugin's other verbs still answer to their short forms, saying which
+  one they ran; this one cannot, because it writes a file in your home directory and
+  a prompt aimed at the built-in is not permission to do that.
+
   What settings point at is `${CLAUDE_PLUGIN_DATA}/statusline.cjs`, a generated
   one-line shim that forwards to the current plugin root and is rewritten whenever
   that root moves. `${CLAUDE_PLUGIN_ROOT}` is version-scoped, so naming it directly
   is what made the 2.x entry rot on the next upgrade. This one does not.
+
+  **The HUD notices a connection change mid-turn, not just at your next prompt.**
+  The PostToolUse hook is now matched on every tool rather than only gutt's, because
+  a server that has dropped produces no gutt calls to be matched on — which is
+  exactly why the old matcher could never see it. Every gutt-specific action stays
+  gated on the tool name, so an ordinary Bash response is never mistaken for evidence
+  about the memory server, and the transcript read is debounced: a healthy reading is
+  held for ten minutes, anything else re-checked after five seconds. So the frequent
+  checking happens only while something is wrong and you are waiting for it to clear.
+  The per-turn hook ignores the hold, so a drop is still caught by your next prompt at
+  the latest.
+
+  **Anything that a sign-in would fix now shows amber, and the glyph no longer
+  decays.** A configured server whose tools have disappeared asks you to sign in
+  rather than showing a red light you cannot act on — a lapsed remote connector does
+  not announce itself, Claude Code simply withdraws the tools, so that is what an
+  expired connection looks like from here. Red is left for the one thing only a real
+  call can establish: the server answered, and answered with a failure signing in
+  would not fix. Green also no longer times out after ten minutes; a session that
+  simply has not touched memory for a while is an ordinary session, and the tool list
+  catches a server that has genuinely gone. Neutral ⚪ now means exactly one thing —
+  nothing observed yet.
+
+  **An unauthenticated memory server now shows amber, not green.** A connector that
+  has not been signed in publishes only its sign-in tools, so nothing the plugin
+  watches ever gets called and the HUD had no way to notice — it reported a healthy
+  connection for the whole session. The tool list is now read for that state, at
+  session start as well as on every prompt, and green requires at least one real
+  memory tool to actually be present. More than one gutt server can be connected at
+  once and they authenticate separately, so a sibling needing sign-in does not count
+  against a memory server that is working.
 
   If the HUD vanishes on its own, that is Claude Code dropping the key while
   rewriting `settings.json`

@@ -13,6 +13,14 @@
  * `deferred_tools_delta`, carrying `addedNames` / `removedNames` / `readdedNames`
  * (tool names) and `pendingMcpServers` (servers mid-connection).
  *
+ * **Present is not the same as usable.** A connector that has not been authenticated
+ * still publishes its sign-in affordance — the tools that exist precisely so the user
+ * can authenticate — and nothing else. Counting those as availability is the worst
+ * available answer: the HUD goes green, and the hook that watches tool traffic never
+ * corrects it, because the tools it matches on are the ones that are missing. So a
+ * delta whose gutt tools are *all* sign-in affordances reports `auth`, which is the
+ * state the user can actually act on.
+ *
  * **Read backwards and stop at the first answer.** Availability changes repeatedly
  * within one session — a server drops and comes back, and both events are in the
  * file. The newest entry is the only one that describes now; an older one read
@@ -65,6 +73,75 @@ const GUTT_TOOL = /^mcp__.*gutt.*__./i;
 const GUTT_SERVER = /gutt/i;
 
 /**
+ * Matches the bare name of a tool that exists only to get the user authenticated.
+ *
+ * Tested against the segment after the last `__`, so it is independent of whatever
+ * server prefix a deployment gives its tools. Matching the whole name would let a
+ * real tool that merely mentions authentication read as an affordance.
+ */
+const AUTH_AFFORDANCE = /^(?:authenticate|complete_authentication|authorize|log_?in|sign_?in)$/i;
+
+/**
+ * Is this tool a sign-in affordance rather than a capability?
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isAuthAffordance(name) {
+  return AUTH_AFFORDANCE.test(name.slice(name.lastIndexOf("__") + 2));
+}
+
+/**
+ * The tool-name prefix Claude Code derives from a server's display name.
+ *
+ * `pendingMcpServers` and `needsAuthMcpServers` hold display names ("claude.ai
+ * gutt-pro-memory") while the name lists hold tool ids
+ * (`mcp__claude_ai_gutt-pro-memory__search`). Correlating the two is what lets a
+ * server list be read as being about *this* server rather than any gutt-shaped one.
+ *
+ * @param {string} displayName
+ * @returns {string}
+ */
+function serverToolPrefix(displayName) {
+  return `mcp__${displayName.replace(/[^A-Za-z0-9-]/g, "_")}__`;
+}
+
+/**
+ * Does `list` name a gutt server that owns one of `toolNames`?
+ *
+ * More than one gutt-named server can be connected at once — a memory server and an
+ * unrelated one — and they authenticate separately. Matching `/gutt/i` alone would
+ * let an unauthenticated sibling speak for the server the HUD is actually about,
+ * which on a real machine means a permanently amber glyph over working memory.
+ *
+ * Falls back to the bare name match when no tool id correlates, so a shape we cannot
+ * line up degrades to the older, looser reading rather than to silence.
+ *
+ * The remaining imprecision, stated rather than hidden: a delta that names servers but
+ * carries no tool ids has nothing to correlate against, so a sibling's auth need can
+ * speak for the memory server. Replaying every `deferred_tools_delta` on a real
+ * machine — 4,775 records across 4,682 sessions — that costs 4 sessions a verdict of
+ * `auth` where `pending` was the truer word, and both render the same amber glyph, so
+ * nothing user-visible turns on it. Distinguishing them needs a server-identity model
+ * built across records, which is not worth its failure modes for a cosmetic gain.
+ *
+ * @param {*} list
+ * @param {string[]} toolNames
+ * @returns {boolean}
+ */
+function namesGuttServer(list, toolNames) {
+  const named = (Array.isArray(list) ? list : []).filter(
+    (s) => typeof s === "string" && GUTT_SERVER.test(s)
+  );
+  if (named.length === 0) {
+    return false;
+  }
+  if (toolNames.length === 0) {
+    return true;
+  }
+  return named.some((s) => toolNames.some((n) => n.startsWith(serverToolPrefix(s))));
+}
+
+/**
  * What one transcript line says about gutt, or null.
  *
  * The `includes` is a cheap reject before the parse — the overwhelming majority of
@@ -99,24 +176,46 @@ function lineVerdict(line) {
  * Order matters within one entry. A single delta can both add and remove, and a
  * reconnect emits exactly that shape, so presence is checked before absence.
  *
+ * Among the tools that *are* present, all-affordances means `auth` and anything else
+ * means `available`. `every` rather than `some` on purpose: a server that publishes a
+ * real capability is usable no matter what else it ships alongside it, and plenty of
+ * authenticated servers keep a re-authentication tool in the list permanently.
+ *
+ * `needsAuthMcpServers` is the platform saying outright that a server wants signing in,
+ * and it is checked **after** presence for a reason worth stating: real deltas routinely
+ * name one gutt server there while another gutt server's tools arrive in the same
+ * record. Letting the auth list win would put a permanent amber glyph over working
+ * memory. Present-and-usable is the stronger claim, so it goes first.
+ *
  * @param {*} attachment
- * @returns {"available"|"pending"|"absent"|null}
+ * @returns {"available"|"auth"|"pending"|"absent"|null}
  */
 function verdictFor(attachment) {
   if (!attachment || attachment.type !== "deferred_tools_delta") {
     return null;
   }
   const named = (key) => (Array.isArray(attachment[key]) ? attachment[key] : []);
-  const gutt = (key) => named(key).some((name) => typeof name === "string" && GUTT_TOOL.test(name));
+  const guttNamed = (key) =>
+    named(key).filter((name) => typeof name === "string" && GUTT_TOOL.test(name));
 
-  if (gutt("addedNames") || gutt("readdedNames")) {
-    return "available";
+  const present = [...guttNamed("addedNames"), ...guttNamed("readdedNames")];
+  if (present.length > 0) {
+    return present.every(isAuthAffordance) ? "auth" : "available";
   }
-  if (gutt("removedNames")) {
-    const pending = Array.isArray(attachment.pendingMcpServers) ? attachment.pendingMcpServers : [];
+  const removed = guttNamed("removedNames");
+
+  // Checked whether or not anything was removed. A server that has never been
+  // authenticated publishes no tools to remove, so this is the only key that says
+  // anything about it — the case the tool-traffic hook structurally cannot reach,
+  // because there is no tool for it to observe a response from.
+  if (namesGuttServer(attachment.needsAuthMcpServers, removed)) {
+    return "auth";
+  }
+
+  if (removed.length > 0) {
     // Pending is the actionable one: a remote connector whose tools have gone and
     // which is waiting to come back is, in practice, waiting on the user.
-    return pending.some((s) => typeof s === "string" && GUTT_SERVER.test(s)) ? "pending" : "absent";
+    return namesGuttServer(attachment.pendingMcpServers, removed) ? "pending" : "absent";
   }
   return null;
 }

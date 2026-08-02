@@ -43,14 +43,22 @@ let install;
  * @param {Object} [opts]
  * @param {string} [opts.raw] literal stdin, overriding `payload`
  * @param {string} [opts.columns] COLUMNS for this run
+ * @param {string} [opts.groupId] GUTT_GROUP_ID for this run; omitted means unset
  * @returns {string} the rendered line
  */
-function render(payload = {}, { raw, columns } = {}) {
+function render(payload = {}, { raw, columns, groupId } = {}) {
   const env = { ...process.env, CLAUDE_PLUGIN_DATA: dataDir };
   if (columns === undefined) {
     delete env.COLUMNS;
   } else {
     env.COLUMNS = String(columns);
+  }
+  // Always decided here, never inherited: a developer with GUTT_GROUP_ID exported
+  // would otherwise see different output from CI for every group-sensitive case.
+  if (groupId === undefined) {
+    delete env.GUTT_GROUP_ID;
+  } else {
+    env.GUTT_GROUP_ID = groupId;
   }
   const result = spawnSync(process.execPath, [STATUSLINE], {
     input: raw !== undefined ? raw : JSON.stringify(payload),
@@ -93,7 +101,13 @@ function readSettings() {
   return JSON.parse(fs.readFileSync(settingsFile, "utf8"));
 }
 
-/** The standard payload: a connected-looking session with a model and a cost. */
+/**
+ * The standard payload Claude Code sends a status line.
+ *
+ * `cost` is here on purpose although nothing renders it: the platform hands it over
+ * for free, which is exactly why a future reader would put it back, and the tests
+ * below pin the omission against that rather than leaving it to a comment.
+ */
 const PAYLOAD = {
   session_id: "s1",
   model: { display_name: "Opus 5" },
@@ -157,16 +171,18 @@ describe("the HUD reports connection state", () => {
     assert.doesNotMatch(line, /\bauth\b/);
   });
 
-  it("stops trusting an observation once it goes stale", () => {
-    // The disconnect case: when a server drops, its tools leave the tool list, so
-    // nothing calls them and nothing observes anything ever again. Without ageing,
-    // a success from an hour ago would still be rendering green now.
+  it("keeps trusting a successful call however long ago it happened", () => {
+    // Observations no longer age out. A session that has not touched memory for half
+    // an hour is an ordinary session, not a broken one, and reporting it as unknown
+    // put the HUD in a warning state with nothing wrong and nothing for the user to
+    // do. What makes that safe is the tool list, which is rewritten every prompt and
+    // outranks this — a server that has actually gone is caught there.
     writeState({
       connectionStatus: "ok",
       mcpConfigured: true,
       connectionObservedAt: minutesAgo(30),
     });
-    assert.match(render(PAYLOAD), /⚪/);
+    assert.match(render(PAYLOAD), /🟢/);
   });
 
   it("keeps trusting a recent one", () => {
@@ -176,6 +192,21 @@ describe("the HUD reports connection state", () => {
       connectionObservedAt: minutesAgo(2),
     });
     assert.match(render(PAYLOAD), /🟢/);
+  });
+
+  it("still reports a dropped server, however recent the last success", () => {
+    // The guarantee that replaces ageing: the tool list is checked first, so removing
+    // the expiry did not make a dead server render as healthy.
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      connectionObservedAt: minutesAgo(1),
+      mcpToolsAvailable: "absent",
+    });
+    const line = render(PAYLOAD);
+    assert.doesNotMatch(line, /🟢/);
+    assert.match(line, /🟡/);
+    assert.match(line, /\bauth\b/);
   });
 
   it("believes the tool list over a recent successful call", () => {
@@ -193,9 +224,100 @@ describe("the HUD reports connection state", () => {
     assert.match(line, /\bauth\b/);
   });
 
-  it("shows red when a configured server's tools are gone and nothing is pending", () => {
+  it("shows amber when the server offers only its sign-in affordance", () => {
+    // The state a never-authenticated connector sits in, and the one no round trip
+    // can report: the tools that would prove anything are the ones missing, so
+    // `connectionStatus` never moves off its initial value. Before this was read from
+    // the tool list, the HUD showed green for the entire session.
+    writeState({ mcpConfigured: true, mcpToolsAvailable: "auth" });
+    const line = render(PAYLOAD);
+    assert.match(line, /🟡/);
+    assert.match(line, /\bauth\b/);
+  });
+
+  it("keeps saying auth however long the sign-in has been outstanding", () => {
+    // Deliberately not subject to the observation TTL. The TTL exists because a
+    // remembered round trip goes stale; "the tool list currently contains only a
+    // sign-in tool" is a statement about now, and it does not decay. An unauthenticated
+    // server that went quiet is still unauthenticated.
+    writeState({
+      mcpConfigured: true,
+      mcpToolsAvailable: "auth",
+      connectionObservedAt: minutesAgo(90),
+    });
+    const line = render(PAYLOAD);
+    assert.match(line, /🟡/);
+    assert.match(line, /\bauth\b/);
+  });
+
+  it("never shows green while the tool list says a sign-in is outstanding", () => {
+    // The rule with teeth: green means at least one gutt server is connected *now*.
+    // A round trip that succeeded a minute ago is not that — it is a memory of a
+    // server that has since asked to be signed in again, and the tool list is the
+    // only one of the two signals describing the present.
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      connectionObservedAt: minutesAgo(1),
+      mcpToolsAvailable: "auth",
+    });
+    const line = render(PAYLOAD);
+    assert.doesNotMatch(line, /🟢/);
+    assert.match(line, /🟡/);
+  });
+
+  it("lets a real tool arriving clear the sign-in state", () => {
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      connectionObservedAt: minutesAgo(1),
+      mcpToolsAvailable: "available",
+    });
+    const line = render(PAYLOAD);
+    assert.match(line, /🟢/);
+    assert.doesNotMatch(line, /\bauth\b/);
+  });
+
+  it("renders the sign-in notice as a trailing clause, verbatim", () => {
+    // Pinned as a literal because the wording is the point: the glyph carries the
+    // alarm, this carries the instruction, and it goes last so it survives narrowing
+    // and reads as a sentence rather than as one more terse label.
+    writeState({ mcpConfigured: true, mcpToolsAvailable: "absent" });
+    const segment = render(PAYLOAD).match(/\[gutt[^\]]*\]/)[0];
+    assert.equal(segment, "[gutt 🟡 on - auth needed!]");
+  });
+
+  it("keeps the sign-in clause after the group, so narrowing cannot strand it", () => {
+    // The group drops at narrow widths and this never does. Were the clause pushed
+    // first, a wide terminal would read "...auth needed! acme-eng" — the alert
+    // stranded mid-segment with the group after it.
+    writeState({ mcpConfigured: true, mcpToolsAvailable: "absent" });
+    const segment = render(PAYLOAD, { groupId: "acme-eng" }).match(/\[gutt[^\]]*\]/)[0];
+    assert.equal(segment, "[gutt 🟡 on acme-eng - auth needed!]");
+  });
+
+  it("asks for a sign-in when a configured server's tools are gone", () => {
+    // A lapsed remote connector produces exactly this and nothing more: the tools are
+    // withdrawn, `needsAuthMcpServers` stays empty, and no call can be made to learn
+    // why. Signing in is what fixes it, so the HUD says so instead of showing a red
+    // light the user cannot act on.
     writeState({ connectionStatus: "ok", mcpConfigured: true, mcpToolsAvailable: "absent" });
-    assert.match(render(PAYLOAD), /🔴/);
+    const line = render(PAYLOAD);
+    assert.match(line, /🟡/);
+    assert.match(line, /\bauth\b/);
+  });
+
+  it("keeps red for a call that came back a non-auth failure", () => {
+    // Red now means only what a real round trip can establish — the server answered,
+    // and answered with something signing in would not fix.
+    writeState({
+      connectionStatus: "error",
+      mcpConfigured: true,
+      mcpToolsAvailable: "available",
+    });
+    const line = render(PAYLOAD);
+    assert.match(line, /🔴/);
+    assert.doesNotMatch(line, /\bauth\b/);
   });
 
   it("does not call it a disconnection when no server was ever configured", () => {
@@ -219,14 +341,22 @@ describe("the HUD reports connection state", () => {
     assert.doesNotMatch(line, /\bauth\b/);
   });
 
-  it("drops the auth marker along with the stale glyph", () => {
-    // A half-hour-old auth failure is not current news; keeping the word while
-    // dropping the colour would tell the user to go and re-authenticate on no
-    // evidence.
+  it("keeps the auth marker until something contradicts it", () => {
+    // An outstanding sign-in does not become untrue by going unattended, so a
+    // half-hour-old auth failure still reads as auth. It used to decay to neutral,
+    // which quietly withdrew the one instruction the user could have acted on.
     writeState({ connectionStatus: "auth", connectionObservedAt: minutesAgo(30) });
     const line = render(PAYLOAD);
-    assert.match(line, /⚪/);
-    assert.doesNotMatch(line, /\bauth\b/);
+    assert.match(line, /🟡/);
+    assert.match(line, /\bauth\b/);
+  });
+
+  it("renders neutral only when nothing has ever been observed", () => {
+    // ⚪ now means exactly one thing: no round trip and no tool-list reading. That is
+    // what makes it a useful glyph rather than a shrug — it no longer doubles as
+    // "this was fine a while ago".
+    writeState({ mcpConfigured: true });
+    assert.match(render(PAYLOAD), /⚪/);
   });
 });
 
@@ -309,54 +439,117 @@ describe("metrics never render as a permanent zero", () => {
   // The 2.x `mem:`/`lessons:` counters were removed because the hooks feeding them
   // were deleted and they froze at zero. Every segment here is absent-or-real.
 
-  it("omits recall recency until something has actually been recalled", () => {
-    writeState({ connectionStatus: "ok", mcpConfigured: true, turnsSinceSearch: null });
-    assert.doesNotMatch(render(PAYLOAD), /↺/);
+  it("never shows recall recency, at any value of the counter", () => {
+    // The counter is live — UserPromptSubmit gates the recall pointer on it — so this
+    // is not the permanent-zero case above. It is the segment that counted correctly
+    // and told the user nothing they would act on, and the state field remaining
+    // populated is exactly why the omission needs pinning rather than assuming.
+    for (const turnsSinceSearch of [null, 0, 3]) {
+      writeState({ connectionStatus: "ok", mcpConfigured: true, turnsSinceSearch });
+      assert.doesNotMatch(render(PAYLOAD), /↺/, `turnsSinceSearch: ${turnsSinceSearch}`);
+    }
   });
 
-  it("shows a zero that means something: a recall just happened", () => {
-    writeState({ connectionStatus: "ok", mcpConfigured: true, turnsSinceSearch: 0 });
-    assert.match(render(PAYLOAD), /↺0/);
-  });
-
-  it("counts turns since the last recall", () => {
-    writeState({ connectionStatus: "ok", mcpConfigured: true, turnsSinceSearch: 3 });
-    assert.match(render(PAYLOAD), /↺3/);
-  });
-
-  it("never shows context window usage, however the payload reports it", () => {
-    // Dropped from the HUD by choice: Claude Code shows it already, and the bar is
-    // for gutt state. The payload still carries it, so this pins the omission
-    // rather than leaving it to be reintroduced as an obvious freebie.
+  it("never shows session cost, however the payload reports it", () => {
+    // An API price shown to someone on a subscription is a bill they will not be
+    // charged. PAYLOAD still carries `cost` so this pins the omission against a
+    // future reader reintroducing it as a freebie the platform already hands over.
     writeState({ connectionStatus: "ok", mcpConfigured: true });
-    assert.doesNotMatch(render(PAYLOAD), /ctx/);
-    assert.doesNotMatch(render({ ...PAYLOAD, context_window: { used_percentage: 91 } }), /91/);
+    assert.doesNotMatch(render(PAYLOAD), /\$/);
+    assert.doesNotMatch(render({ ...PAYLOAD, cost: { total_cost_usd: 9.99 } }), /9\.99/);
+  });
+
+  it("survives a malformed cost field rather than blanking the HUD", () => {
+    // The shape that used to throw in `toFixed` and take the whole line out: a status
+    // line that exits non-zero prints nothing, so one bad field left the user with an
+    // empty bar and no way to tell that from a dead server. Not read at all now.
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
+    for (const total_cost_usd of [null, "1.24", {}, true]) {
+      assert.match(render({ ...PAYLOAD, cost: { total_cost_usd } }), /\[gutt 🟢 on\]/);
+    }
+  });
+
+  it("shows context-window usage as a whole percentage", () => {
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
+    assert.match(render(PAYLOAD), /ctx 38%/);
+    assert.match(render({ ...PAYLOAD, context_window: { used_percentage: 91 } }), /ctx 91%/);
+  });
+
+  it("rounds a fractional percentage rather than printing decimals", () => {
+    // The bar redraws on a 300ms debounce; 38.4 and 38.6 are the same fact and the
+    // difference is noise that costs width.
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
+    assert.match(render({ ...PAYLOAD, context_window: { used_percentage: 38.6 } }), /ctx 39%/);
+    assert.doesNotMatch(render({ ...PAYLOAD, context_window: { used_percentage: 38.6 } }), /\./);
+  });
+
+  it("shows a zero, which is a real reading on a fresh session", () => {
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
+    assert.match(render({ ...PAYLOAD, context_window: { used_percentage: 0 } }), /ctx 0%/);
+  });
+
+  it("clamps a figure outside 0–100 instead of printing it", () => {
+    // Out of range is a bug somewhere upstream, and rendering `ctx 4000%` reads as a
+    // bug in the HUD — which is where the user would then go looking.
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
+    assert.match(render({ ...PAYLOAD, context_window: { used_percentage: 4000 } }), /ctx 100%/);
+    assert.match(render({ ...PAYLOAD, context_window: { used_percentage: -7 } }), /ctx 0%/);
+  });
+
+  it("omits context usage rather than crashing on a malformed field", () => {
+    // Same shape that took the HUD out through the cost segment. Arithmetic on this
+    // payload is gated on Number.isFinite, so a bad field costs one segment, never
+    // the line.
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
+    for (const context_window of [null, "38", {}, { used_percentage: "38" }, { x: 1 }]) {
+      const line = render({ ...PAYLOAD, context_window });
+      assert.match(line, /\[gutt 🟢 on\]/, `context_window: ${JSON.stringify(context_window)}`);
+      assert.doesNotMatch(line, /ctx/, `context_window: ${JSON.stringify(context_window)}`);
+    }
   });
 });
 
 describe("the HUD degrades rather than wrapping", () => {
-  beforeEach(() =>
-    writeState({ connectionStatus: "ok", mcpConfigured: true, turnsSinceSearch: 3 })
-  );
+  beforeEach(() => writeState({ connectionStatus: "ok", mcpConfigured: true }));
 
   it("shows everything when the width is unknown", () => {
     // Guessing narrow would hide information from someone with a wide terminal.
-    assert.match(render(PAYLOAD), /↺/);
+    assert.equal(
+      render(PAYLOAD, { groupId: "acme-eng" }),
+      "[gutt 🟢 on acme-eng] | [Opus 5] ctx 38%"
+    );
   });
 
   it("shows everything on a wide terminal", () => {
-    assert.match(render(PAYLOAD, { columns: 120 }), /↺/);
+    assert.equal(
+      render(PAYLOAD, { columns: 120, groupId: "acme-eng" }),
+      "[gutt 🟢 on acme-eng] | [Opus 5] ctx 38%"
+    );
   });
 
-  it("drops recall as the terminal narrows", () => {
-    assert.match(render(PAYLOAD, { columns: 80 }), /↺/);
-    assert.doesNotMatch(render(PAYLOAD, { columns: 52 }), /↺/);
+  it("drops context usage first, then the group", () => {
+    // The two informational segments, least-valuable-first. Everything else either
+    // reports a fault or names the fix, and none of that disappears on a narrow bar.
+    assert.match(render(PAYLOAD, { columns: 80, groupId: "acme-eng" }), /ctx 38%/);
+    assert.doesNotMatch(render(PAYLOAD, { columns: 52, groupId: "acme-eng" }), /ctx/);
+    assert.match(render(PAYLOAD, { columns: 52, groupId: "acme-eng" }), /acme-eng/);
+    assert.doesNotMatch(render(PAYLOAD, { columns: 30, groupId: "acme-eng" }), /acme-eng/);
   });
 
   it("never drops the state segment, however narrow", () => {
     // Connection and suppression are the whole point of the HUD; if only one thing
     // fits it is this.
     assert.match(render(PAYLOAD, { columns: 20 }), /\[gutt 🟢 on\]/);
+  });
+
+  it("keeps the auth clause when the group has been dropped", () => {
+    // The clause outranks the group by design, and a narrow terminal is exactly
+    // where a user most needs to be told what to do rather than shown where.
+    writeState({ mcpConfigured: true, mcpToolsAvailable: "auth" });
+    assert.equal(
+      render(PAYLOAD, { columns: 30, groupId: "acme-eng" }),
+      "[gutt 🟡 on - auth needed!] | [Opus 5]"
+    );
   });
 });
 
@@ -373,12 +566,27 @@ describe("the HUD degrades rather than vanishing", () => {
     assert.match(render({}, { raw: `\uFEFF${JSON.stringify(PAYLOAD)}` }), /\| \[Opus 5\]/);
   });
 
-  it("renders the model and cost Claude Code supplies", () => {
-    assert.match(render(PAYLOAD), /\| \[Opus 5\] ~\$1\.24/);
+  it("renders what Claude Code reports about its own session", () => {
+    assert.match(render(PAYLOAD), /\| \[Opus 5\] ctx 38%$/);
   });
 
-  it("omits the model segment when the payload carries neither model nor cost", () => {
+  it("renders each half of the tail without the other", () => {
+    const state = { session_id: "s1" };
+    assert.equal(
+      render({ ...state, model: { display_name: "Opus 5" } }),
+      "[gutt ⚪ on] | [Opus 5]"
+    );
+    assert.equal(
+      render({ ...state, context_window: { used_percentage: 12 } }),
+      "[gutt ⚪ on] | ctx 12%"
+    );
+  });
+
+  it("omits the tail entirely when the payload reports neither", () => {
+    // Cost no longer earns the separator on its own: with nothing printable after it,
+    // a bare `| [unknown]` was width spent on the absence of information.
     assert.doesNotMatch(render({ session_id: "s1" }), /\|/);
+    assert.doesNotMatch(render({ session_id: "s1", cost: { total_cost_usd: 1.24 } }), /\|/);
   });
 });
 
@@ -443,7 +651,7 @@ describe("the shim is what makes an upgrade invisible", () => {
     // Code launches it without CLAUDE_PLUGIN_DATA. If the shim does not supply it,
     // every state read returns null and the HUD shows a permanent unknown glyph
     // with no session behind it — indistinguishable from a down server.
-    writeState({ connectionStatus: "ok", mcpConfigured: true, turnsSinceSearch: 3 });
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
     const { path: shim } = install.refreshShim();
 
     const bare = { ...process.env };
@@ -457,8 +665,11 @@ describe("the shim is what makes an upgrade invisible", () => {
       env: bare,
     });
     assert.equal(result.status, 0, `shim exited ${result.status}: ${result.stderr}`);
+    // Green is the proof: `defaultState()` has no connectionStatus, so ⚪ is what a
+    // renderer that failed to find the record would print — and it is exactly the
+    // failure this test exists to catch, since it looks identical to a down server.
     assert.match(result.stdout, /🟢/, "should find the session record through the shim");
-    assert.match(result.stdout, /↺3/, "should read session counters, not just defaults");
+    assert.doesNotMatch(result.stdout, /⚪/, "should not fall back to a default state");
   });
 
   it("lets a plugin environment that is already set win", () => {
@@ -748,6 +959,22 @@ describe("the /gutt-pro:statusline command surface", () => {
     assert.match(out, /did not recognise/);
     assert.match(out, /Nothing was changed/);
   });
+
+  it("writes nothing at all for a bare /statusline", () => {
+    // Claude Code owns `/statusline`, and this surface reads prompt text rather than
+    // routing — so without the namespaced-only guard a prompt aimed at the built-in
+    // would install the HUD into the user's settings.json. The strongest available
+    // assertion is that the file was never created: it does not exist until something
+    // writes it, so its absence proves no write was attempted rather than merely
+    // proving the content came out unchanged.
+    for (const typed of ["/statusline", "/statusline off", "/statusline status"]) {
+      assert.equal(runCommand(typed), "", typed);
+      assert.equal(fs.existsSync(homeSettings()), false, typed);
+    }
+    // And no consent was recorded, which is what would have a later session install it.
+    const configPath = path.join(dataDir, "config.json");
+    assert.equal(fs.existsSync(configPath), false);
+  });
 });
 
 describe("the async SessionStart hook maintains the HUD", () => {
@@ -809,10 +1036,45 @@ describe("the async SessionStart hook maintains the HUD", () => {
 });
 
 describe("recognising our own status line", () => {
-  it("accepts the shapes this plugin has written", () => {
-    assert.equal(install.isOurStatusLine('node "/x/y/statusline.cjs"'), true);
-    // The 2.x basename, so an upgrade recognises what the old version installed.
-    assert.equal(install.isOurStatusLine('node "/x/y/gutt-statusline.cjs"'), true);
+  it("accepts the shim this version writes", () => {
+    // The unambiguous case, and the one every current install is in: an exact path
+    // match needs no inference about who wrote it.
+    const { path: shim } = install.refreshShim();
+    assert.equal(install.isOurStatusLine(`node ${JSON.stringify(shim)}`), true);
+  });
+
+  it("accepts an older entry whose path is still attributably ours", () => {
+    // A 2.x entry points somewhere this version no longer writes, so the exact match
+    // cannot see it. Attribution then comes from the path carrying a plugin-owned
+    // fragment — without this an upgrade would refuse to take over from the version
+    // it is replacing, and the user would be left removing the old entry by hand.
+    assert.equal(
+      install.isOurStatusLine('node "/home/u/.claude/plugins/gutt/statusline.cjs"'),
+      true
+    );
+    assert.equal(install.isOurStatusLine('node "/x/plugin_data/gutt-statusline.cjs"'), true);
+  });
+
+  it("rejects a script that merely shares the name", () => {
+    // The bug this replaced: `statusline.cjs` is the obvious name for the job, so a
+    // basename test claimed a user's own script. `removeEntry` would then delete
+    // someone else's status line, and `installEntry` would report "already installed"
+    // against a file it had never touched — leaving the HUD absent behind a success
+    // message. Neither is recoverable from inside this module, so an unattributable
+    // path is foreign even when we might in fact have written it.
+    assert.equal(install.isOurStatusLine('node "/x/y/statusline.cjs"'), false);
+    assert.equal(install.isOurStatusLine('node "/home/u/.claude/statusline.cjs"'), false);
+    assert.equal(install.isOurStatusLine('node "/tmp/probe-1234/statusline.cjs"'), false);
+  });
+
+  it("reads attribution from the directory, not from the filename", () => {
+    // `gutt-statusline.cjs` carries the marker `gutt` in its own basename, so a
+    // whole-path attribution test passes on the name alone and lets any directory
+    // through — re-admitting the bug above by the back door. Where a file lives is
+    // evidence about who put it there; what it is called is not.
+    assert.equal(install.isOurStatusLine('node "/x/y/gutt-statusline.cjs"'), false);
+    assert.equal(install.isOurStatusLine('node "/tmp/gutt-statusline.cjs"'), false);
+    assert.equal(install.isOurStatusLine('node "/x/plugins/gutt-statusline.cjs"'), true);
   });
 
   it("rejects everything else", () => {
@@ -824,10 +1086,21 @@ describe("recognising our own status line", () => {
     assert.equal(install.isOurStatusLine(42), false);
   });
 
+  it("does not require the target to exist", () => {
+    // The live entry is the one that matters here: an install must be idempotent
+    // against a working HUD, and a removal must be able to take one away. Requiring a
+    // resolvable target would disown our own entry for the window after an upgrade
+    // moves the renderer — that check belongs to the migration that cleans up corpses.
+    const { path: shim } = install.refreshShim();
+    fs.rmSync(shim);
+    assert.equal(install.isOurStatusLine(`node ${JSON.stringify(shim)}`), true);
+  });
+
   it("classifies the slot the same way for every caller", () => {
     // install, remove and the SessionStart re-assert all ask this one function, so
     // there is no shape any of them can read differently from the others.
-    const ours = { statusLine: { type: "command", command: 'node "/x/statusline.cjs"' } };
+    const { path: shim } = install.refreshShim();
+    const ours = { statusLine: { type: "command", command: `node ${JSON.stringify(shim)}` } };
     assert.equal(install.classifyStatusLine(ours), "ours");
     assert.equal(install.classifyStatusLine({}), "absent");
     assert.equal(install.classifyStatusLine(null), "absent");

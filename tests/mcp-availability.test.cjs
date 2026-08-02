@@ -27,7 +27,7 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(sandbox, { recursive: true, force: true }));
 
 /** One `deferred_tools_delta` record, in the shape Claude Code writes. */
-function delta({ added = [], removed = [], readded = [], pending = [] }) {
+function delta({ added = [], removed = [], readded = [], pending = [], needsAuth = [] }) {
   return JSON.stringify({
     type: "attachment",
     attachment: {
@@ -37,6 +37,7 @@ function delta({ added = [], removed = [], readded = [], pending = [] }) {
       removedNames: removed,
       readdedNames: readded,
       pendingMcpServers: pending,
+      needsAuthMcpServers: needsAuth,
     },
   });
 }
@@ -53,6 +54,15 @@ function write(lines) {
 const GUTT_TOOLS = [
   "mcp__claude_ai_gutt-pro-memory__search_memory_facts",
   "mcp__claude_ai_gutt-pro-memory__search_memory_nodes",
+];
+
+/**
+ * What an unauthenticated gutt connector publishes: the sign-in affordance, and
+ * nothing that can answer a question.
+ */
+const GUTT_AUTH_TOOLS = [
+  "mcp__claude_ai_gutt-poab-mcp__authenticate",
+  "mcp__claude_ai_gutt-poab-mcp__complete_authentication",
 ];
 
 describe("reading gutt tool availability from a transcript", () => {
@@ -103,6 +113,81 @@ describe("reading gutt tool availability from a transcript", () => {
     write([
       delta({ added: GUTT_TOOLS }),
       delta({ removed: ["mcp__claude_ai_Atlassian__search"], pending: ["claude.ai Atlassian"] }),
+    ]);
+    assert.equal(guttToolAvailability(transcript), "available");
+  });
+
+  it("reports auth when the only gutt tools present are the sign-in affordance", () => {
+    // The case that used to render green. An unauthenticated connector is reachable
+    // and useless at once, and the PostToolUse hook cannot correct the HUD because
+    // the tools it matches on are exactly the ones missing.
+    write([chatter("session begins"), delta({ added: GUTT_AUTH_TOOLS })]);
+    assert.equal(guttToolAvailability(transcript), "auth");
+  });
+
+  it("reports available when a real tool arrives alongside the sign-in affordance", () => {
+    // Plenty of authenticated servers keep a re-authentication tool in the list
+    // permanently; one real capability means the server is usable.
+    write([delta({ added: [...GUTT_AUTH_TOOLS, ...GUTT_TOOLS] })]);
+    assert.equal(guttToolAvailability(transcript), "available");
+  });
+
+  it("takes the newest answer when the user signs in", () => {
+    write([
+      delta({ added: GUTT_AUTH_TOOLS }),
+      chatter("user authenticates"),
+      delta({ added: GUTT_TOOLS }),
+    ]);
+    assert.equal(guttToolAvailability(transcript), "available");
+  });
+
+  it("reports auth when a session drops back to needing re-authentication", () => {
+    // The shape a lapsed token produces: the real tools go, the affordance arrives.
+    write([
+      delta({ added: GUTT_TOOLS }),
+      chatter("token expires"),
+      delta({ removed: GUTT_TOOLS, added: GUTT_AUTH_TOOLS }),
+    ]);
+    assert.equal(guttToolAvailability(transcript), "auth");
+  });
+
+  it("reports auth when the platform says a gutt server needs signing in", () => {
+    // `needsAuthMcpServers` is the only key that speaks for a server which has never
+    // been authenticated: it published no tools, so there is nothing to remove and
+    // nothing to call.
+    write([delta({ needsAuth: ["claude.ai gutt-pro-memory"] })]);
+    assert.equal(guttToolAvailability(transcript), "auth");
+  });
+
+  it("keeps memory green when a *different* gutt server is the one needing auth", () => {
+    // Taken from real transcripts on a working machine: 73 deltas name
+    // `gutt-poab-mcp` in needsAuthMcpServers while `gutt-pro-memory`'s tools arrive
+    // in addedNames of the very same record. Letting the auth list win would pin the
+    // HUD amber over memory that works perfectly — a worse bug than the one the
+    // needsAuth check exists to fix.
+    write([
+      delta({
+        added: GUTT_TOOLS,
+        needsAuth: ["claude.ai Ahrefs", "claude.ai gutt-poab-mcp"],
+      }),
+    ]);
+    assert.equal(guttToolAvailability(transcript), "available");
+  });
+
+  it("does not let a sibling gutt server explain this one's disappearance", () => {
+    // Removal correlates by tool-id prefix: the server named must be the server whose
+    // tools went away, or the verdict is about something the user did not lose.
+    write([
+      delta({ added: GUTT_TOOLS }),
+      delta({ removed: GUTT_TOOLS, pending: ["claude.ai gutt-poab-mcp"] }),
+    ]);
+    assert.equal(guttToolAvailability(transcript), "absent");
+  });
+
+  it("does not mistake another server's sign-in affordance for gutt's", () => {
+    write([
+      delta({ added: GUTT_TOOLS }),
+      delta({ added: ["mcp__claude_ai_Ahrefs__authenticate"] }),
     ]);
     assert.equal(guttToolAvailability(transcript), "available");
   });
@@ -180,6 +265,36 @@ describe("classifying a single delta", () => {
         type: "deferred_tools_delta",
         addedNames: GUTT_TOOLS,
         removedNames: GUTT_TOOLS,
+      }),
+      "available"
+    );
+  });
+
+  it("judges affordance-only presence on the bare name, whatever the server prefix", () => {
+    // The prefix varies per deployment, so the decision has to be made on the segment
+    // after the last `__` or it stops working the moment a server is renamed.
+    for (const name of [
+      "mcp__gutt__authenticate",
+      "mcp__some_gutt_thing__complete_authentication",
+      "mcp__GUTT_REMOTE__Authorize",
+      "mcp__gutt__login",
+      "mcp__gutt__sign_in",
+    ]) {
+      assert.equal(
+        verdictFor({ type: "deferred_tools_delta", addedNames: [name] }),
+        "auth",
+        `${name} should read as a sign-in affordance`
+      );
+    }
+  });
+
+  it("does not treat a capability that merely mentions auth as an affordance", () => {
+    // `search_auth_incidents` is a real tool. Substring matching would strand a
+    // working server on the amber glyph.
+    assert.equal(
+      verdictFor({
+        type: "deferred_tools_delta",
+        addedNames: ["mcp__gutt__search_auth_incidents"],
       }),
       "available"
     );

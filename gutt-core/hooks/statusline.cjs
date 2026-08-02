@@ -17,10 +17,17 @@
  * fork-bomb the machine. That whole mechanism is gone rather than guarded — there
  * is no subprocess left to recurse. Its counters are gone too: the hooks that fed
  * them were deleted, and a counter nobody increments renders a permanent zero,
- * which is worse than absent. The same rule governs every segment below.
+ * which is worse than absent.
+ *
+ * Two later segments were cut for the harder reason: they worked and were still not
+ * worth their width. Turns-since-recall counted correctly and told nobody anything
+ * they acted on. Session cost was worse than useless — the figure is an API price,
+ * so a subscription user was shown a bill they will never be charged, refreshed a
+ * few times a second. The bar is narrow and every segment on it has to earn the
+ * space by changing what the user does next.
  */
 
-const { getState, init, isObservationFresh } = require("./lib/session-state.cjs");
+const { getState, init } = require("./lib/session-state.cjs");
 const { getGroupId } = require("./lib/config.cjs");
 const { readConfig, isSnoozed, snoozeDeadline } = require("./lib/runtime-config.cjs");
 
@@ -33,12 +40,14 @@ const { readConfig, isSnoozed, snoozeDeadline } = require("./lib/runtime-config.
  * guessing a narrow one would hide information from someone with a wide terminal —
  * so the default is to show everything.
  *
- * Ordered least-valuable-first. Recall recency goes before the group name, because
- * a user who has narrowed their terminal that far still needs to know *which graph*
- * they are writing to.
+ * Ordered least-valuable-first. Only the two informational segments drop; everything
+ * else on the line either reports a fault or names the fix, and none of that should
+ * vanish because a window got smaller. Context usage goes before the group name,
+ * because a user who has narrowed this far still needs to know *which graph* they are
+ * writing to, and Claude Code reports context elsewhere in its own UI.
  */
-const DROP_ORDER = ["recall", "group"];
-const MIN_WIDTH = { recall: 60, group: 36 };
+const DROP_ORDER = ["context", "group"];
+const MIN_WIDTH = { context: 60, group: 36 };
 
 /**
  * Terminal width, or null when it cannot be determined.
@@ -112,27 +121,69 @@ function suppressionLabel(config, sessionId) {
  *    left the tool list, the last successful call says nothing about now, however
  *    recent it was. `pending` is reported as `auth` because a remote connector
  *    whose tools have gone and which is waiting to return is, in practice, waiting
- *    on the user. `absent` only counts against a server that is configured; with
+ *    on the user. `auth` is reported as itself: a server publishing only its sign-in
+ *    affordance is reachable and unusable at once, and it is the one case the
+ *    round-trip signal below structurally cannot reach — there is no tool to call, so
+ *    no response to classify, so `connectionStatus` stays wherever it was.
+ *    `absent` reports `auth` as well, for the same practical reason `pending` does. A
+ *    remote connector whose authentication has lapsed does not announce it — Claude
+ *    Code simply withdraws the tools and leaves `needsAuthMcpServers` empty — so a bare
+ *    removal is what an expired connection actually looks like from here. Signing in is
+ *    the action that fixes it, and naming that action beats a red light that only says
+ *    something is broken. Red is left to mean what only a real call can establish: the
+ *    server answered, and answered with a failure that signing in would not fix.
+ *    `absent` only counts against a server that is configured; with
  *    none configured there is nothing to be disconnected from, and `!` says that.
  * 2. **The last round trip**, from an observed tool response — the only thing that
  *    can distinguish working from authenticated-but-refusing.
- * 3. **Age.** An observation nobody has refreshed stops speaking.
+ *
+ * There is deliberately no third rung ageing the round trip out. It used to expire
+ * after ten minutes, which meant a session that had simply not touched memory for a
+ * while reported itself as unknown — the HUD going neutral on a healthy setup, with
+ * nothing wrong and nothing for the user to do about it. That expiry was carrying the
+ * whole burden of "is this still true" back when a remembered call was the only
+ * liveness signal there was. It no longer is: the tool list above is a statement about
+ * the present, it is rewritten every prompt, and it is ranked higher, so a server that
+ * has gone is reported as gone regardless of how recently something last worked.
+ *
+ * What that costs, stated plainly: when the tool list cannot be read at all, an old
+ * success speaks for a server that may since have died. That window is the price of not
+ * crying wolf on every quiet session, and it closes the moment the transcript becomes
+ * readable again.
  *
  * @param {Object} state
  * @returns {"ok"|"auth"|"error"|"unknown"}
  */
 function connectionState(state) {
-  if (state.mcpToolsAvailable === "pending") {
+  if (state.mcpToolsAvailable === "pending" || state.mcpToolsAvailable === "auth") {
     return "auth";
   }
   if (state.mcpToolsAvailable === "absent" && state.mcpConfigured) {
-    return "error";
-  }
-  if (!isObservationFresh(state.connectionObservedAt)) {
-    return "unknown";
+    return "auth";
   }
   const status = state.connectionStatus;
   return status === "ok" || status === "auth" || status === "error" ? status : "unknown";
+}
+
+/**
+ * Context-window usage as a whole percentage, or null when the payload does not say it.
+ *
+ * Validated rather than trusted, which is the lesson the removed cost segment taught at
+ * the user's expense: `toFixed` on a `total_cost_usd` that arrived as a string threw, and
+ * a status line that throws prints nothing at all, so one malformed field blanked the
+ * whole HUD several times a second. Every arithmetic read of this payload is now gated on
+ * `Number.isFinite` first.
+ *
+ * Rounded, because a bar that refreshes on a 300ms debounce does not need decimals and
+ * 38.4% and 38.6% are the same fact. Clamped, because a figure outside 0–100 reads as a
+ * bug in the HUD rather than in the payload — while 0 is a real reading and prints.
+ *
+ * @param {*} contextWindow the payload's `context_window`, whatever it actually holds
+ * @returns {number|null}
+ */
+function contextPercent(contextWindow) {
+  const used = contextWindow?.used_percentage;
+  return Number.isFinite(used) ? Math.min(100, Math.max(0, Math.round(used))) : null;
 }
 
 /**
@@ -192,13 +243,6 @@ process.stdin.on("end", () => {
   const connection = connectionState(state);
   const parts = [connectionGlyph(connection), suppressionLabel(config, sessionId)];
 
-  // Spelled out rather than left to the colour. Amber alone says "something is
-  // wrong"; the word says which thing, and this is the one connection state the
-  // user can actually act on.
-  if (connection === "auth") {
-    parts.push("auth");
-  }
-
   // Mode is only worth the width when it is not the default. `hitl` changes what
   // happens at the end of every turn and the user needs to see it; `auto` is what
   // they already expect, and printing it on every session teaches nothing.
@@ -221,22 +265,33 @@ process.stdin.on("end", () => {
     parts.push(groupId.length > 15 ? `${groupId.slice(0, 12)}...` : groupId);
   }
 
-  const segments = [`[gutt ${parts.join(" ")}]`];
-
-  // `null` means nothing has been recalled in this conversation and gates nothing;
-  // `0` means a recall just happened. Only the second is worth a glyph — showing
-  // ↺ with no number, or a zero that never moves, is the permanent-zero mistake.
-  if (typeof state.turnsSinceSearch === "number" && visible.has("recall")) {
-    segments.push(`↺${state.turnsSinceSearch}`);
+  // Spelled out rather than left to the colour, and last so it reads as a clause
+  // rather than as one more label: amber alone says "something is wrong", this says
+  // which thing and that the user is the one who can fix it. It sits after the group
+  // deliberately — the group drops on a narrow terminal and this never does, so the
+  // alert ends up terminal exactly where it matters most.
+  if (connection === "auth") {
+    parts.push("- auth needed!");
   }
 
-  let line = segments.join("  ");
+  let line = `[gutt ${parts.join(" ")}]`;
 
-  if (data.model?.display_name || data.cost?.total_cost_usd !== undefined) {
-    const model = data.model?.display_name || "unknown";
-    const cost =
-      data.cost?.total_cost_usd !== undefined ? ` ~$${data.cost.total_cost_usd.toFixed(2)}` : "";
-    line += ` | [${model}]${cost}`;
+  // What Claude Code knows about its own session, after the gutt block rather than
+  // inside it: the model it is running and how much of the context window is spent.
+  // Cost used to sit here and is now read by nobody — the figure is an API price, so a
+  // subscription user was shown a bill they will never be charged. `turnsSinceSearch`
+  // is still tracked, because the prompt-path recall pointer is gated on it; it is
+  // simply no longer worth width on the bar.
+  const tail = [];
+  if (data.model?.display_name) {
+    tail.push(`[${data.model.display_name}]`);
+  }
+  const contextUsed = visible.has("context") ? contextPercent(data.context_window) : null;
+  if (contextUsed !== null) {
+    tail.push(`ctx ${contextUsed}%`);
+  }
+  if (tail.length > 0) {
+    line += ` | ${tail.join(" ")}`;
   }
 
   console.log(line);

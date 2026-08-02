@@ -27,7 +27,7 @@ process.on("exit", () => fs.rmSync(sandbox, { recursive: true, force: true }));
 const PAYLOAD = {
   session_id: "s1",
   model: { display_name: "Opus 5" },
-  cost: { total_cost_usd: 1.24 },
+  context_window: { used_percentage: 38 },
 };
 
 /** An hour from now, so the snooze deadline is always in the future. */
@@ -72,7 +72,6 @@ const LONG_AGO = new Date(Date.now() - 40 * 60 * 1000).toISOString();
 const CONNECTED = {
   connectionStatus: "ok",
   mcpConfigured: true,
-  turnsSinceSearch: 3,
   connectionObservedAt: JUST_NOW,
   mcpToolsAvailable: "available",
 };
@@ -83,10 +82,11 @@ const CASES = [
   ["recall durably disabled", CONNECTED, { enabled: false }],
   ["snoozed, with deadline", CONNECTED, { snoozeUntil: SNOOZE_UNTIL }],
   ["server dropped, awaiting auth", { ...CONNECTED, mcpToolsAvailable: "pending" }, {}],
+  ["never authenticated", { mcpConfigured: true, mcpToolsAvailable: "auth" }, {}],
   ["configured, tools gone", { ...CONNECTED, mcpToolsAvailable: "absent" }, {}],
+  ["a call failed, tools still there", { ...CONNECTED, connectionStatus: "error" }, {}],
   ["a call came back unauthorised", { ...CONNECTED, connectionStatus: "auth" }, {}],
-  ["a call failed some other way", { ...CONNECTED, connectionStatus: "error" }, {}],
-  ["nothing seen for 40 minutes", { ...CONNECTED, connectionObservedAt: LONG_AGO }, {}],
+  ["quiet for 40 minutes, still fine", { ...CONNECTED, connectionObservedAt: LONG_AGO }, {}],
   ["nothing observed yet", { mcpConfigured: true }, {}],
   ["no gutt MCP server configured", { mcpConfigured: false }, {}],
 ];

@@ -80,7 +80,7 @@ where things stand. Your existing settings are backed up before either change, a
 status line you wrote yourself is never touched or overwritten.
 
 ```
-[gutt 🟢 on acme-eng]  ↺3  | [Opus 5] ~$1.24
+[gutt 🟢 on acme-eng] | [Opus 5] ctx 38%
 ```
 
 | Segment     | Means                                                                |
@@ -95,7 +95,7 @@ status line you wrote yourself is never touched or overwritten.
 | `hitl`      | capture mode is human-in-the-loop (shown only when it is not `auto`) |
 | `!`         | no gutt MCP server is configured — run `/gutt-pro:setup`             |
 | `acme-eng`  | the group this session writes to                                     |
-| `↺3`        | turns since memory was last searched                                 |
+| `ctx 38%`   | how much of the context window is spent                              |
 
 **Green is earned, not assumed.** It means a real call to the server came back, so
 it reports reachability and authentication together. Three signals feed it, and

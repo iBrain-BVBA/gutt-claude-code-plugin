@@ -8,16 +8,19 @@
  * thing SessionStart used to do. hooks.json runs this with `async: true`, so it
  * never delays the session.
  *
- * Sole writer of the connectivity fields of `sessions/<id>.json`:
- * session-start.cjs never touches them, and the statusline is a read-only
- * consumer.
+ * Sole writer of the *configuration* fields of `sessions/<id>.json` — `mcpConfigured`,
+ * `mcpUrl`, `mcpError` — which nothing else touches, and which the statusline only
+ * reads. `mcpToolsAvailable` is shared with `user-prompt-submit.cjs`, the steady-state
+ * owner; see the write below for why this hook contributes to it at all and why it
+ * abstains rather than writing "unknown".
  *
  * Running async means this races the synchronous hook, so the probe finishes
  * *before* the one state write, keeping the read-modify-write window short.
  */
 
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
-const { init, updateState } = require("./lib/session-state.cjs");
+const { init, updateState, noteToolAvailability } = require("./lib/session-state.cjs");
+const { guttToolAvailability } = require("./lib/mcp-availability.cjs");
 const { statuslineConsented } = require("./lib/runtime-config.cjs");
 const { refreshShim, reassertEntry } = require("./lib/statusline-install.cjs");
 const { guard } = require("./lib/debug.cjs");
@@ -37,9 +40,11 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("end", () => {
   let sessionId = "unknown";
+  let transcriptPath = null;
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
     sessionId = data.session_id || "unknown";
+    transcriptPath = data.transcript_path || null;
   } catch {
     // Parse error — fall through with the default id.
   }
@@ -74,6 +79,24 @@ process.stdin.on("end", () => {
       return state;
     })
   );
+
+  // Tool-list presence, from the transcript. Read here as well as on every prompt
+  // because the case this exists for is visible before the user types anything: a
+  // connector that has not been authenticated publishes only its sign-in tools, so
+  // the PostToolUse hook that would otherwise notice never fires — there is no real
+  // tool to call. Waiting for the first prompt would show a green HUD until then.
+  //
+  // Only when there is an answer, unlike the per-prompt writer. This hook is
+  // `async: true` and races the first prompt, and at session start the transcript is
+  // usually empty or not yet flushed; writing that abstention could land *after* the
+  // prompt hook's real verdict and erase it. On a resumed session or after /clear the
+  // history is already there, which is where this pays off.
+  guard("SessionStart/async", "tool availability", () => {
+    const availability = guttToolAvailability(transcriptPath);
+    if (availability !== "unknown") {
+      noteToolAvailability(availability);
+    }
+  });
 
   // Keep the HUD's entry point pointing at this version (GP-867). Both steps live
   // on the async hook rather than the synchronous one for the same reason the probe

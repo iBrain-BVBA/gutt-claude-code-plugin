@@ -45,7 +45,7 @@ const os = require("os");
 const path = require("path");
 
 const { statePath, atomicWrite, writeJson } = require("./plugin-state.cjs");
-const { statusLineTarget, OUR_STATUSLINE_FILES } = require("./migrations.cjs");
+const { statusLineTarget, OUR_STATUSLINE_FILES, PLUGIN_PATH_MARKERS } = require("./migrations.cjs");
 const { debugLog } = require("./debug.cjs");
 
 /** Basename of the shim, and of the renderer it forwards to. */
@@ -211,7 +211,37 @@ function readSettings(settingsFile) {
  * requires the target to be gone, because its job is cleaning up corpses. Here the
  * live case is the one that matters — an entry we wrote and that still works is
  * precisely what `installEntry` must recognise so it can be idempotent, and what
- * `removeEntry` is allowed to take away.
+ * `removeEntry` is allowed to take away. The dead-target requirement stays out for
+ * that reason and is not an oversight to be repaired.
+ *
+ * **A basename is not provenance**, and it used to be the whole test. `statusline.cjs`
+ * is the obvious name for the job, so a user's own `~/.claude/statusline.cjs` — or any
+ * script of that name anywhere on the machine — read as ours. Two ways that goes wrong,
+ * and they are opposite: `removeEntry` deletes a status line someone else wrote, and
+ * `installEntry` reports "already installed" against a file it has never touched,
+ * leaving the HUD permanently absent with a success message behind it. This module's
+ * one promise is that it never touches a status line it did not write, and the promise
+ * needs the path to say so.
+ *
+ * Two ways a path can say so, in order of certainty:
+ *
+ *   1. **It is exactly the shim this version writes.** No inference, and it covers
+ *      every entry installed by any version that used the current stable path.
+ *   2. **The basename is one of ours *and* the containing directory carries a
+ *      plugin-owned fragment** — the attribution `isDeadPluginStatusLine` requires,
+ *      but read from the directory rather than the whole path. That difference is
+ *      load-bearing: one of our own basenames is `gutt-statusline.cjs`, which contains
+ *      the marker `gutt` itself, so a whole-path test passes on the filename alone and
+ *      re-admits exactly the bug this predicate exists to close. Where a file *lives*
+ *      is evidence about who put it there; what it is *called* is not. This clause is
+ *      what still recognises a 2.x entry pointing at a path we no longer write, so an
+ *      upgrade can take over from one rather than refusing to.
+ *
+ * Anything else is foreign, including a path that merely ends in the right name. The
+ * cost is that an entry we wrote into an unmarked directory is disowned — it stops
+ * being removable by `/gutt-pro:statusline off` and has to be deleted by hand. That
+ * is the correct side to fail on: refusing to touch a file that might be someone's
+ * costs them one manual edit, and the other error deletes their work.
  *
  * @param {*} command
  * @returns {boolean}
@@ -221,7 +251,15 @@ function isOurStatusLine(command) {
     return false;
   }
   const target = statusLineTarget(command);
-  return Boolean(target) && OUR_STATUSLINE_FILES.includes(path.basename(target));
+  if (!target || !OUR_STATUSLINE_FILES.includes(path.basename(target))) {
+    return false;
+  }
+  const shim = shimPath();
+  if (shim && path.resolve(target) === path.resolve(shim)) {
+    return true;
+  }
+  const dir = path.dirname(target);
+  return PLUGIN_PATH_MARKERS.some((marker) => dir.includes(marker));
 }
 
 /**
