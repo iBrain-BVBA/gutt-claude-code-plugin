@@ -940,6 +940,26 @@ describe("what the backup sweep may delete", () => {
     assert.equal(kept.at(-1), "settings-backup-statusline-1700000000008.json", "newest survives");
   });
 
+  it("keeps the newest by time, not by spelling", () => {
+    // Real epoch-ms is 13 digits and stays that way until 2286, so a lexicographic
+    // sort agrees with a numeric one by accident — and an accident like that holds
+    // silently until the first caller passes a small `now`, where "10" sorts before
+    // "2" and the sweep keeps the oldest and deletes the newest. Single digits either
+    // side of the width change are what pin the ordering itself rather than the widths
+    // that happen to be in use.
+    for (let now = 1; now <= 12; now += 1) {
+      writeSettings({ model: `v${now}` });
+      install.installEntry({ settingsFile, now });
+      writeSettings({ model: `v${now}` });
+    }
+    const kept = fs
+      .readdirSync(backupDir())
+      .filter((n) => n.startsWith("settings-backup-statusline-"))
+      .map((n) => Number(/(\d+)\.json$/.exec(n)[1]))
+      .sort((a, b) => a - b);
+    assert.deepEqual(kept, [8, 9, 10, 11, 12], "the five newest, by time");
+  });
+
   it("never touches the migration's copy, which may be the only one from before 3.x", () => {
     // Same directory, same `settings-backup-` prefix, entirely different job: the 2.x
     // migration takes one copy of settings.json before rewriting it, and that copy can

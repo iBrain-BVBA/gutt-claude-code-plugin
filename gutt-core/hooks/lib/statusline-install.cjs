@@ -480,10 +480,17 @@ const KEEP_BACKUPS = 5;
 function pruneBackups(justWritten) {
   const dir = path.dirname(justWritten);
   try {
+    // Sorted on the timestamp as a *number*. Real epoch-ms is 13 digits and will be
+    // until 2286, so a lexicographic sort happens to agree with a numeric one — which
+    // is exactly the kind of accident that holds until the first caller passes a small
+    // `now`, at which point "10" sorts before "2" and the sweep keeps the oldest files
+    // and deletes the newest. The whole point of a fixed-width coincidence is that
+    // nothing tells you when it stops holding.
+    const stamp = (name) => Number(/(\d+)\.json$/.exec(name)[1]);
     const backups = fs
       .readdirSync(dir)
       .filter((name) => /^settings-backup-statusline-\d+\.json$/.test(name))
-      .sort();
+      .sort((a, b) => stamp(a) - stamp(b));
     for (const name of backups.slice(0, Math.max(0, backups.length - KEEP_BACKUPS))) {
       const doomed = path.join(dir, name);
       if (doomed !== justWritten) {

@@ -126,15 +126,14 @@
   is what made the 2.x entry rot on the next upgrade. This one does not.
 
   **The HUD notices a connection change mid-turn, not just at your next prompt.**
-  The PostToolUse hook is now matched on every tool rather than only gutt's, because
-  a server that has dropped produces no gutt calls to be matched on — which is
-  exactly why the old matcher could never see it. Every gutt-specific action stays
-  gated on the tool name, so an ordinary Bash response is never mistaken for evidence
-  about the memory server, and the transcript read is debounced: a healthy reading is
-  held for ten minutes, anything else re-checked after five seconds. So the frequent
-  checking happens only while something is wrong and you are waiting for it to clear.
-  The per-turn hook ignores the hold, so a drop is still caught by your next prompt at
-  the latest.
+  A gutt call that comes back is the only thing that can establish the connection, so
+  the PostToolUse hook is matched on gutt's own MCP tools and reads the transcript
+  when one lands. The read is debounced: a healthy reading is held for ten minutes,
+  anything else re-checked after five seconds, so the frequent checking happens only
+  while something is wrong and you are waiting for it to clear. A server that has
+  _dropped_ produces no gutt calls at all and so cannot be caught here — that case is
+  the per-turn hook's, which re-reads availability every prompt and ignores the hold.
+  The gap either way is one turn.
 
   **Anything that a sign-in would fix now shows amber, and the glyph no longer
   decays.** A configured server whose tools have disappeared asks you to sign in

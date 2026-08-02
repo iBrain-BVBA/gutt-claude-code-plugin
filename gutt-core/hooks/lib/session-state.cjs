@@ -109,9 +109,14 @@ const GUTT_TOOL_NAME = /^mcp__.*gutt.*__./i;
 /**
  * Is this the name of a gutt MCP tool?
  *
- * Load-bearing now that the PostToolUse hook is matched on every tool rather than
- * on gutt's alone: without this gate, an ordinary Bash or Read response would be
- * classified and recorded as evidence about the memory connection.
+ * The hook's manifest matcher already restricts it to gutt's own MCP tools, so in
+ * the normal case this gate agrees with the matcher and fires on everything it sees.
+ * It is kept because the two are not the same check and cannot be relied on to stay
+ * in step: the matcher is a string in `hooks.json` and this is a regex here, the
+ * matcher was briefly widened to every tool and narrowed back within one release,
+ * and a hook can also be registered by hand in a user's own settings with whatever
+ * matcher they like. What this gate defends against is an ordinary Bash or Read
+ * response being classified and recorded as evidence about the memory connection.
  *
  * @param {*} toolName
  * @returns {boolean}
