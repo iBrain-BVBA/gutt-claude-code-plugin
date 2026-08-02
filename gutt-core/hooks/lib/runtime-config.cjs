@@ -130,7 +130,7 @@ function configPath() {
 /**
  * Config as consumers should see it: stored values over documented defaults.
  * Never writes, so a session that only reads config leaves no file behind.
- * @returns {{enabled: boolean, mode: string, snoozeUntil: string|null, snoozeSessionId: string|null, projects: Object}}
+ * @returns {{enabled: boolean, mode: string, snoozeUntil: string|null, snoozeSessionId: string|null, projects: Object, statusline: Object}}
  */
 function readConfig() {
   const stored = readJson(configPath(), null) || {};
@@ -206,6 +206,9 @@ function snoozeApplies({ snoozeUntil, snoozeSessionId }, sessionId, now) {
  * lifecycle tests assert about.
  * @param {string|null} [sessionId]
  * @param {number} [now]
+ * @param {Object|null} [config] an already-read config, so a caller wanting both
+ *   this and `snoozeDeadline` pays for one read rather than two. Omit it and this
+ *   reads for itself.
  * @returns {boolean}
  */
 function isSnoozed(sessionId = null, now = Date.now(), config = null) {

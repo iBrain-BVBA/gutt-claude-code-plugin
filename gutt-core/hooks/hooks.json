@@ -40,7 +40,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "",
+        "matcher": "mcp__.*gutt.*__.*",
         "hooks": [
           {
             "type": "command",

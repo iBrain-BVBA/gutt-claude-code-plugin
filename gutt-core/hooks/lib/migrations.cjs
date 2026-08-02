@@ -176,8 +176,44 @@ const LEGACY_SETTINGS = [
  */
 const OUR_STATUSLINE_FILES = ["statusline.cjs", "gutt-statusline.cjs"];
 
-/** Path fragments marking a statusLine command as plugin-installed, not hand-written. */
-const PLUGIN_PATH_MARKERS = ["plugin_", "local-agent-mode-sessions", "gutt", "plugins"];
+/**
+ * The path fragment that attributes an installed file to *this* plugin.
+ *
+ * It used to be one of four — `plugin_`, `local-agent-mode-sessions`, `gutt`,
+ * `plugins` — OR'd together, and the last of those gave the whole set away.
+ * Claude Code puts every plugin's persistent data under
+ * `~/.claude/plugins/data/<id>/`, so `plugins` is in the path of *every*
+ * plugin's directory, not just ours. On a real machine that made
+ * `~/.claude/plugins/data/context7-claude-plugins-official/statusline.cjs` read
+ * as ours — and this module's one promise is that it never touches a status line
+ * it did not write.
+ *
+ * A marker used for attribution must not name the container every candidate
+ * shares. What is left is the one fragment that says *whose*: this plugin has
+ * carried `gutt` in its identity since 2.x, so its cache directory, its data
+ * directory, and the marketplace it ships from all contain it, while another
+ * vendor's plugin does not. Compared case-insensitively — the fragment is
+ * matched against a path the user's filesystem chose the case of, not one we
+ * wrote.
+ */
+const GUTT_PATH_MARKER = "gutt";
+
+/**
+ * Is this the directory of a file this plugin put there?
+ *
+ * **The directory, never the whole path.** One of our own basenames is
+ * `gutt-statusline.cjs`, which contains the marker in its own filename, so a
+ * whole-path test passes on the name alone and admits any directory at all —
+ * re-opening the "a script that merely shares the name" bug by the back door.
+ * Where a file lives is evidence about who put it there; what it is called is
+ * not.
+ *
+ * @param {string} target absolute path to the file being attributed
+ * @returns {boolean}
+ */
+function isOurPluginDir(target) {
+  return path.dirname(target).toLowerCase().includes(GUTT_PATH_MARKER);
+}
 
 /**
  * What this migration deliberately leaves alone, reported next to what it did.
@@ -216,7 +252,7 @@ function isDeadPluginStatusLine(command) {
   if (!target || !OUR_STATUSLINE_FILES.includes(path.basename(target))) {
     return false;
   }
-  if (!PLUGIN_PATH_MARKERS.some((marker) => target.includes(marker))) {
+  if (!isOurPluginDir(target)) {
     return false;
   }
   // The decisive check: a target that still resolves is a working status line.
@@ -653,7 +689,8 @@ module.exports = {
   isDeadPluginStatusLine,
   statusLineTarget,
   OUR_STATUSLINE_FILES,
-  PLUGIN_PATH_MARKERS,
+  GUTT_PATH_MARKER,
+  isOurPluginDir,
   needsMigration,
   runMigrations,
   describeMigration,

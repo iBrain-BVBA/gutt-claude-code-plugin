@@ -270,6 +270,7 @@ function noteConnection(status, now = Date.now()) {
  * discover that, because the tools it matches on are the missing ones.
  *
  * @param {"available"|"auth"|"pending"|"absent"|"unknown"} availability
+ * @param {number} [now] when the reading was taken; injectable for tests
  * @returns {Object} the persisted state
  */
 function noteToolAvailability(availability, now = Date.now()) {
@@ -459,8 +460,11 @@ function advanceTurn() {
  * matcher Claude Code adds later) is a session (re)start and arms
  * `firstPromptPending`.
  *
- * Deliberately leaves `connectionStatus` untouched: the async connectivity hook
- * runs in parallel and is its sole writer.
+ * Deliberately leaves `connectionStatus` untouched. Its sole writer is
+ * `noteConnection()`, from the PostToolUse hook, because only an observed round trip
+ * is evidence about a connection — the async connectivity hook runs in parallel and
+ * writes the *configuration* fields, having stopped writing this one precisely so a
+ * settings-file read could no longer render as a green light.
  *
  * @param {string} sessionId
  * @param {string} [source] - SessionStart matcher from the hook payload

@@ -6,14 +6,24 @@
  * agent actually recalled anything. `isRecallTool()` decides which tools count as
  * recall — gutt reads do, writes and schema introspection don't.
  *
- * **Matched on every tool, not just gutt's**, which is a deliberate widening. This is
- * the only hook that fires while the assistant is working, so it is the only place a
- * connection change can be noticed without waiting for the user's next prompt — and a
- * server that has dropped produces no gutt calls to be matched on, which is precisely
- * why a gutt-only matcher could never see it. The cost of that reach is paid back two
- * ways: every gutt-specific action is gated on `isGuttTool()` so a Bash response is
- * never mistaken for evidence about the memory server, and the transcript walk is
- * debounced so a hot path does not become an expensive one.
+ * **Matched at the gutt MCP server**, and that narrowness is the point. A PostToolUse
+ * hook is blocking and each firing is a fresh `node` process — measured at ~89ms
+ * against a ~74ms bare-node floor, so the process launch is nearly all of it and no
+ * amount of care inside this file changes the number. Matched on every tool, a session
+ * with 200 Read/Edit/Bash calls pays about 18 seconds of wall time it did not
+ * previously pay at all, because the hook simply never spawned for those tools.
+ *
+ * That widening was tried, for a real reason: this is the only hook that fires while
+ * the assistant is working, so it is the only place a connection change can be noticed
+ * without waiting for the user's next prompt, and a server that has *dropped* produces
+ * no gutt calls to be matched on. But the gap it closes is at most one turn —
+ * `user-prompt-submit.cjs` re-reads availability on every prompt unconditionally, and
+ * `session-connectivity.cjs` covers the start of the session. One turn of HUD latency
+ * is not worth eighteen seconds of the user's time per session.
+ *
+ * The gates below stay regardless. `isGuttTool()` is cheap insurance against this
+ * matcher being widened again by someone who has not read this paragraph, and the
+ * availability walk stays debounced because a gutt-heavy turn is still a hot path.
  *
  * It emits nothing: PostToolUse runs after the tool has already returned, so there is
  * no decision left to influence, and anything printed here would land in the
@@ -87,23 +97,23 @@ process.stdin.on("end", () => {
   // no way to open a socket, so "configured" was the strongest thing the HUD could
   // previously say while showing a glyph everyone reads as "connected".
   //
-  // Only on a parsed payload, and only for a gutt tool. This hook is matched on
-  // every tool now, so the name check is what keeps an ordinary Bash or Read
-  // response from being classified as evidence about the memory connection —
-  // it would come back clean and paint the glyph green on no evidence at all.
-  // Unparseable stdin says nothing about the server either.
+  // Only on a parsed payload, and only for a gutt tool. The matcher already limits
+  // this to gutt's server, so the name check is redundant today and kept anyway: it
+  // is what stops an ordinary Bash or Read response being read as evidence about the
+  // memory connection if the matcher is ever widened again. Such a response comes
+  // back clean and would paint the glyph green on no evidence at all. Unparseable
+  // stdin says nothing about the server either.
   guard("PostToolUse", "note connection", () => {
     if (parsed && isGuttTool(toolName)) {
       noteConnection(classifyToolResponse(toolResponse));
     }
   });
 
-  // Tool-list presence, refreshed here so a change is picked up mid-turn rather
-  // than waiting for the user's next prompt. This is the one hook that fires while
-  // the assistant is working, which is exactly when a connection drops or a
-  // just-completed sign-in takes effect.
+  // Tool-list presence, refreshed here so a change is picked up mid-turn rather than
+  // waiting for the user's next prompt — worth having on a turn that is talking to
+  // gutt, which is when a sign-in completing or a server going away matters most.
   //
-  // Debounced, because "every tool call" is a hot path and walking the transcript is
+  // Debounced, because a memory-heavy turn is a hot path and walking the transcript is
   // the only expensive thing here. The hold is asymmetric: a healthy reading stands
   // for ten minutes, anything else for five seconds. So the frequent checking happens
   // only while something is wrong and the user is watching for it to clear, and a

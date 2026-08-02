@@ -2,6 +2,56 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **gutt could delete or overwrite another plugin's status line.** Ownership of a
+  `statusLine` entry was inferred from the path containing any of four fragments, one
+  of which was the bare word `plugins` — and Claude Code puts every plugin's data
+  under `~/.claude/plugins/data/`, so another vendor's `statusline.cjs` there read as
+  ours. `/gutt-pro:statusline off` would have removed it and `/gutt-pro:statusline`
+  overwritten it. Attribution now requires the directory to name this plugin, which
+  the container they all share cannot satisfy (GP-867)
+- **A failed settings write could leave `~/.claude/settings.json` missing.** The
+  Windows rename fallback unlinks the target before its second attempt; if that
+  attempt also failed, the generic cleanup then deleted the temp file holding the only
+  remaining copy — losing permissions, model, env and every other plugin's config, and
+  reporting it as `could not write`, which reads as a no-op. The cleanup now stops at
+  the point of no return, the replacement is left on disk, and the message names both
+  it and the backup (GP-867)
+- **The HUD printed nothing at all on two stdin shapes.** `JSON.parse("null")`
+  succeeds, so the guard around the parse never fired and the null reached the render;
+  a `display_name` whose `toString` is shadowed threw the same way. Both blanked the
+  bar several times a second. The payload is checked for shape rather than only
+  syntax, text fields are coerced safely, and the render as a whole now has a net
+  under it — the lesson the cost segment taught was that the net belongs around the
+  whole line, not around whichever operation looked risky (GP-867)
+- **A connectivity probe that threw was reported as "not configured".** It rendered
+  `!` and told the user to run setup on a configuration that may have been fine, and
+  it suppressed the amber sign-in prompt, letting an old success paint a dead server
+  green. "Could not tell" is now distinct from "nothing there" in the value consumers
+  actually read (GP-867)
+- **A green glyph could outlive all evidence for it.** Past the transcript scan cap a
+  long session reports tool availability as unknown, which overwrote a stored
+  disconnection; the pre-drop success then spoke for the server indefinitely. An
+  uncorroborated success older than ten minutes now lapses to neutral. Warnings are
+  left standing — a stale warning costs one needless check, a stale green costs a
+  memory system you do not know has stopped (GP-867)
+- **`/gutt-pro:statusline off` could be undone by the next session.** The consent
+  record was written after the removal and its result discarded, so a failed write
+  left the flag that reinstalls the HUD. Consent is withdrawn first and every failure
+  is reported. `status` no longer promises a repair it has not checked, and can now
+  see a HUD whose entry point is missing rather than reporting the settings key and
+  stopping there (GP-867)
+- **PostToolUse no longer spawns a process on every tool call.** The matcher had been
+  widened to every tool so a dropped server could be noticed mid-turn; each firing is
+  a blocking `node` launch (~89ms against a ~74ms floor), so a 200-call session paid
+  around 18 seconds for it. The prompt hook already re-reads availability every turn,
+  so the gap that closed was one turn (GP-867)
+- **Settings backups no longer accumulate without bound.** They are written on a path
+  nothing sweeps, once per session where the platform drops the `statusLine` key, each
+  a verbatim copy of `settings.json` including its `env` block. The newest five are
+  kept (GP-867)
+
 ### Added
 
 - **The statusline HUD is back, as an opt-in that survives upgrades.** Turn it on
@@ -88,10 +138,16 @@
   from MCP auth and leaves that empty — so a working setup rendered `[gutt⚪!]` and
   was told it was broken. It now fires only when the connectivity probe reports no
   MCP server (GP-867)
-- **A failed connectivity probe now shows red instead of looking unconfigured.**
-  `connectionStatus` had no writer for `"error"`, so the HUD's 🔴 branch was
-  unreachable and "we could not tell" was indistinguishable from "there is nothing
-  there" (GP-867)
+- **A failed connectivity probe no longer looks like an unconfigured one.** The probe
+  runs inside an error guard, and a throw was flattened into `mcpConfigured: false` —
+  so a machine where the probe simply could not tell was shown `!` and told to run
+  setup on a configuration that may have been fine. It now records `null` for "could
+  not tell", which renders nothing, and a withdrawn tool list is no longer silenced by
+  it (GP-867)
+- **🔴 now has a writer.** `connectionStatus: "error"` is set by
+  `classifyToolResponse` when a real call comes back a non-auth failure, which is the
+  only thing that can establish it. Red means the server answered and answered badly;
+  a connection that merely needs signing in is amber (GP-867)
 
 - **Every hook crashed on Windows.** gutt-pro 3.0.0 was unusable there: all 7
   hooks died at `require()` with a `SyntaxError` before doing any work. The repo

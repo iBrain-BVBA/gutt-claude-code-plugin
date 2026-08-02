@@ -23,9 +23,12 @@
  * Two rules govern the settings write, and they are the whole reason this is a
  * separate module rather than a few lines in a hook:
  *
- *   1. Nothing here runs unless the user asked for it. `/gutt-pro:statusline` is the
- *      only thing that calls `installEntry`. GP-863 deleted the 2.x hook that
- *      configured settings behind the user's back and that stays deleted.
+ *   1. Nothing here writes the user's settings unless they asked for it.
+ *      `/gutt-pro:statusline` is the only thing that calls `installEntry` to add a
+ *      key that was not there before; the one automatic caller is `reassertEntry`,
+ *      which restores a key the user already consented to and does nothing without
+ *      that consent on file. GP-863 deleted the 2.x hook that configured settings
+ *      behind the user's back and that stays deleted.
  *   2. Removal only ever touches a status line this plugin wrote, decided by the
  *      predicate migrations.cjs already owns. Someone else's status line is none of
  *      our business.
@@ -45,7 +48,7 @@ const os = require("os");
 const path = require("path");
 
 const { statePath, atomicWrite, writeJson } = require("./plugin-state.cjs");
-const { statusLineTarget, OUR_STATUSLINE_FILES, PLUGIN_PATH_MARKERS } = require("./migrations.cjs");
+const { statusLineTarget, OUR_STATUSLINE_FILES, isOurPluginDir } = require("./migrations.cjs");
 const { debugLog } = require("./debug.cjs");
 
 /** Basename of the shim, and of the renderer it forwards to. */
@@ -123,7 +126,17 @@ function shimContents(target) {
     "// environment. This directory is the plugin data dir, so it is also the value",
     "// the renderer needs in order to find any session state at all.",
     "process.env.CLAUDE_PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA || __dirname;",
-    `require(${JSON.stringify(target)});`,
+    "// Guarded because this file outlives what it points at. Uninstalling the plugin",
+    "// deletes the renderer; an update that half-finished moves it. An unguarded",
+    "// require then throws, node exits non-zero, and the user gets a module-not-found",
+    "// stack trace where their status bar used to be, several times a second, from a",
+    "// plugin that may no longer be installed. Exiting quietly leaves an empty bar,",
+    "// which is what they would have had anyway.",
+    "try {",
+    `  require(${JSON.stringify(target)});`,
+    "} catch {",
+    "  process.exitCode = 0;",
+    "}",
     "",
   ].join("\n");
 }
@@ -145,7 +158,15 @@ function shimCommand(shim) {
  * every session and there is no reason to touch mtime on the overwhelming majority
  * where nothing changed.
  *
- * @returns {{written: boolean, path: string|null, target: string}}
+ * Three outcomes, not two. `written: false` used to mean both "already correct"
+ * and "the write failed", and `installEntry` disambiguated them with an existence
+ * check — which a *stale* shim passes exactly as readily as a current one. So an
+ * upgrade whose data-dir write failed reported "already installed" over a shim
+ * still pointing into the previous version's directory, and the HUD was dead
+ * behind a success message. The caller cannot recover a distinction the callee
+ * threw away, so the callee keeps it.
+ *
+ * @returns {{status: "written"|"current"|"failed"|"no-data-dir", path: string|null, target: string}}
  */
 function refreshShim() {
   const shim = shimPath();
@@ -153,7 +174,7 @@ function refreshShim() {
   if (!shim) {
     // No data dir — local dev and some test contexts. Every state write no-ops
     // here rather than falling back to somewhere it does not belong (R37).
-    return { written: false, path: null, target };
+    return { status: "no-data-dir", path: null, target };
   }
   const desired = shimContents(target);
   let current = null;
@@ -165,9 +186,28 @@ function refreshShim() {
     }
   }
   if (current === desired) {
-    return { written: false, path: shim, target };
+    return { status: "current", path: shim, target };
   }
-  return { written: atomicWrite(shim, desired), path: shim, target };
+  return { status: atomicWrite(shim, desired) ? "written" : "failed", path: shim, target };
+}
+
+/**
+ * Does the installed HUD actually resolve, end to end?
+ *
+ * The question `/gutt-pro:statusline status` has to be able to answer, and could
+ * not: it read settings.json and stopped there, so the command a user runs to
+ * diagnose a blank status bar was structurally unable to see the cause. Both links
+ * can break independently — the shim is deleted when the plugin is uninstalled, and
+ * the renderer moves under it on every update.
+ *
+ * @returns {{shim: boolean, renderer: boolean}}
+ */
+function shimResolves() {
+  const shim = shimPath();
+  return {
+    shim: Boolean(shim) && fs.existsSync(shim),
+    renderer: fs.existsSync(rendererPath()),
+  };
 }
 
 /**
@@ -227,15 +267,21 @@ function readSettings(settingsFile) {
  *
  *   1. **It is exactly the shim this version writes.** No inference, and it covers
  *      every entry installed by any version that used the current stable path.
- *   2. **The basename is one of ours *and* the containing directory carries a
- *      plugin-owned fragment** — the attribution `isDeadPluginStatusLine` requires,
- *      but read from the directory rather than the whole path. That difference is
- *      load-bearing: one of our own basenames is `gutt-statusline.cjs`, which contains
- *      the marker `gutt` itself, so a whole-path test passes on the filename alone and
- *      re-admits exactly the bug this predicate exists to close. Where a file *lives*
- *      is evidence about who put it there; what it is *called* is not. This clause is
- *      what still recognises a 2.x entry pointing at a path we no longer write, so an
- *      upgrade can take over from one rather than refusing to.
+ *   2. **The basename is one of ours *and* the containing directory names this
+ *      plugin** — `isOurPluginDir`, read from the directory rather than the whole
+ *      path. That difference is load-bearing: one of our own basenames is
+ *      `gutt-statusline.cjs`, which contains the marker `gutt` itself, so a
+ *      whole-path test passes on the filename alone and re-admits exactly the bug
+ *      this predicate exists to close. Where a file *lives* is evidence about who
+ *      put it there; what it is *called* is not. This clause is what still
+ *      recognises a 2.x entry pointing at a path we no longer write, so an upgrade
+ *      can take over from one rather than refusing to.
+ *
+ *      The directory must name *this* plugin, not merely look plugin-installed.
+ *      The marker set used to include the bare fragment `plugins`, which every
+ *      plugin's data directory carries — so another vendor's status line under
+ *      `~/.claude/plugins/data/` was classified as ours, and `removeEntry` would
+ *      delete it. See `GUTT_PATH_MARKER`.
  *
  * Anything else is foreign, including a path that merely ends in the right name. The
  * cost is that an entry we wrote into an unmarked directory is disowned — it stops
@@ -258,8 +304,7 @@ function isOurStatusLine(command) {
   if (shim && path.resolve(target) === path.resolve(shim)) {
     return true;
   }
-  const dir = path.dirname(target);
-  return PLUGIN_PATH_MARKERS.some((marker) => dir.includes(marker));
+  return isOurPluginDir(target);
 }
 
 /**
@@ -294,23 +339,104 @@ function classifyStatusLine(settings) {
  * Backing up only the key being changed would still lose the file if the rewrite
  * went wrong, and this module rewrites a file it does not own.
  *
+ * Returns the path rather than a bare boolean so a failure downstream can *name*
+ * the copy. A message that says only "could not write settings.json" reads as a
+ * no-op; if the original was lost, the one thing the user needs is where the
+ * copy is.
+ *
  * @param {string} settingsFile
  * @param {string} raw
  * @param {number} now
- * @returns {boolean} false when the backup could not be written
+ * @returns {string|null} the backup's path, or null when it could not be written
  */
 function backupSettings(settingsFile, raw, now) {
   const backup = statePath("migrations", `settings-backup-${now}.json`);
   if (!backup) {
     // No data dir means nowhere safe to put the original, so nothing is rewritten.
-    return false;
+    return null;
   }
-  return writeJson(backup, {
+  const written = writeJson(backup, {
     backedUpAt: new Date(now).toISOString(),
     reason: "statusline",
     settingsFile,
     original: raw,
   });
+  if (!written) {
+    return null;
+  }
+  pruneBackups(backup);
+  return backup;
+}
+
+/** How many settings backups to keep. */
+const KEEP_BACKUPS = 5;
+
+/**
+ * Drop all but the newest few settings backups.
+ *
+ * These accumulate on a path nothing else sweeps. `migrations/` is deliberately
+ * exempt from the session sweep — it holds the migrate-memory backup, which may be
+ * the only copy of a user's notes — and `reassertEntry` reaches `installEntry` on
+ * every session where the platform dropped the `statusLine` key, which is the whole
+ * premise of that repair existing. So without this it is one file per session
+ * forever, each a verbatim copy of `settings.json` including whatever is in its
+ * `env` block. That also quietly inflates the directory size `findOrphanedPluginData`
+ * reports to the user as recoverable memory.
+ *
+ * Newest kept rather than oldest: the useful copy is the one from just before the
+ * change someone is trying to undo.
+ *
+ * @param {string} justWritten kept regardless, in case the sort cannot see it
+ */
+function pruneBackups(justWritten) {
+  const dir = path.dirname(justWritten);
+  try {
+    const backups = fs
+      .readdirSync(dir)
+      .filter((name) => /^settings-backup-\d+\.json$/.test(name))
+      .sort();
+    for (const name of backups.slice(0, Math.max(0, backups.length - KEEP_BACKUPS))) {
+      const doomed = path.join(dir, name);
+      if (doomed !== justWritten) {
+        fs.rmSync(doomed, { force: true });
+      }
+    }
+  } catch (err) {
+    // Housekeeping. A backup that could not be pruned is not a reason to fail the
+    // write it was taken for.
+    debugLog("statusline-install", `could not prune settings backups: ${err.message}`);
+  }
+}
+
+/**
+ * The message for a write that failed, which may or may not have lost the original.
+ *
+ * Split out because both callers need it and because the losing case must not be
+ * describable in the same sentence as the harmless one — "nothing was changed" is
+ * true of one and dangerously false of the other.
+ *
+ * @param {string} target
+ * @param {{ok: boolean, orphan?: string}} result
+ * @param {string|null} backup
+ * @returns {{ok: false, status: string, detail: string}}
+ */
+function writeFailure(target, result, backup) {
+  if (!result.orphan) {
+    return {
+      ok: false,
+      status: "write-failed",
+      detail: `could not write ${target}; it is unchanged.`,
+    };
+  }
+  const where = backup ? ` A verbatim copy of the original is at ${backup}.` : "";
+  return {
+    ok: false,
+    status: "settings-lost",
+    detail:
+      `${target} could not be written and could not be put back — it is missing. ` +
+      `The replacement, which contains your settings, is at ${result.orphan}; ` +
+      `rename it to ${target}.${where}`,
+  };
 }
 
 /**
@@ -326,12 +452,26 @@ function backupSettings(settingsFile, raw, now) {
  * first and the gap is unavoidable. Skipping that fallback here would not preserve
  * the file, it would just fail the write on one platform.
  *
+ * **The cleanup must know how far the fallback got.** Deleting the temp file on
+ * any failure is right up until the target has been unlinked — past that point
+ * the temp file is the only copy of the user's settings that still exists, and
+ * removing it turns a failed write into total data loss. The sequence that gets
+ * there is not exotic: it is the same handle contention the fallback exists for,
+ * held a moment longer. So the cleanup is conditional, and when the original is
+ * gone the temp file is deliberately left on disk and its path is handed back so
+ * the caller can name it. A stray file the user can rename is a far better
+ * outcome than a settings.json they have to rebuild.
+ *
  * @param {string} absPath
  * @param {Object} settings
- * @returns {boolean}
+ * @returns {{ok: boolean, orphan?: string}} `orphan` names the surviving
+ *   replacement when the original could not be put back
  */
 function writeSettings(absPath, settings) {
   const tmp = `${absPath}.gutt-statusline.${process.pid}`;
+  // Set the moment the target stops existing, so the catch below can tell a write
+  // that failed harmlessly from one that failed after the point of no return.
+  let targetRemoved = false;
   try {
     // Two-space, matching what Claude Code itself writes. The rewrite reformats the
     // file; the verbatim backup is what makes that acceptable.
@@ -343,17 +483,25 @@ function writeSettings(absPath, settings) {
         throw renameErr;
       }
       fs.unlinkSync(absPath);
+      targetRemoved = true;
       fs.renameSync(tmp, absPath);
     }
-    return true;
+    return { ok: true };
   } catch (err) {
     debugLog("statusline-install", `failed to rewrite ${absPath}: ${err.message}`);
+    if (targetRemoved) {
+      debugLog(
+        "statusline-install",
+        `${absPath} could not be restored; replacement left at ${tmp}`
+      );
+      return { ok: false, orphan: tmp };
+    }
     try {
       fs.unlinkSync(tmp);
     } catch {
       /* nothing to clean up */
     }
-    return false;
+    return { ok: false };
   }
 }
 
@@ -391,7 +539,8 @@ function entryPresent(settingsFile) {
  */
 function installEntry({ settingsFile, now = Date.now() } = {}) {
   const target = resolveSettingsFile(settingsFile);
-  const { written, path: shim } = refreshShim();
+  const shimResult = refreshShim();
+  const shim = shimResult.path;
   if (!shim) {
     return {
       ok: false,
@@ -399,14 +548,18 @@ function installEntry({ settingsFile, now = Date.now() } = {}) {
       detail: "CLAUDE_PLUGIN_DATA is unset, so there is no stable path to point at.",
     };
   }
-  if (!written) {
-    // Not an error: unchanged content is the common case. Only a genuinely absent
-    // shim is fatal, and that is what this checks.
-    try {
-      fs.accessSync(shim);
-    } catch {
-      return { ok: false, status: "shim-failed", detail: `could not write ${shim}` };
-    }
+  if (shimResult.status === "failed") {
+    // Reported rather than inferred from the file existing: a stale shim from an
+    // earlier version exists too, and pointing settings at one is how a dead HUD
+    // ends up behind a success message.
+    return {
+      ok: false,
+      status: "shim-failed",
+      detail: `could not write ${shim}, so the HUD would not have started. Nothing was changed.`,
+    };
+  }
+  if (shimResult.status === "current" && !fs.existsSync(shim)) {
+    return { ok: false, status: "shim-failed", detail: `${shim} is missing.` };
   }
 
   const command = shimCommand(shim);
@@ -436,12 +589,16 @@ function installEntry({ settingsFile, now = Date.now() } = {}) {
     return { ok: true, status: "already-installed", command };
   }
 
-  if (raw !== null && !backupSettings(target, raw, now)) {
-    return {
-      ok: false,
-      status: "backup-failed",
-      detail: "could not write a backup of settings.json, so it was left alone.",
-    };
+  let backup = null;
+  if (raw !== null) {
+    backup = backupSettings(target, raw, now);
+    if (!backup) {
+      return {
+        ok: false,
+        status: "backup-failed",
+        detail: "could not write a backup of settings.json, so it was left alone.",
+      };
+    }
   }
 
   next.statusLine = {
@@ -450,8 +607,9 @@ function installEntry({ settingsFile, now = Date.now() } = {}) {
     padding: 0,
     refreshInterval: REFRESH_INTERVAL_SECONDS,
   };
-  if (!writeSettings(target, next)) {
-    return { ok: false, status: "write-failed", detail: `could not write ${target}` };
+  const write = writeSettings(target, next);
+  if (!write.ok) {
+    return writeFailure(target, write, backup);
   }
   return { ok: true, status: raw === null ? "created" : "installed", command };
 }
@@ -490,7 +648,8 @@ function removeEntry({ settingsFile, now = Date.now() } = {}) {
     };
   }
 
-  if (!backupSettings(target, raw, now)) {
+  const backup = backupSettings(target, raw, now);
+  if (!backup) {
     return {
       ok: false,
       status: "backup-failed",
@@ -500,8 +659,9 @@ function removeEntry({ settingsFile, now = Date.now() } = {}) {
 
   const next = { ...settings };
   delete next.statusLine;
-  if (!writeSettings(target, next)) {
-    return { ok: false, status: "write-failed", detail: `could not write ${target}` };
+  const write = writeSettings(target, next);
+  if (!write.ok) {
+    return writeFailure(target, write, backup);
   }
   return { ok: true, status: "removed" };
 }
@@ -550,6 +710,11 @@ module.exports = {
   isOurStatusLine,
   classifyStatusLine,
   refreshShim,
+  shimResolves,
+  // Exported for tests. The rename sequence that produces an orphan needs a
+  // platform-specific failure to reach (that is what the Windows CI smoke run is
+  // for), but the message it produces is the part a user depends on, and it is pure.
+  writeFailure,
   entryPresent,
   installEntry,
   removeEntry,

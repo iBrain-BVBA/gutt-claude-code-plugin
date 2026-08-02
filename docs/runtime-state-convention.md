@@ -44,15 +44,18 @@ work, so GP-873 closed as not needed and the file was removed from the sweep, fr
 
 ### Keys in `sessions/<session_id>.json`
 
-| Key                                                                  | Producer                                                                   | Consumer                                    |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------- |
-| `sessionId`, `startedAt`, `rev`, `lastUpdated`                       | `session-state.cjs` on every write                                         | bookkeeping; `rev` counts serialized writes |
-| `source`                                                             | SessionStart (the matcher that fired)                                      | diagnostics                                 |
-| `firstPromptPending`                                                 | SessionStart (`startup`/`resume`/`clear`)                                  | UserPromptSubmit row 2 — consumed on read   |
-| `compacted`                                                          | SessionStart (`compact`)                                                   | UserPromptSubmit row 3 — consumed on read   |
-| `turnsSinceSearch`                                                   | PostToolUse resets to 0; UserPromptSubmit and a compaction each advance it | UserPromptSubmit row 4 — see below          |
-| `connectionStatus`, `mcpConfigured`, `mcpUrl`, `connectionCheckedAt` | `session-connectivity.cjs` (async)                                         | `statusline.cjs`, read-only                 |
-| `endedAt`, `endReason`                                               | SessionEnd                                                                 | the statusline and the next SessionStart    |
+| Key                                                          | Producer                                                                     | Consumer                                     |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------- |
+| `sessionId`, `startedAt`, `rev`, `lastUpdated`               | `session-state.cjs` on every write                                           | bookkeeping; `rev` counts serialized writes  |
+| `source`                                                     | SessionStart (the matcher that fired)                                        | diagnostics                                  |
+| `firstPromptPending`                                         | SessionStart (`startup`/`resume`/`clear`)                                    | UserPromptSubmit row 2 — consumed on read    |
+| `compacted`                                                  | SessionStart (`compact`)                                                     | UserPromptSubmit row 3 — consumed on read    |
+| `turnsSinceSearch`                                           | PostToolUse resets to 0; UserPromptSubmit and a compaction each advance it   | UserPromptSubmit row 4 — see below           |
+| `mcpConfigured`, `mcpUrl`, `mcpError`, `connectionCheckedAt` | `session-connectivity.cjs` (async)                                           | `statusline.cjs`, read-only                  |
+| `connectionStatus`, `connectionObservedAt`                   | `noteConnection()` from PostToolUse — only an observed round trip            | `statusline.cjs`, read-only                  |
+| `mcpToolsAvailable`, `mcpToolsAvailableAt`                   | UserPromptSubmit every prompt; PostToolUse when stale; SessionStart if known | `statusline.cjs`, and PostToolUse's debounce |
+| `statuslineReassert`                                         | `session-connectivity.cjs` (async), only on a failed repair                  | `/gutt-pro:statusline status`                |
+| `endedAt`, `endReason`                                       | SessionEnd                                                                   | the statusline and the next SessionStart     |
 
 `turnsSinceSearch` is `null` until a recall call is seen, and `null` is not the same
 as `0`: it means "nothing recalled in this conversation" and gates nothing, where

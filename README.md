@@ -83,36 +83,43 @@ status line you wrote yourself is never touched or overwritten.
 [gutt 🟢 on acme-eng] | [Opus 5] ctx 38%
 ```
 
-| Segment     | Means                                                                |
-| ----------- | -------------------------------------------------------------------- |
-| 🟢          | a gutt call came back — the server is reachable and authenticated    |
-| 🟡 `auth`   | the connection needs re-authenticating                               |
-| 🔴          | a call failed, or the server's tools have gone from the tool list    |
-| ⚪          | nothing observed yet, or nothing for a while                         |
-| `on`        | recall is live                                                       |
-| `off`       | durably disabled — `/gutt-pro:on` brings it back                     |
-| `zzz→14:30` | snoozed until then; `zzz` alone means for the rest of this session   |
-| `hitl`      | capture mode is human-in-the-loop (shown only when it is not `auto`) |
-| `!`         | no gutt MCP server is configured — run `/gutt-pro:setup`             |
-| `acme-eng`  | the group this session writes to                                     |
-| `ctx 38%`   | how much of the context window is spent                              |
+| Segment             | Means                                                                |
+| ------------------- | -------------------------------------------------------------------- |
+| 🟢                  | a gutt call came back — the server is reachable and authenticated    |
+| 🟡 `- auth needed!` | sign in again: the tools are gone, or a call came back unauthorised  |
+| 🔴                  | a call reached the server and failed for some other reason           |
+| ⚪                  | nothing observed yet                                                 |
+| `on`                | recall is live                                                       |
+| `off`               | durably disabled — `/gutt-pro:on` brings it back                     |
+| `zzz→14:30`         | snoozed until then; `zzz` alone means for the rest of this session   |
+| `hitl`              | capture mode is human-in-the-loop (shown only when it is not `auto`) |
+| `!`                 | no gutt MCP server is configured — run `/gutt-pro:setup`             |
+| `acme-eng`          | the group this session writes to                                     |
+| `ctx 38%`           | how much of the context window is spent                              |
 
 **Green is earned, not assumed.** It means a real call to the server came back, so
-it reports reachability and authentication together. Three signals feed it, and
-they cover each other's blind spots: responses to gutt tool calls say whether the
-server is answering and whether it accepted your credentials; the session
-transcript says whether its tools are still in the tool list, which is the only way
-to notice a server nobody is calling; and an observation nobody has refreshed in
-ten minutes lapses back to ⚪ rather than going stale green.
+it reports reachability and authentication together. Two signals feed it, and they
+cover each other's blind spots: responses to gutt tool calls say whether the server
+is answering and whether it accepted your credentials; the session transcript says
+whether its tools are still in the tool list, which is the only way to notice a
+server nobody is calling. The tool list wins where they disagree — once the tools
+have gone, however recently a call last worked.
+
+A quiet session stays green: an observation does not go stale just because you have
+not touched memory for a while. The exception is a green that nothing corroborates —
+if the transcript cannot be read at all, a success older than ten minutes lapses back
+to ⚪, because at that point nothing can establish anything. Amber and red are left
+standing either way; a warning that expires takes with it the one instruction you
+could have acted on.
 
 A configuration check at session start cannot do this — a hook has no way to open a
 socket, so it can only ever establish that a server is _named in a settings file_.
-That is reported separately, as `!`.
+That is reported separately, as `!`, and only when the check positively found nothing
+configured. A check that could not tell says nothing at all.
 
-Context window usage is deliberately absent — Claude Code already displays it, and
-this bar is for gutt state.
-
-Segments drop from the right as the terminal narrows; the state segment always stays.
+The two informational segments — context usage, then the group — drop as the terminal
+narrows, in that order. Everything else either reports a fault or names the fix, and
+none of it drops, so `- auth needed!` survives on the narrowest bar.
 
 > **Upgrading from 2.x?** Your old HUD stops working — it pointed into a 2.x path
 > that no longer exists, and the plugin removes the dead entry for you. Run

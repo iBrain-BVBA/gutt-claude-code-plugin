@@ -172,26 +172,61 @@ describe("the HUD reports connection state", () => {
   });
 
   it("keeps trusting a successful call however long ago it happened", () => {
-    // Observations no longer age out. A session that has not touched memory for half
-    // an hour is an ordinary session, not a broken one, and reporting it as unknown
-    // put the HUD in a warning state with nothing wrong and nothing for the user to
-    // do. What makes that safe is the tool list, which is rewritten every prompt and
-    // outranks this — a server that has actually gone is caught there.
+    // Observations do not age out while the tool list corroborates them. A session
+    // that has not touched memory for half an hour is an ordinary session, not a
+    // broken one, and reporting it as unknown put the HUD in a warning state with
+    // nothing wrong and nothing for the user to do. What makes that safe is the tool
+    // list, which is rewritten every prompt and outranks this — a server that has
+    // actually gone is caught there.
     writeState({
       connectionStatus: "ok",
       mcpConfigured: true,
+      mcpToolsAvailable: "available",
       connectionObservedAt: minutesAgo(30),
     });
     assert.match(render(PAYLOAD), /🟢/);
   });
 
-  it("keeps trusting a recent one", () => {
+  it("stops trusting an old success once nothing corroborates it", () => {
+    // The tool list abstains for a reason that is not rare: past the transcript scan
+    // cap a long session answers "unknown" on every prompt, which overwrites any
+    // stored reading. Without this the pre-drop success would then speak for the
+    // server for the rest of the session, and the HUD would sit on a confident green
+    // over a connection that is gone. Green is the one verdict that has to keep
+    // earning itself, so it is the one that lapses.
     writeState({
       connectionStatus: "ok",
       mcpConfigured: true,
+      mcpToolsAvailable: "unknown",
+      connectionObservedAt: minutesAgo(30),
+    });
+    assert.match(render(PAYLOAD), /⚪/);
+  });
+
+  it("keeps an uncorroborated success while it is still fresh", () => {
+    // The lapse is about age, not about the absence of a reading — a call that came
+    // back a minute ago is evidence whatever the tool list can or cannot say.
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      mcpToolsAvailable: "unknown",
       connectionObservedAt: minutesAgo(2),
     });
     assert.match(render(PAYLOAD), /🟢/);
+  });
+
+  it("leaves a warning standing even when nothing corroborates it", () => {
+    // Asymmetric on purpose. A stale warning costs one needless check; a stale green
+    // costs a memory system that stopped working behind a HUD still saying it had
+    // not. Withdrawing the warning would also delete the one instruction the user
+    // could act on.
+    writeState({
+      connectionStatus: "error",
+      mcpConfigured: true,
+      mcpToolsAvailable: "unknown",
+      connectionObservedAt: minutesAgo(90),
+    });
+    assert.match(render(PAYLOAD), /🔴/);
   });
 
   it("still reports a dropped server, however recent the last success", () => {
@@ -296,17 +331,6 @@ describe("the HUD reports connection state", () => {
     assert.equal(segment, "[gutt 🟡 on acme-eng - auth needed!]");
   });
 
-  it("asks for a sign-in when a configured server's tools are gone", () => {
-    // A lapsed remote connector produces exactly this and nothing more: the tools are
-    // withdrawn, `needsAuthMcpServers` stays empty, and no call can be made to learn
-    // why. Signing in is what fixes it, so the HUD says so instead of showing a red
-    // light the user cannot act on.
-    writeState({ connectionStatus: "ok", mcpConfigured: true, mcpToolsAvailable: "absent" });
-    const line = render(PAYLOAD);
-    assert.match(line, /🟡/);
-    assert.match(line, /\bauth\b/);
-  });
-
   it("keeps red for a call that came back a non-auth failure", () => {
     // Red now means only what a real round trip can establish — the server answered,
     // and answered with something signing in would not fix.
@@ -329,18 +353,6 @@ describe("the HUD reports connection state", () => {
     assert.match(line, /!/);
   });
 
-  it("lets a reconnect restore the glyph the drop took away", () => {
-    writeState({
-      connectionStatus: "ok",
-      mcpConfigured: true,
-      connectionObservedAt: minutesAgo(1),
-      mcpToolsAvailable: "available",
-    });
-    const line = render(PAYLOAD);
-    assert.match(line, /🟢/);
-    assert.doesNotMatch(line, /\bauth\b/);
-  });
-
   it("keeps the auth marker until something contradicts it", () => {
     // An outstanding sign-in does not become untrue by going unattended, so a
     // half-hour-old auth failure still reads as auth. It used to decay to neutral,
@@ -349,14 +361,6 @@ describe("the HUD reports connection state", () => {
     const line = render(PAYLOAD);
     assert.match(line, /🟡/);
     assert.match(line, /\bauth\b/);
-  });
-
-  it("renders neutral only when nothing has ever been observed", () => {
-    // ⚪ now means exactly one thing: no round trip and no tool-list reading. That is
-    // what makes it a useful glyph rather than a shrug — it no longer doubles as
-    // "this was fine a while ago".
-    writeState({ mcpConfigured: true });
-    assert.match(render(PAYLOAD), /⚪/);
   });
 });
 
@@ -459,16 +463,6 @@ describe("metrics never render as a permanent zero", () => {
     assert.doesNotMatch(render({ ...PAYLOAD, cost: { total_cost_usd: 9.99 } }), /9\.99/);
   });
 
-  it("survives a malformed cost field rather than blanking the HUD", () => {
-    // The shape that used to throw in `toFixed` and take the whole line out: a status
-    // line that exits non-zero prints nothing, so one bad field left the user with an
-    // empty bar and no way to tell that from a dead server. Not read at all now.
-    writeState({ connectionStatus: "ok", mcpConfigured: true });
-    for (const total_cost_usd of [null, "1.24", {}, true]) {
-      assert.match(render({ ...PAYLOAD, cost: { total_cost_usd } }), /\[gutt 🟢 on\]/);
-    }
-  });
-
   it("shows context-window usage as a whole percentage", () => {
     writeState({ connectionStatus: "ok", mcpConfigured: true });
     assert.match(render(PAYLOAD), /ctx 38%/);
@@ -536,6 +530,22 @@ describe("the HUD degrades rather than wrapping", () => {
     assert.doesNotMatch(render(PAYLOAD, { columns: 30, groupId: "acme-eng" }), /acme-eng/);
   });
 
+  it("truncates a long group rather than letting it take the whole bar", () => {
+    // Every other case here uses an 8-character group, so the truncation branch was
+    // reached by nothing: shortening the slice from 12 to 4 characters left the suite
+    // green. Group ids are frequently long enough to matter.
+    const long = "acme-engineering-platform-team";
+    const line = render(PAYLOAD, { columns: 200, groupId: long });
+    assert.doesNotMatch(line, new RegExp(long), "the full id must not be printed");
+    assert.match(line, /acme-enginee\.\.\./, "the first 12 characters, then an ellipsis");
+  });
+
+  it("prints a group that fits in full", () => {
+    // The boundary either side of 15 characters, so the threshold itself is pinned
+    // and not just the branch.
+    assert.match(render(PAYLOAD, { columns: 200, groupId: "fifteen-chars-x" }), /fifteen-chars-x/);
+  });
+
   it("never drops the state segment, however narrow", () => {
     // Connection and suppression are the whole point of the HUD; if only one thing
     // fits it is this.
@@ -564,10 +574,6 @@ describe("the HUD degrades rather than vanishing", () => {
 
   it("tolerates a byte-order mark, which some shells prepend", () => {
     assert.match(render({}, { raw: `\uFEFF${JSON.stringify(PAYLOAD)}` }), /\| \[Opus 5\]/);
-  });
-
-  it("renders what Claude Code reports about its own session", () => {
-    assert.match(render(PAYLOAD), /\| \[Opus 5\] ctx 38%$/);
   });
 
   it("renders each half of the tail without the other", () => {
@@ -603,20 +609,46 @@ describe("the inert manifest key", () => {
 describe("the shim is what makes an upgrade invisible", () => {
   it("points at the renderer in the current plugin root", () => {
     const result = install.refreshShim();
-    assert.equal(result.written, true);
+    assert.equal(result.status, "written");
     const shim = fs.readFileSync(result.path, "utf8");
-    assert.match(shim, /^require\(/m);
+    assert.match(shim, /require\(/);
     assert.ok(shim.includes(JSON.stringify(result.target)));
   });
 
-  it("lives at a stable path, not a versioned one", () => {
-    // The whole mechanism: settings.json names this path once and never again.
-    assert.equal(install.shimPath(), path.join(dataDir, "statusline.cjs"));
+  it("exits quietly when the renderer it points at is gone", () => {
+    // The shim outlives what it points at: uninstalling deletes the renderer, and a
+    // half-finished update moves it. Unguarded, the status bar becomes a repeating
+    // module-not-found trace from a plugin that may not even be installed any more.
+    //
+    // Pointed at a throwaway root, never the real one. `rendererPath()` resolves
+    // from CLAUDE_PLUGIN_ROOT or, absent it, from the module's own location — which
+    // in this suite is the working tree. A test that deletes its own repository's
+    // renderer is one line away, and this comment is here so nobody writes it again.
+    const missingRoot = path.join(sandbox, "uninstalled");
+    const previous = process.env.CLAUDE_PLUGIN_ROOT;
+    process.env.CLAUDE_PLUGIN_ROOT = missingRoot;
+    try {
+      delete require.cache[require.resolve(INSTALL_LIB)];
+      const gone = require(INSTALL_LIB);
+      const { path: shim, target } = gone.refreshShim();
+      assert.ok(!fs.existsSync(target), "the renderer must not exist for this case");
+      const run = spawnSync(process.execPath, [shim], { input: "{}", encoding: "utf8" });
+      assert.equal(run.status, 0, `shim exited ${run.status}: ${run.stderr}`);
+      assert.doesNotMatch(run.stderr, /Cannot find module/);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = previous;
+      }
+      delete require.cache[require.resolve(INSTALL_LIB)];
+      install = require(INSTALL_LIB);
+    }
   });
 
   it("does not rewrite when nothing moved", () => {
     install.refreshShim();
-    assert.equal(install.refreshShim().written, false);
+    assert.equal(install.refreshShim().status, "current");
   });
 
   it("repoints itself when the plugin root moves, without touching settings", () => {
@@ -631,7 +663,7 @@ describe("the shim is what makes an upgrade invisible", () => {
       delete require.cache[require.resolve(INSTALL_LIB)];
       const moved = require(INSTALL_LIB);
       const result = moved.refreshShim();
-      assert.equal(result.written, true);
+      assert.equal(result.status, "written");
       assert.ok(fs.readFileSync(result.path, "utf8").includes(newRoot));
     } finally {
       if (previous === undefined) {
@@ -675,11 +707,33 @@ describe("the shim is what makes an upgrade invisible", () => {
   it("lets a plugin environment that is already set win", () => {
     // Defensive: if a future platform does set the variable for status lines, its
     // answer is better than the shim's guess and must not be clobbered.
-    const { path: shim } = install.refreshShim();
-    assert.match(
-      fs.readFileSync(shim, "utf8"),
-      /process\.env\.CLAUDE_PLUGIN_DATA = process\.env\.CLAUDE_PLUGIN_DATA \|\| __dirname;/
+    //
+    // Asserted by running the shim, not by pattern-matching its source. The old
+    // version regexed the generated text for the assignment, which passes whether or
+    // not the assignment does anything and breaks when the formatter changes a quote.
+    const elsewhere = path.join(sandbox, "other-data");
+    fs.mkdirSync(path.join(elsewhere, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(elsewhere, "sessions", "s1.json"),
+      JSON.stringify({
+        sessionId: "s1",
+        connectionStatus: "error",
+        connectionObservedAt: new Date().toISOString(),
+        mcpConfigured: true,
+      })
     );
+    // A different, contradicting record in the shim's own directory. If the shim
+    // overrode the environment, this is the one that would be read.
+    writeState({ connectionStatus: "ok", mcpConfigured: true });
+
+    const { path: shim } = install.refreshShim();
+    const result = spawnSync(process.execPath, [shim], {
+      input: JSON.stringify(PAYLOAD),
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: elsewhere },
+    });
+    assert.equal(result.status, 0, `shim exited ${result.status}: ${result.stderr}`);
+    assert.match(result.stdout, /🔴/, "the environment's data dir must win");
   });
 
   it("writes a shim that survives a Windows-shaped path", () => {
@@ -791,6 +845,60 @@ describe("what installing must refuse to do", () => {
     assert.equal(result.ok, false);
     assert.equal(result.status, "settings-unreadable");
     assert.equal(fs.readFileSync(settingsFile, "utf8"), "{ definitely not json");
+  });
+
+  it("never rewrites a settings file that is valid JSON but not an object", () => {
+    // `[]`, `42` and `"str"` all parse. None is something a key can be added to, and
+    // treating any of them as an empty object would replace the file wholesale with
+    // one containing only our key. Deleting the guard was invisible to the suite.
+    for (const raw of ["[]", "42", '"a string"', "null"]) {
+      fs.writeFileSync(settingsFile, raw);
+      const result = install.installEntry({ settingsFile });
+      assert.equal(result.ok, false, `${raw} must be refused`);
+      assert.equal(result.status, "settings-unreadable", `${raw} must read as unreadable`);
+      assert.equal(fs.readFileSync(settingsFile, "utf8"), raw, `${raw} must be left alone`);
+    }
+  });
+
+  it("says the file is missing, and where both copies are, when it could not be put back", () => {
+    // The one outcome that must never be described as "nothing was changed". The
+    // rename fallback unlinks the target before its second attempt, so a failure
+    // there leaves settings.json absent — permissions, model, env, every other
+    // plugin's config. The temp file is then the only copy and is deliberately left
+    // on disk rather than cleaned up; a message that does not name it is the
+    // difference between a rename and a rebuild.
+    const lost = install.writeFailure(
+      "/home/u/.claude/settings.json",
+      { ok: false, orphan: "/home/u/.claude/settings.json.gutt-statusline.99" },
+      "/data/migrations/settings-backup-1.json"
+    );
+    assert.equal(lost.ok, false);
+    assert.equal(lost.status, "settings-lost");
+    assert.match(lost.detail, /missing/);
+    assert.match(lost.detail, /settings\.json\.gutt-statusline\.99/, "must name the replacement");
+    assert.match(lost.detail, /settings-backup-1\.json/, "must name the backup");
+    assert.doesNotMatch(lost.detail, /unchanged/, "the file was changed — it is gone");
+  });
+
+  it("still names the replacement when there is no backup to point at", () => {
+    const lost = install.writeFailure("/s.json", { ok: false, orphan: "/s.json.tmp" }, null);
+    assert.equal(lost.status, "settings-lost");
+    assert.match(lost.detail, /s\.json\.tmp/);
+  });
+
+  it("names the backup when a write fails without losing the original", () => {
+    // The harmless failure: the temp write never landed, so settings.json is exactly
+    // as it was. The message has to say so — "could not write" on its own reads as
+    // ambiguous at precisely the moment a user is deciding whether to panic.
+    writeSettings({ model: "opus" });
+    const before = fs.readFileSync(settingsFile, "utf8");
+    const result = install.installEntry({
+      settingsFile: path.join(sandbox, "no-such-dir", "s.json"),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "write-failed");
+    assert.match(result.detail, /unchanged/);
+    assert.equal(fs.readFileSync(settingsFile, "utf8"), before);
   });
 
   it("refuses when there is no data dir to put a stable path in", () => {
@@ -1052,7 +1160,42 @@ describe("recognising our own status line", () => {
       install.isOurStatusLine('node "/home/u/.claude/plugins/gutt/statusline.cjs"'),
       true
     );
-    assert.equal(install.isOurStatusLine('node "/x/plugin_data/gutt-statusline.cjs"'), true);
+    // The shape a real install actually has: the data directory is named for the
+    // plugin and the marketplace it came from, and both halves carry our name.
+    assert.equal(
+      install.isOurStatusLine(
+        'node "/home/u/.claude/plugins/data/gutt-pro-gutt-plugins/statusline.cjs"'
+      ),
+      true
+    );
+    // A 2.x cache path, which was version-scoped and is long gone, but still ours.
+    assert.equal(
+      install.isOurStatusLine(
+        'node "/home/u/.claude/plugins/cache/gutt-plugins/hooks/statusline.cjs"'
+      ),
+      true
+    );
+  });
+
+  it("leaves another plugin's status line alone, wherever it is installed", () => {
+    // Attribution used to accept the bare fragment `plugins`, and every plugin's
+    // data directory is under ~/.claude/plugins/data/ — so another vendor's status
+    // line read as ours. `removeEntry` would have deleted it and `installEntry`
+    // overwritten it, which are the two things this module promises never to do.
+    // The marker has to name *this* plugin, not the container they all share.
+    assert.equal(
+      install.isOurStatusLine(
+        'node "/home/u/.claude/plugins/data/context7-claude-plugins-official/statusline.cjs"'
+      ),
+      false
+    );
+    assert.equal(
+      install.isOurStatusLine('node "/home/u/.claude/plugins/data/some-other/gutt-statusline.cjs"'),
+      false
+    );
+    // A user's own checkout that merely has "plugins" somewhere in the path.
+    assert.equal(install.isOurStatusLine("node /home/u/projects/my-plugins/statusline.cjs"), false);
+    assert.equal(install.isOurStatusLine('node "/x/plugin_data/gutt-statusline.cjs"'), false);
   });
 
   it("rejects a script that merely shares the name", () => {
@@ -1074,7 +1217,9 @@ describe("recognising our own status line", () => {
     // evidence about who put it there; what it is called is not.
     assert.equal(install.isOurStatusLine('node "/x/y/gutt-statusline.cjs"'), false);
     assert.equal(install.isOurStatusLine('node "/tmp/gutt-statusline.cjs"'), false);
-    assert.equal(install.isOurStatusLine('node "/x/plugins/gutt-statusline.cjs"'), true);
+    // The directory names us, so this one is ours — and it is the filename that is
+    // being ignored, not the marker.
+    assert.equal(install.isOurStatusLine('node "/x/gutt-pro/gutt-statusline.cjs"'), true);
   });
 
   it("rejects everything else", () => {

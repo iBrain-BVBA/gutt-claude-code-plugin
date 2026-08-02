@@ -50,6 +50,15 @@ const DROP_ORDER = ["context", "group"];
 const MIN_WIDTH = { context: 60, group: 36 };
 
 /**
+ * How long a round trip speaks for the connection when nothing corroborates it.
+ *
+ * Applies only to a green reading with no tool-list answer behind it — see
+ * `connectionState`. With an answer this is never consulted, so a healthy quiet
+ * session stays green indefinitely, which is why the old unconditional expiry went.
+ */
+const UNCORROBORATED_TTL_MS = 10 * 60 * 1000;
+
+/**
  * Terminal width, or null when it cannot be determined.
  * @returns {number|null}
  */
@@ -132,37 +141,66 @@ function suppressionLabel(config, sessionId) {
  *    the action that fixes it, and naming that action beats a red light that only says
  *    something is broken. Red is left to mean what only a real call can establish: the
  *    server answered, and answered with a failure that signing in would not fix.
- *    `absent` only counts against a server that is configured; with
- *    none configured there is nothing to be disconnected from, and `!` says that.
+ *    `absent` is suppressed only when the probe positively reported *no* server
+ *    configured — there is then nothing to be disconnected from, and `!` says that.
+ *    A probe that could not tell (`null`) does not suppress it, which is why the test
+ *    is `!== false` rather than a truthiness check: a probe that threw would otherwise
+ *    silence a real disconnection, and the round-trip rung below would then answer from
+ *    the last successful call, painting a dead server green.
  * 2. **The last round trip**, from an observed tool response — the only thing that
  *    can distinguish working from authenticated-but-refusing.
  *
- * There is deliberately no third rung ageing the round trip out. It used to expire
- * after ten minutes, which meant a session that had simply not touched memory for a
- * while reported itself as unknown — the HUD going neutral on a healthy setup, with
- * nothing wrong and nothing for the user to do about it. That expiry was carrying the
- * whole burden of "is this still true" back when a remembered call was the only
- * liveness signal there was. It no longer is: the tool list above is a statement about
- * the present, it is rewritten every prompt, and it is ranked higher, so a server that
- * has gone is reported as gone regardless of how recently something last worked.
+ * The round trip does not age out **while the tool list corroborates it**. It used to
+ * expire after ten minutes unconditionally, which meant a session that had simply not
+ * touched memory for a while reported itself as unknown — the HUD going neutral on a
+ * healthy setup, with nothing wrong and nothing for the user to do about it. That
+ * expiry was carrying the whole burden of "is this still true" back when a remembered
+ * call was the only liveness signal there was. It no longer is: the tool list above is
+ * a statement about the present, it is rewritten every prompt, and it is ranked higher,
+ * so a server that has gone is reported as gone regardless of how recently something
+ * last worked.
  *
- * What that costs, stated plainly: when the tool list cannot be read at all, an old
- * success speaks for a server that may since have died. That window is the price of not
- * crying wolf on every quiet session, and it closes the moment the transcript becomes
- * readable again.
+ * **When the tool list abstains, that burden falls back — for green alone.** An
+ * `unknown` availability means the transcript could not be read, or was read to the
+ * scan cap without finding an answer, and the latter is not hypothetical: past the cap
+ * a long session answers `unknown` on every prompt, which overwrites a stored `absent`.
+ * Without a floor here the pre-drop success would then speak for the server for the
+ * rest of the session, leaving the HUD confidently green over a connection that is
+ * gone. So an uncorroborated `ok` that nobody has refreshed inside the window lapses to
+ * neutral, which is the true statement there: nothing can currently establish anything.
  *
  * @param {Object} state
+ * @param {number} [now]
  * @returns {"ok"|"auth"|"error"|"unknown"}
  */
-function connectionState(state) {
+function connectionState(state, now = Date.now()) {
   if (state.mcpToolsAvailable === "pending" || state.mcpToolsAvailable === "auth") {
     return "auth";
   }
-  if (state.mcpToolsAvailable === "absent" && state.mcpConfigured) {
+  if (state.mcpToolsAvailable === "absent" && state.mcpConfigured !== false) {
     return "auth";
   }
   const status = state.connectionStatus;
-  return status === "ok" || status === "auth" || status === "error" ? status : "unknown";
+  if (status !== "ok" && status !== "auth" && status !== "error") {
+    return "unknown";
+  }
+  if (status !== "ok" || state.mcpToolsAvailable === "available") {
+    // Either the tool list corroborates the server being there — in which case the
+    // round trip only has to say *how* it is, and its age is irrelevant to that — or
+    // the reading is a warning, and warnings are left standing.
+    //
+    // The asymmetry is deliberate, and it is the one the availability hold already
+    // makes: a stale warning costs the user one needless check, while a stale green
+    // costs them a memory system that stopped working behind a HUD still saying it
+    // had not. Only the confident positive has to keep earning itself. Withdrawing an
+    // `auth` or `error` on a timer would also delete the one instruction the user
+    // could have acted on, and neither becomes untrue by going unattended.
+    return status;
+  }
+  // A green with nothing corroborating it. The round trip is the only signal left, so
+  // it has to carry its own staleness again.
+  const observed = Date.parse(state.connectionObservedAt ?? "");
+  return Number.isFinite(observed) && now - observed < UNCORROBORATED_TTL_MS ? status : "unknown";
 }
 
 /**
@@ -187,7 +225,11 @@ function contextPercent(contextWindow) {
 }
 
 /**
- * The connection glyph, from the last observed round trip.
+ * The connection glyph, from the reconciled verdict `connectionState` produces.
+ *
+ * Not "from the last round trip" — that is only the lower-ranked of its two inputs.
+ * The tool list outranks it, so a server whose tools have gone renders amber however
+ * recently a call last succeeded.
  *
  * Green has to be *earned by a real call*. It used to be set from a settings-file
  * read at session start, which could only ever establish that a server was
@@ -195,9 +237,10 @@ function contextPercent(contextWindow) {
  * rendered exactly like a healthy one, indefinitely, and the one glyph a user reads
  * as "is memory working" was the one that could not tell them.
  *
- * ⚪ covers both "nothing seen yet" and "nothing seen lately", and stays neutral
- * rather than red for the latter: plenty of healthy sessions go a while without
- * touching memory, and crying wolf would train the glyph to be ignored.
+ * ⚪ means nothing could be established: no round trip has been seen, or the only one
+ * that has is both old and uncorroborated. It stays neutral rather than red, because
+ * plenty of healthy sessions go a while without touching memory and crying wolf would
+ * train the glyph to be ignored.
  *
  * @param {"ok"|"auth"|"error"|"unknown"} connection
  * @returns {string}
@@ -212,27 +255,70 @@ function connectionGlyph(connection) {
   return connection === "error" ? "🔴" : "⚪";
 }
 
+/**
+ * A payload value as display text, or null when it is not usable as text.
+ *
+ * `String()` is itself fallible: `{"toString": "x"}` is ordinary JSON that shadows
+ * `Object.prototype.toString` with something not callable, so ToPrimitive falls
+ * through to `valueOf`, gets the object back, and throws. Interpolating such a value
+ * into a template literal throws in exactly the same way — and a throw here prints
+ * nothing at all. `session-state.cjs` defends its session-id read against this same
+ * shape; every read of externally-supplied text needs the same care.
+ *
+ * Only strings and finite numbers are accepted. Anything else has no sensible
+ * rendering — an object would have printed `[object Object]`, which is noise
+ * occupying width a real segment could have used.
+ *
+ * @param {*} value
+ * @returns {string|null}
+ */
+function text(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   input += chunk;
 });
 
-process.stdin.on("end", () => {
+/**
+ * The stdin payload as an object, whatever actually arrived.
+ * @param {string} raw
+ * @returns {Object}
+ */
+function readPayload(raw) {
   let data = {};
   try {
     // The BOM strip matters: some shells prepend one, and a bare JSON.parse then
     // throws on otherwise valid input.
-    const trimmed = input.replace(/^\uFEFF/, "").trim();
+    const trimmed = raw.replace(/^\uFEFF/, "").trim();
     if (trimmed !== "") {
-      data = JSON.parse(trimmed);
+      // Checked for shape, not just for syntax. `JSON.parse("null")` *succeeds*, so a
+      // catch around the parse never fires and the null flows into the render, where
+      // the first property read throws, printing nothing at all several times a
+      // second. Scalars and arrays parse just as happily and are equally not
+      // something to read fields off.
+      const value = JSON.parse(trimmed);
+      data = value && typeof value === "object" ? value : {};
     }
   } catch {
     // Unparseable stdin still gets a status segment — the HUD should degrade,
     // not vanish.
     data = {};
   }
+  return data;
+}
 
+/**
+ * The whole line, from a payload.
+ * @param {Object} data
+ * @returns {string}
+ */
+function render(data) {
   const sessionId = data.session_id || "unknown";
   init(sessionId);
 
@@ -246,8 +332,9 @@ process.stdin.on("end", () => {
   // Mode is only worth the width when it is not the default. `hitl` changes what
   // happens at the end of every turn and the user needs to see it; `auto` is what
   // they already expect, and printing it on every session teaches nothing.
-  if (config.mode && config.mode !== "auto") {
-    parts.push(config.mode);
+  const mode = text(config.mode);
+  if (mode && mode !== "auto") {
+    parts.push(mode);
   }
 
   // The genuine "you have not set this up" signal. It used to be driven by
@@ -260,7 +347,7 @@ process.stdin.on("end", () => {
     parts.push("!");
   }
 
-  const groupId = getGroupId();
+  const groupId = text(getGroupId());
   if (groupId && visible.has("group")) {
     parts.push(groupId.length > 15 ? `${groupId.slice(0, 12)}...` : groupId);
   }
@@ -283,8 +370,9 @@ process.stdin.on("end", () => {
   // is still tracked, because the prompt-path recall pointer is gated on it; it is
   // simply no longer worth width on the bar.
   const tail = [];
-  if (data.model?.display_name) {
-    tail.push(`[${data.model.display_name}]`);
+  const model = text(data.model?.display_name);
+  if (model) {
+    tail.push(`[${model}]`);
   }
   const contextUsed = visible.has("context") ? contextPercent(data.context_window) : null;
   if (contextUsed !== null) {
@@ -294,6 +382,32 @@ process.stdin.on("end", () => {
     line += ` | ${tail.join(" ")}`;
   }
 
+  return line;
+}
+
+/**
+ * The last resort, and the reason this file has one at all.
+ *
+ * A status line that throws prints *nothing* — not a degraded line, no line — and it
+ * is re-run on a 300ms debounce, so one bad field blanks the whole HUD many times a
+ * second. That happened once: a cost figure arriving as a string threw on a numeric
+ * call, and the only try/catch in the file was around the JSON parse, which had
+ * succeeded.
+ *
+ * The lesson was not "validate cost". It was that a safety net belongs around the
+ * whole unit of work whose output is contractually required, not around whichever
+ * operation looked risky at the time. Every field above is validated at the point of
+ * read, which is what keeps the *content* honest; this is what keeps the line present
+ * on the day a validation is missed. It renders the neutral glyph, which is the true
+ * statement when nothing could be established.
+ */
+process.stdin.on("end", () => {
+  let line;
+  try {
+    line = render(readPayload(input));
+  } catch {
+    line = `[gutt ${connectionGlyph("unknown")}]`;
+  }
   console.log(line);
   process.exitCode = 0;
 });

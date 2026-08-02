@@ -1226,6 +1226,81 @@ describe("session lifecycle: hooks end to end", () => {
     assert.equal(typeof state.mcpConfigured, "boolean", "the config probe still ran");
   });
 
+  it("the prompt hook writes an unknown availability rather than holding the old one", () => {
+    // The mirror of the abstain test above, and the two policies are deliberately
+    // opposite. This hook runs every turn, so it is the steady-state owner: holding
+    // the previous reading would let a verdict that has stopped being true persist
+    // for the rest of the session. The connectivity hook abstains because it races
+    // this one at startup; this one must not, and nothing pinned that — so
+    // "harmonising" the pair would have frozen the HUD on a stale reading silently.
+    const empty = path.join(dir, "ups-empty.jsonl");
+    fs.writeFileSync(empty, "");
+    seedSession("e2e-ups-unknown", { mcpToolsAvailable: "available" });
+    const r = runHook(
+      "user-prompt-submit.cjs",
+      { session_id: "e2e-ups-unknown", prompt: "hello", transcript_path: empty },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    assert.equal(
+      readSession(dir, "e2e-ups-unknown").mcpToolsAvailable,
+      "unknown",
+      "a reading nothing can confirm must not keep speaking for the connection"
+    );
+  });
+
+  it("the connectivity hook never writes connectionStatus, however configured the server", () => {
+    // The whole of GP-867 in one assertion, and until it existed nothing enforced
+    // it: re-adding `state.connectionStatus = "ok"` to this hook left every test in
+    // the repository passing. The renderer is exercised from every angle against
+    // hand-written state files, which constrains what the HUD *shows* and nothing
+    // about what may write the state it shows.
+    //
+    // This hook reads settings files. A hook cannot open a socket, so "a server is
+    // configured" is the strongest claim available here — and rendering that as the
+    // green light everyone reads as "connected" is exactly the lie this story was
+    // filed to end. Only an observed round trip may write this field.
+    seedSession("e2e-noglyph", { connectionStatus: "unknown" });
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-noglyph" },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    const state = readSession(dir, "e2e-noglyph");
+    assert.equal(
+      state.connectionStatus,
+      "unknown",
+      "a settings-file probe must never establish the connection glyph"
+    );
+    assert.equal(state.connectionObservedAt ?? null, null, "and must not stamp an observation");
+  });
+
+  it("the connectivity hook records that it could not tell, rather than denying", () => {
+    // `mcpConfigured: false` is a claim the HUD renders as `!` and documents as
+    // "run /gutt-pro:setup". A probe that threw has not earned it. Forced here by
+    // pointing the probe at a home directory whose .claude is a file, so the walk
+    // cannot read it.
+    const brokenHome = path.join(dir, "broken-home");
+    fs.mkdirSync(brokenHome, { recursive: true });
+    fs.writeFileSync(path.join(brokenHome, ".claude"), "not a directory");
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-cannot-tell" },
+      { dataDir: dir, home: brokenHome }
+    );
+    assert.equal(r.status, 0);
+    const configured = readSession(dir, "e2e-cannot-tell").mcpConfigured;
+    assert.notEqual(configured, true, "nothing was configured, so this cannot be true");
+    // Either a clean `false` (the probe ran and found nothing) or `null` (it could
+    // not tell). What it must never be is a `false` invented from a thrown probe —
+    // the assertion that matters is that the two are distinguishable at all.
+    assert.ok(
+      configured === false || configured === null,
+      `expected false or null, got ${JSON.stringify(configured)}`
+    );
+  });
+
   it("the connectivity hook survives a transcript path that is missing entirely", () => {
     seedSession("e2e-notranscript", { mcpToolsAvailable: "available" });
     const r = runHook(
@@ -1403,13 +1478,25 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
 
   /** The transcript-reading half needs a path; most recall cases do not supply one. */
 
-  it("PostToolUse is matched on every tool, not only gutt's", () => {
-    // Pinned because the widening is load-bearing and invisible: a server that has
-    // dropped produces no gutt calls, so a gutt-only matcher could never notice it.
+  it("PostToolUse is matched at the gutt server, not on every tool", () => {
+    // Pinned because the cost of getting this wrong is invisible in a test run and
+    // obvious to a user. PostToolUse blocks, and every firing is a fresh node
+    // process — around 89ms against a 74ms bare-node floor, so the launch is nearly
+    // all of it. Matched on every tool, a 200-call session pays ~18 seconds of wall
+    // time it otherwise never pays, because the hook does not spawn at all for tools
+    // that do not match.
+    //
+    // The widening was tried and reverted: it let a dropped server be noticed
+    // mid-turn, but `user-prompt-submit.cjs` re-reads availability every prompt
+    // regardless, so the gap it closed was one turn.
     const manifest = JSON.parse(fs.readFileSync(path.join(HOOKS, "hooks.json"), "utf8"));
     const entries = manifest.hooks.PostToolUse;
     assert.equal(entries.length, 1);
-    assert.equal(entries[0].matcher, "", "a narrow matcher cannot see a dropped server");
+    assert.equal(
+      entries[0].matcher,
+      "mcp__.*gutt.*__.*",
+      "an empty matcher spawns this hook on every Read, Edit and Bash call"
+    );
   });
 
   it("does not read a non-gutt tool's response as evidence about the memory server", () => {

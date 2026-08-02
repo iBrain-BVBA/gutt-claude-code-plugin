@@ -226,10 +226,32 @@ describe("reading gutt tool availability from a transcript", () => {
   it("stitches a record that straddles a chunk boundary", () => {
     // Chunks are byte-sliced, so a record is routinely cut in half. Parsing the
     // fragment would silently drop the one answer in the file.
-    const pad = (n) => Array.from({ length: n }, (_, i) => chatter(`line ${i} `.repeat(30)));
-    // Enough filler either side that the delta cannot land neatly on a boundary.
-    write([...pad(600), delta({ added: GUTT_TOOLS }), ...pad(600)]);
-    assert.ok(fs.statSync(transcript).size > CHUNK_BYTES, "fixture must exceed one chunk");
+    //
+    // The boundary is *computed and asserted*, not hoped for. This test used to pad
+    // "enough filler either side that the delta cannot land neatly on a boundary"
+    // and landed the delta wholly inside the final chunk — deleting the stitching
+    // left all of these tests green. A test named after a boundary has to prove it
+    // crossed one, so the precondition below is the real subject and the verdict is
+    // only the consequence.
+    const record = delta({ added: GUTT_TOOLS });
+    const line = `${chatter("x".repeat(200))}\n`;
+    const lineBytes = Buffer.byteLength(line);
+
+    // Reading walks back from EOF, so the first boundary is CHUNK_BYTES from the end.
+    // Size the tail so the record's midpoint lands there.
+    const tailBytes = CHUNK_BYTES - Math.floor(Buffer.byteLength(record) / 2);
+    const tail = line.repeat(Math.ceil(tailBytes / lineBytes));
+    const head = line.repeat(Math.ceil(CHUNK_BYTES / lineBytes));
+    fs.writeFileSync(transcript, `${head}${record}\n${tail}`);
+
+    const size = fs.statSync(transcript).size;
+    const start = Buffer.byteLength(head);
+    const end = start + Buffer.byteLength(record);
+    const boundary = size - CHUNK_BYTES;
+    assert.ok(
+      start < boundary && boundary < end,
+      `record must span the boundary: record [${start}, ${end}), boundary ${boundary}`
+    );
     assert.equal(guttToolAvailability(transcript), "available");
   });
 
@@ -249,11 +271,26 @@ describe("reading gutt tool availability from a transcript", () => {
   });
 
   it("gives up rather than walking an unbounded file forever", () => {
-    assert.ok(MAX_SCAN_BYTES > CHUNK_BYTES, "the cap has to leave room for real sessions");
-    const pad = Array.from({ length: 3000 }, (_, i) => chatter(`line ${i} `.repeat(30)));
-    write(pad);
-    // No delta anywhere: the honest answer, reached without reading the file twice.
-    assert.equal(guttToolAvailability(transcript), "unknown");
+    // The answer is put *beyond* the cap, which is the only way to observe that the
+    // walk stopped. A file with no delta in it returns "unknown" whether the cap
+    // exists or not, so the previous fixture — a quarter of MAX_SCAN_BYTES, with
+    // nothing to find — could not tell the two apart, and deleting the cap from the
+    // loop condition left it green. Here, finding the record would mean the walk ran
+    // past its bound.
+    const line = `${chatter("y".repeat(400))}\n`;
+    const lineBytes = Buffer.byteLength(line);
+    const beyond = line.repeat(Math.ceil((MAX_SCAN_BYTES * 1.2) / lineBytes));
+    fs.writeFileSync(transcript, `${delta({ added: GUTT_TOOLS })}\n${beyond}`);
+
+    assert.ok(
+      fs.statSync(transcript).size > MAX_SCAN_BYTES,
+      "fixture must exceed the cap or the cap is not under test"
+    );
+    assert.equal(
+      guttToolAvailability(transcript),
+      "unknown",
+      "a delta past the scan cap must not be reached — finding it means the walk is unbounded"
+    );
   });
 });
 

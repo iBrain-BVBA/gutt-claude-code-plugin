@@ -30,11 +30,13 @@
  *
  * - The transcript is written **asynchronously and lags the live conversation**, so
  *   a change from moments ago may not be on disk yet. That delays noticing by a
- *   turn; it does not make the reading wrong, and the staleness fallback covers the
- *   window. This is the same lag that cost `stop-judge.cjs` real captures, so it is
- *   assumed here rather than hoped away.
- * - Only the tail is read. A long session's transcript reaches tens of megabytes,
- *   and this runs on the prompt path.
+ *   turn; it does not make the reading wrong. This is the same lag that cost
+ *   `stop-judge.cjs` real captures, so it is assumed here rather than hoped away.
+ * - The read is **bounded**, walking back from the end in chunks and giving up at
+ *   `MAX_SCAN_BYTES`. A long session's transcript reaches tens of megabytes and this
+ *   runs on the prompt path. Past that bound the answer is `unknown`, which the HUD
+ *   treats as "nothing corroborates the last round trip" rather than as bad news —
+ *   see `connectionState` in `statusline.cjs`.
  */
 
 const fs = require("node:fs");
@@ -51,9 +53,12 @@ const { debugLog } = require("./debug.cjs");
  * 90 KB and reported "unknown" — the degradation looks honest and is useless, since
  * a signal that abstains on every long session is not a signal.
  *
- * So: start at the end, stop at the first answer. The common case still reads one
- * chunk; only a session that genuinely has not touched gutt in a long while pays
- * for more.
+ * So: start at the end, stop at the first answer. How many chunks that takes depends
+ * on how long ago availability last changed, which on real transcripts is routinely
+ * several chunks back rather than one — a session that has not touched gutt in a while
+ * pays the most, and the scan cap is what bounds it. The per-chunk cost is small (a
+ * few milliseconds even against a multi-megabyte file); it is the process launch
+ * around it that makes this worth debouncing, not the read.
  */
 const CHUNK_BYTES = 256 * 1024;
 
@@ -113,8 +118,10 @@ function serverToolPrefix(displayName) {
  * let an unauthenticated sibling speak for the server the HUD is actually about,
  * which on a real machine means a permanently amber glyph over working memory.
  *
- * Falls back to the bare name match when no tool id correlates, so a shape we cannot
- * line up degrades to the older, looser reading rather than to silence.
+ * Falls back to the bare name match when there are **no tool ids at all** to correlate
+ * against, so a shape we cannot line up degrades to the older, looser reading rather
+ * than to silence. Note the narrowness: ids that are present but match nothing are an
+ * answer, not an absence, and that answer is `false`.
  *
  * The remaining imprecision, stated rather than hidden: a delta that names servers but
  * carries no tool ids has nothing to correlate against, so a sibling's auth need can
@@ -151,7 +158,7 @@ function namesGuttServer(list, toolNames) {
  * proves nothing and every decision below is made structurally.
  *
  * @param {string} line
- * @returns {"available"|"pending"|"absent"|null}
+ * @returns {"available"|"auth"|"pending"|"absent"|null}
  */
 function lineVerdict(line) {
   if (!line || !line.includes("deferred_tools_delta")) {
@@ -224,7 +231,7 @@ function verdictFor(attachment) {
  * The most recent thing the transcript says about gutt tool availability.
  *
  * @param {string|undefined|null} transcriptPath
- * @returns {"available"|"pending"|"absent"|"unknown"}
+ * @returns {"available"|"auth"|"pending"|"absent"|"unknown"}
  */
 function guttToolAvailability(transcriptPath) {
   if (!transcriptPath) {

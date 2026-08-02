@@ -3,7 +3,8 @@
  * The `/gutt-pro:*` config command surface (GP-866, GP-931, R24).
  *
  * `/gutt-pro:config`, `/gutt-pro:on`, `/gutt-pro:off [minutes|session]`,
- * `/gutt-pro:disable`, `/gutt-pro:mode auto|hitl`. Everything here is
+ * `/gutt-pro:disable`, `/gutt-pro:mode auto|hitl`,
+ * `/gutt-pro:statusline [off|status]`. Everything here is
  * deterministic: the UserPromptSubmit hook hands us the raw prompt text, we parse
  * it, mutate `config.json` through `runtime-config.cjs`, and return the outcome as
  * a string for the hook to inject as `additionalContext`. No model reads the
@@ -44,6 +45,7 @@
 
 const config = require("./runtime-config.cjs");
 const statusline = require("./statusline-install.cjs");
+const sessionState = require("./session-state.cjs");
 
 /** Must equal `name` in `gutt-core/.claude-plugin/plugin.json`; a test asserts it. */
 const PLUGIN_PREFIX = "gutt-pro";
@@ -538,6 +540,25 @@ function runStatusline(arg, typed) {
       );
     }
     if (present) {
+      // Present in settings.json is not the same as working. Both links behind the
+      // entry can break on their own — the shim goes when the plugin is uninstalled,
+      // the renderer moves under it on every update — and this is the command
+      // someone runs *because* the status bar is blank, so it has to be able to see
+      // that rather than reporting the settings key and stopping there.
+      const { shim, renderer } = statusline.shimResolves();
+      if (!shim) {
+        return (
+          "The gutt HUD is in your settings.json, but the file it points at is gone, so " +
+          "nothing renders. Run /gutt-pro:statusline to write it again."
+        );
+      }
+      if (!renderer) {
+        return (
+          "The gutt HUD is in your settings.json and its entry point is there, but the " +
+          "renderer it forwards to is missing — usually a plugin update that could not " +
+          "finish. Run /gutt-pro:statusline to repoint it."
+        );
+      }
       return `The gutt HUD is installed. /gutt-pro:statusline off removes it.`;
     }
     if (foreign) {
@@ -546,21 +567,50 @@ function runStatusline(arg, typed) {
         "it alone. Remove it yourself first if you want the gutt HUD instead."
       );
     }
-    return consented
-      ? "The gutt HUD is not in your settings.json, though you asked for it before. Claude Code " +
-          "sometimes drops the key when it rewrites that file; the next session restores it, " +
-          "or /gutt-pro:statusline installs it now."
-      : "The gutt HUD is not installed. /gutt-pro:statusline installs it.";
+    if (!consented) {
+      return "The gutt HUD is not installed. /gutt-pro:statusline installs it.";
+    }
+    // What the automatic repair actually did this session, where it recorded a
+    // failure. Saying "the next session restores it" to someone whose repair has
+    // been failing every session sends them away to wait for something that is not
+    // coming.
+    const failure = sessionState.getState().statuslineReassert;
+    if (failure) {
+      return (
+        "The gutt HUD is not in your settings.json, though you asked for it before. This " +
+        `session tried to put it back and could not (${failure}). Run /gutt-pro:statusline ` +
+        "to see the details and retry."
+      );
+    }
+    return (
+      "The gutt HUD is not in your settings.json, though you asked for it before. Claude Code " +
+      "sometimes drops the key when it rewrites that file; the next session restores it, " +
+      "or /gutt-pro:statusline installs it now."
+    );
   }
 
   if (verb === "off") {
+    // Consent comes off *first*, and the write is checked. Two failures live here,
+    // and they were both silent.
+    //
+    // Ordering: the SessionStart re-assert reads this flag and reinstalls when the
+    // entry is missing. With the removal first, a session landing in the gap between
+    // the two steps sees consent still recorded and an absent entry — exactly its
+    // trigger — and puts back what the user just removed. Withdrawing first makes
+    // the worst case a HUD that is still installed with consent already off, which
+    // the next `off` clears.
+    //
+    // Checking: `setStatuslineConsent` returns false on a read-only or unparseable
+    // config, and discarding that told the user the HUD was gone while leaving the
+    // flag that brings it back next session. Every other write verb here reports
+    // that through `writeFailed()`; this one used to be the exception.
+    if (!config.setStatuslineConsent(false)) {
+      return writeFailed();
+    }
     const result = statusline.removeEntry();
     if (!result.ok) {
       return `gutt did not change your settings: ${result.detail}`;
     }
-    // Consent is withdrawn even when there was nothing to remove. Otherwise a
-    // stale flag has the next session helpfully reinstalling what was just removed.
-    config.setStatuslineConsent(false);
     return result.status === "removed"
       ? "The gutt HUD is removed from ~/.claude/settings.json (the previous file is backed up). " +
           "/gutt-pro:statusline puts it back."
@@ -581,9 +631,27 @@ function runStatusline(arg, typed) {
   }
   // Recorded after the write, not before: consent authorises the repair in later
   // sessions, and there is nothing to repair if the first write never landed.
-  config.setStatuslineConsent(true);
+  //
+  // The return is checked because the HUD is now installed either way — what fails
+  // here is only the repair, and silently. The platform drops `statusLine` when it
+  // rewrites settings.json, and without the flag no later session puts it back; the
+  // user is told it "updates itself", then it vanishes and `status` reports it as
+  // never asked for. Saying so costs one sentence.
+  const consent = config.setStatuslineConsent(true);
   if (result.status === "already-installed") {
-    return "The gutt HUD is already installed. It updates itself when the plugin does.";
+    return consent
+      ? "The gutt HUD is already installed. It updates itself when the plugin does."
+      : "The gutt HUD is already installed, but gutt could not record that you asked for it, " +
+          "so it will not be restored automatically if Claude Code drops the setting. " +
+          "Re-run /gutt-pro:statusline if the HUD disappears.";
+  }
+  if (!consent) {
+    return (
+      "The gutt HUD is installed in ~/.claude/settings.json and shows up in your status bar " +
+      "from the next session. One thing did not save: gutt could not record that you asked " +
+      "for it, so if Claude Code drops the setting when it rewrites that file, no later " +
+      "session will put it back — re-run /gutt-pro:statusline if the HUD disappears."
+    );
   }
   return (
     "The gutt HUD is installed in ~/.claude/settings.json and shows up in your status bar " +

@@ -26,9 +26,9 @@ const { refreshShim, reassertEntry } = require("./lib/statusline-install.cjs");
 const { guard } = require("./lib/debug.cjs");
 const { isNestedRun } = require("./lib/nested-run.cjs");
 
-// A judge subprocess's MCP reachability is not the user's, and this hook is the
-// sole writer of the connectivity fields the HUD reads — letting a child write
-// them would show the user a probe result from a session they never started.
+// A judge subprocess's MCP reachability is not the user's, and this hook is the sole
+// writer of the *configuration* fields the HUD reads — letting a child write them
+// would show the user a probe result from a session they never started.
 if (isNestedRun()) {
   process.exit(0);
 }
@@ -70,10 +70,23 @@ process.stdin.on("end", () => {
   // nobody has configured produces no calls to observe.
   guard("SessionStart/async", "state write", () =>
     updateState((state) => {
-      state.mcpConfigured = Boolean(diag.configured);
+      // Three states, not two. A probe that threw knows nothing, and `false` is a
+      // claim — the HUD renders it as `!`, which tells the user in as many words to
+      // go and run setup on a configuration that may be perfectly fine. `null` is
+      // the honest reading, and every consumer already tests `=== false`, so an
+      // unknown shows nothing rather than accusing anyone.
+      //
+      // This used to be `Boolean(diag.configured)` against a default object, which
+      // flattened the throw into a denial — directly contradicting the comment above
+      // this block. The `mcpError` field below was offered as the discriminator that
+      // made that acceptable, and nothing ever read it. A field only distinguishes
+      // anything once something consults it; until then the distinction lives in
+      // prose. So the distinction now lives in the value a consumer actually reads.
+      state.mcpConfigured = probe ? Boolean(diag.configured) : null;
       state.mcpUrl = diag.url || null;
-      // Persisted so a consumer can tell a failed probe from a genuine absence;
-      // without it both look like `mcpConfigured: false`.
+      // Diagnostic only — `mcpConfigured` above is what carries the failed-probe
+      // case to a reader. Kept because `/gutt-pro:health` and a debug session want
+      // the reason, not just the verdict.
       state.mcpError = diag.error || null;
       state.connectionCheckedAt = new Date().toISOString();
       return state;
@@ -113,9 +126,22 @@ process.stdin.on("end", () => {
   // `statusLine` among them, and the issue is closed as not planned. Gated on a
   // consent record, so this only ever restores a HUD the user explicitly asked for.
   // No consent, or a status line that is now someone else's, and it does nothing.
-  guard("SessionStart/async", "statusline reassert", () =>
-    reassertEntry({ consented: statuslineConsented() })
-  );
+  //
+  // The outcome is recorded rather than discarded. `/gutt-pro:statusline status`
+  // told users outright that "the next session restores it" — a prediction it had no
+  // evidence for, and which is wrong for exactly the user whose repair fails every
+  // session on an unwritable settings file. Persisting the verdict is what lets that
+  // command report what happened instead of what usually happens.
+  guard("SessionStart/async", "statusline reassert", () => {
+    const outcome = reassertEntry({ consented: statuslineConsented() });
+    if (outcome.restored || outcome.status === "no-consent" || outcome.status === "present") {
+      return;
+    }
+    updateState((state) => {
+      state.statuslineReassert = outcome.status;
+      return state;
+    });
+  });
 
   // Best-effort user-facing note. An async hook's stdout is not guaranteed to
   // surface in the transcript; the state written above is the contract, this is
