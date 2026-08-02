@@ -240,22 +240,60 @@ function shimTarget(body) {
     if (!match) {
       continue;
     }
-    // Single quotes are not JSON, so they are normalised before parsing rather than
-    // unquoted by hand — the escapes inside still have to be read as JS reads them.
-    const literal = match[1].startsWith("'")
-      ? JSON.stringify(match[1].slice(1, -1).replace(/\\'/g, "'"))
-      : match[1];
-    try {
-      const target = JSON.parse(literal);
-      if (typeof target === "string" && target !== "") {
-        return target;
-      }
-    } catch {
-      // Try the next shape rather than giving up: an unparseable match here is not
-      // evidence that the other spelling is absent.
+    const target = unquote(match[1]);
+    if (target) {
+      return target;
     }
+    // Fall through to the next shape rather than giving up: a match that would not
+    // parse is not evidence that the other spelling is absent.
   }
   return null;
+}
+
+/** The escapes a path can plausibly carry, as the value each stands for. */
+const STRING_ESCAPES = { "\\": "\\", "'": "'", '"': '"', n: "\n", r: "\r", t: "\t", 0: "\0" };
+
+/**
+ * Read a JS string literal — either quote style — into the string it denotes.
+ *
+ * Double-quoted goes through `JSON.parse`, which is exact and is what this module
+ * writes. Single-quoted is scanned, and the scan is the point: the obvious shortcut
+ * is to strip the quotes, swap `\'` for `'`, and hand the rest to `JSON.stringify` to
+ * re-quote — which **double-escapes every backslash already in the text**, so
+ * `'C:\\Users\\u'` comes back as `C:\\Users\\u` rather than `C:\Users\u`. That is a
+ * *wrong* path rather than no path, and it goes straight to `existsSync`: on Windows,
+ * where every path is backslashes, it would report a perfectly good renderer as
+ * missing — reintroducing the exact bug the tri-state above exists to prevent. A
+ * parser that guesses is worse than one that declines.
+ *
+ * @param {string} literal including its surrounding quotes
+ * @returns {string|null} the string, or null if it is not a literal this can read
+ */
+function unquote(literal) {
+  if (literal.startsWith('"')) {
+    try {
+      const value = JSON.parse(literal);
+      return typeof value === "string" && value !== "" ? value : null;
+    } catch {
+      return null;
+    }
+  }
+  let out = "";
+  for (let i = 1; i < literal.length - 1; i += 1) {
+    if (literal[i] !== "\\") {
+      out += literal[i];
+      continue;
+    }
+    const next = literal[++i];
+    if (next === undefined || !(next in STRING_ESCAPES)) {
+      // `\x41`, `\u{…}`, a line continuation, anything else: readable in principle,
+      // and not worth a JS lexer to guess at. Decline rather than return a path that
+      // is subtly not the one the shim will require.
+      return null;
+    }
+    out += STRING_ESCAPES[next];
+  }
+  return out === "" ? null : out;
 }
 
 /**
@@ -842,6 +880,10 @@ module.exports = {
   shimPath,
   rendererPath,
   shimContents,
+  // Exported for tests. It parses a file this version did not necessarily write, on
+  // the strength of a regex, and hands the result to `existsSync` — a wrong answer
+  // here is worse than no answer, and that is only checkable directly.
+  shimTarget,
   shimCommand,
   isOurStatusLine,
   classifyStatusLine,

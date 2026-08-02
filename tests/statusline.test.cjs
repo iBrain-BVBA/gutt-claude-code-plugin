@@ -800,6 +800,41 @@ describe("the shim is what makes an upgrade invisible", () => {
     }
   });
 
+  it("round-trips every path the generator can write", () => {
+    // The parser reads a file this version did not necessarily write and hands the
+    // result to `existsSync`, so a *wrong* answer is worse than no answer. Whatever
+    // `shimContents` can emit, this has to read back exactly.
+    const paths = [
+      "/plain/statusline.cjs",
+      "C:\\Users\\u\\.claude\\plugins\\data\\gutt-pro\\statusline.cjs",
+      "/has spaces/statusline.cjs",
+      '/has"quote/statusline.cjs',
+      "/has'apostrophe/statusline.cjs",
+      "/has\\backslash/statusline.cjs",
+    ];
+    for (const target of paths) {
+      assert.equal(install.shimTarget(install.shimContents(target)), target, target);
+    }
+  });
+
+  it("declines a literal it cannot read exactly, rather than guessing at it", () => {
+    // Single-quoted spellings are read by scanning, not by re-quoting through
+    // `JSON.stringify` — that shortcut double-escapes backslashes already in the
+    // text, so a Windows path comes back with every separator doubled. It resolves to
+    // nothing, which reports a perfectly good renderer as missing: the exact failure
+    // the tri-state exists to prevent, reintroduced one layer lower.
+    assert.equal(
+      install.shimTarget(`var TARGET = 'C:\\\\Users\\\\u\\\\x.cjs';\n`),
+      "C:\\Users\\u\\x.cjs"
+    );
+    assert.equal(install.shimTarget(`var TARGET = '/has\\'apos/x.cjs';\n`), "/has'apos/x.cjs");
+    assert.equal(install.shimTarget(`var TARGET = '/has"dq/x.cjs';\n`), '/has"dq/x.cjs');
+    // And an escape it cannot read exactly is declined outright. `null` routes to "I
+    // could not tell", which is honest; a half-decoded path is a claim about a file.
+    assert.equal(install.shimTarget(`var TARGET = '/has\\x41hex/x.cjs';\n`), null);
+    assert.equal(install.shimTarget(`var TARGET = "";\n`), null);
+  });
+
   it("says it could not tell, rather than claiming the renderer is gone", () => {
     // The distinction the tri-state exists for. "The file it names is missing" and "I
     // cannot work out what it names" have different remedies, and collapsing the
