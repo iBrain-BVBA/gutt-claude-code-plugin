@@ -387,6 +387,94 @@ describe("recall recency: which tool calls count as recall", () => {
 });
 
 // ---------------------------------------------------------------------------
+// What a tool response proves about the connection. The settings-file probe can
+// only establish that a server is configured; this is the one place a real round
+// trip is visible.
+// ---------------------------------------------------------------------------
+
+describe("classifying what a gutt call came back with", () => {
+  const { classifyToolResponse, isObservationFresh, OBSERVATION_TTL_MS } = sessionState;
+
+  it("treats any non-error response as proof the server answered", () => {
+    for (const response of [
+      "some results",
+      { content: [{ type: "text", text: "3 facts found" }] },
+      { content: [] },
+      {},
+      "",
+      undefined,
+      null,
+      42,
+    ]) {
+      assert.equal(
+        classifyToolResponse(response),
+        "ok",
+        `should accept ${JSON.stringify(response)}`
+      );
+    }
+  });
+
+  it("recognises an authentication failure however it is framed", () => {
+    for (const response of [
+      "Access denied: you are not authorized for the requested group scope",
+      { isError: true, content: [{ type: "text", text: "401 Unauthorized" }] },
+      { error: "authentication required" },
+      { is_error: true, content: [{ type: "text", text: "token expired" }] },
+      "Error: forbidden",
+    ]) {
+      assert.equal(
+        classifyToolResponse(response),
+        "auth",
+        `should flag ${JSON.stringify(response)}`
+      );
+    }
+  });
+
+  it("separates other failures from auth ones", () => {
+    for (const response of [
+      { isError: true, content: [{ type: "text", text: "upstream timeout" }] },
+      { error: "ECONNREFUSED" },
+      "Error: the graph is unavailable",
+    ]) {
+      assert.equal(classifyToolResponse(response), "error");
+    }
+  });
+
+  it("does not mistake recalled content about auth for an auth failure", () => {
+    // The trap this classifier exists to avoid. The graph holds episodes about
+    // authentication incidents, so a *successful* search can return a body full of
+    // the words an error would use. Matching on content would let memory working
+    // correctly report the server as broken.
+    const recalled = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            facts: [
+              { fact: "The 401 Unauthorized incident was caused by an expired token" },
+              { fact: "Access denied errors trace to the group scope check" },
+            ],
+          }),
+        },
+      ],
+    };
+    assert.equal(classifyToolResponse(recalled), "ok");
+  });
+
+  it("ages an observation out, and treats a missing one as unknown", () => {
+    const now = Date.now();
+    assert.equal(isObservationFresh(new Date(now - 1000).toISOString(), now), true);
+    assert.equal(
+      isObservationFresh(new Date(now - OBSERVATION_TTL_MS - 1).toISOString(), now),
+      false
+    );
+    for (const bad of [null, undefined, "", "not a date"]) {
+      assert.equal(isObservationFresh(bad, now), false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Parallel-hook safety. Claude Code runs sibling hooks on one event at once, so
 // the session file is genuinely contended (AC4).
 // ---------------------------------------------------------------------------

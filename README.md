@@ -83,21 +83,31 @@ status line you wrote yourself is never touched or overwritten.
 [gutt 🟢 on acme-eng]  ↺3  | [Opus 5] ~$1.24
 ```
 
-| Segment      | Means                                                                      |
-| ------------ | -------------------------------------------------------------------------- |
-| 🟢 / ⚪ / 🔴 | configured with a URL · not yet known (or stdio) · the check itself failed |
-| `on`         | recall is live                                                             |
-| `off`        | durably disabled — `/gutt-pro:on` brings it back                           |
-| `zzz→14:30`  | snoozed until then; `zzz` alone means for the rest of this session         |
-| `hitl`       | capture mode is human-in-the-loop (shown only when it is not `auto`)       |
-| `!`          | no gutt MCP server is configured — run `/gutt-pro:setup`                   |
-| `acme-eng`   | the group this session writes to                                           |
-| `↺3`         | turns since memory was last searched                                       |
+| Segment     | Means                                                                |
+| ----------- | -------------------------------------------------------------------- |
+| 🟢          | a gutt call came back — the server is reachable and authenticated    |
+| 🟡 `auth`   | the connection needs re-authenticating                               |
+| 🔴          | a call failed, or the server's tools have gone from the tool list    |
+| ⚪          | nothing observed yet, or nothing for a while                         |
+| `on`        | recall is live                                                       |
+| `off`       | durably disabled — `/gutt-pro:on` brings it back                     |
+| `zzz→14:30` | snoozed until then; `zzz` alone means for the rest of this session   |
+| `hitl`      | capture mode is human-in-the-loop (shown only when it is not `auto`) |
+| `!`         | no gutt MCP server is configured — run `/gutt-pro:setup`             |
+| `acme-eng`  | the group this session writes to                                     |
+| `↺3`        | turns since memory was last searched                                 |
 
-🟢 reports **configuration, not reachability**. The check reads your settings files
-at session start; a hook cannot make network calls, so a server that is configured
-but down still shows green. 🔴 means the check could not be run at all, not that the
-server is unreachable.
+**Green is earned, not assumed.** It means a real call to the server came back, so
+it reports reachability and authentication together. Three signals feed it, and
+they cover each other's blind spots: responses to gutt tool calls say whether the
+server is answering and whether it accepted your credentials; the session
+transcript says whether its tools are still in the tool list, which is the only way
+to notice a server nobody is calling; and an observation nobody has refreshed in
+ten minutes lapses back to ⚪ rather than going stale green.
+
+A configuration check at session start cannot do this — a hook has no way to open a
+socket, so it can only ever establish that a server is _named in a settings file_.
+That is reported separately, as `!`.
 
 Context window usage is deliberately absent — Claude Code already displays it, and
 this bar is for gutt state.
@@ -118,14 +128,14 @@ Segments drop from the right as the terminal narrows; the state segment always s
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                       | Event            | Purpose                                                                                                            |
-| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                                 |
-| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD; keeps the statusline entry point current                                 |
-| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                                |
-| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt-pro:*` config commands; points at `memory-search` on a new session or after a compaction            |
-| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours an off/disable and `mode`, defers while background agents run |
-| `post-memory-search.cjs`   | PostToolUse      | Matched at the gutt MCP server; resets the recall-recency counter after a search                                   |
+| Hook                       | Event            | Purpose                                                                                                                                                            |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                                                                                 |
+| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD; keeps the statusline entry point current                                                                                 |
+| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                                                                                |
+| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt-pro:*` config commands; points at `memory-search` on a new session or after a compaction; refreshes whether gutt's tools are still in the tool list |
+| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours an off/disable and `mode`, defers while background agents run                                                 |
+| `post-memory-search.cjs`   | PostToolUse      | Matched at the gutt MCP server; resets the recall-recency counter after a search, and records what the call proved about the connection                            |
 
 `statusline.cjs` is not in this table because it is not a hook. Claude Code runs it
 as a status line, from your own settings — see [Statusline](#statusline).

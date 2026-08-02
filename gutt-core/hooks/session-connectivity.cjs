@@ -51,21 +51,20 @@ process.stdin.on("end", () => {
   const probe = guard("SessionStart/async", "mcp diagnose", diagnoseGuttMcp);
   const diag = probe || { configured: false, url: null, error: "probe failed" };
 
-  // Conservative mapping: only a configured server with a reachable-looking URL
-  // counts as "ok". A stdio-transport server can't be verified from a hook, so it
-  // stays "unknown" rather than showing red at someone whose setup is fine.
+  // This hook no longer writes `connectionStatus`, and the omission is the point.
+  // It reads settings files; a hook cannot open a socket, so "a gutt server is
+  // configured with a URL" is the strongest claim available here — and that was
+  // being rendered as a green light meaning "connected". A server that was down, or
+  // whose authentication had lapsed, looked identical to a working one for the whole
+  // session. The glyph is now driven by observed tool responses (post-memory-search),
+  // which is the only place a real round trip is visible, and it starts at "not
+  // observed yet" rather than at an assumption.
   //
-  // "error" means the probe itself failed — we could not tell, which is a third
-  // thing and not the same as "not configured". Until GP-867 nothing wrote it and
-  // the HUD's red branch was unreachable; a diagnosis that threw looked identical
-  // to a machine with no MCP server at all.
+  // What is still worth writing here is configuration, which the HUD reports
+  // separately as `!` and which the tool-traffic path genuinely cannot see: a server
+  // nobody has configured produces no calls to observe.
   guard("SessionStart/async", "state write", () =>
     updateState((state) => {
-      if (!probe) {
-        state.connectionStatus = "error";
-      } else {
-        state.connectionStatus = diag.configured && diag.url ? "ok" : "unknown";
-      }
       state.mcpConfigured = Boolean(diag.configured);
       state.mcpUrl = diag.url || null;
       // Persisted so a consumer can tell a failed probe from a genuine absence;

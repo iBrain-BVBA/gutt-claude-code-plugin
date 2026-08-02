@@ -65,7 +65,19 @@ function render(payload = {}, { raw, columns } = {}) {
 function writeState(state) {
   const dir = path.join(dataDir, "sessions");
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "s1.json"), JSON.stringify({ sessionId: "s1", ...state }));
+  const record = { sessionId: "s1", ...state };
+  // The glyph will not trust a `connectionStatus` without knowing when it was
+  // observed, so default that to "just now". Cases actually about ageing pass
+  // `connectionObservedAt` themselves; every other case stays about its own subject.
+  if (record.connectionStatus !== undefined && record.connectionObservedAt === undefined) {
+    record.connectionObservedAt = new Date().toISOString();
+  }
+  fs.writeFileSync(path.join(dir, "s1.json"), JSON.stringify(record));
+}
+
+/** An ISO timestamp `minutes` in the past. */
+function minutesAgo(minutes) {
+  return new Date(Date.now() - minutes * 60 * 1000).toISOString();
 }
 
 /** Write the runtime config the renderer reads. */
@@ -105,33 +117,116 @@ afterEach(() => {
 });
 
 describe("the HUD reports connection state", () => {
-  it("shows green only once the probe has confirmed a reachable server", () => {
+  it("shows green only once a real call has come back", () => {
+    // Green is earned by an observed round trip, never by a settings-file read: a
+    // hook cannot open a socket, so configuration was the strongest claim the old
+    // probe could make while rendering a light everyone reads as "connected".
     writeState({ connectionStatus: "ok", mcpConfigured: true });
     assert.match(render(PAYLOAD), /\[gutt 🟢 on/);
   });
 
-  it("stays neutral before the async probe lands, rather than guessing", () => {
-    // No state file at all: the synchronous SessionStart hook has run, the
-    // connectivity probe has not. That is not a failure and must not look like one.
+  it("stays neutral before anything has been observed, rather than guessing", () => {
+    // No state file at all. That is not a failure and must not look like one.
     const line = render(PAYLOAD);
     assert.match(line, /\[gutt ⚪ on/);
     assert.doesNotMatch(line, /!/);
   });
 
-  it("stays neutral for a server it cannot probe, instead of showing red", () => {
-    // A stdio-transport server can't be verified from a hook. Showing red at
-    // someone whose setup is fine is worse than saying nothing.
-    writeState({ connectionStatus: "unknown", mcpConfigured: true });
+  it("stays neutral when configured but never yet exercised", () => {
+    // Configured is not connected. Showing red at someone whose setup is fine is
+    // worse than saying nothing.
+    writeState({ mcpConfigured: true });
     const line = render(PAYLOAD);
     assert.match(line, /⚪/);
     assert.doesNotMatch(line, /!/);
   });
 
-  it("shows red when the probe itself failed", () => {
-    // "We could not tell" is a third state, distinct from "not configured". Nothing
-    // wrote it before GP-867, which left this branch unreachable.
-    writeState({ connectionStatus: "error", mcpConfigured: false });
+  it("shows amber and says `auth` when a call came back unauthenticated", () => {
+    // The one connection state the user can act on, so it gets a word and not just
+    // a colour.
+    writeState({ connectionStatus: "auth", mcpConfigured: true });
+    const line = render(PAYLOAD);
+    assert.match(line, /🟡/);
+    assert.match(line, /\bauth\b/);
+  });
+
+  it("shows red when a call failed for some other reason", () => {
+    writeState({ connectionStatus: "error", mcpConfigured: true });
+    const line = render(PAYLOAD);
+    assert.match(line, /🔴/);
+    assert.doesNotMatch(line, /\bauth\b/);
+  });
+
+  it("stops trusting an observation once it goes stale", () => {
+    // The disconnect case: when a server drops, its tools leave the tool list, so
+    // nothing calls them and nothing observes anything ever again. Without ageing,
+    // a success from an hour ago would still be rendering green now.
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      connectionObservedAt: minutesAgo(30),
+    });
+    assert.match(render(PAYLOAD), /⚪/);
+  });
+
+  it("keeps trusting a recent one", () => {
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      connectionObservedAt: minutesAgo(2),
+    });
+    assert.match(render(PAYLOAD), /🟢/);
+  });
+
+  it("believes the tool list over a recent successful call", () => {
+    // The signals disagree exactly when it matters most: the server dropped a
+    // moment after a call that worked. A remembered success says nothing about a
+    // server whose tools are no longer there, however recent it is.
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      connectionObservedAt: minutesAgo(1),
+      mcpToolsAvailable: "pending",
+    });
+    const line = render(PAYLOAD);
+    assert.match(line, /🟡/);
+    assert.match(line, /\bauth\b/);
+  });
+
+  it("shows red when a configured server's tools are gone and nothing is pending", () => {
+    writeState({ connectionStatus: "ok", mcpConfigured: true, mcpToolsAvailable: "absent" });
     assert.match(render(PAYLOAD), /🔴/);
+  });
+
+  it("does not call it a disconnection when no server was ever configured", () => {
+    // Absent tools are unremarkable with nothing configured — `!` is the signal
+    // there, and red would be telling the user something broke that never existed.
+    writeState({ mcpConfigured: false, mcpToolsAvailable: "absent" });
+    const line = render(PAYLOAD);
+    assert.match(line, /⚪/);
+    assert.match(line, /!/);
+  });
+
+  it("lets a reconnect restore the glyph the drop took away", () => {
+    writeState({
+      connectionStatus: "ok",
+      mcpConfigured: true,
+      connectionObservedAt: minutesAgo(1),
+      mcpToolsAvailable: "available",
+    });
+    const line = render(PAYLOAD);
+    assert.match(line, /🟢/);
+    assert.doesNotMatch(line, /\bauth\b/);
+  });
+
+  it("drops the auth marker along with the stale glyph", () => {
+    // A half-hour-old auth failure is not current news; keeping the word while
+    // dropping the colour would tell the user to go and re-authenticate on no
+    // evidence.
+    writeState({ connectionStatus: "auth", connectionObservedAt: minutesAgo(30) });
+    const line = render(PAYLOAD);
+    assert.match(line, /⚪/);
+    assert.doesNotMatch(line, /\bauth\b/);
   });
 });
 

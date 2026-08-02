@@ -20,7 +20,7 @@
  * which is worse than absent. The same rule governs every segment below.
  */
 
-const { getState, init } = require("./lib/session-state.cjs");
+const { getState, init, isObservationFresh } = require("./lib/session-state.cjs");
 const { getGroupId } = require("./lib/config.cjs");
 const { readConfig, isSnoozed, snoozeDeadline } = require("./lib/runtime-config.cjs");
 
@@ -102,20 +102,63 @@ function suppressionLabel(config, sessionId) {
 }
 
 /**
- * The connection glyph.
+ * Reconcile the three connection signals into one answer.
  *
- * `unknown` is not a failure and must not look like one. A stdio-transport MCP
- * server cannot be probed from a hook, so it stays ⚪ by design rather than showing
- * red at someone whose setup is fine.
+ * They are ranked by how directly each observes the thing the user is asking
+ * about, and the order matters because they disagree:
  *
- * @param {string|undefined} status
+ * 1. **Tool availability**, from the transcript. The only signal that can see a
+ *    server nobody is calling, so it outranks the others — once gutt's tools have
+ *    left the tool list, the last successful call says nothing about now, however
+ *    recent it was. `pending` is reported as `auth` because a remote connector
+ *    whose tools have gone and which is waiting to return is, in practice, waiting
+ *    on the user. `absent` only counts against a server that is configured; with
+ *    none configured there is nothing to be disconnected from, and `!` says that.
+ * 2. **The last round trip**, from an observed tool response — the only thing that
+ *    can distinguish working from authenticated-but-refusing.
+ * 3. **Age.** An observation nobody has refreshed stops speaking.
+ *
+ * @param {Object} state
+ * @returns {"ok"|"auth"|"error"|"unknown"}
+ */
+function connectionState(state) {
+  if (state.mcpToolsAvailable === "pending") {
+    return "auth";
+  }
+  if (state.mcpToolsAvailable === "absent" && state.mcpConfigured) {
+    return "error";
+  }
+  if (!isObservationFresh(state.connectionObservedAt)) {
+    return "unknown";
+  }
+  const status = state.connectionStatus;
+  return status === "ok" || status === "auth" || status === "error" ? status : "unknown";
+}
+
+/**
+ * The connection glyph, from the last observed round trip.
+ *
+ * Green has to be *earned by a real call*. It used to be set from a settings-file
+ * read at session start, which could only ever establish that a server was
+ * configured — so a server that was down, or that had lost its authentication,
+ * rendered exactly like a healthy one, indefinitely, and the one glyph a user reads
+ * as "is memory working" was the one that could not tell them.
+ *
+ * ⚪ covers both "nothing seen yet" and "nothing seen lately", and stays neutral
+ * rather than red for the latter: plenty of healthy sessions go a while without
+ * touching memory, and crying wolf would train the glyph to be ignored.
+ *
+ * @param {"ok"|"auth"|"error"|"unknown"} connection
  * @returns {string}
  */
-function connectionGlyph(status) {
-  if (status === "ok") {
+function connectionGlyph(connection) {
+  if (connection === "ok") {
     return "🟢";
   }
-  return status === "error" ? "🔴" : "⚪";
+  if (connection === "auth") {
+    return "🟡";
+  }
+  return connection === "error" ? "🔴" : "⚪";
 }
 
 let input = "";
@@ -146,7 +189,15 @@ process.stdin.on("end", () => {
   const config = readConfig();
   const visible = visibleSegments(terminalWidth());
 
-  const parts = [connectionGlyph(state.connectionStatus), suppressionLabel(config, sessionId)];
+  const connection = connectionState(state);
+  const parts = [connectionGlyph(connection), suppressionLabel(config, sessionId)];
+
+  // Spelled out rather than left to the colour. Amber alone says "something is
+  // wrong"; the word says which thing, and this is the one connection state the
+  // user can actually act on.
+  if (connection === "auth") {
+    parts.push("auth");
+  }
 
   // Mode is only worth the width when it is not the default. `hitl` changes what
   // happens at the end of every turn and the user needs to see it; `auto` is what

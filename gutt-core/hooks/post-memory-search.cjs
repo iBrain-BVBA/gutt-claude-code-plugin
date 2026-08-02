@@ -16,7 +16,13 @@
  * the zero; that one supplies the increments.
  */
 
-const { init, noteMemorySearch, isRecallTool } = require("./lib/session-state.cjs");
+const {
+  init,
+  noteMemorySearch,
+  isRecallTool,
+  classifyToolResponse,
+  noteConnection,
+} = require("./lib/session-state.cjs");
 const { guard } = require("./lib/debug.cjs");
 const { isNestedRun } = require("./lib/nested-run.cjs");
 
@@ -36,12 +42,16 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => {
   let toolName = "";
   let sessionId = "unknown";
+  let toolResponse;
+  let parsed = false;
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
     // Coerced inside the try: String() is itself fallible on a value whose
     // toString has been shadowed, and this runs before any guard.
     toolName = String(data.tool_name ?? "");
     sessionId = data.session_id || "unknown";
+    toolResponse = data.tool_response;
+    parsed = true;
   } catch {
     // Unparseable stdin still exits 0. A tool call must never fail because the
     // bookkeeping after it did.
@@ -52,6 +62,21 @@ process.stdin.on("end", () => {
   guard("PostToolUse", "note recall", () => {
     if (isRecallTool(toolName)) {
       noteMemorySearch();
+    }
+  });
+
+  // Every gutt call is evidence about the connection, not just the recall ones \u2014
+  // a write that comes back authenticated proves as much as a search does, and
+  // this hook is matched at the server rather than at any particular tool. The
+  // SessionStart probe cannot produce this: it reads settings files and a hook has
+  // no way to open a socket, so "configured" was the strongest thing the HUD could
+  // previously say while showing a glyph everyone reads as "connected".
+  //
+  // Only on a parsed payload. Unparseable stdin says nothing about the server, and
+  // recording it as a successful round trip would invent evidence.
+  guard("PostToolUse", "note connection", () => {
+    if (parsed && toolName !== "") {
+      noteConnection(classifyToolResponse(toolResponse));
     }
   });
 
