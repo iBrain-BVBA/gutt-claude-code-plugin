@@ -22,6 +22,7 @@ const { execFileSync } = require("child_process");
 const mem = require("../gutt-core/hooks/lib/builtin-memory.cjs");
 const store = require("../gutt-core/hooks/lib/builtin-memory-store.cjs");
 const config = require("../gutt-core/hooks/lib/runtime-config.cjs");
+const { canSymlink, canRestrictDirectoryWrites } = require("./helpers/capabilities.cjs");
 
 const ORIGINAL_DATA = process.env.CLAUDE_PLUGIN_DATA;
 const ORIGINAL_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
@@ -67,8 +68,13 @@ const FACT = ["---", "name: a-fact", "description: something learned", "---", ""
 
 describe("builtin-memory: locating the store", () => {
   it("derives the store from transcript_path, with no cwd encoding involved", () => {
-    const payload = { transcript_path: "/home/u/.claude/projects/-home-u-app/s.jsonl" };
-    assert.equal(mem.storeDir(payload), "/home/u/.claude/projects/-home-u-app/memory");
+    // Resolved rather than written as a literal: the production path runs through
+    // path.resolve/path.dirname, which on Windows turn "/home/u/…" into "C:\home\u\…".
+    // A POSIX literal on the expected side would fail on the separator alone and say
+    // nothing about the derivation this test exists to check.
+    const projectDir = path.resolve("/home/u/.claude/projects/-home-u-app");
+    const payload = { transcript_path: path.join(projectDir, "s.jsonl") };
+    assert.equal(mem.storeDir(payload), path.join(projectDir, "memory"));
     assert.equal(mem.projectKey(payload), "-home-u-app");
   });
 
@@ -81,9 +87,18 @@ describe("builtin-memory: locating the store", () => {
   });
 
   it("falls back to encoding cwd when transcript_path is absent", () => {
-    process.env.CLAUDE_CONFIG_DIR = "/cfg";
+    // What this pins is the *composition* — configDir/projects/<encoded>/memory. The
+    // encoding itself is pinned exactly, on both platforms, by the test below; taking
+    // the name from encodeProjectDir here keeps this assertion about the layout rather
+    // than restating the character class in a second place.
+    const configDir = path.resolve("/cfg");
+    process.env.CLAUDE_CONFIG_DIR = configDir;
     try {
-      assert.equal(mem.storeDir({ cwd: "/home/u/app" }), "/cfg/projects/-home-u-app/memory");
+      const cwd = path.resolve("/home/u/app");
+      assert.equal(
+        mem.storeDir({ cwd }),
+        path.join(configDir, "projects", mem.encodeProjectDir(cwd), "memory")
+      );
     } finally {
       restoreEnv();
     }
@@ -103,30 +118,62 @@ describe("builtin-memory: locating the store", () => {
     );
   });
 
+  // Asserted on every platform, not just Windows: encodeProjectDir is a pure string
+  // function, so a Linux CI run catches a regression here too. That matters, because
+  // the bug this pins was invisible to the whole suite until it was run on Windows —
+  // the drive letter and backslashes survived encoding, `path.join` then produced
+  // `…\projects\C:\dev\app` (a second drive letter mid-path, never a legal Windows
+  // path), and the built-in store was silently never found.
+  it("encodes a Windows cwd, drive letter and backslashes included", () => {
+    assert.equal(
+      mem.encodeProjectDir(String.raw`C:\dev\gutt-claude-code-plugin`),
+      "C--dev-gutt-claude-code-plugin"
+    );
+    assert.equal(
+      mem.encodeProjectDir(String.raw`D:\Users\me\my_app\.claude-worktrees\ch4`),
+      "D--Users-me-my-app--claude-worktrees-ch4"
+    );
+    assert.doesNotMatch(
+      mem.encodeProjectDir(String.raw`C:\dev\app`),
+      /[\\:]/,
+      "no separator may survive encoding — path.join would read it as a nested absolute path"
+    );
+  });
+
   // Claude Code encodes the *resolved* cwd. On macOS this is the common case, not an
   // exotic one — `/tmp` and `/var` are symlinks into `/private` — and encoding the
   // unresolved path names a project directory that does not exist. Found by the e2e:
   // it planted a store under the unresolved name and the offer never fired.
-  it("resolves symlinks before encoding, the way Claude Code does", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-bm-link-"));
-    try {
-      const real = path.join(root, "real-project");
-      const link = path.join(root, "linked-project");
-      fs.mkdirSync(real);
-      fs.symlinkSync(real, link);
-      assert.equal(
-        mem.projectKey({ cwd: link }),
-        mem.projectKey({ cwd: real }),
-        "a symlinked cwd must resolve to the same store as the real path"
-      );
-      assert.equal(mem.realPath(link), fs.realpathSync(real));
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
+  it(
+    "resolves symlinks before encoding, the way Claude Code does",
+    {
+      skip: canSymlink() ? false : "this host does not permit creating symlinks",
+    },
+    () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-bm-link-"));
+      try {
+        const real = path.join(root, "real-project");
+        const link = path.join(root, "linked-project");
+        fs.mkdirSync(real);
+        fs.symlinkSync(real, link);
+        assert.equal(
+          mem.projectKey({ cwd: link }),
+          mem.projectKey({ cwd: real }),
+          "a symlinked cwd must resolve to the same store as the real path"
+        );
+        assert.equal(mem.realPath(link), fs.realpathSync(real));
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
     }
-  });
+  );
 
   it("falls back to plain resolution for a cwd that does not exist", () => {
-    assert.equal(mem.realPath("/no/such/path/anywhere"), "/no/such/path/anywhere");
+    // path.resolve on both sides: realPath resolves before it tries realpathSync, so
+    // the fallback returns the *resolved* absolute path, which on Windows carries a
+    // drive letter the POSIX literal does not have.
+    const missing = path.resolve("/no/such/path/anywhere");
+    assert.equal(mem.realPath(missing), missing);
   });
 
   it("identifies nothing when the payload names neither a transcript nor a cwd", () => {
@@ -505,31 +552,39 @@ describe("builtin-memory-store: nothing is deleted on an unverified write", () =
     assert.deepEqual(store.deleteVerified(payload).deleted, []);
   });
 
-  it("reports nothing recorded when the backup cannot be written back", () => {
-    const { payload } = seed("-p-unwritable-backup");
-    store.backupStore(payload);
-    const key = mem.projectKey(payload);
-    const file = store.latestBackup(key);
-    const dir = path.dirname(file);
-    fs.chmodSync(dir, 0o500);
-    try {
-      const result = store.recordVerified(key, { "a.md": "ep-1" });
-      // The old code pushed to `recorded` inside the updater and dropped updateJson's
-      // `written` flag, so this returned ["a.md"] while the file kept its old contents —
-      // and `delete` then said "nothing verified", whose only natural reading is "the
-      // episode never landed in the graph". That invites writing the whole store twice.
-      assert.deepEqual(result.recorded, [], "an unpersisted confirmation is not recorded");
-      assert.deepEqual(result.rejected, ["a.md"]);
-      assert.match(result.reason || "", /could not persist/i);
-      assert.match(
-        result.reason || "",
-        /may well have landed/i,
-        "the reason must steer the caller away from re-writing episodes that did land"
-      );
-    } finally {
-      fs.chmodSync(dir, 0o700);
+  it(
+    "reports nothing recorded when the backup cannot be written back",
+    {
+      skip: canRestrictDirectoryWrites()
+        ? false
+        : "chmod does not restrict directory writes on this platform",
+    },
+    () => {
+      const { payload } = seed("-p-unwritable-backup");
+      store.backupStore(payload);
+      const key = mem.projectKey(payload);
+      const file = store.latestBackup(key);
+      const dir = path.dirname(file);
+      fs.chmodSync(dir, 0o500);
+      try {
+        const result = store.recordVerified(key, { "a.md": "ep-1" });
+        // The old code pushed to `recorded` inside the updater and dropped updateJson's
+        // `written` flag, so this returned ["a.md"] while the file kept its old contents —
+        // and `delete` then said "nothing verified", whose only natural reading is "the
+        // episode never landed in the graph". That invites writing the whole store twice.
+        assert.deepEqual(result.recorded, [], "an unpersisted confirmation is not recorded");
+        assert.deepEqual(result.rejected, ["a.md"]);
+        assert.match(result.reason || "", /could not persist/i);
+        assert.match(
+          result.reason || "",
+          /may well have landed/i,
+          "the reason must steer the caller away from re-writing episodes that did land"
+        );
+      } finally {
+        fs.chmodSync(dir, 0o700);
+      }
     }
-  });
+  );
 
   it("removes only the verified facts, prunes their pointers, and notes on top", () => {
     // Two survivors, not one. At n=1 a mutation that keeps only the first surviving line

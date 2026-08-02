@@ -426,7 +426,19 @@ describe("SessionStart drives the migration", () => {
     return spawnSync("node", [SESSION_START], {
       input: JSON.stringify({ session_id: "mig-test", source: "startup" }),
       encoding: "utf8",
-      env: { ...process.env, HOME: sandbox, CLAUDE_PLUGIN_DATA: dataDir },
+      // USERPROFILE as well as HOME, and this is a containment boundary rather than a
+      // portability nicety: `os.homedir()` ignores HOME on Windows and reads USERPROFILE,
+      // so HOME alone left the spawned hook pointed at the *developer's real* ~/.claude.
+      // It ran the migration there — observed deleting a real `.gutt-statusline-configured`
+      // — and then this test read the untouched sandbox and reported the hook had not run.
+      // The visible symptom was a failing assertion; the actual one was a test suite
+      // editing the home directory of whoever ran it.
+      env: {
+        ...process.env,
+        HOME: sandbox,
+        USERPROFILE: sandbox,
+        CLAUDE_PLUGIN_DATA: dataDir,
+      },
     });
   }
 

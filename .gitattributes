@@ -8,3 +8,9 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# Force LF for test fixtures too. These are compared byte-for-byte against string
+# constants defined in .cjs files (which are pinned to LF above), so a CRLF checkout
+# on Windows makes the comparison fail on line endings alone — a drift failure that
+# says nothing about the drift the test exists to catch.
+*.txt text eol=lf

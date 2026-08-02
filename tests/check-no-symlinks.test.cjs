@@ -17,6 +17,7 @@ const { execFileSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { canSymlink } = require("./helpers/capabilities.cjs");
 
 const GUARD = path.join(__dirname, "check-no-symlinks.cjs");
 
@@ -45,20 +46,29 @@ function tempRepo() {
 }
 
 describe("the no-symlink guard fails when it should", () => {
-  it("exits non-zero on a committed symlink, and names it", (t) => {
-    const { dir, git, run } = tempRepo();
-    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // The premise is a committed symlink, so a host that cannot create one cannot pose
+  // the question. Skipping is honest here; the guard itself is platform-independent
+  // and CI runs this on Linux.
+  it(
+    "exits non-zero on a committed symlink, and names it",
+    {
+      skip: canSymlink() ? false : "this host does not permit creating symlinks",
+    },
+    (t) => {
+      const { dir, git, run } = tempRepo();
+      t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-    fs.mkdirSync(path.join(dir, "gutt-core", "hooks", "lib"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "shared.cjs"), "module.exports = {};\n");
-    fs.symlinkSync("../../../shared.cjs", path.join(dir, "gutt-core/hooks/lib/debug.cjs"));
-    git("add", "-A");
+      fs.mkdirSync(path.join(dir, "gutt-core", "hooks", "lib"), { recursive: true });
+      fs.writeFileSync(path.join(dir, "shared.cjs"), "module.exports = {};\n");
+      fs.symlinkSync("../../../shared.cjs", path.join(dir, "gutt-core/hooks/lib/debug.cjs"));
+      git("add", "-A");
 
-    const out = run();
-    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
-    assert.match(out.stderr, /committed as symlinks/);
-    assert.match(out.stderr, /gutt-core\/hooks\/lib\/debug\.cjs/);
-  });
+      const out = run();
+      assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+      assert.match(out.stderr, /committed as symlinks/);
+      assert.match(out.stderr, /gutt-core\/hooks\/lib\/debug\.cjs/);
+    }
+  );
 
   it("exits non-zero when the index is empty rather than reporting a clean repo", (t) => {
     // The failure this exists for: `git ls-files` exits 0 and prints nothing on an empty
