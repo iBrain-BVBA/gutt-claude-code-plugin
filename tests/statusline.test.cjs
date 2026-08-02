@@ -355,6 +355,40 @@ describe("the shim is what makes an upgrade invisible", () => {
     assert.equal(readSettings().statusLine.command, before);
   });
 
+  it("renders real state when launched with no plugin environment at all", () => {
+    // The production invocation, which every other test in this file misses: a
+    // status line is a command in the user's settings.json, not a hook, so Claude
+    // Code launches it without CLAUDE_PLUGIN_DATA. If the shim does not supply it,
+    // every state read returns null and the HUD shows a permanent unknown glyph
+    // with no session behind it — indistinguishable from a down server.
+    writeState({ connectionStatus: "ok", mcpConfigured: true, turnsSinceSearch: 3 });
+    const { path: shim } = install.refreshShim();
+
+    const bare = { ...process.env };
+    delete bare.CLAUDE_PLUGIN_DATA;
+    delete bare.CLAUDE_PLUGIN_ROOT;
+    delete bare.COLUMNS;
+
+    const result = spawnSync(process.execPath, [shim], {
+      input: JSON.stringify(PAYLOAD),
+      encoding: "utf8",
+      env: bare,
+    });
+    assert.equal(result.status, 0, `shim exited ${result.status}: ${result.stderr}`);
+    assert.match(result.stdout, /🟢/, "should find the session record through the shim");
+    assert.match(result.stdout, /↺3/, "should read session counters, not just defaults");
+  });
+
+  it("lets a plugin environment that is already set win", () => {
+    // Defensive: if a future platform does set the variable for status lines, its
+    // answer is better than the shim's guess and must not be clobbered.
+    const { path: shim } = install.refreshShim();
+    assert.match(
+      fs.readFileSync(shim, "utf8"),
+      /process\.env\.CLAUDE_PLUGIN_DATA = process\.env\.CLAUDE_PLUGIN_DATA \|\| __dirname;/
+    );
+  });
+
   it("writes a shim that survives a Windows-shaped path", () => {
     // JSON.stringify rather than hand-quoting: a raw C:\Users\... path in a template
     // literal is a string full of escape sequences.

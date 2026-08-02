@@ -94,6 +94,18 @@ function resolveSettingsFile(settingsFile) {
 /**
  * The shim's contents for a given renderer path.
  *
+ * The shim also has to *supply* ${CLAUDE_PLUGIN_DATA}, not just use a path derived
+ * from it. Claude Code injects that variable into plugin hooks, and a status line
+ * is not a hook — it is a command in the user's own settings.json, launched with no
+ * plugin environment at all. Without this the renderer's state reads all return
+ * null and the HUD sits on a permanent "unknown" glyph with no session data behind
+ * it, which looks like a disconnected server rather than a missing variable.
+ *
+ * `__dirname` rather than a baked absolute path: the shim lives in the data dir, so
+ * its own location *is* the answer, and an answer computed at run time cannot go
+ * stale the way a written-in one could. Existing values win, so a future platform
+ * that does set the variable is not overridden.
+ *
  * `JSON.stringify` rather than quoting by hand: on Windows the path is full of
  * backslashes, and a naive template literal would emit `C:\Users\...` as a string
  * containing escape sequences.
@@ -106,6 +118,11 @@ function shimContents(target) {
     "// Rewritten automatically whenever the plugin updates; your edits will be lost.",
     "// The indirection exists because CLAUDE_PLUGIN_ROOT is version-scoped: this",
     "// path is stable, the one below is not.",
+    "//",
+    "// A status line is not a hook, so it is launched without the plugin",
+    "// environment. This directory is the plugin data dir, so it is also the value",
+    "// the renderer needs in order to find any session state at all.",
+    "process.env.CLAUDE_PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA || __dirname;",
     `require(${JSON.stringify(target)});`,
     "",
   ].join("\n");
