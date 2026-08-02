@@ -1,20 +1,21 @@
 #!/usr/bin/env node
-// GP-855 guard (R37): all runtime state routes through shared/plugin-state.cjs,
-// which writes only under ${CLAUDE_PLUGIN_DATA}. Any other hook/lib that calls an
-// fs write API directly is how state escapes to the project tree — so it's banned
-// outside a tiny, reasoned allowlist. Structural + zero-dep, like check-shared-libs.
+// GP-855 guard (R37): all runtime state routes through the plugin's
+// plugin-state.cjs, which writes only under ${CLAUDE_PLUGIN_DATA}. Any other
+// hook/lib that calls an fs write API directly is how state escapes to the project
+// tree — so it's banned outside a tiny, reasoned allowlist. Structural + zero-dep,
+// like check-no-symlinks.
 "use strict";
 const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 
-// Dirs whose .cjs files ship as plugin hooks/libs. shared/ holds the canonical
-// libs; hooks/lib/* are symlinks into it (skipped during the walk, scanned here).
-const SCAN_DIRS = ["shared", "gutt-core/hooks", "auto-lint-plugin/hooks"];
+// Dirs whose .cjs files ship as plugin hooks/libs. Each plugin owns its libs
+// outright (GP-933), so the walk sees every file exactly once.
+const SCAN_DIRS = ["gutt-core/hooks"];
 
 // Sanctioned direct writers, each with a one-line reason (kept short so the list
-// can't rot silently). Everything else must go through shared/plugin-state.cjs.
+// can't rot silently). Everything else must go through plugin-state.cjs.
 //
 // GP-863 removed the previous ~/.claude/settings.json exemption
 // (sessionstart-setup.cjs) and called the ban absolute. GP-895 re-opens it for
@@ -24,13 +25,13 @@ const SCAN_DIRS = ["shared", "gutt-core/hooks", "auto-lint-plugin/hooks"];
 // steady-state rule is unchanged — no hook adds to settings.json, and the cleanup
 // is one-shot rather than a standing write path.
 const ALLOW = {
-  "shared/plugin-state.cjs":
+  "gutt-core/hooks/lib/plugin-state.cjs":
     "the single sanctioned state writer (writes only under ${CLAUDE_PLUGIN_DATA})",
-  "shared/debug.cjs":
+  "gutt-core/hooks/lib/debug.cjs":
     "low-level error log under ${CLAUDE_PLUGIN_DATA}; can't depend on plugin-state (require cycle)",
-  "shared/migrations.cjs":
+  "gutt-core/hooks/lib/migrations.cjs":
     "one-shot 2.x cleanup: deletes only provably-dead paths a past version wrote (GP-895)",
-  "shared/builtin-memory-store.cjs":
+  "gutt-core/hooks/lib/builtin-memory-store.cjs":
     "migrates Claude Code's own memory store: removes only facts verified present in the graph, after backing the store up under ${CLAUDE_PLUGIN_DATA} (GP-922)",
 };
 
@@ -48,14 +49,14 @@ const BANNED = [
     reason: "~/.claude marker from the retired statusline auto-setup (GP-863 removed it)",
     // Same carve-out as .lessons-prompted below: naming a retired path in order to
     // delete it is the opposite of reintroducing it. Nothing else may mention it.
-    allow: ["shared/migrations.cjs"],
+    allow: ["gutt-core/hooks/lib/migrations.cjs"],
   },
   {
     pattern: ".lessons-prompted",
     reason: "retired marker file — the record is a field in sessions/<id>.json (GP-863)",
     // The one legitimate mention: sweeping leftovers off disk after an upgrade.
     // Moved with the sweep itself out of session-start.cjs in GP-895.
-    allow: ["shared/session-sweep.cjs"],
+    allow: ["gutt-core/hooks/lib/session-sweep.cjs"],
   },
 ];
 
@@ -87,7 +88,7 @@ function scanFile(absFile) {
       const m = code.match(WRITE_RE);
       if (m) {
         errors.push(
-          `${rel}:${i + 1} direct ${m[0]} — route runtime-state writes through shared/plugin-state.cjs (R37)`
+          `${rel}:${i + 1} direct ${m[0]} — route runtime-state writes through hooks/lib/plugin-state.cjs (R37)`
         );
       }
     }
@@ -107,9 +108,6 @@ function walk(dir) {
   for (const name of fs.readdirSync(dir)) {
     const abs = path.join(dir, name);
     const st = fs.lstatSync(abs);
-    if (st.isSymbolicLink()) {
-      continue; // hooks/lib/* symlink into shared/ — scanned there, not twice
-    }
     if (st.isDirectory()) {
       if (name === "node_modules" || name === ".state") {
         continue;
@@ -136,6 +134,6 @@ if (errors.length) {
   process.exit(1);
 }
 console.log(
-  `State-location check OK: runtime-state writes route through shared/plugin-state.cjs ` +
+  `State-location check OK: runtime-state writes route through hooks/lib/plugin-state.cjs ` +
     `(${Object.keys(ALLOW).length} sanctioned direct writers, ${BANNED.length} retired paths banned).`
 );

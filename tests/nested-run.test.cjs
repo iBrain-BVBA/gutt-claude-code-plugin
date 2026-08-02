@@ -25,7 +25,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const { NESTED_ENV_VAR, isNestedRun, childEnv } = require("../shared/nested-run.cjs");
+const { NESTED_ENV_VAR, isNestedRun, childEnv } = require("../gutt-core/hooks/lib/nested-run.cjs");
 
 const HOOKS = path.join(__dirname, "..", "gutt-core", "hooks");
 
@@ -154,12 +154,12 @@ describe("nested-run: the guard cannot be forgotten", () => {
   });
 });
 
-test("the shared lib is symlinked, not copied", () => {
-  // check:shared enforces this across the repo; asserted here too because this lib
-  // is new and a copy would drift silently.
-  const link = path.join(HOOKS, "lib", "nested-run.cjs");
-  assert.equal(
-    fs.realpathSync(link),
-    fs.realpathSync(path.join(__dirname, "..", "shared", "nested-run.cjs"))
-  );
+test("the lib ships inside the plugin, as a real file", () => {
+  // The inverse of what this asserted until GP-933. The lib used to be a symlink into a
+  // marketplace-root shared/, which is what broke every hook on Windows — git there
+  // writes the link target as file content. It must now be a real file under the plugin
+  // root, which is also the only thing a marketplace install copies.
+  const lib = path.join(HOOKS, "lib", "nested-run.cjs");
+  assert.ok(!fs.lstatSync(lib).isSymbolicLink(), `${lib} is a symlink`);
+  assert.match(fs.readFileSync(lib, "utf8"), /module\.exports/, `${lib} is not JavaScript`);
 });

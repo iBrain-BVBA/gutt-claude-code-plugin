@@ -50,10 +50,27 @@ for plugins that "add cost or scope a user should opt into". Precedence: the use
 `enabledPlugins` entry, then a dependency requirement, then `defaultEnabled`. Relevant to
 the `enabled` config surface.
 
-## 3. Symlinks: resolved for directory-source, open for `--plugin-dir`
+## 3. Symlinks: settled by abandoning them, not by answering the question
 
-Confirmed by observation for a directory source; still unverified for `--plugin-dir`. The
-doc-read conflict is kept below because the reasoning is what bounds the resolution.
+**Measured 2026-08-01 — the question stopped mattering, and the reason is the finding.**
+
+We never resolved whether `--plugin-dir` honours a symlink pointing outside the plugin
+root. Windows answered a different and more important question first: on a
+`core.symlinks=false` checkout — git's **default** there — git does not create a link at
+all. It writes the link's target path as the file's contents. `hooks/lib/debug.cjs`
+becomes a 25-byte text file reading `../../../shared/debug.cjs`, and `require()` raises
+`SyntaxError`. All 7 hooks in gutt-pro 3.0.0 died this way on a real user's machine.
+
+So the platform's dereferencing rules were never the binding constraint. **Git's checkout
+behaviour is**, it applies before the platform sees anything, and it defaults against us
+on one of the three platforms we support. GP-933 removed every symlink from the
+repository and added `tests/check-no-symlinks.cjs` to keep them out; each plugin now owns
+its hook libs as real files.
+
+Keep the rest of this section. It is the reasoning that was available before the failure,
+and it is a good record of how a question can be researched carefully and still be the
+wrong question — the doc-read conflict below was litigated at length while the actual
+defect sat in git's default configuration, unexamined.
 
 Upstream, verbatim:
 
@@ -83,7 +100,7 @@ Both can be true if `--plugin-dir` loads from disk without a copy step, in which
 
 **Do not edit `CLAUDE.md` from this doc read alone.** The resolution is an actual run
 against a plugin whose lib symlinks point at `shared/`, checking whether the hook loads.
-`check:shared` guards the _shape_ of the links, not whether the platform honours them.
+`check:shared` guarded the _shape_ of the links, not whether the platform honours them.
 
 ### Partially resolved 2026-07-29 — directory-source installs DO resolve them
 

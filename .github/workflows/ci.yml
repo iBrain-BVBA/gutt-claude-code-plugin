@@ -29,8 +29,8 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Check shared libs (single source + symlinks)
-        run: npm run check:shared
+      - name: Check no file is committed as a symlink (Windows-safe packaging)
+        run: npm run check:no-symlinks
 
       - name: Check runtime-state location (R37)
         run: npm run check:state

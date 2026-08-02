@@ -1,29 +1,17 @@
 "use strict";
-// lint-staged config (moved out of package.json so it can filter symlinks).
+// lint-staged config.
 //
-// hooks/lib/*.cjs are symlinks into shared/ (GP-853). Prettier errors when a
-// symlink is passed to it explicitly ("is a symbolic link"), which is why staged
-// symlinks previously couldn't be committed without --no-verify. The canonical
-// real files live in shared/ and are linted/formatted directly, so skipping the
-// symlinks here loses no coverage. (GP-855)
-const fs = require("fs");
-
+// It moved out of package.json in GP-855 to filter symlinks off the file list —
+// prettier errors on a symlink passed to it explicitly ("is a symbolic link"), so
+// staging one meant committing with --no-verify. GP-933 removed every symlink from
+// the repo and CI keeps them out (tests/check-no-symlinks.cjs), so the filter is gone
+// and this is a plain config again.
 const quote = (files) => files.map((f) => `"${f}"`).join(" ");
-const realFiles = (files) => files.filter((f) => !fs.lstatSync(f).isSymbolicLink());
 
 module.exports = {
-  "*.{js,cjs,mjs,ts,jsx,tsx}": (files) => {
-    const real = realFiles(files);
-    if (real.length === 0) {
-      return [];
-    }
-    return [`eslint --fix ${quote(real)}`, `prettier --write ${quote(real)}`];
-  },
-  "*.{json,md,yml,yaml}": (files) => {
-    const real = realFiles(files);
-    if (real.length === 0) {
-      return [];
-    }
-    return [`prettier --write ${quote(real)}`];
-  },
+  "*.{js,cjs,mjs,ts,jsx,tsx}": (files) => [
+    `eslint --fix ${quote(files)}`,
+    `prettier --write ${quote(files)}`,
+  ],
+  "*.{json,md,yml,yaml}": (files) => [`prettier --write ${quote(files)}`],
 };

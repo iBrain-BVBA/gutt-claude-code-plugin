@@ -47,7 +47,7 @@ This plugin provides a memory backbone for Claude Code, enabling:
 2. **Enable:** Add to `.claude/settings.json` under `"plugins"`
 3. **Setup:** Run `/gutt-pro:onboard`
 
-> **Shared hook libs:** Hook libraries have a single source in `shared/`; each plugin's `hooks/lib/*` symlinks into it. Running from a cloned repo resolves those symlinks in place. Note that `--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks — to test a real install, use the git marketplace source. Marketplace installs dereference them automatically into real files.
+> **Hook libs:** each plugin owns its `hooks/lib/*` outright, as real files — no symlinks and no code shared between plugins, so a clone runs the same way an install does. A `"source": "directory"` marketplace entry loads in place with no copy step, which means the working tree is what executes and an uncommitted edit takes effect on the next session.
 
 ### Cursor
 
@@ -234,18 +234,16 @@ Capture learnings using one of 4 patterns:
 ```
 gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── .claude-plugin/
-│   └── marketplace.json           # lists gutt-core + auto-lint-plugin + gutt-mentor
-├── shared/                         # single source for hook libs; plugins symlink these
+│   └── marketplace.json           # lists gutt-core + gutt-mentor
 ├── gutt-core/                      # core plugin — name/displayName: gutt-pro (dir keeps its name)
 │   ├── .claude-plugin/plugin.json
-│   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
+│   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
 │   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery
 │   ├── agents/                     # gutt-pro-memory, agent-creator
 │   ├── commands/                   # setup, start, health
 │   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow
 │   ├── mcp.json                    # MCP config template
 │   └── config.json.example
-├── auto-lint-plugin/               # standalone lint-on-edit plugin (no gutt dependency)
 ├── gutt-mentor/                    # mentor plugin — onboarding + mentor agents, personal-scope program design/tracking (no hooks)
 │   ├── agents/                     # onboarding-guide, mentor
 │   └── skills/                     # individual-program-design, progress-tracking
@@ -271,7 +269,7 @@ This plugin works on:
 
 **Note:** Hooks use relative paths for cross-platform compatibility.
 
-**Windows contributors:** The shared hook libs use git symlinks. Enable them with `git config core.symlinks true` (or turn on Developer Mode) before cloning, or the links check out as plain text files. End users installing from the marketplace are unaffected — Claude Code copies real files into its cache.
+**Windows:** nothing extra to configure. This repository contains no symlinks and CI keeps it that way (`npm run check:no-symlinks`). Hook libraries used to be symlinks into a repo-root `shared/` directory, which broke every hook on Windows — git there defaults to `core.symlinks=false` and writes the link target path as the file's contents, so `require()` got a path string instead of JavaScript. That affected marketplace installs too, not just contributors.
 
 ## Troubleshooting
 

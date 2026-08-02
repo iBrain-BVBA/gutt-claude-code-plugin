@@ -1,22 +1,21 @@
 #!/usr/bin/env node
 /**
- * Test script for Cowork-path behavior of the gutt hooks.
+ * Test script for non-CLI-host behavior of the gutt hooks.
  *
- * Validates:
- * 1. Platform detection (Cowork / Cursor / CLI)
- * 2. BOM stripping and env.cjs priority
+ * Validates BOM stripping and env.cjs priority — the things that differ when a host
+ * other than the Claude Code CLI runs the hooks. Cursor sets both `CLAUDE_*` and
+ * `CURSOR_*` variables, so which one wins is a real decision, and it writes its stdin
+ * payload with a byte-order mark that `JSON.parse` rejects outright.
+ *
+ * A platform-detection suite used to sit alongside this, covering a
+ * `supportsDecisionBlock`/`isCowork`/`isCursor` lib. GP-933 removed that lib: no hook
+ * had called it since the plugin it was written for was retired, so it was testing
+ * code that could not run.
  *
  * Run from repo root: node tests/cowork-hooks.test.cjs
  */
 
-// Platform detection functions (imported from hook lib)
-const {
-  supportsDecisionBlock,
-  isCowork,
-  isCursor,
-} = require("../gutt-core/hooks/lib/platform-detect.cjs");
-
-console.log("Testing Cowork-path behavior for the gutt hooks\n");
+console.log("Testing non-CLI-host behavior for the gutt hooks\n");
 console.log("=".repeat(60));
 
 let passed = 0;
@@ -65,111 +64,6 @@ function restoreEnv() {
   restoreVar("CURSOR_VERSION", originalCursorVersion);
   restoreVar("CLAUDE_PLUGIN_ROOT", originalClaudePluginRoot);
 }
-
-// ============================================================================
-// TEST SUITE 1: Platform Detection
-// ============================================================================
-
-console.log("\n[Suite 1] Platform Detection\n");
-
-// Cowork detection via project dir
-clearCursorEnv();
-process.env.CLAUDE_PROJECT_DIR = "/sessions/test-session-123";
-delete process.env.CLAUDE_PLATFORM;
-assert(
-  supportsDecisionBlock() === false,
-  "supportsDecisionBlock()=false when PROJECT_DIR=/sessions/..."
-);
-assert(isCowork() === true, "isCowork()=true when PROJECT_DIR=/sessions/...");
-
-// CLI detection via project dir
-clearCursorEnv();
-process.env.CLAUDE_PROJECT_DIR = "/home/user/my-project";
-delete process.env.CLAUDE_PLATFORM;
-assert(supportsDecisionBlock() === true, "supportsDecisionBlock()=true when PROJECT_DIR=/home/...");
-assert(isCowork() === false, "isCowork()=false when PROJECT_DIR=/home/...");
-
-// CLAUDE_PLATFORM takes precedence
-clearCursorEnv();
-process.env.CLAUDE_PLATFORM = "cowork";
-process.env.CLAUDE_PROJECT_DIR = "/home/user/my-project";
-assert(supportsDecisionBlock() === false, "CLAUDE_PLATFORM=cowork overrides CLI-like path");
-
-// Restore env after platform detection tests
-restoreEnv();
-
-// ============================================================================
-// TEST SUITE 7: isCursor() detection and interaction with isCowork()
-// ============================================================================
-
-console.log("\n[Suite 7] isCursor() Detection and Interaction with isCowork()\n");
-
-// 7a: isCursor() does NOT trigger on CURSOR_PLUGIN_ROOT alone (env var doesn't exist in Cursor)
-clearCursorEnv();
-delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.CLAUDE_PLATFORM;
-process.env.CURSOR_PLUGIN_ROOT = "/home/user/.cursor/extensions/gutt";
-assert(
-  isCursor() === false,
-  "isCursor()=false when only CURSOR_PLUGIN_ROOT is set (not a real Cursor var)"
-);
-restoreEnv();
-
-// 7b: isCursor() returns true when CURSOR_PROJECT_DIR is set
-clearCursorEnv();
-delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.CLAUDE_PLATFORM;
-process.env.CURSOR_PROJECT_DIR = "/home/user/my-project";
-assert(isCursor() === true, "isCursor()=true when CURSOR_PROJECT_DIR is set");
-restoreEnv();
-
-// 7c: isCursor() returns true when only CURSOR_VERSION is set
-clearCursorEnv();
-delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.CLAUDE_PLATFORM;
-process.env.CURSOR_VERSION = "0.50.0";
-assert(isCursor() === true, "isCursor()=true when only CURSOR_VERSION is set");
-restoreEnv();
-
-// 7d: isCursor() returns false with no Cursor env vars
-clearCursorEnv();
-delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.CLAUDE_PLATFORM;
-assert(isCursor() === false, "isCursor()=false when no Cursor env vars are set");
-restoreEnv();
-
-// 7e: supportsDecisionBlock() returns false for Cursor (uses isCursor() internally)
-clearCursorEnv();
-delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.CLAUDE_PLATFORM;
-process.env.CURSOR_PROJECT_DIR = "/home/user/my-project";
-assert(supportsDecisionBlock() === false, "supportsDecisionBlock()=false when Cursor is detected");
-restoreEnv();
-
-// 7f: isCowork() returns false when Cursor is detected (not misidentified as Cowork)
-clearCursorEnv();
-delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.CLAUDE_PLATFORM;
-process.env.CURSOR_PROJECT_DIR = "/home/user/my-project";
-assert(isCowork() === false, "isCowork()=false when Cursor is detected (not misidentified)");
-restoreEnv();
-
-// 7g: isCowork() still works for actual Cowork environments
-clearCursorEnv();
-process.env.CLAUDE_PROJECT_DIR = "/sessions/test-session-456";
-delete process.env.CLAUDE_PLATFORM;
-assert(isCowork() === true, "isCowork()=true for Cowork session path (no Cursor env)");
-restoreEnv();
-
-// 7h: All three are mutually exclusive in a CLI scenario
-clearCursorEnv();
-process.env.CLAUDE_PROJECT_DIR = "/home/user/my-project";
-delete process.env.CLAUDE_PLATFORM;
-assert(
-  isCursor() === false && isCowork() === false && supportsDecisionBlock() === true,
-  "CLI scenario: isCursor=false, isCowork=false, supportsDecisionBlock=true"
-);
-restoreEnv();
 
 // ============================================================================
 // TEST SUITE 9: BOM stripping and env.cjs priority (Cursor v2.5 diagnostic)

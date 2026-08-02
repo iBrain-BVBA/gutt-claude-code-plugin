@@ -34,7 +34,7 @@ const {
   runClaude,
 } = require("./lib/claude-run.cjs");
 
-const { storeDir, MIGRATE_SKILL } = require("../../shared/builtin-memory.cjs");
+const { storeDir, MIGRATE_SKILL } = require("../../gutt-core/hooks/lib/builtin-memory.cjs");
 
 /** Two facts in the shape Claude Code's own memory writer produces. */
 const FACTS = {

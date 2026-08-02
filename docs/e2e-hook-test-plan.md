@@ -67,7 +67,7 @@ any test was written. They are the load-bearing assumptions of the suite.
   showed why this matters: the judge copied the stem out of the prompt verbatim into
   the reason it handed Claude as an instruction.
 - **`--plugin-dir` is repeatable**, which is how the coexistence run loads
-  `gutt-core` and `auto-lint-plugin` together.
+  `gutt-core` and a generated throwaway companion plugin together.
 - **`config.json` is global.** Every session on the machine shares one file, so any
   test that plants a snooze must back it up and restore it.
 - **The CLI never logs a completion line for the synchronous `session-start.cjs`.**
@@ -116,7 +116,7 @@ Haiku except run 4, which needs a Sonnet turn to have something worth judging:
 | 2   | `hook-routing.e2e.cjs`      | **row 4 anti-nag** across two prompts, one SessionStart      |
 | 3   | `hook-routing.e2e.cjs`      | **row 1 snooze** suppresses without burning the flag         |
 | 4   | `hook-routing.e2e.cjs`      | **Stop router fires and terminates**, reply stays clean      |
-| 5   | `hook-routing.e2e.cjs`      | **R23 coexistence** with `auto-lint-plugin`                  |
+| 5   | `hook-routing.e2e.cjs`      | **R23 coexistence** with a generated companion plugin        |
 | 6   | `hook-routing.e2e.cjs`      | **row 0 `/gutt-pro:` config command** applied, and relayed   |
 
 ## Per-run assertions
@@ -164,12 +164,14 @@ reply cleanliness are the deterministic parts and the real guards.
 
 ### Run 5 — coexistence (R23)
 
-`gutt-core` + `auto-lint-plugin` loaded together, one prompt.
+`gutt-core` + a minimal companion plugin the run builds in a temp dir, loaded together,
+result of one prompt. The companion is generated rather than borrowed so the run does not
+depend on some other plugin continuing to exist and continuing to ship hooks.
 
 - both plugins' `hooks.json` are read; exactly one gutt plugin loads, from this repo
 - gutt's six handlers still register and the lifecycle still completes
 - no hook emits a blocking decision, and the session is not interrupted
-- `auto-lint-plugin` contributes its `PostToolUse` handler without disturbing gutt
+- the companion contributes its `PostToolUse` handler without disturbing gutt
 
 ### Run 6 — the `/gutt-pro:` config command (GP-866, GP-931)
 

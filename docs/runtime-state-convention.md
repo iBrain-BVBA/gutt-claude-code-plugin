@@ -20,17 +20,17 @@ that migration.
 
 ## Where state lives
 
-All access goes through **`shared/plugin-state.cjs`**. Paths are resolved from
+All access goes through **`gutt-core/hooks/lib/plugin-state.cjs`**. Paths are resolved from
 `${CLAUDE_PLUGIN_DATA}`; no code joins its own `.state` path anymore.
 
-| File                                               | Written by                                                                               | Notes                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions/<session_id>.json`                       | `session-state.cjs`                                                                      | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                          |
-| `config.json`                                      | `runtime-config.cjs` for everything but `migrationsVersion`, which is `migrations.cjs`'s | Runtime on/off, mode, snooze, the integer `migrationsVersion` recording which one-time cleanups this machine has had, and the per-project `projects` space (GP-922 — see below). **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `shared/config.cjs` reads. |
-| `hook-errors.log`                                  | `debug.cjs`                                                                              | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                                           |
-| `hook-invocations.log`                             | `user-prompt-submit`                                                                     | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                                                    |
-| `migrations/settings-backup-<ms>.json`             | `migrations.cjs` (GP-895)                                                                | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover.                        |
-| `migrations/builtin-memory-<projectKey>-<ms>.json` | `builtin-memory-store.cjs` (GP-922)                                                      | Every fact in a project's Claude Code memory store, captured verbatim before the store is migrated into gutt, plus the `verified` map that authorises each deletion. **Never swept**, same reasoning as the row above: it is the only remaining copy's undo. One per migration attempt per project.                    |
+| File                                               | Written by                                                                               | Notes                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions/<session_id>.json`                       | `session-state.cjs`                                                                      | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                             |
+| `config.json`                                      | `runtime-config.cjs` for everything but `migrationsVersion`, which is `migrations.cjs`'s | Runtime on/off, mode, snooze, the integer `migrationsVersion` recording which one-time cleanups this machine has had, and the per-project `projects` space (GP-922 — see below). **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `hooks/lib/config.cjs` reads. |
+| `hook-errors.log`                                  | `debug.cjs`                                                                              | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                                              |
+| `hook-invocations.log`                             | `user-prompt-submit`                                                                     | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                                                       |
+| `migrations/settings-backup-<ms>.json`             | `migrations.cjs` (GP-895)                                                                | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover.                           |
+| `migrations/builtin-memory-<projectKey>-<ms>.json` | `builtin-memory-store.cjs` (GP-922)                                                      | Every fact in a project's Claude Code memory store, captured verbatim before the store is migrated into gutt, plus the `verified` map that authorises each deletion. **Never swept**, same reasoning as the row above: it is the only remaining copy's undo. One per migration attempt per project.                       |
 
 The artifacts named by the R37 state contract are the first two rows; the rest are
 caches, logs, and backups that rebuild themselves or are written once.
@@ -123,7 +123,7 @@ unrecognised stored value is read as "unrecorded" rather than trusted, so a corr
 file cannot become a permanent silence.
 
 This record is machine-local while the store it describes is not, which is why it is
-not the only gate on the offer — see `shared/builtin-memory.cjs` for the structural
+not the only gate on the offer — see `hooks/lib/builtin-memory.cjs` for the structural
 second one.
 
 ### Retired locations
@@ -190,7 +190,7 @@ in `tests/check-state-location.cjs`'s allowlist. The steady-state rule is unchan
 and is what the e2e tier now asserts: **no hook ever adds a key to the user's
 settings** — the one sanctioned write is a removal of the plugin's own dead key.
 
-## The shared lib — `shared/plugin-state.cjs`
+## The shared lib — `hooks/lib/plugin-state.cjs`
 
 | Function                                              | Purpose                                                                                                                                                                                                                                                                              |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -231,7 +231,7 @@ made it run away.
 ## SessionStart TTL sweep (R37, GP-863)
 
 `gutt-core/hooks/session-start.cjs` runs the whole sweep on the synchronous path;
-`shared/session-sweep.cjs` holds the steps and their TTL constants, which are the
+`hooks/lib/session-sweep.cjs` holds the steps and their TTL constants, which are the
 single place the policy is written down (E8-S8.4 / GP-893 verifies them):
 
 | Artifact                     | TTL / bound                    |
@@ -256,7 +256,7 @@ is missing. The writer never arrived — GP-866 put the judge inline at Stop, GP
 closed as not needed — so the step, its `QUEUE_TTL_MS` / `QUEUE_MAX_ENTRIES` /
 `QUEUE_FILE` constants, and the `pruneJsonl` helper it was the only caller of are all
 gone. Nothing else in the state contract is line-oriented JSON; should something
-become so, that function is recoverable from `shared/plugin-state.cjs`'s history
+become so, that function is recoverable from `hooks/lib/plugin-state.cjs`'s history
 (removed in GP-873) rather than carried unused.
 
 Every step is guarded independently: a step that throws is logged and skipped, so it
@@ -278,8 +278,8 @@ suite performs now lands under `${CLAUDE_PLUGIN_DATA}`.
 
 ## CI guard — `tests/check-state-location.cjs` (`npm run check:state`)
 
-Structural, zero-dep (like `check:shared`). Scans `shared/` and every plugin's
-`hooks/` and enforces two rules:
+Structural, zero-dep (like `check:no-symlinks`). Scans every plugin's `hooks/` — libs
+included, since each plugin now owns its own — and enforces two rules:
 
 1. **No direct `fs` write calls** outside a two-entry allowlist (`plugin-state.cjs`,
    `debug.cjs`), both of which write only under `${CLAUDE_PLUGIN_DATA}`. This is how
@@ -294,7 +294,7 @@ so even a stray path handed to `writeJson`/`appendLine` is a no-op (returns `fal
 ## Adding new state
 
 1. Use `plugin-state.cjs` — never join your own path or call `fs.write*` directly.
-2. If a new shared lib needs it, keep both in `shared/` (Node realpaths symlinked
-   modules, so co-dependent libs must sit together) and symlink the new lib into
-   each consuming plugin's `hooks/lib/` (`npm run check:shared` enforces this).
+2. If a new lib needs it, add the real file under that plugin's own `hooks/lib/`.
+   Never a symlink and never a reference into another plugin — `npm run check:no-symlinks`
+   enforces the first, and the second does not survive installation anyway.
 3. Add the file to the table above.

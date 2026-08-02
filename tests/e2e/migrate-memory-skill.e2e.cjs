@@ -75,8 +75,12 @@ const {
   withPlantedConfig,
 } = require("./lib/claude-run.cjs");
 
-const { projectKey, storeDir, MIGRATE_SKILL } = require("../../shared/builtin-memory.cjs");
-const { PROJECTS_KEY } = require("../../shared/runtime-config.cjs");
+const {
+  projectKey,
+  storeDir,
+  MIGRATE_SKILL,
+} = require("../../gutt-core/hooks/lib/builtin-memory.cjs");
+const { PROJECTS_KEY } = require("../../gutt-core/hooks/lib/runtime-config.cjs");
 
 /**
  * Two facts plus the index, in the shape Claude Code's own memory writer produces. The

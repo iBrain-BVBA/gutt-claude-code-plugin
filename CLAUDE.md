@@ -12,14 +12,12 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 
 ```
 gutt-plugins/               # marketplace repo (root is NOT a plugin)
-├── .claude-plugin/         # marketplace.json — lists gutt-core + auto-lint-plugin + gutt-mentor
-├── shared/                 # single source for hook libs; plugins symlink these (GP-853)
+├── .claude-plugin/         # marketplace.json — lists gutt-core + gutt-mentor
 ├── gutt-core/              # core plugin (name + displayName: gutt-pro; dir name kept)
 │   ├── .claude-plugin/     # plugin.json
-│   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* symlink → shared/
+│   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
 │   ├── skills/ agents/ commands/
 │   └── rules/ mcp.json config.json.example
-├── auto-lint-plugin/       # standalone lint-on-edit plugin (no gutt dependency)
 ├── gutt-mentor/            # mentor plugin (depends on gutt-core) — onboarding + mentor agents, personal-scope program design/tracking
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
@@ -30,9 +28,9 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 
 **The plugin is `gutt-pro`; its directory is `gutt-core/`.** GP-931 renamed the plugin
 (`name` and `displayName`) and deliberately left the directory alone — renaming it would
-re-point the marketplace `source` and every `../../../shared/` symlink target for no
-user-visible gain. So `gutt-core/` is a path and `gutt-pro` is an identity, and they do
-not match on purpose. The GitHub repository keeps its own name too
+re-point the marketplace `source` for no user-visible gain. So `gutt-core/` is a path and
+`gutt-pro` is an identity, and they do not match on purpose. The GitHub repository keeps
+its own name too
 (`gutt-claude-code-plugin`), which is why that string still appears in repository URLs and
 in filesystem paths derived from this checkout. Anywhere else it is a stale reference.
 
@@ -92,19 +90,33 @@ the graph needs a correction episode via `memory-capture` (through
 `conflict-adjudication` first if it contradicts a stored memory) — the graph does not
 expire on its own, and a stale Insight there outlives the doc that made it wrong.
 
-## Shared Hook Libraries
+## Hook Libraries — every plugin owns its own, as real files
 
-Hook libraries have a single source in `shared/*.cjs`. Each plugin's `hooks/lib/<name>.cjs` is a **symlink** into `shared/` (`../../../shared/` from `gutt-core` and `auto-lint-plugin`). Edit the file in `shared/` once — every plugin sees it. No manual copying, no propagation table.
+**No symlinks anywhere in this repository, and no code shared between plugins.** A
+plugin's `hooks/lib/*.cjs` are real files inside that plugin's own directory. If two
+plugins ever need the same helper, each gets a copy.
 
-- **Guard:** `npm run check:shared` (run in CI) fails if any plugin ships a divergent real copy of a shared lib instead of a symlink.
-- **Install-time:** Claude Code dereferences intra-marketplace symlinks when copying a plugin to its cache, so installed plugins get real files and stay self-contained. ([docs](https://code.claude.com/docs/en/plugins-reference#share-files-within-a-marketplace-with-symlinks))
-- **Plugin-local libs** with no `shared/` counterpart stay as real files — allowed by the guard.
-- **Local dev:** `--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks. Running from the repo works (the link resolves in place); to exercise a real install, install from the git marketplace source.
-  - **Directory-source: confirmed 2026-07-29 by observation.** A `"source": "directory"` marketplace entry loads in place with no copy step, and `hooks/lib/*.cjs` symlinks into `shared/` resolve at runtime — proven by a hook that requires one of them running correctly while the recorded cache directory was empty. Consequence: with that setup **the working tree is what executes**, so an uncommitted edit runs and no reinstall is needed.
-  - ⚠ **`--plugin-dir` specifically is still unverified.** The docs say "only symlinks that resolve within the plugin's own directory are preserved; all others are skipped", which would break every `hooks/lib/*.cjs` link. That statement is made about the _copy_ into the cache, so it plausibly never applies to an in-place load — but that is inference, and `--plugin-dir` is a different flag from a directory source. See `docs/plugin-platform-reference.md` §3. `check:shared` guards the links' shape, not whether the platform honours them.
-- **Windows:** symlinks need `git config core.symlinks true` (or Developer Mode); without it the links check out as plain text files.
+- **Guard:** `npm run check:no-symlinks` (in `test:all` and CI) fails if any tracked
+  file is committed with git mode `120000`. It reads the git index rather than the
+  working tree on purpose — mode `120000` is what gets cloned, and it is recorded the
+  same on every platform, whereas a Windows checkout of a symlink looks like an
+  ordinary file to `lstat`.
+- **Why the ban.** Hook libs used to live in a marketplace-root `shared/` with each
+  plugin symlinking in. That shipped 3.0.0 broken on Windows: git there defaults to
+  `core.symlinks=false` and writes the _link target path_ as the file's contents, so
+  every hook died in `require()` parsing `../../../shared/debug.cjs` as JavaScript. The
+  links also pointed outside the plugin root, which installed plugins may not do. A
+  per-machine `git config core.symlinks true` fixes neither problem for someone who
+  merely installs the plugin.
+- **The duplication is the price, and it is the cheaper side.** A copy that drifts
+  costs one stale helper in one plugin. A symlink costs every Windows user the entire
+  plugin, silently, at load time.
+- **Local dev:** a `"source": "directory"` marketplace entry loads in place with no copy
+  step, so **the working tree is what executes** — an uncommitted edit runs, and no
+  reinstall is needed. To exercise the packaging path an end user gets, install from the
+  git marketplace source instead.
 
-When adding a new shared lib: put the real file in `shared/`, then symlink it into each consuming plugin's `hooks/lib/`.
+When a hook needs a new lib, add the real file under that plugin's `hooks/lib/`.
 
 ## Writing Skills — instructions for an agent, not documentation
 
@@ -184,7 +196,8 @@ When working on this project, use the gutt memory graph to:
 - Capture user preferences
 - Record project patterns
 
-Note: pass the group explicitly. Omitting `group_id` on a write targets an unspecified one of your allowed groups, not a fixed default — so pass it whenever you can write to more than one; with exactly one group you may omit it. On reads, pass `group_ids` naming the groups you mean: omitting it includes personal scope. `shared/agent-identity.md` is the normative reference.
+Note: pass the group explicitly. Omitting `group_id` on a write targets an unspecified one of your allowed groups, not a fixed default — so pass it whenever you can write to more than one; with exactly one group you may omit it. On reads, pass `group_ids` naming the groups you mean: omitting it includes personal scope. The `agent-memory-protocol` skill's
+`references/agent-identity.md` is the normative reference.
 
 ## Related Tickets
 

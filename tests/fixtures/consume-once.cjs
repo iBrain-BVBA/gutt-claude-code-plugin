@@ -12,7 +12,7 @@
  */
 "use strict";
 
-const { init, advanceTurn } = require("../../shared/session-state.cjs");
+const { init, advanceTurn } = require("../../gutt-core/hooks/lib/session-state.cjs");
 
 init(process.argv[2]);
 

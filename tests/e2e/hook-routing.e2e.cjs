@@ -29,6 +29,7 @@
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { after, before, describe, it } = require("node:test");
 
@@ -50,9 +51,59 @@ const {
   withPlantedConfig,
 } = require("./lib/claude-run.cjs");
 
-const { OUTCOMES, BROKEN_OUTCOMES } = require("../../shared/stop-judge.cjs");
+const { OUTCOMES, BROKEN_OUTCOMES } = require("../../gutt-core/hooks/lib/stop-judge.cjs");
 
-const AUTO_LINT_DIR = path.join(REPO_ROOT, "auto-lint-plugin");
+const COMPANION_NAME = "e2e-companion-plugin";
+
+/**
+ * A second plugin to share the session with, built on the fly.
+ *
+ * R23 is about coexistence, so the test needs *another* plugin loaded — it does not
+ * need a particular one. This used to borrow `auto-lint-plugin`, which GP-933 deleted;
+ * generating a minimal one instead keeps the requirement covered without the suite
+ * depending on some other plugin continuing to exist and continuing to ship hooks.
+ *
+ * Deliberately trivial: one PostToolUse handler that exits 0 and writes nothing. It
+ * exists to occupy the event bus and claim its own data dir, which is exactly the
+ * interference this run is looking for.
+ * @param {string} dir where to build it
+ * @returns {string} dir
+ */
+function writeCompanionPlugin(dir) {
+  fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "hooks"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, ".claude-plugin", "plugin.json"),
+    JSON.stringify(
+      {
+        name: COMPANION_NAME,
+        version: "0.0.0",
+        description: "Throwaway second plugin, used only to prove gutt coexists with one.",
+      },
+      null,
+      2
+    )
+  );
+  fs.writeFileSync(
+    path.join(dir, "hooks", "hooks.json"),
+    JSON.stringify(
+      {
+        hooks: {
+          PostToolUse: [
+            {
+              matcher: "",
+              hooks: [{ type: "command", command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/noop.cjs"` }],
+            },
+          ],
+        },
+      },
+      null,
+      2
+    )
+  );
+  fs.writeFileSync(path.join(dir, "hooks", "noop.cjs"), "process.exit(0);\n");
+  return dir;
+}
 
 /**
  * The Stop outcomes this tier expects to see, read from the source of truth rather than
@@ -535,15 +586,19 @@ describe(
   { skip, timeout: 420000 },
   () => {
     let projectDir;
+    let companionDir;
     let run;
 
     before(
       async () => {
         projectDir = createProject("coexist");
+        companionDir = writeCompanionPlugin(
+          fs.mkdtempSync(path.join(os.tmpdir(), "gutt-companion-"))
+        );
         run = await runClaude({
           projectDir,
           sessionId: IDS.coexist,
-          pluginDirs: [PLUGIN_DIR, AUTO_LINT_DIR],
+          pluginDirs: [PLUGIN_DIR, companionDir],
           prompt: "Reply with exactly: pong",
         });
       },
@@ -555,6 +610,9 @@ describe(
       if (projectDir) {
         removeDir(projectDir);
       }
+      if (companionDir) {
+        removeDir(companionDir);
+      }
     });
 
     it("loads both plugins from this working tree", () => {
@@ -562,11 +620,15 @@ describe(
       const gutt = run.debug
         .split("\n")
         .filter((l) => /Read hooks\.json for plugin gutt-pro/.test(l));
-      const lint = run.debug
+      const companion = run.debug
         .split("\n")
-        .filter((l) => /Read hooks\.json for plugin auto-lint-plugin/.test(l));
+        .filter((l) => new RegExp(`Read hooks\\.json for plugin ${COMPANION_NAME}`).test(l));
       assert.equal(gutt.length, 1, `expected exactly one gutt plugin to load, got ${gutt.length}`);
-      assert.equal(lint.length, 1, `auto-lint-plugin did not load: ${lint.length} reads`);
+      assert.equal(
+        companion.length,
+        1,
+        `the companion plugin did not load: ${companion.length} reads`
+      );
       assert.match(
         gutt[0],
         new RegExp(REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
@@ -600,9 +662,9 @@ describe(
     });
 
     it("keeps its own state file, untouched by the other plugin", () => {
-      // Each plugin gets its own data dir, so auto-lint cannot reach gutt's state.
+      // Each plugin gets its own data dir, so the companion cannot reach gutt's state.
       assert.match(run.stateFile, /gutt-pro-inline/);
-      assert.doesNotMatch(run.stateFile, /auto-lint/);
+      assert.doesNotMatch(run.stateFile, new RegExp(COMPANION_NAME));
     });
   }
 );

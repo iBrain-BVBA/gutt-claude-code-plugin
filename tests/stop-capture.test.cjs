@@ -19,8 +19,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const judge = require("../shared/stop-judge.cjs");
-const { NESTED_ENV_VAR } = require("../shared/nested-run.cjs");
+const judge = require("../gutt-core/hooks/lib/stop-judge.cjs");
+const { NESTED_ENV_VAR } = require("../gutt-core/hooks/lib/nested-run.cjs");
 
 /** Write a transcript of `[{role, text}]` and return its path. */
 function transcript(dir, entries) {
@@ -475,11 +475,10 @@ describe("stop-judge: the injected output style", () => {
   });
 
   it("prefers CLAUDE_PLUGIN_ROOT, and still resolves without it", () => {
-    // `__dirname` is not stable across layouts: installed, this is a real file under
-    // hooks/lib/, so `../..` is the plugin root; in local development it is reached through
-    // a symlink and Node resolves `__dirname` to shared/, which puts `../..` outside the
-    // repo. The env var is the only candidate that is right in both, hence the order — and
-    // the fallbacks have to work, because a wrong root must not cost the style.
+    // `__dirname` puts the lib under hooks/lib/, so `../..` is the plugin root — but only
+    // when the plugin is laid out the way it ships. The env var is the candidate that
+    // survives a host resolving the hook from somewhere else, hence the order — and the
+    // fallbacks have to work, because a wrong root must not cost the style.
     const before = process.env.CLAUDE_PLUGIN_ROOT;
     process.env.CLAUDE_PLUGIN_ROOT = path.join(dir, "no-such-root");
     try {
@@ -621,19 +620,19 @@ describe("stop-judge: the injected output style", () => {
     }
   });
 
-  it("resolves the block in the installed layout, where the lib is a real file", () => {
-    // The candidate a marketplace install actually uses — a real `hooks/lib/stop-judge.cjs`,
-    // so `../..` is the plugin root — is unreachable from this checkout: Node realpaths the
-    // symlink to `shared/`, so an in-repo candidate always wins first. Corrupting that
-    // candidate therefore failed no test, which is why the layout is built here explicitly.
+  it("resolves the block from a plugin root elsewhere on disk", () => {
+    // The checkout and the install now have the same shape (GP-933), so the in-repo
+    // candidate would satisfy this test without the resolution being exercised at all —
+    // corrupting the copy under test would fail nothing. Building the tree somewhere else
+    // makes the `../..` walk the only thing that can find the block.
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-installed-"));
     const before = process.env.CLAUDE_PLUGIN_ROOT;
     try {
       const lib = path.join(root, "hooks", "lib");
       fs.mkdirSync(lib, { recursive: true });
-      const shared = path.join(__dirname, "..", "shared");
-      for (const entry of fs.readdirSync(shared).filter((e) => e.endsWith(".cjs"))) {
-        fs.copyFileSync(path.join(shared, entry), path.join(lib, entry));
+      const srcLib = path.join(__dirname, "..", "gutt-core", "hooks", "lib");
+      for (const entry of fs.readdirSync(srcLib).filter((e) => e.endsWith(".cjs"))) {
+        fs.copyFileSync(path.join(srcLib, entry), path.join(lib, entry));
       }
       const skill = path.join(root, "skills", STYLE_DIR);
       fs.mkdirSync(skill, { recursive: true });
@@ -893,9 +892,10 @@ describe("stop-capture: the router", () => {
   });
 });
 
-test("the shared lib is symlinked, not copied", () => {
-  assert.equal(
-    fs.realpathSync(path.join(__dirname, "..", "gutt-core", "hooks", "lib", "stop-judge.cjs")),
-    fs.realpathSync(path.join(__dirname, "..", "shared", "stop-judge.cjs"))
-  );
+test("the lib ships inside the plugin, as a real file", () => {
+  // The inverse of what this asserted until GP-933 — see the note on the same test in
+  // nested-run.test.cjs. A symlink here is a hook that cannot load on Windows.
+  const lib = path.join(__dirname, "..", "gutt-core", "hooks", "lib", "stop-judge.cjs");
+  assert.ok(!fs.lstatSync(lib).isSymbolicLink(), `${lib} is a symlink`);
+  assert.match(fs.readFileSync(lib, "utf8"), /module\.exports/, `${lib} is not JavaScript`);
 });
