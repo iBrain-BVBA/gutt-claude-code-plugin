@@ -150,9 +150,14 @@ const COMPANION_PLUGIN_NAME = "e2e-companion-plugin";
  * Generating a minimal plugin keeps that requirement covered without the suite
  * depending on some other plugin continuing to exist and continuing to ship hooks.
  *
- * Its handler is on `SessionStart` rather than a tool event so that it actually runs:
- * a coexistence run whose companion never fires proves only that two plugins can load
- * side by side, not that they can both handle an event in the same session.
+ * Its handler is on `SessionEnd`, and the event choice is load-bearing twice over. A
+ * tool event never fires, because the coexistence run denies every tool — so the
+ * companion would load and sit idle, proving only that two plugins can be registered
+ * side by side. `SessionStart` does fire, but the CLI registers it as a single opaque
+ * async hook and never writes the command string to the debug log, so a run cannot tell
+ * whose SessionStart handler ran. `SessionEnd` fires on every run *and* is logged as
+ * `[<command>] completed with status N`, which is the only channel that attributes a
+ * completion to a specific plugin's script.
  * @returns {string} absolute path to the new plugin directory
  */
 function createCompanionPlugin() {
@@ -174,7 +179,7 @@ function createCompanionPlugin() {
   const handler = { type: "command", command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/noop.cjs"` };
   fs.writeFileSync(
     path.join(dir, "hooks", "hooks.json"),
-    JSON.stringify({ hooks: { SessionStart: [{ matcher: "", hooks: [handler] }] } }, null, 2)
+    JSON.stringify({ hooks: { SessionEnd: [{ matcher: "", hooks: [handler] }] } }, null, 2)
   );
   fs.writeFileSync(path.join(dir, "hooks", "noop.cjs"), "process.exit(0);\n");
   return dir;

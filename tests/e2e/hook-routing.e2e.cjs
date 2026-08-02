@@ -610,9 +610,12 @@ describe(
     });
 
     it("runs the companion's hook, rather than merely loading the plugin", () => {
-      // Loading proves registration. A completion proves both plugins handled the same
-      // event in the same session, which is the thing coexistence has to mean — and it
-      // is why the companion's handler sits on SessionStart, an event this run fires.
+      // Loading proves registration; a completion proves both plugins handled an event
+      // in the same session, which is what coexistence has to mean. The companion's
+      // handler sits on SessionEnd because that is the only event whose completion the
+      // CLI attributes to a named script — SessionStart is registered as one opaque
+      // async hook whose command never reaches the debug log, so a companion there is
+      // unobservable rather than absent.
       assert.deepEqual(hookCompletions(run.debug, "noop.cjs"), [0]);
     });
 

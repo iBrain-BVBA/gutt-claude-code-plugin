@@ -171,9 +171,12 @@ depend on some other plugin continuing to exist and continuing to ship hooks.
 - both plugins' `hooks.json` are read; exactly one gutt plugin loads, from this repo
 - gutt's six handlers still register and the lifecycle still completes
 - no hook emits a blocking decision, and the session is not interrupted
-- the companion's `SessionStart` handler actually **runs** to completion alongside
-  gutt's, rather than merely being registered — the handler sits on an event this run
-  fires precisely so that coexistence is proven at execution time, not just load time
+- the companion's `SessionEnd` handler actually **runs** to completion alongside gutt's,
+  rather than merely being registered, so coexistence is proven at execution time and
+  not just at load time. `SessionEnd` is the event that makes this checkable: the CLI
+  logs it as `[<command>] completed with status N`, whereas a `SessionStart` handler is
+  registered as one opaque async hook whose command never appears in the log, and a tool
+  event never fires at all in a run that denies every tool
 - the companion's own data dir stays empty, so neither plugin writes into the other's
 
 ### Run 6 — the `/gutt-pro:` config command (GP-866, GP-931)
