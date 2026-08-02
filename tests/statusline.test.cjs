@@ -430,6 +430,32 @@ describe("what installing must refuse to do", () => {
     assert.equal(readSettings().statusLine.command, "npx -y ccstatusline@latest");
   });
 
+  it("never overwrites a status line it cannot make sense of", () => {
+    // A shape with no usable command is still a shape somebody chose. Reading it as
+    // an empty slot would overwrite the one case where we have least idea what we
+    // are destroying.
+    for (const statusLine of [
+      { type: "command", command: "" },
+      { type: "command" },
+      { type: "something-this-version-has-never-seen", script: "~/mine.sh" },
+      "npx -y ccstatusline@latest",
+    ]) {
+      writeSettings({ statusLine });
+      const result = install.installEntry({ settingsFile });
+      assert.equal(result.ok, false, `should refuse ${JSON.stringify(statusLine)}`);
+      assert.equal(result.status, "foreign");
+      assert.deepEqual(readSettings().statusLine, statusLine);
+    }
+  });
+
+  it("still installs over a null status line, which holds nothing to lose", () => {
+    writeSettings({ statusLine: null, model: "opus" });
+    const result = install.installEntry({ settingsFile });
+    assert.equal(result.ok, true);
+    assert.ok(install.isOurStatusLine(readSettings().statusLine.command));
+    assert.equal(readSettings().model, "opus");
+  });
+
   it("never rewrites a settings file it could not parse", () => {
     // Turning a syntax error someone can fix into data loss they cannot is worse
     // than a status line that does not appear.
@@ -469,6 +495,17 @@ describe("removing the HUD", () => {
     assert.equal(result.ok, false);
     assert.equal(result.status, "foreign");
     assert.equal(readSettings().statusLine.command, "~/.claude/my-own.sh");
+  });
+
+  it("leaves alone a status line it cannot make sense of", () => {
+    // Same predicate as install, so the two cannot drift apart: unrecognised means
+    // someone else's, and removal reports that rather than shrugging it off as
+    // nothing-to-do.
+    writeSettings({ statusLine: { type: "command", command: "" } });
+    const result = install.removeEntry({ settingsFile });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "foreign");
+    assert.deepEqual(readSettings().statusLine, { type: "command", command: "" });
   });
 
   it("is idempotent, and quiet when there was nothing to remove", () => {
@@ -669,5 +706,29 @@ describe("recognising our own status line", () => {
     assert.equal(install.isOurStatusLine(null), false);
     assert.equal(install.isOurStatusLine(undefined), false);
     assert.equal(install.isOurStatusLine(42), false);
+  });
+
+  it("classifies the slot the same way for every caller", () => {
+    // install, remove and the SessionStart re-assert all ask this one function, so
+    // there is no shape any of them can read differently from the others.
+    const ours = { statusLine: { type: "command", command: 'node "/x/statusline.cjs"' } };
+    assert.equal(install.classifyStatusLine(ours), "ours");
+    assert.equal(install.classifyStatusLine({}), "absent");
+    assert.equal(install.classifyStatusLine(null), "absent");
+    assert.equal(install.classifyStatusLine({ statusLine: null }), "absent");
+    assert.equal(install.classifyStatusLine({ statusLine: {} }), "foreign");
+    assert.equal(install.classifyStatusLine({ statusLine: { command: "" } }), "foreign");
+    assert.equal(install.classifyStatusLine({ statusLine: "a string" }), "foreign");
+  });
+
+  it("reports an unreadable shape as foreign to the re-assert path too", () => {
+    // Otherwise #62486 repair would read the slot as free and write over it.
+    writeSettings({ statusLine: { type: "command" } });
+    assert.deepEqual(install.entryPresent(settingsFile), {
+      present: false,
+      known: true,
+      foreign: true,
+    });
+    assert.equal(install.reassertEntry({ consented: true, settingsFile }).status, "foreign");
   });
 });

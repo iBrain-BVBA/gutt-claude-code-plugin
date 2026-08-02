@@ -208,6 +208,32 @@ function isOurStatusLine(command) {
 }
 
 /**
+ * What occupies the `statusLine` slot: nothing, ours, or someone else's.
+ *
+ * The single place that question is answered, because it used to be answered
+ * separately in three and the three did not agree. Anything present that cannot be
+ * positively recognised is **foreign** — including entries carrying no usable
+ * `command` at all, such as `{type: "command", command: ""}`, a bare string, or a
+ * schema this version of the plugin has never seen. The promise this module makes
+ * is that it never overwrites a status line someone else wrote, and unrecognised
+ * has to fall on the someone-else side for that promise to hold: a shape we cannot
+ * read is not evidence the slot is free.
+ *
+ * `null` is the one thing treated as absent, since it holds no configuration that
+ * overwriting could destroy.
+ *
+ * @param {Object|null} settings
+ * @returns {"absent"|"ours"|"foreign"}
+ */
+function classifyStatusLine(settings) {
+  const entry = settings?.statusLine;
+  if (entry === undefined || entry === null) {
+    return "absent";
+  }
+  return isOurStatusLine(entry?.command) ? "ours" : "foreign";
+}
+
+/**
  * Whole-file backup before any rewrite, mirroring migrations.cjs.
  *
  * Backing up only the key being changed would still lose the file if the rewrite
@@ -236,10 +262,14 @@ function backupSettings(settingsFile, raw, now) {
  * Replace settings.json without ever leaving it absent.
  *
  * plugin-state's `atomicWrite` cannot be used: it refuses paths outside the data
- * dir, correctly, since that refusal is the point of R37. Same two rules though —
- * process-unique temp name, then rename *over* the target rather than
- * unlink-then-write, because hooks run in parallel and the moment settings.json is
- * missing a concurrent reader falls back to defaults.
+ * dir, correctly, since that refusal is the point of R37. So this mirrors its rules
+ * rather than calling it — process-unique temp name, then rename *over* the target
+ * rather than unlink-then-write, because hooks run in parallel and the moment
+ * settings.json is missing a concurrent reader falls back to defaults and can write
+ * those back. Windows is the exception, and it is `atomicWrite`'s exception too:
+ * there a rename onto an existing file can fail outright, so the target has to go
+ * first and the gap is unavoidable. Skipping that fallback here would not preserve
+ * the file, it would just fail the write on one platform.
  *
  * @param {string} absPath
  * @param {Object} settings
@@ -251,7 +281,15 @@ function writeSettings(absPath, settings) {
     // Two-space, matching what Claude Code itself writes. The rewrite reformats the
     // file; the verbatim backup is what makes that acceptable.
     fs.writeFileSync(tmp, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
-    fs.renameSync(tmp, absPath);
+    try {
+      fs.renameSync(tmp, absPath);
+    } catch (renameErr) {
+      if (!["EEXIST", "EPERM", "EACCES"].includes(renameErr.code)) {
+        throw renameErr;
+      }
+      fs.unlinkSync(absPath);
+      fs.renameSync(tmp, absPath);
+    }
     return true;
   } catch (err) {
     debugLog("statusline-install", `failed to rewrite ${absPath}: ${err.message}`);
@@ -279,12 +317,8 @@ function entryPresent(settingsFile) {
   if (state === "unreadable") {
     return { present: false, known: false, foreign: false };
   }
-  const command = settings?.statusLine?.command;
-  if (typeof command !== "string" || command.trim() === "") {
-    return { present: false, known: true, foreign: false };
-  }
-  const ours = isOurStatusLine(command);
-  return { present: ours, known: true, foreign: !ours };
+  const kind = classifyStatusLine(settings);
+  return { present: kind === "ours", known: true, foreign: kind === "foreign" };
 }
 
 /**
@@ -330,8 +364,7 @@ function installEntry({ settingsFile, now = Date.now() } = {}) {
     };
   }
 
-  const existing = settings?.statusLine?.command;
-  if (typeof existing === "string" && existing.trim() !== "" && !isOurStatusLine(existing)) {
+  if (classifyStatusLine(settings) === "foreign") {
     return {
       ok: false,
       status: "foreign",
@@ -390,11 +423,11 @@ function removeEntry({ settingsFile, now = Date.now() } = {}) {
     };
   }
 
-  const command = settings?.statusLine?.command;
-  if (typeof command !== "string" || command.trim() === "") {
+  const kind = classifyStatusLine(settings);
+  if (kind === "absent") {
     return { ok: true, status: "not-installed" };
   }
-  if (!isOurStatusLine(command)) {
+  if (kind === "foreign") {
     return {
       ok: false,
       status: "foreign",
@@ -460,6 +493,7 @@ module.exports = {
   shimContents,
   shimCommand,
   isOurStatusLine,
+  classifyStatusLine,
   refreshShim,
   entryPresent,
   installEntry,
