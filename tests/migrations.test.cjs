@@ -35,9 +35,20 @@ function pluginStatusLine(target) {
   return { type: "command", command: `node "${target}"` };
 }
 
-/** The plugin-owned path 2.x pointed statusLine at, under the sandbox. */
+/**
+ * The plugin-owned path 2.x pointed statusLine at, under the sandbox.
+ *
+ * The directory carries the attribution, and that is the whole point of it. This
+ * fixture used to read `cache/plugin_01ABC/hooks/statusline.cjs` — a shape nothing
+ * ever installed, and one with no gutt segment in it at all — so it was the sandbox
+ * *name* that satisfied attribution, back when the sandbox was `mkdtemp`'d as
+ * `gutt-migrations-XXXX` and the predicate matched a substring. Every test in this
+ * file that turns on "the migration recognises its own file" was really asserting
+ * something about `os.tmpdir()`. The prefix below is deliberately neutral so that
+ * can never silently happen again.
+ */
 function deadTarget() {
-  return path.join(sandbox, "cache", "plugin_01ABC", "hooks", "statusline.cjs");
+  return path.join(sandbox, "cache", "gutt-plugins", "gutt-pro", "hooks", "statusline.cjs");
 }
 
 function writeSettings(obj) {
@@ -54,7 +65,10 @@ function run(now = 1_700_000_000_000) {
 }
 
 beforeEach(() => {
-  sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-migrations-"));
+  // Neutral on purpose — see deadTarget(). A sandbox named after this plugin sits in
+  // every path under test and can stand in for attribution the fixture meant to
+  // provide itself.
+  sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "cc-migrations-"));
   claudeDir = path.join(sandbox, ".claude");
   dataDir = path.join(sandbox, "data");
   settingsFile = path.join(claudeDir, "settings.json");
@@ -108,6 +122,54 @@ describe("the dead-statusLine predicate", () => {
         false,
         `must not claim ownership of: ${command || "(empty)"}`
       );
+    }
+  });
+
+  // The regression that made this predicate dangerous rather than merely wrong: the
+  // marker set included the bare fragment `plugins`, which is in the path of every
+  // plugin's data directory, so another vendor's dead status line read as ours and
+  // was deleted. Both names below are real directories from a real install.
+  it("never claims another plugin's status line, however dead", () => {
+    for (const dir of ["context7-claude-plugins-official", "ralph-loop-claude-plugins-official"]) {
+      const target = path.join(sandbox, "plugins", "data", dir, "statusline.cjs");
+      assert.equal(fs.existsSync(target), false, "the fixture must be a *dead* target");
+      assert.equal(
+        migrations.isDeadPluginStatusLine(`node "${target}"`),
+        false,
+        `must not claim ownership of ${dir}`
+      );
+    }
+  });
+
+  // The second half of the same lesson. `gutt` is a short string and the filesystem
+  // is full of words that contain it; only a whole path segment is evidence of who
+  // installed a file. A user's own home directory is the case that reaches furthest —
+  // it prefixes every path they own.
+  it("does not read our name out of the middle of somebody else's word", () => {
+    const notOurs = [
+      path.join("/Users", "gutterson", "bin", "statusline.cjs"),
+      path.join("/home", "u", "projects", "reguttering", "statusline.cjs"),
+      path.join("/opt", "arguttler", "hooks", "gutt-statusline.cjs"),
+    ];
+    for (const target of notOurs) {
+      assert.equal(
+        migrations.isOurPluginDir(target),
+        false,
+        `a segment merely containing "gutt" must not confer ownership: ${target}`
+      );
+    }
+  });
+
+  it("still recognises every directory this plugin actually installs into", () => {
+    const ours = [
+      path.join("/h", ".claude", "plugins", "data", "gutt-pro-gutt-plugins", "statusline.cjs"),
+      path.join("/h", ".claude", "plugins", "data", "gutt-pro-inline", "statusline.cjs"),
+      path.join("/h", ".claude", "plugins", "cache", "gutt-plugins", "gutt-pro", "statusline.cjs"),
+      // Windows, where a settings.json written on one platform may be read on another.
+      "C:\\Users\\u\\.claude\\plugins\\data\\gutt-pro-gutt-plugins\\statusline.cjs",
+    ];
+    for (const target of ours) {
+      assert.equal(migrations.isOurPluginDir(target), true, `must still own: ${target}`);
     }
   });
 

@@ -23,14 +23,16 @@ that migration.
 All access goes through **`gutt-core/hooks/lib/plugin-state.cjs`**. Paths are resolved from
 `${CLAUDE_PLUGIN_DATA}`; no code joins its own `.state` path anymore.
 
-| File                                               | Written by                                                                               | Notes                                                                                                                                                                                                                                                                                                                     |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions/<session_id>.json`                       | `session-state.cjs`                                                                      | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                             |
-| `config.json`                                      | `runtime-config.cjs` for everything but `migrationsVersion`, which is `migrations.cjs`'s | Runtime on/off, mode, snooze, the integer `migrationsVersion` recording which one-time cleanups this machine has had, and the per-project `projects` space (GP-922 — see below). **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `hooks/lib/config.cjs` reads. |
-| `hook-errors.log`                                  | `debug.cjs`                                                                              | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                                              |
-| `hook-invocations.log`                             | `user-prompt-submit`                                                                     | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                                                       |
-| `migrations/settings-backup-<ms>.json`             | `migrations.cjs` (GP-895)                                                                | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover.                           |
-| `migrations/builtin-memory-<projectKey>-<ms>.json` | `builtin-memory-store.cjs` (GP-922)                                                      | Every fact in a project's Claude Code memory store, captured verbatim before the store is migrated into gutt, plus the `verified` map that authorises each deletion. **Never swept**, same reasoning as the row above: it is the only remaining copy's undo. One per migration attempt per project.                       |
+| File                                               | Written by                                                                               | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions/<session_id>.json`                       | `session-state.cjs`                                                                      | Per-session lifecycle flags, keyed on the stdin `session_id` (not the date) so concurrent sessions don't collide. Holds the GP-863 lifecycle fields, the GP-864 recall counter, and the connectivity result the statusline reads. Swept >24h at SessionStart.                                                                                                                                                                                           |
+| `config.json`                                      | `runtime-config.cjs` for everything but `migrationsVersion`, which is `migrations.cjs`'s | Runtime on/off, mode, snooze, the integer `migrationsVersion` recording which one-time cleanups this machine has had, and the per-project `projects` space (GP-922 — see below). **Distinct from** the static, git-ignored plugin `config.json` at the repo/plugin root (org group_id) that `hooks/lib/config.cjs` reads.                                                                                                                               |
+| `statusline.cjs`                                   | `statusline-install.cjs` (GP-867)                                                        | A generated `require` of the current plugin root's renderer, plus the `${CLAUDE_PLUGIN_DATA}` a status line is launched without and a guard for the case where the renderer has gone. The user's `settings.json` names **this** path, which is stable, rather than `${CLAUDE_PLUGIN_ROOT}`, which is version-scoped and moves on every update. Rewritten at SessionStart whenever the root has moved; not swept, since the settings entry points at it. |
+| `hook-errors.log`                                  | `debug.cjs`                                                                              | Best-effort error log. Trimmed to the newest 200 lines once it passes 256KB.                                                                                                                                                                                                                                                                                                                                                                            |
+| `hook-invocations.log`                             | `user-prompt-submit`                                                                     | Prompt/stop breadcrumbs. Same 256KB/200-line bound.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `migrations/settings-backup-<ms>.json`             | `migrations.cjs` (GP-895)                                                                | The user's `~/.claude/settings.json`, verbatim, taken immediately before the one-time 2.x cleanup edits it. Written at most once per machine and **never swept** — it is the undo for an edit to a file the plugin does not own, so a TTL on it would be a TTL on someone's ability to recover.                                                                                                                                                         |
+| `migrations/settings-backup-statusline-<ms>.json`  | `statusline-install.cjs` (GP-867)                                                        | The same file, taken before `/gutt-pro:statusline` adds or removes the `statusLine` key. Distinct in name from the row above on purpose: this one is written whenever the HUD is installed or repaired, and it prunes to the newest five — under a shared name that sweep would evict the migration's single irreplaceable copy within a few sessions.                                                                                                  |
+| `migrations/builtin-memory-<projectKey>-<ms>.json` | `builtin-memory-store.cjs` (GP-922)                                                      | Every fact in a project's Claude Code memory store, captured verbatim before the store is migrated into gutt, plus the `verified` map that authorises each deletion. **Never swept**, same reasoning as the row above: it is the only remaining copy's undo. One per migration attempt per project.                                                                                                                                                     |
 
 The artifacts named by the R37 state contract are the first two rows; the rest are
 caches, logs, and backups that rebuild themselves or are written once.
@@ -43,21 +45,37 @@ work, so GP-873 closed as not needed and the file was removed from the sweep, fr
 
 ### Keys in `sessions/<session_id>.json`
 
-| Key                                                                  | Producer                                                                   | Consumer                                    |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------- |
-| `sessionId`, `startedAt`, `rev`, `lastUpdated`                       | `session-state.cjs` on every write                                         | bookkeeping; `rev` counts serialized writes |
-| `source`                                                             | SessionStart (the matcher that fired)                                      | diagnostics                                 |
-| `firstPromptPending`                                                 | SessionStart (`startup`/`resume`/`clear`)                                  | UserPromptSubmit row 2 — consumed on read   |
-| `compacted`                                                          | SessionStart (`compact`)                                                   | UserPromptSubmit row 3 — consumed on read   |
-| `turnsSinceSearch`                                                   | PostToolUse resets to 0; UserPromptSubmit and a compaction each advance it | UserPromptSubmit row 4 — see below          |
-| `connectionStatus`, `mcpConfigured`, `mcpUrl`, `connectionCheckedAt` | `session-connectivity.cjs` (async)                                         | `statusline.cjs`, read-only                 |
-| `endedAt`, `endReason`                                               | SessionEnd                                                                 | the statusline and the next SessionStart    |
+| Key                                              | Producer                                                                        | Consumer                                      |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- | --------------------------------------------- |
+| `sessionId`, `startedAt`, `rev`, `lastUpdated`   | `session-state.cjs` on every write                                              | bookkeeping; `rev` counts serialized writes   |
+| `source`                                         | SessionStart (the matcher that fired)                                           | diagnostics                                   |
+| `firstPromptPending`                             | SessionStart (`startup`/`resume`/`clear`)                                       | UserPromptSubmit row 2 — consumed on read     |
+| `compacted`                                      | SessionStart (`compact`)                                                        | UserPromptSubmit row 3 — consumed on read     |
+| `turnsSinceSearch`                               | PostToolUse resets to 0; UserPromptSubmit and a compaction each advance it      | UserPromptSubmit row 4 — see below            |
+| `mcpConfigured`, `mcpUrl`, `connectionCheckedAt` | `session-connectivity.cjs` (async)                                              | `statusline.cjs`, read-only                   |
+| `mcpError`                                       | `session-connectivity.cjs` (async)                                              | nobody — written for a human reading the file |
+| `connectionStatus`, `connectionObservedAt`       | `noteConnection()` from PostToolUse — only an observed round trip               | `statusline.cjs`, read-only                   |
+| `mcpToolsAvailable`, `mcpToolsAvailableAt`       | UserPromptSubmit every prompt; PostToolUse when stale; SessionStart if known    | `statusline.cjs`, and PostToolUse's debounce  |
+| `statuslineReassert`                             | `session-connectivity.cjs` (async), every repair — `null` when it succeeded     | `/gutt-pro:statusline status`                 |
+| `statuslineShim`                                 | `session-connectivity.cjs` (async), `null` unless the shim could not be written | `/gutt-pro:statusline status`                 |
+| `endedAt`, `endReason`                           | SessionEnd                                                                      | the statusline and the next SessionStart      |
 
 `turnsSinceSearch` is `null` until a recall call is seen, and `null` is not the same
 as `0`: it means "nothing recalled in this conversation" and gates nothing, where
 `0` means a recall just happened and gates. A `startup` or `clear` resets it to
 `null` because those begin with an empty context; `resume` and `compact` keep it,
 because they keep the transcript the recall is still sitting in.
+
+The two statusline fields carry different shapes, and both are rewritten on every
+SessionStart rather than only on failure — the event fires again on resume, `/clear`
+and compaction against the same record, so a field written only when something goes
+wrong is written once and never corrected:
+
+- `statuslineReassert` — `null`, or `{status, detail}`. The `detail` is what
+  `/gutt-pro:statusline status` prints, and on the `settings-lost` path it is the only
+  copy of the sentence naming where the user's `settings.json` went: running the
+  install again finds no file, takes the "create one" branch, and reports success.
+- `statuslineShim` — `null`, or a string naming the shim that could not be written.
 
 ### Keys in `config.json`
 
@@ -68,10 +86,11 @@ because they keep the transcript the recall is still sitting in.
 | `snoozeUntil`, `snoozeSessionId` | `/gutt-pro:off [N\|session]`, sweeps | `runtime-config.cjs` (GP-863) | machine-global  |
 | `migrationsVersion`              | `migrations.cjs` (GP-895)            | `migrations.cjs`              | machine-global  |
 | `projects`                       | migration offer (GP-922)             | `runtime-config.cjs` (GP-922) | **per project** |
+| `statusline`                     | `/gutt-pro:statusline` (GP-867)      | `runtime-config.cjs` (GP-867) | machine-global  |
 
 `runtime-config.cjs` may mutate only the keys in its `OWNED_KEYS` list — the two
-preference keys, the two snooze keys, and `projects`. `migrationsVersion` is the one
-key in this file it must not touch.
+preference keys, the two snooze keys, `projects`, and `statusline`.
+`migrationsVersion` is the one key in this file it must not touch.
 
 Until GP-866 the rule here was stronger: `enabled` and `mode` were declared in
 `DEFAULTS`, read by nobody, and documented as "must not be written from a hook". That
@@ -131,18 +150,44 @@ second one.
 GP-863 removed the last state that lived outside `${CLAUDE_PLUGIN_DATA}`. These
 are now banned outright by `tests/check-state-location.cjs`, not merely discouraged:
 
-| Retired                                        | Replaced by                                            |
-| ---------------------------------------------- | ------------------------------------------------------ |
-| project-tree `PROJECT_STATE_DIR`               | `${CLAUDE_PLUGIN_DATA}` (GP-855)                       |
-| `<session_id>.lessons-prompted` marker files   | `lessonsPromptedAt` in the session JSON                |
-| `~/.claude/.gutt-statusline-configured` marker | nothing — the statusline auto-setup it guarded is gone |
-| writes to the user's `~/.claude/settings.json` | nothing — see below                                    |
+| Retired                                          | Replaced by                                             |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| project-tree `PROJECT_STATE_DIR`                 | `${CLAUDE_PLUGIN_DATA}` (GP-855)                        |
+| `<session_id>.lessons-prompted` marker files     | `lessonsPromptedAt` in the session JSON                 |
+| `~/.claude/.gutt-statusline-configured` marker   | nothing — the statusline auto-setup it guarded is gone  |
+| _unprompted_ writes to `~/.claude/settings.json` | `/gutt-pro:statusline`, which the user runs — see below |
 
 `sessionstart-setup.cjs` used to write the HUD statusline into the user's
 `settings.json` on first run. Besides violating R37, it wrote the **plugin's
 current cache path**, which for plugin installs is session-scoped and dead as
-soon as that session ends — so the entry it left behind rotted immediately. The
-hook is deleted; re-landing the HUD is **GP-867 (S3.6)**.
+soon as that session ends — so the entry it left behind rotted immediately.
+
+### Writing `settings.json`, and the line that replaced the ban (GP-867)
+
+The ban was briefly absolute, and could not stay that way: Claude Code accepts a
+`statusLine` only from the user's own settings, never from a plugin's, so an
+absolute ban is a decision to have no HUD. What survives is the property the ban was
+protecting, stated directly — **nothing writes `settings.json` unless the user asked
+for it.**
+
+`statusline-install.cjs` is the only steady-state writer, and it is narrow in four
+ways: it touches exactly one key; it runs only from `/gutt-pro:statusline`; it backs
+the whole file up to `migrations/settings-backup-statusline-<ms>.json` first; and it refuses
+outright on a status line it did not write or a file it could not parse.
+
+It writes once without being asked again, and only in one case. Claude Code rewrites
+`settings.json` mid-session and drops keys it is not currently serialising —
+`statusLine`, `enabledPlugins` and `hooks` among them
+([anthropics/claude-code#62486](https://github.com/anthropics/claude-code/issues/62486),
+closed as not planned). The consent is therefore persisted under the `statusline`
+key of the runtime config, and the async SessionStart hook restores the entry when,
+and only when, consent is on file and the entry has gone. A hook that configured
+settings for someone who never asked would still be the violation GP-863 deleted.
+
+The other half of the mechanism is why the entry stays valid: it points at
+`${CLAUDE_PLUGIN_DATA}/statusline.cjs`, not at the versioned plugin root. That is the
+row in the table above, and it is what stops this entry rotting the way the 2.x one
+did.
 
 ### The one-time 2.x cleanup (GP-895)
 
@@ -153,12 +198,12 @@ paths — so a stale `statusLine` kept firing on every render, dumping a Node
 
 `hooks/lib/migrations.cjs` clears that, gated by `session-start.cjs`:
 
-| Removed                                                    | Only when                                                                   |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `statusLine` in the user's `~/.claude/settings.json`       | it names a plugin-owned `statusline.cjs` **and** that file no longer exists |
-| `~/.claude/.gutt-statusline-configured`                    | present                                                                     |
-| `~/.claude/gutt-{memory-cache,seed-registry,session}.json` | present — the `gutt` prefix is the whole attribution rule                   |
-| `{memory-cache,seed-registry,gutt-*}.json` in the data dir | present                                                                     |
+| Removed                                                    | Only when                                                                                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `statusLine` in the user's `~/.claude/settings.json`       | its directory has a whole path segment naming this plugin, its basename is one of ours, **and** that file no longer exists |
+| `~/.claude/.gutt-statusline-configured`                    | present                                                                                                                    |
+| `~/.claude/gutt-{memory-cache,seed-registry,session}.json` | present — the `gutt` prefix is the whole attribution rule                                                                  |
+| `{memory-cache,seed-registry,gutt-*}.json` in the data dir | present                                                                                                                    |
 
 Rules this follows, each one because the alternative is worse than leaving the
 damage in place:

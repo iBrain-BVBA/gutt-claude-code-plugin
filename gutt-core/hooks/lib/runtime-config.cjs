@@ -68,10 +68,24 @@ const DEFAULTS = {
    * machine that has never been offered a migration has no `projects` key at all.
    */
   projects: {},
+  /**
+   * Whether the user has asked for the HUD (GP-867). `{installed, at}` once
+   * `/gutt-pro:statusline` has run, absent before that.
+   *
+   * This is a consent record, not a cache of what settings.json says. It is the
+   * difference between restoring a status line the user chose and adding one they
+   * never asked for — and it has to be stored, because the thing that removes the
+   * setting (Claude Code dropping keys mid-session) leaves no trace to infer it
+   * from afterwards.
+   */
+  statusline: {},
 };
 
 /** The per-project key space. */
 const PROJECTS_KEY = "projects";
+
+/** The HUD consent key space. */
+const STATUSLINE_KEY = "statusline";
 
 /**
  * Keys this module is allowed to mutate.
@@ -89,7 +103,7 @@ const PROJECTS_KEY = "projects";
  */
 const SNOOZE_KEYS = ["snoozeUntil", "snoozeSessionId"];
 const PREFERENCE_KEYS = ["enabled", "mode"];
-const OWNED_KEYS = [...PREFERENCE_KEYS, ...SNOOZE_KEYS, PROJECTS_KEY];
+const OWNED_KEYS = [...PREFERENCE_KEYS, ...SNOOZE_KEYS, PROJECTS_KEY, STATUSLINE_KEY];
 
 /**
  * The capture modes `/gutt-pro:mode` accepts. Exported because E4 (GP-874) reads the
@@ -116,7 +130,7 @@ function configPath() {
 /**
  * Config as consumers should see it: stored values over documented defaults.
  * Never writes, so a session that only reads config leaves no file behind.
- * @returns {{enabled: boolean, mode: string, snoozeUntil: string|null, snoozeSessionId: string|null, projects: Object}}
+ * @returns {{enabled: boolean, mode: string, snoozeUntil: string|null, snoozeSessionId: string|null, projects: Object, statusline: Object}}
  */
 function readConfig() {
   const stored = readJson(configPath(), null) || {};
@@ -128,6 +142,7 @@ function readConfig() {
     // like its own copy would change what every later read returns. Same hazard
     // session-state avoids by building its default record per call.
     [PROJECTS_KEY]: { ...(stored[PROJECTS_KEY] || {}) },
+    [STATUSLINE_KEY]: { ...(stored[STATUSLINE_KEY] || {}) },
   };
 }
 
@@ -191,10 +206,33 @@ function snoozeApplies({ snoozeUntil, snoozeSessionId }, sessionId, now) {
  * lifecycle tests assert about.
  * @param {string|null} [sessionId]
  * @param {number} [now]
+ * @param {Object|null} [config] an already-read config, so a caller wanting both
+ *   this and `snoozeDeadline` pays for one read rather than two. Omit it and this
+ *   reads for itself.
  * @returns {boolean}
  */
-function isSnoozed(sessionId = null, now = Date.now()) {
-  return snoozeApplies(readConfig(), sessionId, now);
+function isSnoozed(sessionId = null, now = Date.now(), config = null) {
+  return snoozeApplies(config || readConfig(), sessionId, now);
+}
+
+/**
+ * When a snooze lapses, as a Date, or null when there is no wall-clock deadline.
+ *
+ * Split from `isSnoozed` rather than folded into it because the two answers have
+ * different shapes and only one caller wants both: the HUD shows `zzz→14:30` so
+ * "when does this come back" is answerable without running a command. A
+ * session-scoped snooze has no deadline to show — it ends when the session does —
+ * and that is a null rather than a guess at one.
+ *
+ * Takes an already-read config so a caller needing both halves pays for one read.
+ * That is the same reason `snoozeApplies` exists separately from `isSuppressed`.
+ *
+ * @param {{snoozeUntil: string|null}} config
+ * @returns {Date|null}
+ */
+function snoozeDeadline(config) {
+  const until = Date.parse(config?.snoozeUntil ?? "");
+  return Number.isFinite(until) ? new Date(until) : null;
 }
 
 /**
@@ -473,6 +511,42 @@ function isMigrationSettled(projectKey) {
 }
 
 /**
+ * Has the user ever asked for the HUD (GP-867)?
+ *
+ * The gate on the one write that happens without being asked in the moment. Read
+ * with a strict `=== true`, matching how `isSuppressed` reads `enabled` and how
+ * `readMigrationState` refuses a status it does not recognise: an absent, corrupt,
+ * or hand-edited value means "no consent recorded", and no consent means nothing
+ * touches the user's settings.
+ *
+ * @returns {boolean}
+ */
+function statuslineConsented() {
+  return readRawConfig()?.[STATUSLINE_KEY]?.installed === true;
+}
+
+/**
+ * Record that the user asked for the HUD, or withdrew the request.
+ *
+ * Scoped to its own key like every other mutator here — `OWNED_KEYS` is a statement
+ * about the module, not a licence for any single writer.
+ *
+ * @param {boolean} installed
+ * @param {number} [now]
+ * @returns {boolean} true if written
+ */
+function setStatuslineConsent(installed, now = Date.now()) {
+  return updateConfig((config) => {
+    const next = config || {};
+    next[STATUSLINE_KEY] = {
+      installed: Boolean(installed),
+      at: new Date(now).toISOString(),
+    };
+    return next;
+  });
+}
+
+/**
  * Record the answer for one project. Rejects an unknown status rather than storing
  * it — a typo must not silently become a permanent `declined`.
  *
@@ -513,6 +587,7 @@ module.exports = {
   readRawConfig,
   readRawConfigState,
   isSnoozed,
+  snoozeDeadline,
   isSuppressed,
   setSnooze,
   clearExpiredSnooze,
@@ -521,6 +596,10 @@ module.exports = {
   setEnabled,
   setMode,
   restore,
+  // GP-867 HUD consent
+  STATUSLINE_KEY,
+  statuslineConsented,
+  setStatuslineConsent,
   // GP-922 built-in memory migration
   readMigrationState,
   isMigrationSettled,

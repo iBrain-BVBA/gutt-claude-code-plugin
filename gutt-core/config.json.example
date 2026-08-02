@@ -1,10 +1,5 @@
 {
   "gutt": {
-    "group_id": "YOUR_GROUP_ID",
-    "statusline": {
-      "passthroughCommand": "",
-      "multiLine": true,
-      "showTicker": true
-    }
+    "group_id": "YOUR_GROUP_ID"
   }
 }

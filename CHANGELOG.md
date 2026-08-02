@@ -4,6 +4,181 @@
 
 ### Fixed
 
+- **gutt could delete or overwrite another plugin's status line.** Ownership of a
+  `statusLine` entry was inferred from the path containing any of four fragments, one
+  of which was the bare word `plugins` — and Claude Code puts every plugin's data
+  under `~/.claude/plugins/data/`, so another vendor's `statusline.cjs` there read as
+  ours. `/gutt-pro:statusline off` would have removed it and `/gutt-pro:statusline`
+  overwritten it. Attribution now requires a whole path _segment_ naming this plugin,
+  which neither the container every plugin shares nor a directory that merely spells
+  `gutt` inside a longer word can satisfy (GP-867)
+- **A blank status bar reported itself as healthy, twice over.** The generated entry
+  point swallowed every load failure identically, so a renderer that was present and
+  broken — a half-finished update, or the mangled checkout that shipped 3.0.0 dead on
+  Windows — looked exactly like a plugin that had been uninstalled. `status` could not
+  see it either: it checked whether _this_ version's renderer existed, which is true
+  in essentially every case where there is a command around to ask, rather than
+  following the path the entry point actually names. The entry point now distinguishes
+  a missing renderer from a broken one and writes the reason down, `status` follows the
+  real target and reports a stale entry point, and the renderer's own safety net says
+  it caught something instead of showing the glyph for "nothing observed yet" (GP-867)
+- **An unreadable transcript withdrew a sign-in warning it could not re-establish.**
+  Past the scan cap every prompt answers "unknown", and that abstention overwrote a
+  stored disconnection — turning a correct `🟡 - auth needed!` into a neutral glyph for
+  the rest of the session, deleting the one instruction the user could act on. An
+  abstention may now retire a green and nothing else (GP-867)
+- **A repair failure was reported for the rest of the session after it was fixed.**
+  SessionStart runs again on resume, `/clear` and compaction against the same record,
+  so a field only written on failure was never corrected. It now records every attempt,
+  and carries the reason out with it — on the path that can lose `settings.json`, the
+  sentence naming where the file went was being dropped in favour of an internal
+  token, and nothing could reconstruct it afterwards (GP-867)
+- **Two commands framed a lost `settings.json` as a file they had not touched.** The
+  distinction between "could not write it, it is unchanged" and "could not write it and
+  could not put it back" was made inside the module and then contradicted by both
+  callers, which prefixed either with `gutt did not change your settings`. `off` also
+  answered "nothing changed" after withdrawing the consent that decides whether the HUD
+  ever returns — the one thing its most likely caller wanted (GP-867)
+- **A failed settings write could leave `~/.claude/settings.json` missing.** The
+  Windows rename fallback unlinks the target before its second attempt; if that
+  attempt also failed, the generic cleanup then deleted the temp file holding the only
+  remaining copy — losing permissions, model, env and every other plugin's config, and
+  reporting it as `could not write`, which reads as a no-op. The cleanup now stops at
+  the point of no return, the replacement is left on disk, and the message names both
+  it and the backup (GP-867)
+- **The HUD printed nothing at all on two stdin shapes.** `JSON.parse("null")`
+  succeeds, so the guard around the parse never fired and the null reached the render;
+  a `display_name` whose `toString` is shadowed threw the same way. Both blanked the
+  bar several times a second. The payload is checked for shape rather than only
+  syntax, text fields are coerced safely, and the render as a whole now has a net
+  under it — the lesson the cost segment taught was that the net belongs around the
+  whole line, not around whichever operation looked risky (GP-867)
+- **A connectivity probe that threw was reported as "not configured".** It rendered
+  `!` and told the user to run setup on a configuration that may have been fine, and
+  it suppressed the amber sign-in prompt, letting an old success paint a dead server
+  green. "Could not tell" is now distinct from "nothing there" in the value consumers
+  actually read (GP-867)
+- **A green glyph could outlive all evidence for it.** Past the transcript scan cap a
+  long session reports tool availability as unknown, which overwrote a stored
+  disconnection; the pre-drop success then spoke for the server indefinitely. An
+  uncorroborated success older than ten minutes now lapses to neutral. Warnings are
+  left standing — a stale warning costs one needless check, a stale green costs a
+  memory system you do not know has stopped (GP-867)
+- **`/gutt-pro:statusline off` could be undone by the next session.** The consent
+  record was written after the removal and its result discarded, so a failed write
+  left the flag that reinstalls the HUD. Consent is withdrawn first and every failure
+  is reported. `status` no longer promises a repair it has not checked, and can now
+  see a HUD whose entry point is missing rather than reporting the settings key and
+  stopping there (GP-867)
+- **PostToolUse no longer spawns a process on every tool call.** The matcher had been
+  widened to every tool so a dropped server could be noticed mid-turn; each firing is
+  a blocking `node` launch (~89ms against a ~74ms floor), so a 200-call session paid
+  around 18 seconds for it. The prompt hook already re-reads availability every turn,
+  so the gap that closed was one turn (GP-867)
+- **Settings backups no longer accumulate without bound — or evict the wrong ones.**
+  They are written on a path nothing sweeps, once per session where the platform drops
+  the `statusLine` key, each a verbatim copy of `settings.json` including its `env`
+  block. The newest five are kept. The sweep is now namespaced to the backups it
+  writes: the 2.x migration puts its own copy in the same directory under the same
+  prefix, and that one can be the last image of `settings.json` from before the
+  upgrade — it was being evicted within five sessions (GP-867)
+
+### Added
+
+- **The statusline HUD is back, as an opt-in that survives upgrades.** Turn it on
+  with `/gutt-pro:statusline`; `off` removes it, `status` reports it. It shows
+  connection state, whether recall is `on`, `off` or snoozed (with the time a
+  snooze lapses), the capture mode when it is not `auto`, the group being written
+  to, the model, and how much of the context window is spent. Segments drop from
+  the right as the terminal narrows and the state segment always survives; a
+  segment whose data does not exist is omitted rather than rendered as a zero.
+
+  ```
+  [gutt 🟢 on acme-eng] | [Opus 5] ctx 38%
+  ```
+
+  **Neither session cost nor turns-since-recall is on the bar.** The bar is narrow
+  and a segment has to change what you do next to earn the space. A turn counter
+  never did. Cost was worse: the figure Claude Code reports is an API price, so on a
+  subscription it was a bill you will never be charged, redrawn several times a
+  second — and reading it was the one piece of unguarded arithmetic in the renderer,
+  so a `total_cost_usd` arriving as `null` or a string threw, and a status line that
+  throws prints nothing at all. A single malformed field used to blank the whole HUD
+  on every refresh. Context usage is validated the same way now: a bad field costs
+  that one segment and never the line.
+
+  It is opt-in because it cannot be anything else: Claude Code accepts a
+  `statusLine` only from the user's own `settings.json`, never from a plugin's, so
+  the key this plugin used to ship in `hooks.json` was never registered and never
+  ran. Nothing writes your settings unless you run the command, your existing file
+  is backed up first, and a status line you wrote yourself is never touched.
+
+  **The prefix is required for this one command.** Claude Code has its own
+  `/statusline`, so a bare one is left entirely alone — gutt does not read it, reply
+  to it, or write anything. `/gutt-pro:statusline` is the only spelling that installs
+  the HUD. The plugin's other verbs still answer to their short forms, saying which
+  one they ran; this one cannot, because it writes a file in your home directory and
+  a prompt aimed at the built-in is not permission to do that.
+
+  What settings point at is `${CLAUDE_PLUGIN_DATA}/statusline.cjs`, a generated
+  shim that forwards to the current plugin root and is rewritten whenever
+  that root moves. `${CLAUDE_PLUGIN_ROOT}` is version-scoped, so naming it directly
+  is what made the 2.x entry rot on the next upgrade. This one does not.
+
+  **The HUD notices a connection change mid-turn, not just at your next prompt.**
+  A gutt call that comes back is the only thing that can establish the connection, so
+  the PostToolUse hook is matched on gutt's own MCP tools and reads the transcript
+  when one lands. The read is debounced: a healthy reading is held for ten minutes,
+  anything else re-checked after five seconds, so the frequent checking happens only
+  while something is wrong and you are waiting for it to clear. A server that has
+  _dropped_ produces no gutt calls at all and so cannot be caught here — that case is
+  the per-turn hook's, which re-reads availability every prompt and ignores the hold.
+  The gap either way is one turn.
+
+  **Anything that a sign-in would fix now shows amber, and the glyph no longer
+  decays.** A configured server whose tools have disappeared asks you to sign in
+  rather than showing a red light you cannot act on — a lapsed remote connector does
+  not announce itself, Claude Code simply withdraws the tools, so that is what an
+  expired connection looks like from here. Red is left for the one thing only a real
+  call can establish: the server answered, and answered with a failure signing in
+  would not fix. Green also no longer times out after ten minutes; a session that
+  simply has not touched memory for a while is an ordinary session, and the tool list
+  catches a server that has genuinely gone. Neutral ⚪ now means exactly one thing —
+  nothing observed yet.
+
+  **An unauthenticated memory server now shows amber, not green.** A connector that
+  has not been signed in publishes only its sign-in tools, so nothing the plugin
+  watches ever gets called and the HUD had no way to notice — it reported a healthy
+  connection for the whole session. The tool list is now read for that state, at
+  session start as well as on every prompt, and green requires at least one real
+  memory tool to actually be present. More than one gutt server can be connected at
+  once and they authenticate separately, so a sibling needing sign-in does not count
+  against a memory server that is working.
+
+  If the HUD vanishes on its own, that is Claude Code dropping the key while
+  rewriting `settings.json`
+  ([#62486](https://github.com/anthropics/claude-code/issues/62486), closed as not
+  planned). The next session restores it — but only if you installed it, which is
+  recorded separately for exactly that reason (GP-867)
+
+### Fixed
+
+- **The HUD's `!` no longer fires at correctly configured sessions.** It was driven
+  by whether a `group_id` was set _locally_, but the normal path resolves the group
+  from MCP auth and leaves that empty — so a working setup rendered `[gutt⚪!]` and
+  was told it was broken. It now fires only when the connectivity probe reports no
+  MCP server (GP-867)
+- **A failed connectivity probe no longer looks like an unconfigured one.** The probe
+  runs inside an error guard, and a throw was flattened into `mcpConfigured: false` —
+  so a machine where the probe simply could not tell was shown `!` and told to run
+  setup on a configuration that may have been fine. It now records `null` for "could
+  not tell", which renders nothing, and a withdrawn tool list is no longer silenced by
+  it (GP-867)
+- **🔴 now has a writer.** `connectionStatus: "error"` is set by
+  `classifyToolResponse` when a real call comes back a non-auth failure, which is the
+  only thing that can establish it. Red means the server answered and answered badly;
+  a connection that merely needs signing in is amber (GP-867)
+
 - **Every hook crashed on Windows.** gutt-pro 3.0.0 was unusable there: all 7
   hooks died at `require()` with a `SyntaxError` before doing any work. The repo
   stored 19 files as git symlinks, and Windows git defaults to
@@ -50,6 +225,11 @@
   hooks that fed them (`post-memory-ops.cjs`, `cowork-periodic-capture.cjs`) are
   removed along with `memory-cache.cjs` and `seed-registry.cjs`; the
   `/gutt-pro:reset-counters` command is deleted (GP-844)
+- **The inert `statusLine` key in `hooks.json`**, along with the dead
+  `gutt.statusline` block in `config.json.example` and the unreferenced
+  `getStatuslineConfig()` in `hooks/lib/config.cjs`. The manifest key was never
+  registered by the platform, and shipping a key that does nothing tells every
+  future reader it works. A test now asserts it stays out (GP-867)
 - **The subagent hooks plugin** (`plugins/gutt-subagent-hooks-plugin/`), which was
   never listed in `marketplace.json` and therefore never shipped. Decision O4
   keeps subagent hooks out of 3.0 (GP-868)

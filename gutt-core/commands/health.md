@@ -32,16 +32,26 @@ Read `hooks/hooks.json` from the plugin root. For each hook event present, list:
 - Number of registered hook commands
 - Matcher patterns (if any)
 
-Also check if `statusLine` is registered.
+### 3. Check the statusline
 
-### 3. Check the statusline is actually ours
+The plugin manifest carries no `statusLine`, and must not — Claude Code accepts one
+only from the user's own settings, so a key here would be inert. Look in
+`~/.claude/settings.json` instead and report one of:
 
-A `statusLine` entry in the user's own `~/.claude/settings.json` takes precedence
-over the plugin's. The retired 2.x `sessionstart-setup.cjs` wrote one there and
-nothing removes it, so an upgraded user can be running a stale statusline while
-the plugin's own is registered and ignored. If `~/.claude/settings.json` has a
-`statusLine` pointing at a gutt path, report it as **stale — remove it to use
-the plugin's**.
+- **installed** — a `statusLine` whose command points at `statusline.cjs` under the
+  plugin's data directory. This is the healthy state.
+- **installed, but stale** — a `statusLine` pointing at `statusline.cjs` somewhere
+  under a plugin _cache_ path. That is a version-scoped directory an upgrade
+  replaces, so it will break. Tell them `/gutt-pro:statusline` repoints it at a
+  stable path.
+- **someone else's** — a `statusLine` pointing anywhere else. Leave it alone and say
+  so; the gutt HUD cannot be installed without removing theirs first.
+- **not installed** — no `statusLine` at all. Mention `/gutt-pro:statusline` if they
+  want one; do not treat its absence as a fault.
+
+If it is absent but the runtime config records that they installed it, say the key
+was dropped from settings — Claude Code does that when it rewrites the file — and
+that the next session restores it.
 
 ### 4. Count Agents
 
@@ -66,8 +76,9 @@ Registered Hooks
   UserPromptSubmit:  [N] hook(s)
   Stop:              [N] hook(s)
   PostToolUse:       [N] hook(s) across [M] matcher(s)
-  StatusLine:        [registered / not registered]
-  User-level override: [none / STALE — ~/.claude/settings.json wins]
+
+Statusline (user settings, not a hook)
+  HUD:               [installed / stale / someone else's / not installed]
 
 Session
   Connection:        [status]

@@ -176,8 +176,64 @@ const LEGACY_SETTINGS = [
  */
 const OUR_STATUSLINE_FILES = ["statusline.cjs", "gutt-statusline.cjs"];
 
-/** Path fragments marking a statusLine command as plugin-installed, not hand-written. */
-const PLUGIN_PATH_MARKERS = ["plugin_", "local-agent-mode-sessions", "gutt", "plugins"];
+/**
+ * A whole path segment that attributes an installed file to *this* plugin.
+ *
+ * Two ways to get this wrong, and both have been in this file.
+ *
+ * The first was naming the container rather than the owner. The marker used to be
+ * one of four — `plugin_`, `local-agent-mode-sessions`, `gutt`, `plugins` — OR'd
+ * together, and the last gave the whole set away: Claude Code puts every plugin's
+ * data under `~/.claude/plugins/data/<id>/`, so `plugins` is in the path of every
+ * plugin's directory, not just ours. On a real machine that made
+ * `~/.claude/plugins/data/context7-claude-plugins-official/statusline.cjs` read as
+ * ours — and this module's one promise is that it never touches a status line it
+ * did not write.
+ *
+ * The second was testing that fragment as a *substring*. `gutt` appears inside
+ * plenty of words the filesystem might already contain — a home directory, an
+ * unrelated project, and a `mkdtemp` prefix, which is how this repository's own
+ * test suite came to satisfy attribution from its sandbox name rather than from
+ * its fixture. A substring match asks "does this path mention us anywhere", which
+ * is not a question about ownership.
+ *
+ * So: a whole segment, equal to `gutt` or beginning `gutt-`/`gutt_`. Everything
+ * this plugin installs has one — `plugins/data/gutt-pro-<marketplace>`,
+ * `plugins/cache/gutt-plugins/gutt-pro`, and the 2.x directories that carried the
+ * name before either — while another vendor's plugin has none. Case-insensitive,
+ * because the case belongs to the user's filesystem rather than to anything we
+ * wrote.
+ *
+ * What it still admits: a directory the user named `gutt-something` themselves,
+ * holding a file called `statusline.cjs`. That is a much smaller opening than the
+ * substring left, and every caller narrows it further — the basename must be one
+ * of ours, and the migration additionally requires the target to be already dead.
+ */
+const GUTT_PATH_SEGMENT = /^gutt([-_].*)?$/i;
+
+/**
+ * Is this the directory of a file this plugin put there?
+ *
+ * **The directory, never the whole path.** One of our own basenames is
+ * `gutt-statusline.cjs`, which carries the marker in its own filename, so a
+ * whole-path test passes on the name alone and admits any directory at all —
+ * re-opening the "a script that merely shares the name" bug by the back door.
+ * Where a file lives is evidence about who put it there; what it is called is
+ * not.
+ *
+ * Split on both separators rather than going through `path.dirname`: that function
+ * is bound to the platform it runs on, and on POSIX it does not recognise `\` as a
+ * separator at all — so a Windows path arrives as one long segment, `dirname`
+ * answers `"."`, and every directory in it becomes invisible. Dropping the last
+ * segment by hand gets the same answer on either platform for either spelling.
+ *
+ * @param {string} target absolute path to the file being attributed
+ * @returns {boolean}
+ */
+function isOurPluginDir(target) {
+  const segments = target.split(/[\\/]+/);
+  return segments.slice(0, -1).some((segment) => GUTT_PATH_SEGMENT.test(segment));
+}
 
 /**
  * What this migration deliberately leaves alone, reported next to what it did.
@@ -216,7 +272,7 @@ function isDeadPluginStatusLine(command) {
   if (!target || !OUR_STATUSLINE_FILES.includes(path.basename(target))) {
     return false;
   }
-  if (!PLUGIN_PATH_MARKERS.some((marker) => target.includes(marker))) {
+  if (!isOurPluginDir(target)) {
     return false;
   }
   // The decisive check: a target that still resolves is a working status line.
@@ -652,6 +708,9 @@ module.exports = {
   matchesOrphanPattern,
   isDeadPluginStatusLine,
   statusLineTarget,
+  OUR_STATUSLINE_FILES,
+  GUTT_PATH_SEGMENT,
+  isOurPluginDir,
   needsMigration,
   runMigrations,
   describeMigration,

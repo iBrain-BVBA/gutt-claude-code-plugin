@@ -3,7 +3,8 @@
  * The `/gutt-pro:*` config command surface (GP-866, GP-931, R24).
  *
  * `/gutt-pro:config`, `/gutt-pro:on`, `/gutt-pro:off [minutes|session]`,
- * `/gutt-pro:disable`, `/gutt-pro:mode auto|hitl`. Everything here is
+ * `/gutt-pro:disable`, `/gutt-pro:mode auto|hitl`,
+ * `/gutt-pro:statusline [off|status]`. Everything here is
  * deterministic: the UserPromptSubmit hook hands us the raw prompt text, we parse
  * it, mutate `config.json` through `runtime-config.cjs`, and return the outcome as
  * a string for the hook to inject as `additionalContext`. No model reads the
@@ -43,6 +44,8 @@
 "use strict";
 
 const config = require("./runtime-config.cjs");
+const statusline = require("./statusline-install.cjs");
+const sessionState = require("./session-state.cjs");
 
 /** Must equal `name` in `gutt-core/.claude-plugin/plugin.json`; a test asserts it. */
 const PLUGIN_PREFIX = "gutt-pro";
@@ -53,7 +56,31 @@ const PLUGIN_PREFIX = "gutt-pro";
  * `gutt-core/commands/<verb>.md`, or the typed command expands to nothing and the
  * outcome this module injects has no reply to sit alongside.
  */
-const VERBS = ["config", "on", "off", "disable", "mode"];
+const VERBS = ["config", "on", "off", "disable", "mode", "statusline"];
+
+/**
+ * Verbs accepted **only** in their namespaced spelling.
+ *
+ * `statusline` collides with a Claude Code built-in of the same name, which
+ * configures the user's status line through an agent. A bare `/statusline` is
+ * therefore addressed to the built-in — but this parser sees raw prompt text and not
+ * routing, so left alone it would match too and install the gutt HUD into
+ * `~/.claude/settings.json`.
+ *
+ * The attribution line the other bare verbs rely on is not enough here, and the
+ * difference is what is being written. `off`, `on`, `mode` and `disable` mutate
+ * plugin-owned config that `/gutt-pro:on` undoes in one command; this verb writes a
+ * file in the user's home directory that the plugin is otherwise forbidden to touch,
+ * and the user having asked for it *on purpose* is the entire reason the verb exists
+ * rather than a hook doing it silently. A prompt aimed at the built-in is not that
+ * asking. So the collision has to prevent the write, not merely announce it after
+ * the fact.
+ *
+ * A `Set` rather than a second array because membership is the only question asked
+ * of it, and it will not stay a single entry — every verb this plugin adds whose
+ * name a built-in might also want belongs here.
+ */
+const NAMESPACED_ONLY = new Set(["statusline"]);
 
 /**
  * Bounds on `/gutt-pro:off <minutes>`: whole minutes, 1 minute to 7 days.
@@ -69,7 +96,8 @@ const MAX_MINUTES = 10080;
 /** The forms, quoted back on anything unrecognised so the reply is actionable. */
 const FORMS =
   "/gutt-pro:config, /gutt-pro:on, /gutt-pro:off, /gutt-pro:off <minutes>, " +
-  "/gutt-pro:off session, /gutt-pro:disable, /gutt-pro:mode auto, /gutt-pro:mode hitl";
+  "/gutt-pro:off session, /gutt-pro:disable, /gutt-pro:mode auto, /gutt-pro:mode hitl, " +
+  "/gutt-pro:statusline, /gutt-pro:statusline off, /gutt-pro:statusline status";
 
 /**
  * `YYYY-MM-DD HH:MM` in local time. Hand-rolled rather than `toLocaleString`,
@@ -147,6 +175,12 @@ function plural(n, word) {
  * would prevent the write rather than expose it, at the cost of the shortest form
  * a user will type; that trade is open, and this is the reversible half of it.
  *
+ * `statusline` is the exception, and it is decided rather than open: it is in
+ * `NAMESPACED_ONLY`, so a bare `/statusline` returns null here. The collision there is
+ * not hypothetical — a Claude Code built-in owns that name — and the write is not
+ * reversible from one command, so announcing it afterwards is the wrong shape. See
+ * `NAMESPACED_ONLY` for why that verb is treated differently from the other four.
+ *
  * `null` means "not addressed to us" and the hook stays silent. That covers every
  * legacy spelling (GP-931 D2): `/gutt off`, `/gutt:off` and
  * `/gutt-claude-code-plugin:gutt off` are ordinary prompt text now, because their
@@ -183,6 +217,12 @@ function parseCommand(raw) {
   // see the note on `bare` above. A legacy `/gutt` spelling, and prose that happens
   // to start with a slash, are both rejected here.
   if (!VERBS.includes(verb)) {
+    return null;
+  }
+
+  // Spelled out or not addressed to us. The one verb that writes outside the plugin's
+  // own state does not get the benefit of the doubt a generic bare name gets.
+  if (bare && NAMESPACED_ONLY.has(verb)) {
     return null;
   }
 
@@ -472,6 +512,232 @@ function runDisable(arg, typed) {
 }
 
 /**
+ * Report a failed statusline write, without letting the framing contradict it.
+ *
+ * `writeSettings` was taught to distinguish "could not write it, it is unchanged"
+ * from "could not write it and could not put it back", and both callers then pasted
+ * the same reassuring clause in front of either — so the losing case arrived as
+ * *"gutt did not change your settings: ~/.claude/settings.json could not be written
+ * and could not be put back — it is missing."* A user who reads six words and stops
+ * has been told their settings file is fine at the moment it does not exist. Fixing
+ * that one layer down and re-introducing it one layer up is why this lives in a
+ * function rather than in a convention.
+ *
+ * @param {string} lead what the harmless case may say it did not do
+ * @param {{status: string, detail?: string}} result
+ * @returns {string}
+ */
+function statuslineFailure(lead, result) {
+  if (result.status === "settings-lost") {
+    return `gutt could not finish, and your settings.json was lost in the attempt. ${result.detail}`;
+  }
+  return `${lead}: ${result.detail}`;
+}
+
+/**
+ * `/gutt-pro:statusline [off|status]` — the HUD's only install path (GP-867).
+ *
+ * This verb exists because a plugin cannot ship a status line: upstream supports
+ * only `agent` and `subagentStatusLine` in a plugin's settings.json, so the key has
+ * to go in the user's own file, and nothing may put it there unasked. Typing this
+ * is the asking.
+ *
+ * Every failure names the file it did not change. The whole point of routing this
+ * through a command rather than a hook is that the user is present for it, so a
+ * silent no-op would be the one outcome worse than not offering the command at all.
+ *
+ * @param {string|null} arg
+ * @param {string} typed
+ * @returns {string}
+ */
+function runStatusline(arg, typed) {
+  const verb = arg === null ? "install" : arg.toLowerCase();
+
+  if (verb === "status") {
+    const { present, known, foreign } = statusline.entryPresent();
+    const consented = config.statuslineConsented();
+    if (!known) {
+      return (
+        "gutt could not read ~/.claude/settings.json, so it cannot say whether the HUD is " +
+        "installed. Fix the JSON there and run /gutt-pro:statusline status again."
+      );
+    }
+    if (present) {
+      // Present in settings.json is not the same as working. Both links behind the
+      // entry can break on their own — the shim goes when the plugin is uninstalled,
+      // the renderer moves under it on every update — and this is the command
+      // someone runs *because* the status bar is blank, so it has to be able to see
+      // that rather than reporting the settings key and stopping there.
+      const { shim, current, renderer } = statusline.shimResolves();
+
+      // Why this session could not fix it by itself, when it tried and failed. Read
+      // *before* the first branch, because that branch needs it most: the entry point
+      // is absent precisely when the write that creates it failed, and telling someone
+      // to re-run the command without mentioning that the automatic attempt already
+      // failed sends them to repeat it and get the same result. It is appended to
+      // whichever diagnosis follows rather than replacing one — the state of the files
+      // is what the user needs, and this is why it is still that way.
+      const shimFailure = sessionState.getState().statuslineShim;
+      const because = shimFailure
+        ? ` gutt tried to write it automatically this session and could not (${shimFailure}).`
+        : "";
+
+      if (!shim) {
+        return (
+          "The gutt HUD is in your settings.json, but the file it points at is gone, so " +
+          `nothing renders.${because} Run /gutt-pro:statusline to write it again.`
+        );
+      }
+      // Three values, three sentences, and the third is the reason this is not a
+      // boolean. `false` means the shim names a file that is not there. `null` means
+      // the shim is in a shape this version cannot read — which is a statement about
+      // *us*, not about their files, and must not be spoken as either "it is missing"
+      // (a claim about a file we never identified) or "it is rendering" (a claim we
+      // have no evidence for, and one that is wrong exactly when it matters, since a
+      // shim naming nothing prints nothing). The remedy is the same repoint either
+      // way; the diagnosis is not, and the diagnosis is what the user reads first.
+      if (renderer === null) {
+        return (
+          "The gutt HUD is in your settings.json, but gutt could not read its entry point " +
+          "well enough to tell what it forwards to, so it cannot say whether anything " +
+          `renders.${because} Run /gutt-pro:statusline to rewrite it.`
+        );
+      }
+      if (renderer === false) {
+        return current
+          ? "The gutt HUD is in your settings.json and its entry point is there, but the " +
+              "renderer it forwards to is missing — usually a plugin update that could not " +
+              `finish.${because} Run /gutt-pro:statusline to repoint it.`
+          : "The gutt HUD is in your settings.json, but its entry point still points into a " +
+              "previous version of the plugin, and that version is gone — so nothing renders." +
+              `${because} Run /gutt-pro:statusline to repoint it.`;
+      }
+      // Resolves, and to something real. The bar is not blank, so a stale entry point
+      // here is a report rather than a fault — and it is the one the user cannot see
+      // any other way, because everything downstream of a stale shim works exactly as
+      // well as it did in the version it still points at.
+      if (!current) {
+        return (
+          "The gutt HUD is installed and rendering, but its entry point is not the one this " +
+          "version writes, so you may not be seeing this version's status bar." +
+          `${because} Run /gutt-pro:statusline to repoint it.`
+        );
+      }
+      return `The gutt HUD is installed. /gutt-pro:statusline off removes it.`;
+    }
+    if (foreign) {
+      return (
+        "Your settings.json has a status line, but not one gutt wrote — so gutt is leaving " +
+        "it alone. Remove it yourself first if you want the gutt HUD instead."
+      );
+    }
+    if (!consented) {
+      return "The gutt HUD is not installed. /gutt-pro:statusline installs it.";
+    }
+    // What the automatic repair actually did this session, where it recorded a
+    // failure. Saying "the next session restores it" to someone whose repair has
+    // been failing every session sends them away to wait for something that is not
+    // coming.
+    const failure = sessionState.getState().statuslineReassert;
+    if (failure) {
+      // The detail is printed here rather than deferred to a re-run. It is the only
+      // copy: on the losing path settings.json is now simply absent, so running the
+      // install again takes the "no file, create one" branch and reports plain
+      // success — the sentence naming where the original went would never be said
+      // again by anyone.
+      return (
+        "The gutt HUD is not in your settings.json, though you asked for it before. This " +
+        `session tried to put it back and could not (${failure.status}). ` +
+        (failure.detail ? `${failure.detail} ` : "") +
+        "Run /gutt-pro:statusline to retry."
+      );
+    }
+    return (
+      "The gutt HUD is not in your settings.json, though you asked for it before. Claude Code " +
+      "sometimes drops the key when it rewrites that file; the next session restores it, " +
+      "or /gutt-pro:statusline installs it now."
+    );
+  }
+
+  if (verb === "off") {
+    // Consent comes off *first*, and the write is checked. Two failures live here,
+    // and they were both silent.
+    //
+    // Ordering: the SessionStart re-assert reads this flag and reinstalls when the
+    // entry is missing. With the removal first, a session landing in the gap between
+    // the two steps sees consent still recorded and an absent entry — exactly its
+    // trigger — and puts back what the user just removed. Withdrawing first makes
+    // the worst case a HUD that is still installed with consent already off, which
+    // the next `off` clears.
+    //
+    // Checking: `setStatuslineConsent` returns false on a read-only or unparseable
+    // config, and discarding that told the user the HUD was gone while leaving the
+    // flag that brings it back next session. Every other write verb here reports
+    // that through `writeFailed()`; this one used to be the exception.
+    if (!config.setStatuslineConsent(false)) {
+      return writeFailed();
+    }
+    const result = statusline.removeEntry();
+    if (!result.ok) {
+      return statuslineFailure("gutt did not change your settings", result);
+    }
+    // Both replies lead with the consent withdrawal, because that is the part that
+    // happened in every case and the part the user typed this for. "Nothing changed"
+    // was flatly wrong on the second branch: for someone whose HUD the platform had
+    // already dropped, and who typed `off` to stop it coming back, the durable flag
+    // that decides exactly that had just been cleared — the one thing they wanted was
+    // the one thing they were told had not occurred.
+    return result.status === "removed"
+      ? "The gutt HUD is removed from ~/.claude/settings.json and will not be restored " +
+          "automatically (the previous file is backed up). /gutt-pro:statusline puts it back."
+      : "The gutt HUD was not in your settings.json. gutt has recorded that you do not want " +
+          "it, so no later session will put it back.";
+  }
+
+  if (arg !== null && verb !== "install") {
+    return (
+      `gutt did not recognise "${typed}" — /gutt-pro:statusline installs the HUD, ` +
+      "/gutt-pro:statusline off removes it, /gutt-pro:statusline status reports it. " +
+      "Nothing was changed."
+    );
+  }
+
+  const result = statusline.installEntry();
+  if (!result.ok) {
+    return statuslineFailure("gutt did not install the HUD", result);
+  }
+  // Recorded after the write, not before: consent authorises the repair in later
+  // sessions, and there is nothing to repair if the first write never landed.
+  //
+  // The return is checked because the HUD is now installed either way — what fails
+  // here is only the repair, and silently. The platform drops `statusLine` when it
+  // rewrites settings.json, and without the flag no later session puts it back; the
+  // user is told it "updates itself", then it vanishes and `status` reports it as
+  // never asked for. Saying so costs one sentence.
+  const consent = config.setStatuslineConsent(true);
+  if (result.status === "already-installed") {
+    return consent
+      ? "The gutt HUD is already installed. It updates itself when the plugin does."
+      : "The gutt HUD is already installed, but gutt could not record that you asked for it, " +
+          "so it will not be restored automatically if Claude Code drops the setting. " +
+          "Re-run /gutt-pro:statusline if the HUD disappears.";
+  }
+  if (!consent) {
+    return (
+      "The gutt HUD is installed in ~/.claude/settings.json and shows up in your status bar " +
+      "from the next session. One thing did not save: gutt could not record that you asked " +
+      "for it, so if Claude Code drops the setting when it rewrites that file, no later " +
+      "session will put it back — re-run /gutt-pro:statusline if the HUD disappears."
+    );
+  }
+  return (
+    "The gutt HUD is installed in ~/.claude/settings.json and shows up in your status bar " +
+    "from the next session. It points at a stable path, so plugin upgrades will not break " +
+    "it. /gutt-pro:statusline off removes it."
+  );
+}
+
+/**
  * `/gutt-pro:on`.
  *
  * The pre-read is what lets the reply be honest: `restore()` returns false both
@@ -627,6 +893,8 @@ function runVerb(parsed, sessionId, now) {
       return runDisable(parsed.arg, parsed.typed);
     case "mode":
       return runMode(parsed.arg);
+    case "statusline":
+      return runStatusline(parsed.arg, parsed.typed);
     default:
       return (
         `gutt did not recognise "${parsed.typed}". The forms are: ${FORMS}. ` +
@@ -638,8 +906,13 @@ function runVerb(parsed, sessionId, now) {
 module.exports = {
   PLUGIN_PREFIX,
   VERBS,
+  NAMESPACED_ONLY,
   MIN_MINUTES,
   MAX_MINUTES,
   parseCommand,
   configCommandResult,
+  // Exported for tests. Pure, and the one piece of this surface where the framing can
+  // contradict the fact it is framing — worth pinning directly rather than through a
+  // failure that needs a platform-specific rename to provoke.
+  statuslineFailure,
 };

@@ -21,9 +21,20 @@ const SCAN_DIRS = ["gutt-core/hooks"];
 // (sessionstart-setup.cjs) and called the ban absolute. GP-895 re-opens it for
 // migrations.cjs alone, and narrowly: that module only ever *deletes* a key a past
 // version of this plugin wrote, only when the file it points at is already gone,
-// once per machine, after backing the original up under ${CLAUDE_PLUGIN_DATA}. The
-// steady-state rule is unchanged — no hook adds to settings.json, and the cleanup
-// is one-shot rather than a standing write path.
+// once per machine, after backing the original up under ${CLAUDE_PLUGIN_DATA}.
+//
+// GP-867 re-opens it a second time, and this one *adds* a key, so the old wording
+// ("no hook adds to settings.json") no longer holds and is not quietly left in
+// place. What replaces it is narrower than "no adds" and is the property actually
+// worth defending: **nothing writes settings.json unless the user asked for it.**
+// statusline-install.cjs writes exactly one key, `statusLine`, and only from the
+// explicit /gutt-pro:statusline command — because a plugin cannot ship a working
+// status line, so the key lives in the user's own settings or nowhere. It re-asserts
+// that key without being asked again in exactly one case: the user already consented
+// and Claude Code dropped it mid-session (anthropics/claude-code#62486, closed as
+// not planned). It never touches a status line it did not write, and it backs the
+// whole file up first. A hook that configured settings unprompted would still be a
+// violation; that is what GP-863 deleted and it stays deleted.
 const ALLOW = {
   "gutt-core/hooks/lib/plugin-state.cjs":
     "the single sanctioned state writer (writes only under ${CLAUDE_PLUGIN_DATA})",
@@ -33,6 +44,8 @@ const ALLOW = {
     "one-shot 2.x cleanup: deletes only provably-dead paths a past version wrote (GP-895)",
   "gutt-core/hooks/lib/builtin-memory-store.cjs":
     "migrates Claude Code's own memory store: removes only facts verified present in the graph, after backing the store up under ${CLAUDE_PLUGIN_DATA} (GP-922)",
+  "gutt-core/hooks/lib/statusline-install.cjs":
+    "writes only the `statusLine` key, only on explicit user command or to restore prior consent the platform dropped, after backing settings.json up under ${CLAUDE_PLUGIN_DATA} (GP-867)",
 };
 
 // GP-863 AC3, as CI rather than a one-off grep: state locations that 3.0 retired.

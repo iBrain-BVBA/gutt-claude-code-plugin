@@ -51,10 +51,17 @@ function readSession(dir, sessionId) {
  * writes into the sandbox instead of the developer's real one.
  * @param {string} name - hook filename
  * @param {Object} payload - stdin JSON
- * @param {{dataDir: string, home: string}} env
+ * `preload` is a `--require` script, which runs before the hook module is loaded and
+ * can therefore replace an export the hook destructures at load time. It is how a
+ * probe is made to *throw* rather than to return a negative answer — a distinction
+ * that has its own branch in the hook and cannot be reached by any arrangement of
+ * files on disk, because every such arrangement is something the probe knows how to
+ * report on.
+ *
+ * @param {{dataDir: string, home: string, preload?: string}} env
  */
-function runHook(name, payload, { dataDir, home }) {
-  return spawnSync("node", [path.join(HOOKS, name)], {
+function runHook(name, payload, { dataDir, home, preload }) {
+  return spawnSync("node", [...(preload ? ["--require", preload] : []), path.join(HOOKS, name)], {
     input: JSON.stringify(payload),
     encoding: "utf8",
     env: {
@@ -65,6 +72,26 @@ function runHook(name, payload, { dataDir, home }) {
       CLAUDE_PROJECT_DIR: home,
     },
   });
+}
+
+/**
+ * Write a `--require` script that makes the MCP probe throw.
+ *
+ * @param {string} dir somewhere to put it
+ * @returns {string} path to pass as `preload`
+ */
+function poisonProbe(dir) {
+  const file = path.join(dir, "poison-probe.cjs");
+  const module = path.join(HOOKS, "lib", "mcp-config.cjs");
+  fs.writeFileSync(
+    file,
+    `const target = require.resolve(${JSON.stringify(module)});\n` +
+      `require(target);\n` +
+      `require.cache[target].exports.diagnoseGuttMcp = () => {\n` +
+      `  throw new Error("probe exploded");\n` +
+      `};\n`
+  );
+  return file;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +410,133 @@ describe("recall recency: which tool calls count as recall", () => {
     for (const bad of [undefined, null, 123, {}, []]) {
       assert.equal(sessionState.isRecallTool(bad), false, `rejected ${JSON.stringify(bad)}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// What a tool response proves about the connection. The settings-file probe can
+// only establish that a server is configured; this is the one place a real round
+// trip is visible.
+// ---------------------------------------------------------------------------
+
+describe("classifying what a gutt call came back with", () => {
+  const {
+    classifyToolResponse,
+    availabilityIsFresh,
+    AVAILABILITY_HOLD_OK_MS,
+    AVAILABILITY_HOLD_MS,
+  } = sessionState;
+
+  it("holds a healthy availability reading far longer than an unhealthy one", () => {
+    // The asymmetry is the whole design: `available` is the steady state and costs
+    // nothing to be late about, so it is held. Everything else is a problem the user
+    // is watching for, so it re-checks quickly and the recovery shows up at once.
+    assert.ok(AVAILABILITY_HOLD_OK_MS > AVAILABILITY_HOLD_MS);
+    const now = Date.now();
+    const at = (ms) => new Date(now - ms).toISOString();
+
+    // Healthy: still fresh well past the short hold, stale past the long one.
+    const ok = (ms) => ({ mcpToolsAvailable: "available", mcpToolsAvailableAt: at(ms) });
+    assert.equal(availabilityIsFresh(ok(AVAILABILITY_HOLD_MS + 1), now), true);
+    assert.equal(availabilityIsFresh(ok(AVAILABILITY_HOLD_OK_MS - 1), now), true);
+    assert.equal(availabilityIsFresh(ok(AVAILABILITY_HOLD_OK_MS + 1), now), false);
+
+    // Anything else: stale the moment the short hold lapses, whatever the long one says.
+    for (const verdict of ["auth", "pending", "absent", "unknown"]) {
+      const s = (ms) => ({ mcpToolsAvailable: verdict, mcpToolsAvailableAt: at(ms) });
+      assert.equal(availabilityIsFresh(s(AVAILABILITY_HOLD_MS - 1), now), true, verdict);
+      assert.equal(availabilityIsFresh(s(AVAILABILITY_HOLD_MS + 1), now), false, verdict);
+    }
+  });
+
+  it("treats a never-taken or unusable reading as stale, so the first call always walks", () => {
+    const now = Date.now();
+    for (const bad of [
+      undefined,
+      {},
+      { mcpToolsAvailableAt: null },
+      { mcpToolsAvailableAt: "nope" },
+    ]) {
+      assert.equal(availabilityIsFresh(bad, now), false, JSON.stringify(bad));
+    }
+    // A stamp in the future is not evidence of freshness — a clock change must not
+    // pin the reading permanently fresh.
+    assert.equal(
+      availabilityIsFresh(
+        {
+          mcpToolsAvailable: "available",
+          mcpToolsAvailableAt: new Date(now + 60000).toISOString(),
+        },
+        now
+      ),
+      false
+    );
+  });
+
+  it("treats any non-error response as proof the server answered", () => {
+    for (const response of [
+      "some results",
+      { content: [{ type: "text", text: "3 facts found" }] },
+      { content: [] },
+      {},
+      "",
+      undefined,
+      null,
+      42,
+    ]) {
+      assert.equal(
+        classifyToolResponse(response),
+        "ok",
+        `should accept ${JSON.stringify(response)}`
+      );
+    }
+  });
+
+  it("recognises an authentication failure however it is framed", () => {
+    for (const response of [
+      "Access denied: you are not authorized for the requested group scope",
+      { isError: true, content: [{ type: "text", text: "401 Unauthorized" }] },
+      { error: "authentication required" },
+      { is_error: true, content: [{ type: "text", text: "token expired" }] },
+      "Error: forbidden",
+    ]) {
+      assert.equal(
+        classifyToolResponse(response),
+        "auth",
+        `should flag ${JSON.stringify(response)}`
+      );
+    }
+  });
+
+  it("separates other failures from auth ones", () => {
+    for (const response of [
+      { isError: true, content: [{ type: "text", text: "upstream timeout" }] },
+      { error: "ECONNREFUSED" },
+      "Error: the graph is unavailable",
+    ]) {
+      assert.equal(classifyToolResponse(response), "error");
+    }
+  });
+
+  it("does not mistake recalled content about auth for an auth failure", () => {
+    // The trap this classifier exists to avoid. The graph holds episodes about
+    // authentication incidents, so a *successful* search can return a body full of
+    // the words an error would use. Matching on content would let memory working
+    // correctly report the server as broken.
+    const recalled = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            facts: [
+              { fact: "The 401 Unauthorized incident was caused by an expired token" },
+              { fact: "Access denied errors trace to the group scope check" },
+            ],
+          }),
+        },
+      ],
+    };
+    assert.equal(classifyToolResponse(recalled), "ok");
   });
 });
 
@@ -1044,6 +1198,188 @@ describe("session lifecycle: hooks end to end", () => {
     assert.ok(state.connectionCheckedAt, "probe timestamped");
   });
 
+  it("the connectivity hook reads sign-in state off a resumed transcript", () => {
+    // The case a fresh session cannot show and a resumed one can: the transcript
+    // already holds the tool-list delta, so the HUD can say "auth" before the user
+    // has typed anything. Without this the amber glyph waits for the first prompt.
+    const transcript = path.join(dir, "resumed.jsonl");
+    fs.writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: "attachment",
+        attachment: {
+          type: "deferred_tools_delta",
+          addedNames: ["mcp__claude_ai_gutt-poab-mcp__authenticate"],
+        },
+      })}\n`
+    );
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-auth", transcript_path: transcript },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    assert.equal(readSession(dir, "e2e-auth").mcpToolsAvailable, "auth");
+  });
+
+  /** Plant a session record so an abstention has something real to fail to clobber. */
+  function seedSession(sessionId, fields) {
+    const dest = path.join(dir, "sessions", `${sessionId}.json`);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, JSON.stringify({ sessionId, rev: 1, ...fields }));
+  }
+
+  it("the connectivity hook abstains rather than writing an unknown availability", () => {
+    // It is `async: true`, so it races the first UserPromptSubmit. A fresh session's
+    // transcript is usually empty or not yet flushed, and writing that abstention
+    // could land after the prompt hook's real verdict and erase it. Seeded with a
+    // verdict precisely because the state default is already "unknown" — without the
+    // seed, abstaining and writing an abstention look identical.
+    const empty = path.join(dir, "empty.jsonl");
+    fs.writeFileSync(empty, "");
+    seedSession("e2e-abstain", { mcpToolsAvailable: "available" });
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-abstain", transcript_path: empty },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    const state = readSession(dir, "e2e-abstain");
+    assert.equal(
+      state.mcpToolsAvailable,
+      "available",
+      "an unreadable transcript must not erase a verdict the prompt hook established"
+    );
+    assert.equal(typeof state.mcpConfigured, "boolean", "the config probe still ran");
+  });
+
+  it("the prompt hook writes an unknown availability rather than holding the old one", () => {
+    // The mirror of the abstain test above, and the two policies are deliberately
+    // opposite. This hook runs every turn, so it is the steady-state owner: holding
+    // the previous reading would let a verdict that has stopped being true persist
+    // for the rest of the session. The connectivity hook abstains because it races
+    // this one at startup; this one must not, and nothing pinned that — so
+    // "harmonising" the pair would have frozen the HUD on a stale reading silently.
+    const empty = path.join(dir, "ups-empty.jsonl");
+    fs.writeFileSync(empty, "");
+    seedSession("e2e-ups-unknown", { mcpToolsAvailable: "available" });
+    const r = runHook(
+      "user-prompt-submit.cjs",
+      { session_id: "e2e-ups-unknown", prompt: "hello", transcript_path: empty },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    assert.equal(
+      readSession(dir, "e2e-ups-unknown").mcpToolsAvailable,
+      "unknown",
+      "a reading nothing can confirm must not keep speaking for the connection"
+    );
+  });
+
+  // The other half of that rule, and the half that costs the user something when it
+  // is missing. An abstention may retire a *green* — that is the test above — but it
+  // must not retire a warning. The case is not hypothetical: the transcript walk is
+  // capped, so once a long session accumulates more than the cap after the record
+  // that established `absent`, every prompt for the rest of that session answers
+  // `unknown`. Letting each one overwrite the stored verdict turned a correct
+  // "🟡 auth needed!" into the neutral glyph the HUD documents as "nothing observed
+  // yet" — over a server already known to be gone, permanently, with the one
+  // actionable instruction deleted.
+  for (const held of ["absent", "auth", "pending"]) {
+    it(`an unreadable transcript does not withdraw a stored "${held}"`, () => {
+      const empty = path.join(dir, `ups-hold-${held}.jsonl`);
+      fs.writeFileSync(empty, "");
+      seedSession(`e2e-hold-${held}`, { mcpToolsAvailable: held });
+      const r = runHook(
+        "user-prompt-submit.cjs",
+        { session_id: `e2e-hold-${held}`, prompt: "hello", transcript_path: empty },
+        { dataDir: dir, home }
+      );
+      assert.equal(r.status, 0);
+      assert.equal(
+        readSession(dir, `e2e-hold-${held}`).mcpToolsAvailable,
+        held,
+        "an abstention is not evidence, and must not overwrite a real reading"
+      );
+    });
+  }
+
+  it("the connectivity hook never writes connectionStatus, however configured the server", () => {
+    // The whole of GP-867 in one assertion, and until it existed nothing enforced
+    // it: re-adding `state.connectionStatus = "ok"` to this hook left every test in
+    // the repository passing. The renderer is exercised from every angle against
+    // hand-written state files, which constrains what the HUD *shows* and nothing
+    // about what may write the state it shows.
+    //
+    // This hook reads settings files. A hook cannot open a socket, so "a server is
+    // configured" is the strongest claim available here — and rendering that as the
+    // green light everyone reads as "connected" is exactly the lie this story was
+    // filed to end. Only an observed round trip may write this field.
+    seedSession("e2e-noglyph", { connectionStatus: "unknown" });
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-noglyph" },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    const state = readSession(dir, "e2e-noglyph");
+    assert.equal(
+      state.connectionStatus,
+      "unknown",
+      "a settings-file probe must never establish the connection glyph"
+    );
+    assert.equal(state.connectionObservedAt ?? null, null, "and must not stamp an observation");
+  });
+
+  it("the connectivity hook records that it could not tell, rather than denying", () => {
+    // `mcpConfigured: false` is a claim the HUD renders as `!` and documents as "run
+    // /gutt-pro:setup". A probe that *threw* has not earned it, and must write null.
+    //
+    // The probe is poisoned rather than starved. An earlier version of this test
+    // pointed the hook at a home directory whose `.claude` was a file and assumed the
+    // walk would blow up — it does not: the probe handles that and returns a clean
+    // `{configured: false}`, which is a legitimate negative answer. So the test was
+    // taking the wrong branch and its assertion, `configured === false || null`,
+    // admitted exactly the value the fix exists to prevent. Both spellings passed.
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-cannot-tell" },
+      { dataDir: dir, home, preload: poisonProbe(dir) }
+    );
+    assert.equal(r.status, 0, "a thrown probe must not fail the session");
+    assert.strictEqual(
+      readSession(dir, "e2e-cannot-tell").mcpConfigured,
+      null,
+      "a probe that threw knows nothing — false is a claim it did not earn"
+    );
+  });
+
+  it("a probe that ran and found nothing still says so", () => {
+    // The other side of the same distinction, and the reason it cannot be collapsed:
+    // a real negative has to stay a real negative, or the HUD loses the `!` that tells
+    // an unconfigured user to run setup.
+    const bareHome = path.join(dir, "bare-home");
+    fs.mkdirSync(path.join(bareHome, ".claude"), { recursive: true });
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-really-absent" },
+      { dataDir: dir, home: bareHome }
+    );
+    assert.equal(r.status, 0);
+    assert.strictEqual(readSession(dir, "e2e-really-absent").mcpConfigured, false);
+  });
+
+  it("the connectivity hook survives a transcript path that is missing entirely", () => {
+    seedSession("e2e-notranscript", { mcpToolsAvailable: "available" });
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-notranscript", transcript_path: path.join(dir, "nope.jsonl") },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0);
+    assert.equal(readSession(dir, "e2e-notranscript").mcpToolsAvailable, "available");
+  });
+
   it("SessionEnd finalizes the record and drops this session's snooze", () => {
     runHook(
       "session-start.cjs",
@@ -1207,6 +1543,103 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
       { dataDir: dir, home }
     );
   }
+
+  /** The transcript-reading half needs a path; most recall cases do not supply one. */
+
+  it("PostToolUse is matched at the gutt server, not on every tool", () => {
+    // Pinned because the cost of getting this wrong is invisible in a test run and
+    // obvious to a user. PostToolUse blocks, and every firing is a fresh node
+    // process — around 89ms against a 74ms bare-node floor, so the launch is nearly
+    // all of it. Matched on every tool, a 200-call session pays ~18 seconds of wall
+    // time it otherwise never pays, because the hook does not spawn at all for tools
+    // that do not match.
+    //
+    // The widening was tried and reverted: it let a dropped server be noticed
+    // mid-turn, but `user-prompt-submit.cjs` re-reads availability every prompt
+    // regardless, so the gap it closed was one turn.
+    const manifest = JSON.parse(fs.readFileSync(path.join(HOOKS, "hooks.json"), "utf8"));
+    const entries = manifest.hooks.PostToolUse;
+    assert.equal(entries.length, 1);
+    assert.equal(
+      entries[0].matcher,
+      "mcp__.*gutt.*__.*",
+      "an empty matcher spawns this hook on every Read, Edit and Bash call"
+    );
+  });
+
+  it("does not read a non-gutt tool's response as evidence about the memory server", () => {
+    // The cost of the widened matcher, and the gate that pays it. A Bash response
+    // comes back clean, and classifying it would paint the glyph green on no
+    // evidence at all — the exact lie the connection signal exists to end.
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-foreign", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const before = readSession(dir, "m-foreign").connectionStatus;
+    const r = recall("m-foreign", "Bash");
+    assert.equal(r.status, 0, `the hook must exit 0: ${r.stderr}`);
+    const after = readSession(dir, "m-foreign");
+    assert.equal(after.connectionStatus, before, "a Bash response must not move the glyph");
+    assert.equal(after.turnsSinceSearch, null, "nor count as a recall");
+  });
+
+  it("still records a gutt call's outcome under the widened matcher", () => {
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-gutt", source: "startup" },
+      { dataDir: dir, home }
+    );
+    assert.equal(recall("m-gutt").status, 0);
+    const s = readSession(dir, "m-gutt");
+    assert.equal(s.connectionStatus, "ok");
+    assert.ok(s.connectionObservedAt, "the round trip is timestamped");
+    assert.equal(s.turnsSinceSearch, 0);
+  });
+
+  it("debounces the transcript walk once a healthy reading is on record", () => {
+    // A hot path must not re-walk per tool call. The stamp is what makes the skip
+    // decidable, so assert it is written and then that a planted verdict survives a
+    // second call — proving the walk did not run and overwrite it.
+    const transcript = path.join(dir, "debounce.jsonl");
+    fs.writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: "attachment",
+        attachment: {
+          type: "deferred_tools_delta",
+          addedNames: ["mcp__claude_ai_gutt-pro-memory__search_memory_nodes"],
+        },
+      })}\n`
+    );
+    const run = () =>
+      runHook(
+        "post-memory-search.cjs",
+        {
+          session_id: "m-deb",
+          tool_name: "Bash",
+          tool_response: "ok",
+          transcript_path: transcript,
+        },
+        { dataDir: dir, home }
+      );
+
+    assert.equal(run().status, 0);
+    const first = readSession(dir, "m-deb");
+    assert.equal(first.mcpToolsAvailable, "available");
+    assert.ok(first.mcpToolsAvailableAt, "the reading is stamped");
+
+    // Plant a value the walk would overwrite if it ran again.
+    const file = path.join(dir, "sessions", "m-deb.json");
+    const planted = { ...first, mcpToolsAvailable: "absent" };
+    fs.writeFileSync(file, JSON.stringify(planted));
+    assert.equal(run().status, 0);
+    assert.equal(
+      readSession(dir, "m-deb").mcpToolsAvailable,
+      "absent",
+      "an unhealthy planted verdict holds for the short window, so the walk was skipped"
+    );
+  });
 
   it("row 4: a recent recall silences the pointer a compaction would inject", () => {
     runHook(

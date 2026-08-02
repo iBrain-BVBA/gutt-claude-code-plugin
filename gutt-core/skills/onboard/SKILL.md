@@ -82,17 +82,23 @@ add_memory(
 
 ### Step 5: HUD Explainer
 
-Explain the statusline that appears at the bottom of the terminal:
+Offer the status bar HUD. It is off until the user asks for it — a plugin cannot
+install a status line, so `/gutt-pro:statusline` is the only way it appears, and it
+writes the user's own settings file only when they run it.
 
 ```
-The HUD statusline shows gutt connection status:
+An optional HUD can show gutt's state in your status bar:
 
-  [gutt🟢 your-group]   connected
-  [gutt⚪! your-group]  not configured — run /gutt-pro:setup
+  [gutt 🟢 on <group>]                   configured, recall live
+  [gutt ⚪ on !]                         no gutt MCP server — run /gutt-pro:setup
+  [gutt 🟢 off]                          recall disabled — /gutt-pro:on restores it
+  [gutt 🟢 zzz→14:30 <group>]            snoozed until then
 
-Configure it in your own ~/.claude/settings.json; the plugin does not edit
-that file for you.
+Turn it on with /gutt-pro:statusline, off again with /gutt-pro:statusline off.
 ```
+
+If they accept, tell them to run the command themselves rather than running it for
+them — the point of the command is that installing it is their decision.
 
 ### Step 6: Active Hooks
 
@@ -101,16 +107,19 @@ List all hooks that are active and what they do:
 ```markdown
 ## Active Hooks
 
-| Hook                 | Event                    | What It Does                                           |
-| -------------------- | ------------------------ | ------------------------------------------------------ |
-| session-start        | SessionStart             | Opens the session record and runs the state TTL sweep  |
-| session-connectivity | SessionStart (async)     | Probes MCP configuration for the HUD                   |
-| session-end          | SessionEnd               | Finalizes the session record and clears session snooze |
-| user-prompt-submit   | UserPromptSubmit         | Injects relevant memory context before each prompt     |
-| _(prompt hook)_      | Stop                     | Judges whether the turn is worth capturing to memory   |
-| post-tool-lint       | PostToolUse (Edit/Write) | Runs lint checks after file edits                      |
-| statusline           | StatusLine               | Renders the HUD connection status                      |
+| Hook                 | Event                | What It Does                                           |
+| -------------------- | -------------------- | ------------------------------------------------------ |
+| session-start        | SessionStart         | Opens the session record and runs the state TTL sweep  |
+| session-connectivity | SessionStart (async) | Probes MCP configuration for the HUD                   |
+| session-end          | SessionEnd           | Finalizes the session record and clears session snooze |
+| user-prompt-submit   | UserPromptSubmit     | Injects relevant memory context before each prompt     |
+| post-memory-search   | PostToolUse (gutt)   | Records that memory was searched, for the recency gate |
+| _(prompt hook)_      | Stop                 | Judges whether the turn is worth capturing to memory   |
 ```
+
+The status bar HUD is not a hook and is not on by default — a plugin cannot install
+one. Mention that `/gutt-pro:statusline` turns it on, and that it shows connection
+state, whether recall is on, off or snoozed, and the group being written to.
 
 ### Step 7: Next Steps
 
@@ -138,16 +147,18 @@ When invoked with `--check`, skip the tutorial and just verify:
 
 1. **MCP connectivity** -- Run test query, report pass/fail.
 2. **Hook registration** -- Confirm hooks.json is loadable and all hook scripts exist on disk.
-3. **Statusline ownership** -- Warn if `~/.claude/settings.json` has its own `statusLine`, which takes precedence over the plugin's.
+3. **Statusline** -- Look in `~/.claude/settings.json`, the only place a status line
+   can live. Report it as installed, someone else's, or absent. Absent is not a
+   fault; it is the default until the user runs `/gutt-pro:statusline`.
 
 Output a compact status table:
 
 ```markdown
 ## gutt Plugin Health Check
 
-| Component            | Status                               |
-| -------------------- | ------------------------------------ |
-| MCP connectivity     | OK / FAIL: [reason]                  |
-| Hook registration    | OK ([N] hooks) / FAIL: [reason]      |
-| Statusline ownership | plugin's / STALE user-level override |
+| Component         | Status                                     |
+| ----------------- | ------------------------------------------ |
+| MCP connectivity  | OK / FAIL: [reason]                        |
+| Hook registration | OK ([N] hooks) / FAIL: [reason]            |
+| Statusline        | installed / not installed / someone else's |
 ```

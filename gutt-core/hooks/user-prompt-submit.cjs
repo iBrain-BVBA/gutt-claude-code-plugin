@@ -35,7 +35,13 @@
 
 const { statePath, appendLine } = require("./lib/plugin-state.cjs");
 const { LOG_FILES } = require("./lib/debug.cjs");
-const { init, advanceTurn, isRecallRecent } = require("./lib/session-state.cjs");
+const {
+  init,
+  advanceTurn,
+  isRecallRecent,
+  noteToolAvailability,
+} = require("./lib/session-state.cjs");
+const { guttToolAvailability } = require("./lib/mcp-availability.cjs");
 const { isSuppressed } = require("./lib/runtime-config.cjs");
 const { configCommandResult } = require("./lib/config-command.cjs");
 const { guard } = require("./lib/debug.cjs");
@@ -140,16 +146,27 @@ process.stdin.on("end", () => {
   let rawPrompt = "";
   let prompt = "unknown";
   let sessionId = "unknown";
+  let transcriptPath = null;
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
     rawPrompt = String(data.prompt || data.message || "unknown");
     prompt = rawPrompt.slice(0, 200);
     sessionId = data.session_id || "unknown";
+    transcriptPath = data.transcript_path || null;
   } catch {
     // Unparseable stdin still exits 0 — this hook must never block a prompt.
   }
 
   init(sessionId);
+
+  // Refresh what the HUD knows about the server being reachable at all. Here, and
+  // on every prompt, because this is the one hook that runs whether or not anything
+  // touched memory — and a dropped server is precisely the case where nothing does.
+  // Deliberately above the suppression check: a snoozed plugin should still report
+  // the connection honestly rather than freeze the glyph wherever it last stood.
+  guard("UserPromptSubmit", "tool availability", () => {
+    noteToolAvailability(guttToolAvailability(transcriptPath));
+  });
 
   guard("UserPromptSubmit", "route", () => {
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 19);

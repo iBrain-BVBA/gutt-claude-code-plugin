@@ -67,42 +67,92 @@ See [docs/team-onboarding.md](docs/team-onboarding.md) for detailed installation
 
 ### Statusline
 
-Real-time gutt status in your Claude Code HUD:
+gutt's state, live in your Claude Code status bar. **Opt in with one command:**
 
-![gutt statusline](docs/statusline-hud.png)
-
-- **Connection status** — Green circle when connected, `!` when not configured
-- **Group** — the organizational group the session is writing to
-
-Configure the statusline in your own `~/.claude/settings.json` (the plugin no
-longer edits that file for you — see
-[docs/runtime-state-convention.md](docs/runtime-state-convention.md#retired-locations)):
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "node \"<plugin-root>/hooks/statusline.cjs\""
-  }
-}
+```
+/gutt-pro:statusline
 ```
 
-> A `statusLine` in your own settings takes precedence over the plugin's. If you
-> upgraded from 2.x, the retired auto-setup may have left one there — run
-> `/gutt-pro:health` to check.
+That is the only way it appears — Claude Code accepts a status line only from your
+own `~/.claude/settings.json`, and nothing here writes that file unless you ask.
+`/gutt-pro:statusline off` removes it again; `/gutt-pro:statusline status` reports
+where things stand. Your existing settings are backed up before either change, and a
+status line you wrote yourself is never touched or overwritten.
+
+```
+[gutt 🟢 on acme-eng] | [Opus 5] ctx 38%
+```
+
+| Segment             | Means                                                                |
+| ------------------- | -------------------------------------------------------------------- |
+| 🟢                  | a gutt call came back — the server is reachable and authenticated    |
+| 🟡 `- auth needed!` | sign in again: the tools are gone, or a call came back unauthorised  |
+| 🔴                  | a call reached the server and failed for some other reason           |
+| ⚪                  | nothing observed yet                                                 |
+| ⚠                   | the status bar itself broke — see `hook-errors.log` in the data dir  |
+| `on`                | recall is live                                                       |
+| `off`               | durably disabled — `/gutt-pro:on` brings it back                     |
+| `zzz→14:30`         | snoozed until then; `zzz` alone means for the rest of this session   |
+| `hitl`              | capture mode is human-in-the-loop (shown only when it is not `auto`) |
+| `!`                 | no gutt MCP server is configured — run `/gutt-pro:setup`             |
+| `acme-eng`          | the group this session writes to                                     |
+| `ctx 38%`           | how much of the context window is spent                              |
+
+**Green is earned, not assumed.** It means a real call to the server came back, so
+it reports reachability and authentication together. Two signals feed it, and they
+cover each other's blind spots: responses to gutt tool calls say whether the server
+is answering and whether it accepted your credentials; the session transcript says
+whether its tools are still in the tool list, which is the only way to notice a
+server nobody is calling. The tool list wins where they disagree — once the tools
+have gone, however recently a call last worked.
+
+A quiet session stays green: an observation does not go stale just because you have
+not touched memory for a while. The exception is a green that nothing corroborates —
+if the transcript cannot be read at all, a success older than ten minutes lapses back
+to ⚪, because at that point nothing can establish anything. Amber and red are left
+standing either way; a warning that expires takes with it the one instruction you
+could have acted on.
+
+A configuration check at session start cannot do this — a hook has no way to open a
+socket, so it can only ever establish that a server is _named in a settings file_.
+That is reported separately, as `!`, and only when the check positively found nothing
+configured. A check that could not tell says nothing at all.
+
+The two informational segments — context usage, then the group — drop as the terminal
+narrows, in that order. Everything else either reports a fault or names the fix, and
+none of it drops, so `- auth needed!` survives on the narrowest bar.
+
+> **Upgrading from 2.x?** Your old HUD stops working — it pointed into a 2.x path
+> that no longer exists, and the plugin removes the dead entry for you. Run
+> `/gutt-pro:statusline` once to get the new one, which survives future upgrades.
+>
+> **HUD disappeared on its own?** Claude Code sometimes drops `statusLine` while
+> rewriting `settings.json`
+> ([#62486](https://github.com/anthropics/claude-code/issues/62486), closed as not
+> planned). The next session restores it automatically, or run
+> `/gutt-pro:statusline` again.
+>
+> **Bar blank, or showing `⚠`?** Run `/gutt-pro:statusline status`. It follows both
+> links behind the entry — the stable path in your `settings.json` and the renderer
+> that path forwards to — and says which one broke, including a repair that failed
+> earlier in this session. A `⚠` means the bar is running and something inside it
+> threw; the reason is in `hook-errors.log` in the plugin's data directory.
 
 ### Hooks
 
 > **Note:** Hooks can be registered in either `hooks/hooks.json` (plugin-level) or `.claude/settings.json` (project-level). The table below shows all available hooks.
 
-| Hook                       | Event            | Purpose                                                                                                            |
-| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                                 |
-| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD                                                                           |
-| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                                |
-| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt-pro:*` config commands; points at `memory-search` on a new session or after a compaction            |
-| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours an off/disable and `mode`, defers while background agents run |
-| `post-tool-lint.cjs`       | PostToolUse      | Auto-lints files after Edit/Write                                                                                  |
+| Hook                       | Event            | Purpose                                                                                                                                                            |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `session-start.cjs`        | SessionStart     | Opens the session record, runs the state TTL sweep                                                                                                                 |
+| `session-connectivity.cjs` | SessionStart     | Async MCP connectivity probe for the HUD; keeps the statusline entry point current                                                                                 |
+| `session-end.cjs`          | SessionEnd       | Finalizes the session record, clears session snooze                                                                                                                |
+| `user-prompt-submit.cjs`   | UserPromptSubmit | Applies `/gutt-pro:*` config commands; points at `memory-search` on a new session or after a compaction; refreshes whether gutt's tools are still in the tool list |
+| `stop-capture.cjs`         | Stop             | Shells out to `claude -p` to judge the turn; honours an off/disable and `mode`, defers while background agents run                                                 |
+| `post-memory-search.cjs`   | PostToolUse      | Matched at the gutt MCP server; resets the recall-recency counter after a search, and records what the call proved about the connection                            |
+
+`statusline.cjs` is not in this table because it is not a hook. Claude Code runs it
+as a status line, from your own settings — see [Statusline](#statusline).
 
 ### Settings — the `/gutt-pro:` commands
 
@@ -118,6 +168,7 @@ model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
 | `/gutt-pro:disable`         | Turn recall off until `/gutt-pro:on` — survives restarts                                   |
 | `/gutt-pro:on`              | Clear an off, a snooze, and a disable                                                      |
 | `/gutt-pro:mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
+| `/gutt-pro:statusline`      | Install the HUD in your `~/.claude/settings.json` (`off` removes it, `status` reports it)  |
 
 **`off` is temporary and `disable` is durable.** The cheap, reversible action gets the
 short word; turning recall off for good has to be typed on purpose. If you used the 3.0
