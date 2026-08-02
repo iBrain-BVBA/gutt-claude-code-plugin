@@ -835,6 +835,15 @@ describe("the shim is what makes an upgrade invisible", () => {
     assert.equal(install.shimTarget(`var TARGET = "";\n`), null);
   });
 
+  it("keeps looking after a line it declined", () => {
+    // Declining one line says something about that line, not about the spelling. A
+    // scan that gave up on the first unreadable match let a single bad literal hide a
+    // perfectly good declaration below it — reported as "could not tell" over a shim
+    // that states plainly what it points at.
+    const body = `var TARGET = '/first\\x41bad';\nvar TARGET = "/second/good.cjs";\n`;
+    assert.equal(install.shimTarget(body), "/second/good.cjs");
+  });
+
   it("says it could not tell, rather than claiming the renderer is gone", () => {
     // The distinction the tri-state exists for. "The file it names is missing" and "I
     // cannot work out what it names" have different remedies, and collapsing the
@@ -1298,19 +1307,30 @@ describe("the /gutt-pro:statusline command surface", () => {
    * @param {string} typed
    * @returns {string} the outcome text injected alongside the command
    */
-  function runCommand(typed) {
+  function runCommand(typed, root) {
     const home = path.join(sandbox, "home");
     fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    const pluginRoot = root ? { CLAUDE_PLUGIN_ROOT: root } : {};
     const result = spawnSync(
       process.execPath,
       [
         "-e",
-        `const cc = require(${JSON.stringify(path.join(ROOT, "gutt-core", "hooks", "lib", "config-command.cjs"))});
+        // `init` first, exactly as `user-prompt-submit.cjs` does before it calls this.
+        // The session id reaches the command twice by two different routes — as an
+        // argument, and as the module-level id that decides which session record
+        // `getState()` opens — and a harness that sets only the first reads
+        // `sessions/default.json` while the hooks write `sessions/<id>.json`. Which is
+        // to say it would silently test a different file than production uses.
+        `require(${JSON.stringify(path.join(ROOT, "gutt-core", "hooks", "lib", "session-state.cjs"))}).init("s1");
+         const cc = require(${JSON.stringify(path.join(ROOT, "gutt-core", "hooks", "lib", "config-command.cjs"))});
          const r = cc.configCommandResult(process.argv[1], "s1", Date.now());
          process.stdout.write(r == null ? "" : String(r));`,
         typed,
       ],
-      { encoding: "utf8", env: { ...process.env, HOME: home, CLAUDE_PLUGIN_DATA: dataDir } }
+      {
+        encoding: "utf8",
+        env: { ...process.env, HOME: home, CLAUDE_PLUGIN_DATA: dataDir, ...pluginRoot },
+      }
     );
     assert.equal(result.status, 0, result.stderr);
     return result.stdout;
@@ -1319,6 +1339,115 @@ describe("the /gutt-pro:statusline command surface", () => {
   /** The settings file the command resolves for itself. */
   function homeSettings() {
     return path.join(sandbox, "home", ".claude", "settings.json");
+  }
+
+  /**
+   * Put the two links behind the settings entry into a chosen state, then ask.
+   *
+   * The command resolves the shim and the renderer for itself, so a state is set up by
+   * arranging the actual files rather than by stubbing anything.
+   *
+   * @param {{target: "current"|"current-dead"|"stale-live"|"stale-dead"|"unreadable"|"no-shim", failure?: string}} how
+   * @returns {string} what `status` replied
+   */
+  function statusWith(how) {
+    runCommand("/gutt-pro:statusline");
+    const shim = path.join(dataDir, "statusline.cjs");
+    let root;
+
+    if (how.target === "no-shim") {
+      fs.rmSync(shim, { force: true });
+    } else if (how.target === "unreadable") {
+      fs.writeFileSync(shim, "// this file names nothing at all\n");
+    } else if (how.target === "current-dead") {
+      // The shim is exactly what this version writes, and this version's renderer is
+      // *gone* — a partially removed plugin directory. The one state where "current"
+      // and "the renderer is missing" hold together, and so the only one that reaches
+      // the `current` arm of the missing-renderer message. Without it that arm was
+      // free to lose its clauses unnoticed.
+      root = path.join(sandbox, "root-with-no-renderer");
+      fs.mkdirSync(root, { recursive: true });
+      fs.writeFileSync(shim, install.shimContents(path.join(root, "hooks", "statusline.cjs")));
+    } else if (how.target !== "current") {
+      const old = path.join(sandbox, `v-${how.target}`, "hooks", "statusline.cjs");
+      if (how.target === "stale-live") {
+        fs.mkdirSync(path.dirname(old), { recursive: true });
+        fs.writeFileSync(old, "// an older renderer that loads fine\n");
+      }
+      fs.writeFileSync(shim, install.shimContents(old));
+    }
+
+    // The record the hook would have left after failing to repoint the shim itself.
+    const dir = path.join(dataDir, "sessions");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "s1.json"),
+      JSON.stringify({ sessionId: "s1", statuslineShim: how.failure ?? null })
+    );
+    return runCommand("/gutt-pro:statusline status", root);
+  }
+
+  // Every reachable state of the two links, and what `status` may say about each. The
+  // rewrite that produced these branches was entirely unpinned: collapsing
+  // `renderer === false` to `!renderer` — one token — put back the sentence the whole
+  // change existed to delete, and the suite stayed green. A tri-state whose consumer
+  // is untested is a boolean with extra steps.
+  const STATES = [
+    {
+      how: { target: "current" },
+      says: /is installed\./,
+      never: [/missing/, /previous version/, /could not read/],
+    },
+    {
+      how: { target: "current-dead" },
+      says: /renderer it forwards to is missing/,
+      never: [/installed and rendering/, /previous version/],
+    },
+    {
+      how: { target: "stale-live" },
+      says: /installed and rendering/,
+      never: [/nothing renders/, /missing/],
+    },
+    {
+      how: { target: "stale-dead" },
+      says: /points into a previous version .*so nothing renders/,
+      never: [/installed and rendering/],
+    },
+    {
+      how: { target: "unreadable" },
+      // Neither "it is missing" (a claim about a file we never identified) nor
+      // "it is rendering" (a claim with no evidence, and wrong precisely here — a
+      // shim naming nothing prints nothing).
+      says: /could not read its entry point/,
+      never: [/installed and rendering/, /renderer it forwards to is missing/],
+    },
+    {
+      how: { target: "no-shim" },
+      says: /the file it points at is gone/,
+      never: [/installed and rendering/],
+    },
+  ];
+
+  for (const { how, says, never } of STATES) {
+    it(`tells the truth when the entry point is ${how.target}`, () => {
+      const out = statusWith(how);
+      assert.match(out, says, `wrong diagnosis for ${how.target}: ${out}`);
+      for (const lie of never) {
+        assert.doesNotMatch(out, lie, `${how.target} must not claim ${lie}: ${out}`);
+      }
+    });
+  }
+
+  // The clause is on every branch, including the first. That branch needs it most:
+  // the entry point is absent exactly when the write that creates it failed, so
+  // "run it again" without this sends the user to repeat an attempt that already
+  // failed once unattended and will fail again for the same reason.
+  for (const target of ["no-shim", "unreadable", "stale-dead", "stale-live", "current-dead"]) {
+    it(`explains an automatic repair that failed, when the entry point is ${target}`, () => {
+      const failure = "could not write /nope/statusline.cjs";
+      assert.match(statusWith({ target, failure }), /automatically this session and could not/);
+      assert.doesNotMatch(statusWith({ target }), /automatically this session/);
+    });
   }
 
   it("installs, reports, and removes across a full round trip", () => {

@@ -235,20 +235,21 @@ function refreshShim() {
  */
 function shimTarget(body) {
   const patterns = [
-    /^\s*(?:var|let|const)\s+TARGET\s*=\s*(".*?"|'.*?')\s*;?\s*$/m,
-    /^\s*require\(\s*(".*?"|'.*?')\s*\)\s*;?\s*$/m,
+    /^[ \t]*(?:var|let|const)[ \t]+TARGET[ \t]*=[ \t]*(".*?"|'.*?')[ \t]*;?[ \t]*$/gm,
+    /^[ \t]*require\([ \t]*(".*?"|'.*?')[ \t]*\)[ \t]*;?[ \t]*$/gm,
   ];
   for (const pattern of patterns) {
-    const match = pattern.exec(body);
-    if (!match) {
-      continue;
+    // Every match, not just the first. A declined match is not evidence that the
+    // spelling is absent — it is evidence about that one line, and the next line may
+    // be the readable one. Iterating patterns alone made a single unreadable literal
+    // hide a perfectly good declaration below it, which reports as "could not tell"
+    // over a shim that says exactly what it points at.
+    for (const match of body.matchAll(pattern)) {
+      const target = unquote(match[1]);
+      if (target) {
+        return target;
+      }
     }
-    const target = unquote(match[1]);
-    if (target) {
-      return target;
-    }
-    // Fall through to the next shape rather than giving up: a match that would not
-    // parse is not evidence that the other spelling is absent.
   }
   return null;
 }
@@ -330,7 +331,12 @@ function unquote(literal) {
  */
 function shimResolves() {
   const shim = shimPath();
-  const missing = { shim: false, current: false, renderer: false };
+  // `renderer: null`, not `false`. With no shim to read there is no target to have an
+  // opinion about, and under the tri-state `false` is the specific claim "the file it
+  // names is not there" — which needs a name we never obtained. No caller reaches this
+  // past the `!shim` branch below, so it is inert today; it is still the wrong value
+  // to leave lying next to a contract that says otherwise.
+  const missing = { shim: false, current: false, renderer: null };
   if (!shim) {
     return missing;
   }

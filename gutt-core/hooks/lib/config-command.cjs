@@ -569,26 +569,40 @@ function runStatusline(arg, typed) {
       // someone runs *because* the status bar is blank, so it has to be able to see
       // that rather than reporting the settings key and stopping there.
       const { shim, current, renderer } = statusline.shimResolves();
+
+      // Why this session could not fix it by itself, when it tried and failed. Read
+      // *before* the first branch, because that branch needs it most: the entry point
+      // is absent precisely when the write that creates it failed, and telling someone
+      // to re-run the command without mentioning that the automatic attempt already
+      // failed sends them to repeat it and get the same result. It is appended to
+      // whichever diagnosis follows rather than replacing one — the state of the files
+      // is what the user needs, and this is why it is still that way.
+      const shimFailure = sessionState.getState().statuslineShim;
+      const because = shimFailure
+        ? ` gutt tried to write it automatically this session and could not (${shimFailure}).`
+        : "";
+
       if (!shim) {
         return (
           "The gutt HUD is in your settings.json, but the file it points at is gone, so " +
-          "nothing renders. Run /gutt-pro:statusline to write it again."
+          `nothing renders.${because} Run /gutt-pro:statusline to write it again.`
         );
       }
-      // Why this session could not fix it by itself, when it tried and failed. Appended
-      // to whichever diagnosis follows rather than replacing it: the state of the files
-      // is what the user needs to know, and this is why it is still that way.
-      const shimFailure = sessionState.getState().statuslineShim;
-      const because = shimFailure
-        ? ` gutt tried to repoint it automatically this session and could not (${shimFailure}).`
-        : "";
-
-      // `renderer === false` means the shim names a file that is not there. `null`
-      // means the shim is in a shape this version cannot read, which is *not* the same
-      // claim — an older or hand-edited shim can be rendering perfectly, and reporting
-      // it as a missing renderer sends the user to fix a bar that is working. Both are
-      // repaired by repointing, so the untellable case falls through to the stale
-      // branch below and gets the remedy without the diagnosis.
+      // Three values, three sentences, and the third is the reason this is not a
+      // boolean. `false` means the shim names a file that is not there. `null` means
+      // the shim is in a shape this version cannot read — which is a statement about
+      // *us*, not about their files, and must not be spoken as either "it is missing"
+      // (a claim about a file we never identified) or "it is rendering" (a claim we
+      // have no evidence for, and one that is wrong exactly when it matters, since a
+      // shim naming nothing prints nothing). The remedy is the same repoint either
+      // way; the diagnosis is not, and the diagnosis is what the user reads first.
+      if (renderer === null) {
+        return (
+          "The gutt HUD is in your settings.json, but gutt could not read its entry point " +
+          "well enough to tell what it forwards to, so it cannot say whether anything " +
+          `renders.${because} Run /gutt-pro:statusline to rewrite it.`
+        );
+      }
       if (renderer === false) {
         return current
           ? "The gutt HUD is in your settings.json and its entry point is there, but the " +
@@ -598,10 +612,10 @@ function runStatusline(arg, typed) {
               "previous version of the plugin, and that version is gone — so nothing renders." +
               `${because} Run /gutt-pro:statusline to repoint it.`;
       }
-      // Resolves, but not to this version. The bar is not blank, so this is a report
-      // rather than a fault — and it is the one the user cannot see any other way,
-      // because everything downstream of a stale shim works exactly as well as it did
-      // in the version it still points at.
+      // Resolves, and to something real. The bar is not blank, so a stale entry point
+      // here is a report rather than a fault — and it is the one the user cannot see
+      // any other way, because everything downstream of a stale shim works exactly as
+      // well as it did in the version it still points at.
       if (!current) {
         return (
           "The gutt HUD is installed and rendering, but its entry point is not the one this " +

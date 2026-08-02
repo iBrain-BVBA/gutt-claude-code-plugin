@@ -63,23 +63,36 @@ jobs:
       - name: Run hook smoke tests
         run: node tests/test-all-hooks.cjs
 
-  # The toolchain version above is ours. Hooks are not: Claude Code spawns them
-  # with whatever `node` the end user has on PATH, which is routinely older than
-  # what we develop against. So the hook entry points get smoke-tested on the
-  # oldest runtime we are willing to have a user on, to catch syntax or API that
-  # only exists in a newer Node before it reaches someone's session as a broken
-  # hook. Zero-dep by design, so this needs no install and stays fast.
+  # The toolchain version above is ours. Hooks are not: Claude Code spawns them with
+  # whatever `node` the end user has on PATH, so the hook entry points get smoke-tested
+  # on the floor separately, to catch syntax or API that only exists in a newer runtime
+  # before it reaches someone's session as a broken hook.
+  #
+  # The floor is the one `package.json` declares — `engines.node`, and nothing else. It
+  # was pinned here to 18 while that field said >=24, so this job was certifying hooks
+  # against a runtime we already refuse to install on: every job in this file was green
+  # for a combination no user can be in, and a real 24-only construct would have been
+  # reported as a compatibility failure. A floor asserted in two places drifts; this one
+  # had. Zero-dep by design, so this needs no install and stays fast.
   hook-runtime-compat:
-    name: Hook Runtime Compat (Node 18)
+    name: Hook Runtime Compat (floor)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read the declared floor from package.json
+        id: floor
+        run: |
+          FLOOR=$(node -p "require('./package.json').engines.node.replace(/[^0-9.]/g, '').split('.')[0]")
+          test -n "$FLOOR" || { echo "engines.node is missing or unparseable"; exit 1; }
+          echo "version=$FLOOR" >> "$GITHUB_OUTPUT"
+          echo "Hook runtime floor: Node $FLOOR"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: ${{ steps.floor.outputs.version }}
 
       - name: Run hook smoke tests on the end-user runtime floor
         run: node tests/test-all-hooks.cjs
