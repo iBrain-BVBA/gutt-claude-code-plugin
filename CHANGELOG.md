@@ -121,7 +121,7 @@
   a prompt aimed at the built-in is not permission to do that.
 
   What settings point at is `${CLAUDE_PLUGIN_DATA}/statusline.cjs`, a generated
-  one-line shim that forwards to the current plugin root and is rewritten whenever
+  generated shim that forwards to the current plugin root and is rewritten whenever
   that root moves. `${CLAUDE_PLUGIN_ROOT}` is version-scoped, so naming it directly
   is what made the 2.x entry rot on the next upgrade. This one does not.
 

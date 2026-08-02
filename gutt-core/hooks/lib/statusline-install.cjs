@@ -16,9 +16,12 @@
  * (ccstatusline resolves through `npx`, others through a fixed path in ~/.claude).
  * Settings point at a stable path under ${CLAUDE_PLUGIN_DATA} — documented as
  * surviving plugin updates, and removed on uninstall so it cannot outlive us — and
- * that file is a one-line `require` of the current plugin root, rewritten whenever
+ * that file is a generated `require` of the current plugin root, rewritten whenever
  * the root moves. Upgrades become invisible: the user's settings.json is written
- * once and never again.
+ * once and never again. It is not the bare one-liner it started as — it supplies
+ * `${CLAUDE_PLUGIN_DATA}` (a status line is not a hook, so it is launched with no
+ * plugin environment), and it guards the require, because it outlives what it points
+ * at. See `shimContents`.
  *
  * Two rules govern the settings write, and they are the whole reason this is a
  * separate module rather than a few lines in a hook:

@@ -512,22 +512,6 @@ function runDisable(arg, typed) {
 }
 
 /**
- * `/gutt-pro:statusline [off|status]` — the HUD's only install path (GP-867).
- *
- * This verb exists because a plugin cannot ship a status line: upstream supports
- * only `agent` and `subagentStatusLine` in a plugin's settings.json, so the key has
- * to go in the user's own file, and nothing may put it there unasked. Typing this
- * is the asking.
- *
- * Every failure names the file it did not change. The whole point of routing this
- * through a command rather than a hook is that the user is present for it, so a
- * silent no-op would be the one outcome worse than not offering the command at all.
- *
- * @param {string|null} arg
- * @param {string} typed
- * @returns {string}
- */
-/**
  * Report a failed statusline write, without letting the framing contradict it.
  *
  * `writeSettings` was taught to distinguish "could not write it, it is unchanged"
@@ -550,6 +534,22 @@ function statuslineFailure(lead, result) {
   return `${lead}: ${result.detail}`;
 }
 
+/**
+ * `/gutt-pro:statusline [off|status]` — the HUD's only install path (GP-867).
+ *
+ * This verb exists because a plugin cannot ship a status line: upstream supports
+ * only `agent` and `subagentStatusLine` in a plugin's settings.json, so the key has
+ * to go in the user's own file, and nothing may put it there unasked. Typing this
+ * is the asking.
+ *
+ * Every failure names the file it did not change. The whole point of routing this
+ * through a command rather than a hook is that the user is present for it, so a
+ * silent no-op would be the one outcome worse than not offering the command at all.
+ *
+ * @param {string|null} arg
+ * @param {string} typed
+ * @returns {string}
+ */
 function runStatusline(arg, typed) {
   const verb = arg === null ? "install" : arg.toLowerCase();
 
