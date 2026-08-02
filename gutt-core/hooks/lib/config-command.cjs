@@ -57,6 +57,30 @@ const PLUGIN_PREFIX = "gutt-pro";
 const VERBS = ["config", "on", "off", "disable", "mode", "statusline"];
 
 /**
+ * Verbs accepted **only** in their namespaced spelling.
+ *
+ * `statusline` collides with a Claude Code built-in of the same name, which
+ * configures the user's status line through an agent. A bare `/statusline` is
+ * therefore addressed to the built-in — but this parser sees raw prompt text and not
+ * routing, so left alone it would match too and install the gutt HUD into
+ * `~/.claude/settings.json`.
+ *
+ * The attribution line the other bare verbs rely on is not enough here, and the
+ * difference is what is being written. `off`, `on`, `mode` and `disable` mutate
+ * plugin-owned config that `/gutt-pro:on` undoes in one command; this verb writes a
+ * file in the user's home directory that the plugin is otherwise forbidden to touch,
+ * and the user having asked for it *on purpose* is the entire reason the verb exists
+ * rather than a hook doing it silently. A prompt aimed at the built-in is not that
+ * asking. So the collision has to prevent the write, not merely announce it after
+ * the fact.
+ *
+ * A `Set` rather than a second array because membership is the only question asked
+ * of it, and it will not stay a single entry — every verb this plugin adds whose
+ * name a built-in might also want belongs here.
+ */
+const NAMESPACED_ONLY = new Set(["statusline"]);
+
+/**
  * Bounds on `/gutt-pro:off <minutes>`: whole minutes, 1 minute to 7 days.
  *
  * Rejected rather than clamped. Clamping silently does something other than what
@@ -149,6 +173,12 @@ function plural(n, word) {
  * would prevent the write rather than expose it, at the cost of the shortest form
  * a user will type; that trade is open, and this is the reversible half of it.
  *
+ * `statusline` is the exception, and it is decided rather than open: it is in
+ * `NAMESPACED_ONLY`, so a bare `/statusline` returns null here. The collision there is
+ * not hypothetical — a Claude Code built-in owns that name — and the write is not
+ * reversible from one command, so announcing it afterwards is the wrong shape. See
+ * `NAMESPACED_ONLY` for why that verb is treated differently from the other four.
+ *
  * `null` means "not addressed to us" and the hook stays silent. That covers every
  * legacy spelling (GP-931 D2): `/gutt off`, `/gutt:off` and
  * `/gutt-claude-code-plugin:gutt off` are ordinary prompt text now, because their
@@ -185,6 +215,12 @@ function parseCommand(raw) {
   // see the note on `bare` above. A legacy `/gutt` spelling, and prose that happens
   // to start with a slash, are both rejected here.
   if (!VERBS.includes(verb)) {
+    return null;
+  }
+
+  // Spelled out or not addressed to us. The one verb that writes outside the plugin's
+  // own state does not get the benefit of the doubt a generic bare name gets.
+  if (bare && NAMESPACED_ONLY.has(verb)) {
     return null;
   }
 
@@ -725,6 +761,7 @@ function runVerb(parsed, sessionId, now) {
 module.exports = {
   PLUGIN_PREFIX,
   VERBS,
+  NAMESPACED_ONLY,
   MIN_MINUTES,
   MAX_MINUTES,
   parseCommand,

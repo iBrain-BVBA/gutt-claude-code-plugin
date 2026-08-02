@@ -299,6 +299,19 @@ prepends the verb it ran, so a collision is visible the first time rather than n
 Making the four mutating verbs namespaced-only would prevent the write instead of
 exposing it, and remains open.
 
+**`statusline` was added after this probe and is deliberately not covered by it.** The
+run predates the verb, so the table says nothing about a bare `/statusline` — and Claude
+Code ships a built-in of that name, which puts it in one of two unmeasured states: either
+the built-in intercepts the token as it does `/config`, or the text reaches
+`UserPromptSubmit` as it does for the other four. **Which one is unknown.** The parser
+does not wait to find out: `NAMESPACED_ONLY` in `config-command.cjs` refuses the bare
+spelling outright, because that verb writes `~/.claude/settings.json` rather than
+plugin-owned config, and an after-the-fact attribution line is the wrong remedy for a
+write the user did not ask for. So the refusal is correct under either answer, which is
+why no probe is blocking. The probe that would settle it is the same
+`tests/e2e/probes/bare-verb-resolution.cjs` with `statusline` added to its verb list; the
+tell is whether that turn produces any injection at all.
+
 **Also not established:** whether the count in the table rules out `/config` reaching a
 hook by any path, or only rules out `configCommandResult` running. Only the second is
 claimed. The probe's census is flat across the session, so it cannot attribute a

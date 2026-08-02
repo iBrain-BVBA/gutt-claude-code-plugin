@@ -59,13 +59,15 @@ function restoreEnv() {
 // ---------------------------------------------------------------------------
 
 describe("config command: parsing", () => {
-  it("accepts both spellings of every verb", () => {
+  it("accepts both spellings of every verb that has two", () => {
     // The namespaced form is the one the `/` menu inserts, and therefore the one most
     // users will produce. A parser that only handled the bare form would make the
     // default path a silent no-op.
     for (const verb of command.VERBS) {
       assert.equal(parseCommand(`/gutt-pro:${verb}`).verb, verb, `/gutt-pro:${verb}`);
-      assert.equal(parseCommand(`/${verb}`).verb, verb, `/${verb}`);
+      if (!command.NAMESPACED_ONLY.has(verb)) {
+        assert.equal(parseCommand(`/${verb}`).verb, verb, `/${verb}`);
+      }
     }
     assert.deepEqual(parseCommand("/gutt-pro:off 30"), {
       verb: "off",
@@ -86,11 +88,51 @@ describe("config command: parsing", () => {
     // and `disable` are names another plugin can own. `bare` is what lets the outcome
     // say so instead of writing silently.
     for (const verb of command.VERBS) {
-      assert.equal(parseCommand(`/${verb}`).bare, true, `/${verb}`);
+      if (!command.NAMESPACED_ONLY.has(verb)) {
+        assert.equal(parseCommand(`/${verb}`).bare, true, `/${verb}`);
+      }
       assert.equal(parseCommand(`/gutt-pro:${verb}`).bare, false, `/gutt-pro:${verb}`);
     }
     assert.equal(parseCommand("/off 1 2").bare, true, "carried on a bad-tail parse too");
     assert.equal(parseCommand("/gutt-pro:off 1 2").bare, false);
+  });
+
+  it("refuses the bare spelling of a verb that writes outside the plugin", () => {
+    // `/statusline` is a Claude Code built-in. This parser reads prompt text and cannot
+    // see which command the platform routed, so a bare match here would install the HUD
+    // into ~/.claude/settings.json off a prompt aimed at the built-in. The other bare
+    // verbs get away with announcing themselves afterwards because /gutt-pro:on undoes
+    // them; this one writes a file the plugin may otherwise not touch, and being asked
+    // on purpose is the whole reason the verb exists rather than a hook doing it.
+    assert.equal(parseCommand("/statusline"), null);
+    assert.equal(parseCommand("/statusline off"), null);
+    assert.equal(parseCommand("/statusline status"), null);
+    assert.equal(parseCommand("  /STATUSLINE  "), null, "case and padding do not sneak past");
+    assert.equal(parseCommand("/statusline off please"), null, "nor does a bad tail");
+
+    // Refused, not merely unattributed: null is what keeps the hook silent, so the
+    // built-in answers alone and nothing of gutt's runs.
+    assert.equal(command.configCommandResult("/statusline"), null);
+  });
+
+  it("still accepts the namespaced spelling of that verb", () => {
+    // The guard must not have taken the documented path with it.
+    assert.deepEqual(parseCommand("/gutt-pro:statusline"), {
+      verb: "statusline",
+      arg: null,
+      typed: "/gutt-pro:statusline",
+      bare: false,
+    });
+    assert.equal(parseCommand("/gutt-pro:statusline off").arg, "off");
+    assert.equal(parseCommand("/gutt-pro:statusline status").arg, "status");
+  });
+
+  it("names every namespaced-only verb in VERBS", () => {
+    // A typo in the set would be a silently inert guard — the verb would keep taking
+    // its bare form and nothing would fail.
+    for (const verb of command.NAMESPACED_ONLY) {
+      assert.ok(command.VERBS.includes(verb), `${verb} is not a verb`);
+    }
   });
 
   it("is insensitive to case and to surrounding whitespace", () => {
