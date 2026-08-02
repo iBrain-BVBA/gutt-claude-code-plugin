@@ -2,7 +2,44 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The statusline HUD is back, as an opt-in that survives upgrades.** Turn it on
+  with `/gutt-pro:statusline`; `off` removes it, `status` reports it. It shows
+  connection state, whether recall is `on`, `off` or snoozed (with the time a
+  snooze lapses), the capture mode when it is not `auto`, the group being written
+  to, context-window usage, and turns since the last recall. Segments drop from
+  the right as the terminal narrows and the state segment always survives; a
+  segment whose data does not exist is omitted rather than rendered as a zero.
+
+  It is opt-in because it cannot be anything else: Claude Code accepts a
+  `statusLine` only from the user's own `settings.json`, never from a plugin's, so
+  the key this plugin used to ship in `hooks.json` was never registered and never
+  ran. Nothing writes your settings unless you run the command, your existing file
+  is backed up first, and a status line you wrote yourself is never touched.
+
+  What settings point at is `${CLAUDE_PLUGIN_DATA}/statusline.cjs`, a generated
+  one-line shim that forwards to the current plugin root and is rewritten whenever
+  that root moves. `${CLAUDE_PLUGIN_ROOT}` is version-scoped, so naming it directly
+  is what made the 2.x entry rot on the next upgrade. This one does not.
+
+  If the HUD vanishes on its own, that is Claude Code dropping the key while
+  rewriting `settings.json`
+  ([#62486](https://github.com/anthropics/claude-code/issues/62486), closed as not
+  planned). The next session restores it — but only if you installed it, which is
+  recorded separately for exactly that reason (GP-867)
+
 ### Fixed
+
+- **The HUD's `!` no longer fires at correctly configured sessions.** It was driven
+  by whether a `group_id` was set _locally_, but the normal path resolves the group
+  from MCP auth and leaves that empty — so a working setup rendered `[gutt⚪!]` and
+  was told it was broken. It now fires only when the connectivity probe reports no
+  MCP server (GP-867)
+- **A failed connectivity probe now shows red instead of looking unconfigured.**
+  `connectionStatus` had no writer for `"error"`, so the HUD's 🔴 branch was
+  unreachable and "we could not tell" was indistinguishable from "there is nothing
+  there" (GP-867)
 
 - **Every hook crashed on Windows.** gutt-pro 3.0.0 was unusable there: all 7
   hooks died at `require()` with a `SyntaxError` before doing any work. The repo
@@ -50,6 +87,11 @@
   hooks that fed them (`post-memory-ops.cjs`, `cowork-periodic-capture.cjs`) are
   removed along with `memory-cache.cjs` and `seed-registry.cjs`; the
   `/gutt-pro:reset-counters` command is deleted (GP-844)
+- **The inert `statusLine` key in `hooks.json`**, along with the dead
+  `gutt.statusline` block in `config.json.example` and the unreferenced
+  `getStatuslineConfig()` in `hooks/lib/config.cjs`. The manifest key was never
+  registered by the platform, and shipping a key that does nothing tells every
+  future reader it works. A test now asserts it stays out (GP-867)
 - **The subagent hooks plugin** (`plugins/gutt-subagent-hooks-plugin/`), which was
   never listed in `marketplace.json` and therefore never shipped. Decision O4
   keeps subagent hooks out of 3.0 (GP-868)

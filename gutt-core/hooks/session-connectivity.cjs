@@ -18,6 +18,8 @@
 
 const { diagnoseGuttMcp } = require("./lib/mcp-config.cjs");
 const { init, updateState } = require("./lib/session-state.cjs");
+const { statuslineConsented } = require("./lib/runtime-config.cjs");
+const { refreshShim, reassertEntry } = require("./lib/statusline-install.cjs");
 const { guard } = require("./lib/debug.cjs");
 const { isNestedRun } = require("./lib/nested-run.cjs");
 
@@ -49,14 +51,21 @@ process.stdin.on("end", () => {
   const probe = guard("SessionStart/async", "mcp diagnose", diagnoseGuttMcp);
   const diag = probe || { configured: false, url: null, error: "probe failed" };
 
-  // Conservative mapping, unchanged from 2.x: only a configured server with a
-  // reachable-looking URL counts as "ok". A stdio-transport server can't be
-  // verified from a hook, so it stays "unknown" rather than showing red. The raw
-  // facts go in alongside it so the HUD port (GP-867) can fix the false "!"
-  // without re-running this probe.
+  // Conservative mapping: only a configured server with a reachable-looking URL
+  // counts as "ok". A stdio-transport server can't be verified from a hook, so it
+  // stays "unknown" rather than showing red at someone whose setup is fine.
+  //
+  // "error" means the probe itself failed — we could not tell, which is a third
+  // thing and not the same as "not configured". Until GP-867 nothing wrote it and
+  // the HUD's red branch was unreachable; a diagnosis that threw looked identical
+  // to a machine with no MCP server at all.
   guard("SessionStart/async", "state write", () =>
     updateState((state) => {
-      state.connectionStatus = diag.configured && diag.url ? "ok" : "unknown";
+      if (!probe) {
+        state.connectionStatus = "error";
+      } else {
+        state.connectionStatus = diag.configured && diag.url ? "ok" : "unknown";
+      }
       state.mcpConfigured = Boolean(diag.configured);
       state.mcpUrl = diag.url || null;
       // Persisted so a consumer can tell a failed probe from a genuine absence;
@@ -65,6 +74,25 @@ process.stdin.on("end", () => {
       state.connectionCheckedAt = new Date().toISOString();
       return state;
     })
+  );
+
+  // Keep the HUD's entry point pointing at this version (GP-867). Both steps live
+  // on the async hook rather than the synchronous one for the same reason the probe
+  // does: SessionStart has a ≤50ms budget (R25) and this is filesystem work nobody
+  // is waiting on.
+  //
+  // The shim is what makes an upgrade invisible. The user's settings.json names a
+  // stable path under ${CLAUDE_PLUGIN_DATA}; this repoints it at the current
+  // CLAUDE_PLUGIN_ROOT, which every update moves. Unchanged content writes nothing.
+  guard("SessionStart/async", "statusline shim", refreshShim);
+
+  // The narrow repair for anthropics/claude-code#62486 — Claude Code rewrites
+  // settings.json mid-session and drops keys it is not currently serialising,
+  // `statusLine` among them, and the issue is closed as not planned. Gated on a
+  // consent record, so this only ever restores a HUD the user explicitly asked for.
+  // No consent, or a status line that is now someone else's, and it does nothing.
+  guard("SessionStart/async", "statusline reassert", () =>
+    reassertEntry({ consented: statuslineConsented() })
   );
 
   // Best-effort user-facing note. An async hook's stdout is not guaranteed to

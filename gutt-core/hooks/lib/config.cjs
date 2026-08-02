@@ -109,21 +109,12 @@ function getConfig() {
   return loadConfigFile();
 }
 
-/**
- * Get statusline configuration
- * @returns {Object} Statusline config object
- */
-function getStatuslineConfig() {
-  return loadConfig().config?.gutt?.statusline || {};
-}
-
 module.exports = {
   getGroupId,
   isConfigured,
   getConfigSource,
   getConfig,
   loadConfig,
-  getStatuslineConfig,
   CONFIG_PATHS,
   PLUGIN_ROOT,
 };

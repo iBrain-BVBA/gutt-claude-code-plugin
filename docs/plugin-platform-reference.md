@@ -1,7 +1,8 @@
 # Plugin platform reference (upstream)
 
 **Source:** <https://code.claude.com/docs/en/plugins-reference.md>
-**Read:** 2026-07-29 · **Method:** `WebFetch`, then the fetched page read directly
+**Read:** 2026-08-02 (§1 re-read, unchanged) · 2026-07-29 (§1–§8) ·
+**Method:** `WebFetch`, then the fetched page read directly
 **Companion:** [`hook-platform-capabilities.md`](./hook-platform-capabilities.md) — same
 provenance, hook events and their output contracts.
 
@@ -18,8 +19,43 @@ Verbatim, from the file-locations table:
 
 This settles the HUD question authoritatively: a plugin **cannot** ship the main
 `statusLine`, only `subagentStatusLine`. The statusline HUD needs a key in the user's own
-`settings.json`, which is what GP-867 has to solve — the constraint is upstream, not ours,
-and no amount of plugin-side work removes it.
+`settings.json` — the constraint is upstream, not ours, and no amount of plugin-side work
+removes it.
+
+**Re-read 2026-08-02, verbatim unchanged.** This closes a question the earlier read left
+open: whether some Claude Code version once honoured a plugin's top-level `statusLine`,
+which would have made it a version-floor problem rather than a flat limit. It is a flat
+limit. Two related findings from the same pass, both from
+<https://code.claude.com/docs/en/statusline.md>:
+
+- **`subagentStatusLine` is not a fallback.** It "renders a custom row body for each
+  subagent shown in the agent panel below the prompt", taking a `tasks` array and
+  emitting one JSON line per row. A different surface, not a narrower main HUD — it
+  cannot show session connection state, so it never was an option for this.
+- **The statusline payload carries a `context_window` object**: `total_input_tokens`,
+  `total_output_tokens`, `context_window_size`, `used_percentage`,
+  `remaining_percentage`, `current_usage.*`, and `exceeds_200k_tokens`. Plus
+  `refreshInterval` and `padding` on the settings entry, and `COLUMNS`/`LINES` in the
+  environment. Context metrics need no hook.
+
+### 1a. The hazard that shapes how the key is written
+
+Not from the reference page — from
+[anthropics/claude-code#62486](https://github.com/anthropics/claude-code/issues/62486),
+read 2026-08-02. Claude Code rewrites `settings.json` **mid-session** and the write path
+"serialises only the schema fields relevant to the current operation, rather than
+round-tripping the full settings object". Keys not in that path are dropped:
+`statusLine`, `enabledPlugins`, and `hooks` are all named. **Closed as not planned.**
+
+Two consequences worth carrying beyond the HUD. `enabledPlugins` on that list means any
+mechanism depending on a user-settings key can have it removed underneath it, silently,
+through no fault of ours. And the only workaround the thread produces is to re-assert
+from a SessionStart hook — which is what GP-867 does, gated on a stored consent record so
+it only ever restores something the user chose.
+
+Provenance: a public issue thread, not a doc read and not a measurement. Lower than
+**Read** on the ladder in the companion file. What it predicts has not been reproduced
+here deliberately — reproducing it means waiting for the CLI to eat a key.
 
 ## 2. `userConfig` — the field that replaces hand-edited config
 

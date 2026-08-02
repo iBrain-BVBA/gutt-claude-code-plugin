@@ -652,6 +652,7 @@ module.exports = {
   matchesOrphanPattern,
   isDeadPluginStatusLine,
   statusLineTarget,
+  OUR_STATUSLINE_FILES,
   needsMigration,
   runMigrations,
   describeMigration,

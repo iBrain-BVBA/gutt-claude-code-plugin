@@ -43,6 +43,7 @@
 "use strict";
 
 const config = require("./runtime-config.cjs");
+const statusline = require("./statusline-install.cjs");
 
 /** Must equal `name` in `gutt-core/.claude-plugin/plugin.json`; a test asserts it. */
 const PLUGIN_PREFIX = "gutt-pro";
@@ -53,7 +54,7 @@ const PLUGIN_PREFIX = "gutt-pro";
  * `gutt-core/commands/<verb>.md`, or the typed command expands to nothing and the
  * outcome this module injects has no reply to sit alongside.
  */
-const VERBS = ["config", "on", "off", "disable", "mode"];
+const VERBS = ["config", "on", "off", "disable", "mode", "statusline"];
 
 /**
  * Bounds on `/gutt-pro:off <minutes>`: whole minutes, 1 minute to 7 days.
@@ -69,7 +70,8 @@ const MAX_MINUTES = 10080;
 /** The forms, quoted back on anything unrecognised so the reply is actionable. */
 const FORMS =
   "/gutt-pro:config, /gutt-pro:on, /gutt-pro:off, /gutt-pro:off <minutes>, " +
-  "/gutt-pro:off session, /gutt-pro:disable, /gutt-pro:mode auto, /gutt-pro:mode hitl";
+  "/gutt-pro:off session, /gutt-pro:disable, /gutt-pro:mode auto, /gutt-pro:mode hitl, " +
+  "/gutt-pro:statusline, /gutt-pro:statusline off, /gutt-pro:statusline status";
 
 /**
  * `YYYY-MM-DD HH:MM` in local time. Hand-rolled rather than `toLocaleString`,
@@ -472,6 +474,89 @@ function runDisable(arg, typed) {
 }
 
 /**
+ * `/gutt-pro:statusline [off|status]` — the HUD's only install path (GP-867).
+ *
+ * This verb exists because a plugin cannot ship a status line: upstream supports
+ * only `agent` and `subagentStatusLine` in a plugin's settings.json, so the key has
+ * to go in the user's own file, and nothing may put it there unasked. Typing this
+ * is the asking.
+ *
+ * Every failure names the file it did not change. The whole point of routing this
+ * through a command rather than a hook is that the user is present for it, so a
+ * silent no-op would be the one outcome worse than not offering the command at all.
+ *
+ * @param {string|null} arg
+ * @param {string} typed
+ * @returns {string}
+ */
+function runStatusline(arg, typed) {
+  const verb = arg === null ? "install" : arg.toLowerCase();
+
+  if (verb === "status") {
+    const { present, known, foreign } = statusline.entryPresent();
+    const consented = config.statuslineConsented();
+    if (!known) {
+      return (
+        "gutt could not read ~/.claude/settings.json, so it cannot say whether the HUD is " +
+        "installed. Fix the JSON there and run /gutt-pro:statusline status again."
+      );
+    }
+    if (present) {
+      return `The gutt HUD is installed. /gutt-pro:statusline off removes it.`;
+    }
+    if (foreign) {
+      return (
+        "Your settings.json has a status line, but not one gutt wrote — so gutt is leaving " +
+        "it alone. Remove it yourself first if you want the gutt HUD instead."
+      );
+    }
+    return consented
+      ? "The gutt HUD is not in your settings.json, though you asked for it before. Claude Code " +
+          "sometimes drops the key when it rewrites that file; the next session restores it, " +
+          "or /gutt-pro:statusline installs it now."
+      : "The gutt HUD is not installed. /gutt-pro:statusline installs it.";
+  }
+
+  if (verb === "off") {
+    const result = statusline.removeEntry();
+    if (!result.ok) {
+      return `gutt did not change your settings: ${result.detail}`;
+    }
+    // Consent is withdrawn even when there was nothing to remove. Otherwise a
+    // stale flag has the next session helpfully reinstalling what was just removed.
+    config.setStatuslineConsent(false);
+    return result.status === "removed"
+      ? "The gutt HUD is removed from ~/.claude/settings.json (the previous file is backed up). " +
+          "/gutt-pro:statusline puts it back."
+      : "The gutt HUD was not installed, so nothing changed.";
+  }
+
+  if (arg !== null && verb !== "install") {
+    return (
+      `gutt did not recognise "${typed}" — /gutt-pro:statusline installs the HUD, ` +
+      "/gutt-pro:statusline off removes it, /gutt-pro:statusline status reports it. " +
+      "Nothing was changed."
+    );
+  }
+
+  const result = statusline.installEntry();
+  if (!result.ok) {
+    return `gutt did not install the HUD: ${result.detail}`;
+  }
+  // Recorded after the write, not before: consent authorises the repair in later
+  // sessions, and there is nothing to repair if the first write never landed.
+  config.setStatuslineConsent(true);
+  if (result.status === "already-installed") {
+    return "The gutt HUD is already installed. It updates itself when the plugin does.";
+  }
+  return (
+    "The gutt HUD is installed in ~/.claude/settings.json and shows up in your status bar " +
+    "from the next session. It points at a stable path, so plugin upgrades will not break " +
+    "it. /gutt-pro:statusline off removes it."
+  );
+}
+
+/**
  * `/gutt-pro:on`.
  *
  * The pre-read is what lets the reply be honest: `restore()` returns false both
@@ -627,6 +712,8 @@ function runVerb(parsed, sessionId, now) {
       return runDisable(parsed.arg, parsed.typed);
     case "mode":
       return runMode(parsed.arg);
+    case "statusline":
+      return runStatusline(parsed.arg, parsed.typed);
     default:
       return (
         `gutt did not recognise "${parsed.typed}". The forms are: ${FORMS}. ` +

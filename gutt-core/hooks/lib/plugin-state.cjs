@@ -609,6 +609,7 @@ module.exports = {
   stateRoot,
   statePath,
   exists,
+  atomicWrite,
   readJson,
   readJsonOrUnreadable,
   UNREADABLE,
