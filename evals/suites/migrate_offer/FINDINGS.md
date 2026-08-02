@@ -2,7 +2,7 @@
 
 Five wordings of the `SessionStart` migration offer, scored on whether the offer reaches
 the user without hijacking the turn. `V0-shipped` is read from `offerContext()` in
-`shared/builtin-memory.cjs` at run time, so it cannot drift from what ships.
+`gutt-core/hooks/lib/builtin-memory.cjs` at run time, so it cannot drift from what ships.
 
 > ⚠ **The numbers below describe a wording that no longer ships.** `offerContext()` was
 > changed after this run: the offer is now collected with **AskUserQuestion** instead of a
@@ -43,7 +43,7 @@ replicated across two rounds.
 
 ## The scoping sentence is unconfirmed — and must not be deleted on these numbers
 
-`shared/builtin-memory.cjs` says of `— this is housekeeping, so do not interrupt whatever
+`gutt-core/hooks/lib/builtin-memory.cjs` says of `— this is housekeeping, so do not interrupt whatever
 they actually asked for`: "without it this reads as 'migrate now', and a session opened to
 ask one quick question would get a migration run instead of an answer."
 

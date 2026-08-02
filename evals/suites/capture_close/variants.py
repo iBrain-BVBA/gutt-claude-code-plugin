@@ -61,7 +61,7 @@ def shipped():
     like a result, so this raises instead.
 
     The end marker is searched for *after* the begin marker, matching `readStyleBlock` in
-    `shared/stop-judge.cjs`. Unanchored, an `INJECTED:END` appearing earlier in the file —
+    `gutt-core/hooks/lib/stop-judge.cjs`. Unanchored, an `INJECTED:END` appearing earlier in the file —
     quoted in commentary, or in an example of the markers themselves — would slice a region
     the hook never reads, and the baseline every variant is scored against would silently
     stop being the shipped text.

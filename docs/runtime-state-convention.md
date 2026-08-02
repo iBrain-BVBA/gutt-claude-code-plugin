@@ -151,7 +151,7 @@ Deleting the offending code fixed future writes and nothing else. Anyone who ran
 paths — so a stale `statusLine` kept firing on every render, dumping a Node
 `MODULE_NOT_FOUND` stack trace into the debug log for a file that no longer exists.
 
-`shared/migrations.cjs` clears that, gated by `session-start.cjs`:
+`hooks/lib/migrations.cjs` clears that, gated by `session-start.cjs`:
 
 | Removed                                                    | Only when                                                                   |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
@@ -190,7 +190,7 @@ in `tests/check-state-location.cjs`'s allowlist. The steady-state rule is unchan
 and is what the e2e tier now asserts: **no hook ever adds a key to the user's
 settings** — the one sanctioned write is a removal of the plugin's own dead key.
 
-## The shared lib — `hooks/lib/plugin-state.cjs`
+## The state lib — `hooks/lib/plugin-state.cjs`
 
 | Function                                              | Purpose                                                                                                                                                                                                                                                                              |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -278,11 +278,14 @@ suite performs now lands under `${CLAUDE_PLUGIN_DATA}`.
 
 ## CI guard — `tests/check-state-location.cjs` (`npm run check:state`)
 
-Structural, zero-dep (like `check:no-symlinks`). Scans every plugin's `hooks/` — libs
-included, since each plugin now owns its own — and enforces two rules:
+Structural, zero-dep (like `check:no-symlinks`). Scans the `hooks/` tree of every plugin
+that ships hooks — libs included, since each plugin now owns its own — and fails if a
+listed directory is missing rather than skipping it, so a rename cannot silently retire
+the guard. It enforces two rules:
 
-1. **No direct `fs` write calls** outside a two-entry allowlist (`plugin-state.cjs`,
-   `debug.cjs`), both of which write only under `${CLAUDE_PLUGIN_DATA}`. This is how
+1. **No direct `fs` write calls** outside a named allowlist (`plugin-state.cjs`,
+   `debug.cjs`, plus the two one-shot migration modules), each of which writes only
+   under `${CLAUDE_PLUGIN_DATA}`. This is how
    "state escapes to the project tree" is caught: writes must route through the lib.
 2. **No retired state paths** (the table above). These would otherwise come back
    quietly — handed to `plugin-state.cjs` they no-op rather than fail, so the guard

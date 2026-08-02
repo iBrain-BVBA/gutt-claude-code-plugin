@@ -193,7 +193,7 @@ const STYLE_SKILL_DIR = STYLE_SKILL.split(":")[1];
  *
  * Cost is one small file read per fire. R25's latency budget is on the UserPromptSubmit
  * path, not this one — and note that the repo states it inconsistently, as 50ms in
- * `shared/runtime-config.cjs` against ≤2s in `docs/e2e-hook-test-plan.md` §R25, unresolved
+ * `runtime-config.cjs` against ≤2s in `docs/e2e-hook-test-plan.md` §R25, unresolved
  * either way. Stop is on neither reading the tight path, and this hook already spawns a
  * `claude -p` child, so a 1KB read is not the term that matters.
  */
@@ -204,19 +204,19 @@ const STYLE_END = "<!-- INJECTED:END -->";
  * Candidate paths to that `SKILL.md`, in resolution order.
  *
  * `${CLAUDE_PLUGIN_ROOT}` first because it is what the platform sets for a hook process
- * and the only one that is right in every layout. The two fallbacks exist because
- * `__dirname` is not stable across them: installed, this file is a real file at
- * `<root>/hooks/lib/`, so `../..` is the plugin root (documented behaviour, not measured —
- * see `docs/plugin-platform-reference.md` §3 on symlink dereferencing at install); in local
- * development it is `shared/stop-judge.cjs` reached through a symlink, and Node resolves
- * `__dirname` to the realpath, which puts `../..` outside the repo entirely. Hence the
- * explicit `gutt-core` candidate, which names the directory instead of walking up to it.
+ * and the only one that is right without inspecting the filesystem at all.
  *
- * The `gutt-core` candidate is tried **before** `../..` even though only the installed
- * layout needs `../..`, because in the dev layout `../..` resolves to the parent of the
- * checkout — the directory every sibling repo also lives in. Tried first, any stray
- * `skills/output-style/SKILL.md` there would outrank this plugin's own copy. Ordered this
- * way the out-of-tree path is reachable only when nothing inside the plugin matched.
+ * `../..` is the fallback, and one fallback is now enough: this file is a real file at
+ * `<plugin>/hooks/lib/` in the working tree and in an install alike, so two levels up is
+ * the plugin root either way. That was not true while it was reached through a symlink
+ * from a marketplace-root directory — Node resolves `__dirname` to the realpath, which
+ * put `../..` outside the plugin — and a third candidate naming the plugin directory
+ * existed to cover it. Nothing needs that candidate now, and keeping it would only make
+ * the chain look like it handles a layout that no longer exists.
+ *
+ * The candidate is admitted only when the directory really carries a plugin manifest, so
+ * a copy of this file relocated somewhere unexpected cannot inject an unrelated
+ * `SKILL.md` verbatim into a fired reason.
  *
  * @returns {string[]}
  */
@@ -226,13 +226,6 @@ function styleBlockPaths() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
     paths.push(path.join(process.env.CLAUDE_PLUGIN_ROOT, rel));
   }
-  paths.push(path.resolve(__dirname, "..", "gutt-core", rel));
-  // The installed layout's candidate, admitted only when that directory really is a plugin
-  // root. Ordering it last stops it *winning* over the plugin's own copy; it does not stop it
-  // being read when nothing else matched, and in the dev layout it resolves to the parent of
-  // the checkout — the directory every sibling repo shares. A stray
-  // `skills/output-style/SKILL.md` there would be injected verbatim into a fired reason, so
-  // the manifest check is what makes that structurally impossible rather than merely unlikely.
   const up = path.resolve(__dirname, "..", "..");
   if (fs.existsSync(path.join(up, ".claude-plugin", "plugin.json"))) {
     paths.push(path.join(up, rel));
@@ -251,7 +244,7 @@ function styleBlockPaths() {
  *
  * `cause` exists because `""` alone was one channel for five failures with five different
  * fixes: reinstall, restore a deleted marker, `chmod`, correct `CLAUDE_PLUGIN_ROOT`, remove
- * a directory sitting at the path. `shared/plugin-state.cjs`'s `readJsonOrUnreadable` draws
+ * a directory sitting at the path. `plugin-state.cjs`'s `readJsonOrUnreadable` draws
  * the same distinction for the same reason, and this is the second caller that needs it.
  *
  * Two rules decide what is worth reporting. A candidate that is simply absent

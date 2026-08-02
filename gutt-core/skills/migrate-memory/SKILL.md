@@ -291,6 +291,3 @@ summary of that work, last, per `memory-capture`.
 - `conflict-adjudication` — for a local fact that _contradicts_ something already in
   the graph (step 6). It recommends supersede / coexist / escalate and never rewrites
   memory itself; the approved correction is written back through `memory-capture`.
-- `shared/builtin-memory.cjs` — how the store is located and what counts as a fact.
-- `shared/builtin-memory-store.cjs` — backup, verification record, and the deletion
-  gate; also holds the standing note left in `MEMORY.md`.

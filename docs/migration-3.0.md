@@ -83,7 +83,7 @@ Three consequences worth naming:
   built-in-memory migration may be offered it again — as an `AskUserQuestion` prompt,
   not a line of prose. Declining again is one click.
 - **The 2.x cleanup re-runs.** `MIGRATIONS_VERSION` resets with the data directory, so
-  `shared/migrations.cjs` executes once more on first run. It only ever removes
+  `gutt-core/hooks/lib/migrations.cjs` executes once more on first run. It only ever removes
   provably-dead files, so the second pass should be a no-op — but note that its
   `~/.claude/settings.json` exemption re-opens for that one run, and that the rename
   can make your `statusLine` target genuinely dead, in which case the re-run removes

@@ -18,7 +18,7 @@
  * passes while asserting nothing.
  */
 
-const { test, describe, it, before, after } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -154,12 +154,6 @@ describe("nested-run: the guard cannot be forgotten", () => {
   });
 });
 
-test("the lib ships inside the plugin, as a real file", () => {
-  // The inverse of what this asserted until GP-933. The lib used to be a symlink into a
-  // marketplace-root shared/, which is what broke every hook on Windows — git there
-  // writes the link target as file content. It must now be a real file under the plugin
-  // root, which is also the only thing a marketplace install copies.
-  const lib = path.join(HOOKS, "lib", "nested-run.cjs");
-  assert.ok(!fs.lstatSync(lib).isSymbolicLink(), `${lib} is a symlink`);
-  assert.match(fs.readFileSync(lib, "utf8"), /module\.exports/, `${lib} is not JavaScript`);
-});
+// The real-file assertion that used to sit here covered this one lib. It now runs over
+// every lib in every plugin, in tests/hook-architecture.test.cjs — a per-file spot check
+// left the other twelve unasserted.

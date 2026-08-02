@@ -3,7 +3,8 @@
  * CLI the `migrate-memory` skill drives (GP-922). Every subcommand prints one JSON
  * object on stdout and exits 0, so the agent parses a result instead of scraping prose.
  *
- * Thin by design: all the logic lives in `shared/builtin-memory{,-store}.cjs`, which
+ * Thin by design: all the logic lives in the plugin's own
+ * `hooks/lib/builtin-memory{,-store}.cjs`, which
  * is where `tests/check-state-location.cjs` can see the one module allowed to delete
  * outside the data dir. This file only parses argv.
  *

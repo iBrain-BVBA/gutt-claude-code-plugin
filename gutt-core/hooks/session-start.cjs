@@ -105,6 +105,6 @@ if (require.main === module) {
 
 // Re-exported for the tests that assert the sweep bounds every artifact and stays
 // inside the R25 budget — they must measure the shipped sweep, not a copy. The
-// implementation moved to shared/session-sweep.cjs in GP-895; this keeps the
+// implementation moved to ./lib/session-sweep.cjs in GP-895; this keeps the
 // import path those tests already use.
 module.exports = { ttlSweep, SESSION_TTL_MS, LOG_MAX_BYTES, DEBRIS_TTL_MS };

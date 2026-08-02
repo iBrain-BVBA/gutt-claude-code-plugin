@@ -1102,3 +1102,51 @@ describe("hook architecture guards", () => {
     assert.deepEqual(missing, []);
   });
 });
+
+/**
+ * Hook libs must be real files on disk, in every plugin.
+ *
+ * `tests/check-no-symlinks.cjs` guards the *cause* — git mode 120000 in the index — and
+ * that is the right thing to block, because it is recorded identically on every
+ * platform. This guards the *symptom*: a lib whose bytes are a path string rather than
+ * JavaScript, which is what a Windows checkout of such a commit actually produces and
+ * what killed every hook at require() time in 3.0.0. The two are worth keeping separate,
+ * since CI runs on Linux where the cause is present but the symptom never appears.
+ */
+describe("every plugin ships its hook libs as real files", () => {
+  // Every plugin the marketplace lists, not the hand-written PLUGIN_DIRS above: that
+  // list is scoped to plugins with hook *shape* to constrain, whereas any plugin that
+  // grows a hooks/lib needs its files checked from the first one.
+  const libDirs = marketplacePluginDirs()
+    .map((d) => path.join(ROOT, d, "hooks", "lib"))
+    .filter((d) => fs.existsSync(d));
+
+  it("found at least one hooks/lib directory to check", () => {
+    assert.ok(
+      libDirs.length > 0,
+      "no plugin has a hooks/lib directory — this suite would pass vacuously"
+    );
+  });
+
+  for (const dir of libDirs) {
+    const rel = path.relative(ROOT, dir);
+    const libs = fs.readdirSync(dir).filter((f) => f.endsWith(".cjs"));
+
+    it(`${rel} contains libs to check`, () => {
+      assert.ok(libs.length > 0, `${rel} exists but holds no .cjs files`);
+    });
+
+    for (const name of libs) {
+      it(`${rel}/${name} is a real file holding JavaScript`, () => {
+        const abs = path.join(dir, name);
+        assert.ok(!fs.lstatSync(abs).isSymbolicLink(), `${abs} is a symlink`);
+        assert.match(
+          fs.readFileSync(abs, "utf8"),
+          /module\.exports/,
+          `${abs} does not look like JavaScript — a Windows checkout of a committed ` +
+            `symlink leaves the link target path here as the file's contents`
+        );
+      });
+    }
+  }
+});

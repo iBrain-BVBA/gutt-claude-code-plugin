@@ -171,7 +171,10 @@ depend on some other plugin continuing to exist and continuing to ship hooks.
 - both plugins' `hooks.json` are read; exactly one gutt plugin loads, from this repo
 - gutt's six handlers still register and the lifecycle still completes
 - no hook emits a blocking decision, and the session is not interrupted
-- the companion contributes its `PostToolUse` handler without disturbing gutt
+- the companion's `SessionStart` handler actually **runs** to completion alongside
+  gutt's, rather than merely being registered — the handler sits on an event this run
+  fires precisely so that coexistence is proven at execution time, not just load time
+- the companion's own data dir stays empty, so neither plugin writes into the other's
 
 ### Run 6 — the `/gutt-pro:` config command (GP-866, GP-931)
 

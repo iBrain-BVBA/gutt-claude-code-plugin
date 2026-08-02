@@ -83,15 +83,15 @@ the always-on style that `../SKILL.md` puts out of scope, arriving through the w
 ## Editing the block — read this first
 
 `../SKILL.md` carries the rules between `<!-- INJECTED:BEGIN -->` and
-`<!-- INJECTED:END -->`. Those bytes are not only documentation: `shared/stop-judge.cjs`
-(`readStyleBlock`) reads that region at Stop time and appends it verbatim to a fired
-capture's reason. Three consequences for anyone rewording it:
+`<!-- INJECTED:END -->`. Those bytes are not only documentation: that region is read at
+Stop time and appended verbatim to a fired capture's reason. Three consequences for
+anyone rewording it:
 
 - **Keep it self-sufficient.** On that path nothing loads `SKILL.md`, so a rule that
   depends on the surrounding sections does not arrive.
 - **Keep it short.** It shares a budget with the judge's own reason and the `hitl`
-  confirmation text. `tests/hook-architecture.test.cjs` fails if it grows past the slack;
-  `tests/stop-capture.test.cjs` measures the composed worst case.
+  confirmation text. The test suite fails the region if it grows past that slack, and
+  separately measures the composed worst case.
 - **Keep the mechanism out of it.** No mention of hooks, events or file paths — the agent
   reading a fired reason has no model of any of that, and the words would cost budget while
   explaining nothing it can act on. Same reason `SKILL.md` itself stays free of them.
@@ -106,7 +106,7 @@ Three homes were available, and the repo had been arguing two of them at once.
    exactly when it matters.
 3. **Single-sourced** — the skill holds the text, the hook reads a delimited region of it.
    The only option where the bytes an agent receives and the bytes a human reads are the
-   same bytes. Implemented; see `shared/stop-judge.cjs`, `readStyleBlock`.
+   same bytes. This is what is implemented.
 
 This resolves the objection recorded in `memory-capture/SKILL.md`, which argued against any
 procedural text reaching the fired reason. That argument is about **duplication** — a rule

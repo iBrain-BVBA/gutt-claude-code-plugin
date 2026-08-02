@@ -77,8 +77,10 @@ probe was built so that a negative result could not be faked.
 2. **Never "correct" our own docs from a snapshot alone.** Where upstream and our docs
    disagree, both files record the conflict as unresolved and name the run that would
    settle it. A doc read is evidence; only a real run against a real install is proof.
-   `docs/plugin-platform-reference.md` §3 is a live example — it contradicts the local-dev
-   symlink claim below, and neither sentence has been verified.
+   `docs/plugin-platform-reference.md` §3 shows how one ends: the disagreement it records
+   was never settled by a run, it was retired when GP-933 deleted the symlinks the
+   question was about. A conflict can close because the subject went away — say so in the
+   file rather than quietly dropping it, so the next reader knows no run ever happened.
 
 ### Refreshing them
 
@@ -96,11 +98,18 @@ expire on its own, and a stale Insight there outlives the doc that made it wrong
 plugin's `hooks/lib/*.cjs` are real files inside that plugin's own directory. If two
 plugins ever need the same helper, each gets a copy.
 
-- **Guard:** `npm run check:no-symlinks` (in `test:all` and CI) fails if any tracked
-  file is committed with git mode `120000`. It reads the git index rather than the
-  working tree on purpose — mode `120000` is what gets cloned, and it is recorded the
-  same on every platform, whereas a Windows checkout of a symlink looks like an
-  ordinary file to `lstat`.
+- **Guard:** `npm run check:no-symlinks` (in the pre-commit hook, `test:all`, and CI)
+  fails if any tracked file is committed with git mode `120000`. It reads the git index
+  rather than the working tree on purpose — mode `120000` is what gets cloned, and it is
+  recorded the same on every platform, whereas a Windows checkout of a symlink looks like
+  an ordinary file to `lstat`. It fails rather than passes when it reads an empty index or
+  an entry it cannot parse: a guard that inspected nothing must not report success, and
+  `tests/check-no-symlinks.test.cjs` exercises each of those red paths against throwaway
+  repositories so they cannot rot into no-ops.
+- **The symptom, separately:** `tests/hook-architecture.test.cjs` asserts every lib in
+  every plugin is a real file holding JavaScript. The guard above blocks the _cause_ (a
+  mode in the index), which is all CI can see on Linux; this catches the _effect_ a
+  Windows checkout actually produces. `CI` also smoke-runs the hooks on `windows-latest`.
 - **Why the ban.** Hook libs used to live in a marketplace-root `shared/` with each
   plugin symlinking in. That shipped 3.0.0 broken on Windows: git there defaults to
   `core.symlinks=false` and writes the _link target path_ as the file's contents, so

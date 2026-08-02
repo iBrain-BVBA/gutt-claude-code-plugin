@@ -24,10 +24,10 @@
  * is keyed and why. `migrations.cjs` was not the vehicle: it gates work "at most
  * once per machine" on `migrationsVersion`, which is exactly the wrong granularity.
  *
- * NOT the same file as `shared/config.cjs`, which reads the static, git-ignored
- * plugin/project `config.json` holding the org `group_id`. Same basename,
- * different directory, different purpose — a distinction that has bitten us
- * before, so check which one you mean before adding a key.
+ * NOT the same file as `config.cjs`, its neighbour in this directory, which reads
+ * the static, git-ignored plugin/project `config.json` holding the org `group_id`.
+ * Similar name, different purpose — a distinction that has bitten us before, so
+ * check which one you mean before adding a key.
  *
  * Mutations read the file raw and touch only the keys they own, so this module
  * never materialises defaults it doesn't manage into a config GP-866 owns.

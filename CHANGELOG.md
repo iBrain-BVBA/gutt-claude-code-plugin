@@ -35,7 +35,7 @@
 - **`platform-detect.cjs`** (`supportsDecisionBlock`, `isCowork`, `isCursor`) as
   dead code. No gutt-core hook or lib had required it; `auto-lint-plugin` was its
   only runtime consumer. Its two test suites go with it — the BOM-stripping and
-  `env.cjs` priority suite in `cowork-hooks.test.cjs` is unaffected and stays
+  `env.cjs` priority suite is unaffected and stays (now `cursor-host.test.cjs`)
   (GP-933)
 - **BREAKING — statusline `passthroughCommand` is gone.** The statusline no
   longer chains to a user-supplied command, and `gutt.statusline.passthroughCommand`,

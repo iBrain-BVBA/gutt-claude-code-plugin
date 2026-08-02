@@ -8,7 +8,7 @@
  * had been calibrated to its then-current size, leaving no headroom for anything.
  * The cap was the right signal — a table of retention policy is not routing, and
  * the hook is smaller and clearer for having handed it off. Every other piece of
- * R37 policy already lives in `shared/`.
+ * R37 policy already lives in this directory.
  *
  * Latency (R25): this runs on the synchronous SessionStart path, which must stay
  * ≤50ms p95, so every step is a directory stat-and-unlink or a bounded tail read —

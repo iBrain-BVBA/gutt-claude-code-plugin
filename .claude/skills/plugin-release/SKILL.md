@@ -16,7 +16,7 @@ After merging feature/fix PRs to master, when it's time to cut a new release. Th
 Before starting, verify:
 
 1. **All PRs merged** — no open PRs targeting master that should be included
-2. **Tests pass** — run `node tests/cowork-hooks.test.cjs` and any other test suites
+2. **Tests pass** — run `node tests/cursor-host.test.cjs` and any other test suites
 3. **No broken hooks** — quick smoke test: `node tests/test-all-hooks.cjs` should pass
 4. **Changelog reviewed** — know what's in this release (check merged PRs since last tag)
 

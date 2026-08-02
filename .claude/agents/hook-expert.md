@@ -65,25 +65,35 @@ Matchers use `tool_name` field with pipe-separated patterns:
 { "tool_name": "Edit|Write|Bash|NotebookEdit" }
 ```
 
-## Shared Libraries Reference
+## Hook Libraries Reference
 
-| File                  | Key Exports                                                              | Debugging Relevance                        |
-| --------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
-| `env.cjs`             | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `USER_CONFIG_DIR` | Path resolution failures, IDE misdetection |
-| `debug.cjs`           | `debugLog()`                                                             | All errors logged to `hook-errors.log`     |
-| `mcp-config.cjs`      | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `extractUrlFromConfig()`     | MCP URL extraction failures                |
-| `config.cjs`          | `getGroupId()`, `getConfig()`, `getStatuslineConfig()`                   | Config loading issues                      |
-| `memory-cache.cjs`    | `getMemoryCache()`, `setLastSearchQuery()`, `formatMemoryContext()`      | Stale cache, parallel overwrite            |
-| `session-state.cjs`   | `getState()`, `incrementMemoryQueries()`, `addTickerItem()`              | State file corruption                      |
-| `seed-registry.cjs`   | `getAgentSeed()`, `parseGroundingCall()`, `extractSection()`             | Seed lookup failures                       |
-| `platform-detect.cjs` | `isCursor()`, `supportsDecisionBlock()`                                  | IDE feature detection bugs                 |
-| `text-utils.cjs`      | `sanitizeForDisplay()`                                                   | Display corruption                         |
+Each plugin owns its libs outright as real files — `gutt-core/hooks/lib/`, no symlinks,
+nothing shared across plugins. **Read the directory before trusting this table**
+(`ls gutt-core/hooks/lib/`): a row here with no file, or a file with no row, means the
+table is what is stale.
+
+| File                       | Key Exports                                                              | Debugging Relevance                            |
+| -------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------- |
+| `env.cjs`                  | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `USER_CONFIG_DIR` | Path resolution failures, IDE misdetection     |
+| `debug.cjs`                | `debugLog()`, `guard()`, `logFile()`                                     | All errors logged to `hook-errors.log`         |
+| `config.cjs`               | `getGroupId()`, `getConfig()`, `getStatuslineConfig()`                   | Static `config.json` loading                   |
+| `runtime-config.cjs`       | `readConfig()`, `MODES`, `isSnoozed()`, `setSnooze()`                    | Mutable runtime config — _not_ `config.cjs`    |
+| `mcp-config.cjs`           | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `diagnoseGuttMcp()`          | MCP URL extraction failures                    |
+| `plugin-state.cjs`         | `readJson()`, `writeJson()`, `withLock()`, `sweep()`, `UNREADABLE`       | The only sanctioned state writer (R37)         |
+| `session-state.cjs`        | `getState()`, `updateState()`, `beginSession()`, `finalizeSession()`     | State file corruption                          |
+| `session-sweep.cjs`        | `ttlSweep()`, `SESSION_TTL_MS`, `DEBRIS_TTL_MS`                          | SessionStart TTL sweep, R25 latency            |
+| `nested-run.cjs`           | `isNestedRun()`, `childEnv()`, `NESTED_ENV_VAR`                          | Command hooks re-entering via `claude -p`      |
+| `stop-judge.cjs`           | `JUDGE_CONDITION`, `JUDGE_TIMEOUT_MS`, `VERDICT_SCHEMA`                  | Stop capture judge: verdicts, timeouts, budget |
+| `config-command.cjs`       | `parseCommand()`, `configCommandResult()`, `VERBS`                       | The `/gutt` config surface                     |
+| `migrations.cjs`           | `MIGRATIONS_VERSION`, `findOrphanedPluginData()`                         | One-shot 2.x cleanup, at most once per machine |
+| `builtin-memory.cjs`       | `hasMigratableStore()`, `offerContext()`, `listFacts()`                  | Discovery of Claude Code's own memory store    |
+| `builtin-memory-store.cjs` | `backupStore()`, `deleteVerified()`, `isDeletableFact()`                 | Migration backup, verification, deletion gate  |
 
 ## State Management
 
 Runtime state lives under `${CLAUDE_PLUGIN_DATA}` (the per-plugin data dir) — **never**
 the project tree. This is the R37 convention (GP-855). All reads/writes/cleanup route
-through `shared/plugin-state.cjs`; no hook joins its own `.state` path.
+through `gutt-core/hooks/lib/plugin-state.cjs`; no hook joins its own `.state` path.
 
 See **`docs/runtime-state-convention.md`** for the authoritative file set
 (`sessions/<id>.json`, `memory-cache.json`, `seed-registry.json`, `hook-errors.log`,
@@ -115,7 +125,11 @@ Cursor only supports `stop` and `afterFileEdit` lifecycle events. All other even
 
 ### 3. Decision Block Incompatibility
 
-`supportsDecisionBlock()` returns `false` for Cursor. Hooks that use `decision: "block"` in their output must fall back to `followup_message` for Cursor.
+Cursor does not honour `decision: "block"`; a hook relying on it there needs a
+`followup_message` fallback. No hook currently emits `decision: "block"`, and the
+`platform-detect.cjs` lib that once advertised this via `supportsDecisionBlock()` is
+gone — IDE branching now reads `env.cjs`'s `IDE`. Re-derive the capability from `IDE`
+rather than reaching for a helper that no longer exists.
 
 ### 4. Silent Failure Requirement
 

@@ -12,7 +12,7 @@
  * had called it since the plugin it was written for was retired, so it was testing
  * code that could not run.
  *
- * Run from repo root: node tests/cowork-hooks.test.cjs
+ * Run from repo root: node tests/cursor-host.test.cjs
  */
 
 console.log("Testing non-CLI-host behavior for the gutt hooks\n");
@@ -66,10 +66,10 @@ function restoreEnv() {
 }
 
 // ============================================================================
-// TEST SUITE 9: BOM stripping and env.cjs priority (Cursor v2.5 diagnostic)
+// BOM stripping and env.cjs priority (Cursor v2.5 diagnostic)
 // ============================================================================
 
-console.log("\n[Suite 9] BOM Stripping and env.cjs Priority\n");
+console.log("\n[BOM stripping and env.cjs priority]\n");
 
 // 9a: BOM stripping — JSON.parse fails without it
 const bomInput = "\uFEFF" + '{"conversation_id":"abc-123","status":"completed"}';

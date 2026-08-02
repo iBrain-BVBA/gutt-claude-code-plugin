@@ -12,7 +12,7 @@
  * `stop-judge`.
  */
 
-const { test, describe, it, before, after, beforeEach } = require("node:test");
+const { describe, it, before, after, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -892,10 +892,5 @@ describe("stop-capture: the router", () => {
   });
 });
 
-test("the lib ships inside the plugin, as a real file", () => {
-  // The inverse of what this asserted until GP-933 — see the note on the same test in
-  // nested-run.test.cjs. A symlink here is a hook that cannot load on Windows.
-  const lib = path.join(__dirname, "..", "gutt-core", "hooks", "lib", "stop-judge.cjs");
-  assert.ok(!fs.lstatSync(lib).isSymbolicLink(), `${lib} is a symlink`);
-  assert.match(fs.readFileSync(lib, "utf8"), /module\.exports/, `${lib} is not JavaScript`);
-});
+// The real-file assertion that used to sit here now runs over every lib in every
+// plugin, in tests/hook-architecture.test.cjs.

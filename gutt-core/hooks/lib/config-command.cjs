@@ -222,7 +222,7 @@ function enabledLine(raw) {
  * What each mode actually does at the Stop judge.
  *
  * Until GP-866 this key was written and read by nobody, and every surface said so.
- * `gutt-core/hooks/stop-capture.cjs` now reads it and `shared/stop-judge.cjs`
+ * `gutt-core/hooks/stop-capture.cjs` now reads it and `stop-judge.cjs`
  * appends the confirmation instruction on `hitl`, so the old "no behaviour reads
  * this key yet" wording became false in the same commit that made it consumable.
  * Keyed by mode so a mode added to `MODES` without an effect here renders a bare

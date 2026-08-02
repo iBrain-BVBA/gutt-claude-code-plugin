@@ -67,8 +67,10 @@ const WRITE_RE =
   /\bfs\.(promises\.)?(writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|rename|renameSync|unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|cp|cpSync|copyFile|copyFileSync|truncate|truncateSync|createWriteStream|write|writeSync|writev|writevSync)\b/;
 
 const errors = [];
+let scanned = 0;
 
 function scanFile(absFile) {
+  scanned++;
   // Normalised to forward slashes: ALLOW and the per-path exemptions are keyed
   // that way, and path.relative yields backslashes on Windows — where this
   // otherwise fails deterministically on the one file the allowlist exists to
@@ -119,11 +121,28 @@ function walk(dir) {
   }
 }
 
+// A missing scan dir used to be skipped quietly, which was survivable while the list
+// had three entries and two were optional. With one entry it means the guard walks
+// nothing and still prints OK — so a rename of the plugin directory would retire R37
+// enforcement without failing anything. Same reasoning for the file floor below.
 for (const d of SCAN_DIRS) {
   const abs = path.join(ROOT, d);
-  if (fs.existsSync(abs)) {
-    walk(abs);
+  if (!fs.existsSync(abs)) {
+    console.error(
+      `State-location check FAILED: scan dir "${d}" does not exist, so the guard ` +
+        "inspected nothing. Update SCAN_DIRS to match the tree."
+    );
+    process.exit(1);
   }
+  walk(abs);
+}
+
+if (!scanned) {
+  console.error(
+    `State-location check FAILED: no .cjs files found under ${SCAN_DIRS.join(", ")}. ` +
+      "Finding nothing to check is not the same as finding nothing wrong."
+  );
+  process.exit(1);
 }
 
 if (errors.length) {
@@ -134,6 +153,7 @@ if (errors.length) {
   process.exit(1);
 }
 console.log(
-  `State-location check OK: runtime-state writes route through hooks/lib/plugin-state.cjs ` +
-    `(${Object.keys(ALLOW).length} sanctioned direct writers, ${BANNED.length} retired paths banned).`
+  `State-location check OK: ${scanned} files scanned, runtime-state writes route through ` +
+    `hooks/lib/plugin-state.cjs (${Object.keys(ALLOW).length} sanctioned direct writers, ` +
+    `${BANNED.length} retired paths banned).`
 );

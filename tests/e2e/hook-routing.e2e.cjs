@@ -29,15 +29,17 @@
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const { after, before, describe, it } = require("node:test");
 
 const {
+  COMPANION_PLUGIN_NAME,
+  PLUGIN_DATA_ROOT,
   PLUGIN_DIR,
   REPO_ROOT,
   additionalContextEvents,
   claudeVersion,
+  createCompanionPlugin,
   createProject,
   findSessionStateFile,
   hookCompletions,
@@ -52,58 +54,6 @@ const {
 } = require("./lib/claude-run.cjs");
 
 const { OUTCOMES, BROKEN_OUTCOMES } = require("../../gutt-core/hooks/lib/stop-judge.cjs");
-
-const COMPANION_NAME = "e2e-companion-plugin";
-
-/**
- * A second plugin to share the session with, built on the fly.
- *
- * R23 is about coexistence, so the test needs *another* plugin loaded — it does not
- * need a particular one. This used to borrow `auto-lint-plugin`, which GP-933 deleted;
- * generating a minimal one instead keeps the requirement covered without the suite
- * depending on some other plugin continuing to exist and continuing to ship hooks.
- *
- * Deliberately trivial: one PostToolUse handler that exits 0 and writes nothing. It
- * exists to occupy the event bus and claim its own data dir, which is exactly the
- * interference this run is looking for.
- * @param {string} dir where to build it
- * @returns {string} dir
- */
-function writeCompanionPlugin(dir) {
-  fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true });
-  fs.mkdirSync(path.join(dir, "hooks"), { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, ".claude-plugin", "plugin.json"),
-    JSON.stringify(
-      {
-        name: COMPANION_NAME,
-        version: "0.0.0",
-        description: "Throwaway second plugin, used only to prove gutt coexists with one.",
-      },
-      null,
-      2
-    )
-  );
-  fs.writeFileSync(
-    path.join(dir, "hooks", "hooks.json"),
-    JSON.stringify(
-      {
-        hooks: {
-          PostToolUse: [
-            {
-              matcher: "",
-              hooks: [{ type: "command", command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/noop.cjs"` }],
-            },
-          ],
-        },
-      },
-      null,
-      2
-    )
-  );
-  fs.writeFileSync(path.join(dir, "hooks", "noop.cjs"), "process.exit(0);\n");
-  return dir;
-}
 
 /**
  * The Stop outcomes this tier expects to see, read from the source of truth rather than
@@ -592,9 +542,7 @@ describe(
     before(
       async () => {
         projectDir = createProject("coexist");
-        companionDir = writeCompanionPlugin(
-          fs.mkdtempSync(path.join(os.tmpdir(), "gutt-companion-"))
-        );
+        companionDir = createCompanionPlugin();
         run = await runClaude({
           projectDir,
           sessionId: IDS.coexist,
@@ -622,7 +570,7 @@ describe(
         .filter((l) => /Read hooks\.json for plugin gutt-pro/.test(l));
       const companion = run.debug
         .split("\n")
-        .filter((l) => new RegExp(`Read hooks\\.json for plugin ${COMPANION_NAME}`).test(l));
+        .filter((l) => new RegExp(`Read hooks\\.json for plugin ${COMPANION_PLUGIN_NAME}`).test(l));
       assert.equal(gutt.length, 1, `expected exactly one gutt plugin to load, got ${gutt.length}`);
       assert.equal(
         companion.length,
@@ -661,10 +609,22 @@ describe(
       assert.deepEqual(blocked, [], "a hook raised a blocking error in a shared session");
     });
 
-    it("keeps its own state file, untouched by the other plugin", () => {
+    it("runs the companion's hook, rather than merely loading the plugin", () => {
+      // Loading proves registration. A completion proves both plugins handled the same
+      // event in the same session, which is the thing coexistence has to mean — and it
+      // is why the companion's handler sits on SessionStart, an event this run fires.
+      assert.deepEqual(hookCompletions(run.debug, "noop.cjs"), [0]);
+    });
+
+    it("keeps its own state file, and the companion writes no state at all", () => {
       // Each plugin gets its own data dir, so the companion cannot reach gutt's state.
+      // Asserting against the companion's *own* dir is what gives this teeth: a path
+      // that already matched /gutt-pro-inline/ could not also contain the companion's
+      // name, so checking for its absence there could never have failed.
       assert.match(run.stateFile, /gutt-pro-inline/);
-      assert.doesNotMatch(run.stateFile, new RegExp(COMPANION_NAME));
+      const companionData = path.join(PLUGIN_DATA_ROOT, `${COMPANION_PLUGIN_NAME}-inline`);
+      const wrote = fs.existsSync(companionData) ? fs.readdirSync(companionData) : [];
+      assert.deepEqual(wrote, [], `the companion plugin wrote state: ${wrote.join(", ")}`);
     });
   }
 );

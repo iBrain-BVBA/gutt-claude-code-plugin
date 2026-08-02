@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GP-933 guard: nothing in this repository may be a symlink.
+// GP-933 guard: nothing in this repository may be committed as a symlink.
 //
 // Replaces the GP-853 guard, which enforced the opposite — that each plugin's
 // hook libs were symlinks into a marketplace-root shared/ directory. That design
@@ -34,21 +34,47 @@ try {
   process.exit(1);
 }
 
-// `git ls-files -s` emits "<mode> <object> <stage>\t<path>", NUL-separated with -z
-// so paths containing whitespace survive intact.
-const symlinks = indexed
-  .split("\0")
-  .filter(Boolean)
-  .map((entry) => {
-    const tab = entry.indexOf("\t");
-    return { mode: entry.slice(0, entry.indexOf(" ")), file: entry.slice(tab + 1) };
-  })
-  .filter((e) => e.mode === "120000");
+const entries = indexed.split("\0").filter(Boolean);
+
+// Inspecting nothing is not the same as finding nothing wrong. `git ls-files -s -z`
+// exits 0 and prints nothing whenever the index is empty — a fresh init, a blown-away
+// index, a ROOT that stopped resolving to the repository root — so without this the
+// guard reports success on a repository it never read. tests/test-all-hooks.cjs fails
+// on a zero-hook discovery for the same reason.
+if (!entries.length) {
+  console.error(
+    "No-symlink check FAILED: `git ls-files -s -z` returned no entries, so nothing was " +
+      `inspected. Check that ${ROOT} is the repository root and that its index is populated.`
+  );
+  process.exit(1);
+}
+
+// "<mode> <object> <stage>\t<path>", NUL-separated with -z so paths containing
+// whitespace survive intact. Matched strictly rather than sliced at the first space:
+// indexOf returns -1 on an entry in an unexpected shape, slice(0, -1) does not throw,
+// and the garbage mode that comes back compares unequal to 120000 — so a lenient parse
+// silently files everything it cannot read under "not a symlink". An entry this guard
+// cannot classify has to fail instead.
+const ENTRY_RE = /^(\d{6}) [0-9a-f]+ \d\t([\s\S]+)$/;
+const symlinks = [];
+for (const entry of entries) {
+  const parsed = ENTRY_RE.exec(entry);
+  if (!parsed) {
+    console.error(
+      "No-symlink check FAILED: unparseable `git ls-files -s -z` entry. The guard cannot " +
+        `classify it, so it will not assume it is safe:\n  ${JSON.stringify(entry)}`
+    );
+    process.exit(1);
+  }
+  if (parsed[1] === "120000") {
+    symlinks.push(parsed[2]);
+  }
+}
 
 if (symlinks.length) {
   console.error(
     "No-symlink check FAILED — these are committed as symlinks (git mode 120000):\n  " +
-      symlinks.map((e) => e.file).join("\n  ") +
+      symlinks.join("\n  ") +
       "\n\nReplace each with a real file. Windows git writes the link target as file " +
       "content instead of creating a link, so a committed symlink is a broken file " +
       "for every Windows user. Code needed by two plugins gets copied into both."
@@ -56,5 +82,4 @@ if (symlinks.length) {
   process.exit(1);
 }
 
-const count = indexed.split("\0").filter(Boolean).length;
-console.log(`No-symlink check OK: ${count} tracked files, none committed as a symlink.`);
+console.log(`No-symlink check OK: ${entries.length} tracked files, none committed as a symlink.`);
