@@ -25,7 +25,7 @@ const projectDir = path.resolve(__dirname, "..");
  * Plugins to scan. Missing entries are skipped rather than failed — plugins come
  * and go, and this file should not need editing when one does.
  */
-const PLUGIN_DIRS = ["gutt-core", "auto-lint-plugin"];
+const PLUGIN_DIRS = ["gutt-core"];
 
 /**
  * Hooks are spawned with a throwaway CLAUDE_PLUGIN_DATA so their writes actually

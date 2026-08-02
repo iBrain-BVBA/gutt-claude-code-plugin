@@ -21,7 +21,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const MIGRATIONS = path.join(__dirname, "..", "shared", "migrations.cjs");
+const MIGRATIONS = path.join(__dirname, "..", "gutt-core", "hooks", "lib", "migrations.cjs");
 const SESSION_START = path.join(__dirname, "..", "gutt-core", "hooks", "session-start.cjs");
 
 let sandbox;

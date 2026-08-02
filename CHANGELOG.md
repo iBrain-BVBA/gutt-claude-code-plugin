@@ -2,8 +2,41 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every hook crashed on Windows.** gutt-pro 3.0.0 was unusable there: all 7
+  hooks died at `require()` with a `SyntaxError` before doing any work. The repo
+  stored 19 files as git symlinks, and Windows git defaults to
+  `core.symlinks=false` — under which it does not create a link but writes the
+  link's _target path_ as the file's contents. `hooks/lib/debug.cjs` arrived as a
+  25-byte file reading `../../../shared/debug.cjs`, which is not JavaScript. A
+  second defect sat behind it: the links pointed at `../../../shared/`, outside
+  the plugin root, which installed plugins may not reference — so the
+  marketplace-install path had never been verified end to end either. Fixed by
+  removing symlinks from the repository entirely (GP-933)
+
 ### Removed
 
+- **BREAKING — `auto-lint-plugin` is deleted.** The standalone lint-on-edit
+  plugin is gone from the repo and from `marketplace.json`; anyone who installed
+  it keeps their copy but gets no updates. It was the only other consumer of the
+  shared hook libs, and removing it is what let `shared/` go. Recoverable from
+  git history (GP-933)
+- **`shared/` and the whole cross-plugin sharing mechanism.** The 14 surviving
+  hook libs are now real files under `gutt-core/hooks/lib/`, owned by the plugin
+  that uses them; `agent-identity.md` is a real file under the
+  `agent-memory-protocol` skill's `references/`. Each plugin owns its own code
+  and a second copy is preferred to a link. `tests/check-shared-libs.cjs`
+  enforced the opposite invariant and is replaced by
+  `tests/check-no-symlinks.cjs`, which fails if any tracked file is committed
+  with git mode `120000`; `npm run check:shared` becomes
+  `npm run check:no-symlinks`. `.lintstagedrc.cjs` no longer filters symlinks out
+  of prettier, because there are none (GP-933)
+- **`platform-detect.cjs`** (`supportsDecisionBlock`, `isCowork`, `isCursor`) as
+  dead code. No gutt-core hook or lib had required it; `auto-lint-plugin` was its
+  only runtime consumer. Its two test suites go with it — the BOM-stripping and
+  `env.cjs` priority suite is unaffected and stays (now `cursor-host.test.cjs`)
+  (GP-933)
 - **BREAKING — statusline `passthroughCommand` is gone.** The statusline no
   longer chains to a user-supplied command, and `gutt.statusline.passthroughCommand`,
   `showTicker`, and `multiLine` are all ignored. Anyone relying on passthrough
@@ -28,14 +61,14 @@
   the judge inline at Stop, where it fails open rather than deferring work, so there
   was no deferred work to queue and GP-873 closed as not needed. Gone with it: the
   `queue` sweep step and its `QUEUE_TTL_MS` / `QUEUE_MAX_ENTRIES` / `QUEUE_FILE`
-  constants in `shared/session-sweep.cjs`, the `pruneJsonl` helper in
-  `shared/plugin-state.cjs` (the step was its only caller), the artifact's rows in
+  constants in `hooks/lib/session-sweep.cjs`, the `pruneJsonl` helper in
+  `hooks/lib/plugin-state.cjs` (the step was its only caller), the artifact's rows in
   `docs/runtime-state-convention.md`, and the nine sites in the tests that named the
   file — four `pruneJsonl` cases, three fixtures, and the queue assertions in the
   full-sweep test. No user-visible behaviour changes — nothing ever wrote the file,
   so the sweep step reclaimed nothing on every session it ran. Nothing else in the
   state contract is line-oriented JSON; `pruneJsonl` is recoverable from
-  `shared/plugin-state.cjs`'s history if that changes (GP-873)
+  `hooks/lib/plugin-state.cjs`'s history if that changes (GP-873)
 
 ### Added
 

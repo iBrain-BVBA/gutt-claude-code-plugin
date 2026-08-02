@@ -237,13 +237,15 @@ CLAUDE_PLUGIN_ROOT="/test" node -e "const e=require('./hooks/lib/env.cjs');conso
 Search for IDE-conditional behavior in hooks:
 
 ```bash
-grep -rn "supportsDecisionBlock\|IDE.*===\|isCursor" hooks/*.cjs hooks/lib/*.cjs
+grep -rn "IDE\b\|STATE_DIR_NAME\|CURSOR_" hooks/*.cjs hooks/lib/*.cjs
 ```
 
 Verify:
 
-- `supportsDecisionBlock()` returns `true` for Claude Code, `false` for Cursor
-- Cursor fallbacks use `followup_message` instead of `decision: "block"`
+- IDE branching reads `env.cjs`'s `IDE` / `STATE_DIR_NAME`; there is no separate
+  platform-detection lib, and nothing calls `isCursor()` or `supportsDecisionBlock()`
+- `CURSOR_PROJECT_DIR` and `CURSOR_VERSION` are the only Cursor signals — a hook or doc
+  treating `CURSOR_PLUGIN_ROOT` as one is wrong; it is not a Cursor variable
 - No hardcoded `.claude/` paths (should use `env.cjs` exports)
 
 #### 4e. Cross-Platform Execution

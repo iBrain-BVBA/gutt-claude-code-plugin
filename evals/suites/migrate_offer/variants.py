@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Candidate wordings for the SessionStart migration offer.
 
-V0 is not typed out here. It is read from `shared/builtin-memory.cjs` by calling the
+V0 is not typed out here. It is read from `gutt-core/hooks/lib/builtin-memory.cjs` by calling the
 exported `offerContext()`, so the variant under test is byte-identical to what ships and
 cannot drift from it. Every other variant is a surgical edit of that string.
 
@@ -29,7 +29,7 @@ def shipped(count=NOTE_COUNT):
     """The live `offerContext(count)` string, straight out of the shipped module."""
     out = subprocess.run(
         ["node", "-e",
-         "const {offerContext} = require('./shared/builtin-memory.cjs');"
+         "const {offerContext} = require('./gutt-core/hooks/lib/builtin-memory.cjs');"
          f"process.stdout.write(JSON.stringify(offerContext({count})));"],
         cwd=REPO, capture_output=True, text=True, check=True,
     )
@@ -65,7 +65,7 @@ def all_variants():
             "V1-no-placement",
         ),
 
-        # The scoping sentence. `shared/builtin-memory.cjs` claims it is load-bearing:
+        # The scoping sentence. `gutt-core/hooks/lib/builtin-memory.cjs` claims it is load-bearing:
         # "without it this reads as 'migrate now', and a session opened to ask one quick
         # question would get a migration run instead of an answer". That claim has never
         # been measured. `overreach` in the table is the column that tests it.

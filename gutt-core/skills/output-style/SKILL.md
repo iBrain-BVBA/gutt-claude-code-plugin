@@ -108,8 +108,8 @@ closing pleasantry, and still a closing summary.
 
 ## What the hook injects
 
-`shared/stop-judge.cjs` appends the region between these markers to every fired capture
-reason. It is a pointer to this file, not a copy of it:
+The region between these markers is appended verbatim to every fired capture reason. It
+is a pointer to this file, not a copy of it:
 
 <!-- INJECTED:BEGIN -->
 

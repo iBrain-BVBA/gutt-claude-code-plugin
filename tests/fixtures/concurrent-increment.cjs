@@ -14,7 +14,7 @@
  */
 "use strict";
 
-const { init, applyUpdate } = require("../../shared/session-state.cjs");
+const { init, applyUpdate } = require("../../gutt-core/hooks/lib/session-state.cjs");
 
 const [sessionId, holdRaw] = process.argv.slice(2);
 const holdMs = Number(holdRaw) || 0;

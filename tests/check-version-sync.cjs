@@ -4,7 +4,7 @@
 // purpose, and the update mechanism reads plugin.json's version as its cache key.
 // So the root plugin's version must equal package.json's, and no marketplace
 // entry may reintroduce a version field. Structural + zero-dep, like
-// check-shared-libs / check-state-location.
+// check-no-symlinks / check-state-location.
 "use strict";
 const fs = require("fs");
 const path = require("path");

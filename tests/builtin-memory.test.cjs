@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Tests for the built-in-memory migration (GP-922, S3.8):
- * `shared/builtin-memory.cjs` (locate + detect + offer) and
- * `shared/builtin-memory-store.cjs` (back up, verify, delete).
+ * `hooks/lib/builtin-memory.cjs` (locate + detect + offer) and
+ * `hooks/lib/builtin-memory-store.cjs` (back up, verify, delete).
  *
  * Run: node --test tests/builtin-memory.test.cjs
  *
@@ -19,9 +19,9 @@ const path = require("path");
 const os = require("os");
 const { execFileSync } = require("child_process");
 
-const mem = require("../shared/builtin-memory.cjs");
-const store = require("../shared/builtin-memory-store.cjs");
-const config = require("../shared/runtime-config.cjs");
+const mem = require("../gutt-core/hooks/lib/builtin-memory.cjs");
+const store = require("../gutt-core/hooks/lib/builtin-memory-store.cjs");
+const config = require("../gutt-core/hooks/lib/runtime-config.cjs");
 
 const ORIGINAL_DATA = process.env.CLAUDE_PLUGIN_DATA;
 const ORIGINAL_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;

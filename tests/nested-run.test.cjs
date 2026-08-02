@@ -18,14 +18,14 @@
  * passes while asserting nothing.
  */
 
-const { test, describe, it, before, after } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const { NESTED_ENV_VAR, isNestedRun, childEnv } = require("../shared/nested-run.cjs");
+const { NESTED_ENV_VAR, isNestedRun, childEnv } = require("../gutt-core/hooks/lib/nested-run.cjs");
 
 const HOOKS = path.join(__dirname, "..", "gutt-core", "hooks");
 
@@ -154,12 +154,6 @@ describe("nested-run: the guard cannot be forgotten", () => {
   });
 });
 
-test("the shared lib is symlinked, not copied", () => {
-  // check:shared enforces this across the repo; asserted here too because this lib
-  // is new and a copy would drift silently.
-  const link = path.join(HOOKS, "lib", "nested-run.cjs");
-  assert.equal(
-    fs.realpathSync(link),
-    fs.realpathSync(path.join(__dirname, "..", "shared", "nested-run.cjs"))
-  );
-});
+// The real-file assertion that used to sit here covered this one lib. It now runs over
+// every lib in every plugin, in tests/hook-architecture.test.cjs — a per-file spot check
+// left the other twelve unasserted.

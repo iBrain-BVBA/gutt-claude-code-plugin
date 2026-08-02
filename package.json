@@ -5,11 +5,8 @@
   "private": true,
   "type": "module",
   "files": [
-    "shared",
     "gutt-core",
-    "auto-lint-plugin",
     "gutt-mentor",
-    "plugins",
     "docs",
     ".claude-plugin",
     "README.md",
@@ -17,9 +14,9 @@
   ],
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "test:all": "node --test tests/*.test.cjs && node tests/test-all-hooks.cjs && node tests/check-shared-libs.cjs && node tests/check-state-location.cjs && node tests/check-version-sync.cjs",
+    "test:all": "node --test tests/*.test.cjs && node tests/test-all-hooks.cjs && node tests/check-no-symlinks.cjs && node tests/check-state-location.cjs && node tests/check-version-sync.cjs",
     "test:e2e": "node --test tests/e2e/*.e2e.cjs",
-    "check:shared": "node tests/check-shared-libs.cjs",
+    "check:no-symlinks": "node tests/check-no-symlinks.cjs",
     "check:state": "node tests/check-state-location.cjs",
     "check:version": "node tests/check-version-sync.cjs",
     "lint": "eslint .",

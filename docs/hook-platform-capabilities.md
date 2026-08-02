@@ -54,7 +54,7 @@ away from an option that has since opened up. It needs a correction episode — 
 | `sessionTitle`       | Custom title for the session, shown in session history                                                |
 | `reloadSkills`       | If `true`, reloads skill definitions from disk                                                        |
 
-This **confirms** the reasoning already inline at `shared/builtin-memory.cjs:224-225`:
+This **confirms** the reasoning already inline at `gutt-core/hooks/lib/builtin-memory.cjs`:
 the GP-922 migration offer could not have used `initialUserMessage`, because it is
 ignored in interactive mode — the mode the offer exists for. The comment now has an
 authoritative citation rather than an assertion.
@@ -235,7 +235,7 @@ hook. Recorded on GP-866, whose new ACs turn on exactly this.
 > `claude-sonnet-5` judge is removed rather than gated — a command hook cannot invoke a
 > model." **That was wrong**, and it was inference rather than measurement: a command hook
 > can invoke a model by shelling out to `claude -p`, which is what
-> `shared/stop-judge.cjs` now does. The conversion therefore kept the model judge instead
+> `gutt-core/hooks/lib/stop-judge.cjs` now does. The conversion therefore kept the model judge instead
 > of dropping it, and R11 is intact.
 >
 > Worth noting how the error was made, since the shape recurs. Two things were measured
@@ -316,7 +316,7 @@ and states the reason: **`transcript_path` is written asynchronously and may lag
 in-memory conversation.** So at the moment Stop fires, the file can still be missing the turn
 that just ended.
 
-**We were on the wrong side of this, and it cost real captures.** `shared/stop-judge.cjs`
+**We were on the wrong side of this, and it cost real captures.** `gutt-core/hooks/lib/stop-judge.cjs`
 derived the closing message by tail-reading `transcript_path` from the day it was written.
 `hook-invocations.log` records `no-closing-prose` — `OUTCOMES.NO_SUMMARY`, returned before the
 judge child is ever spawned — on **6 of 53 Stop invocations**. In the one occurrence examined

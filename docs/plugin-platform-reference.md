@@ -50,10 +50,27 @@ for plugins that "add cost or scope a user should opt into". Precedence: the use
 `enabledPlugins` entry, then a dependency requirement, then `defaultEnabled`. Relevant to
 the `enabled` config surface.
 
-## 3. Symlinks: resolved for directory-source, open for `--plugin-dir`
+## 3. Symlinks: settled by abandoning them, not by answering the question
 
-Confirmed by observation for a directory source; still unverified for `--plugin-dir`. The
-doc-read conflict is kept below because the reasoning is what bounds the resolution.
+**Measured 2026-08-01 — the question stopped mattering, and the reason is the finding.**
+
+We never resolved whether `--plugin-dir` honours a symlink pointing outside the plugin
+root. Windows answered a different and more important question first: on a
+`core.symlinks=false` checkout — git's **default** there — git does not create a link at
+all. It writes the link's target path as the file's contents. `hooks/lib/debug.cjs`
+becomes a 25-byte text file reading `../../../shared/debug.cjs`, and `require()` raises
+`SyntaxError`. All 7 hooks in gutt-pro 3.0.0 died this way on a real user's machine.
+
+So the platform's dereferencing rules were never the binding constraint. **Git's checkout
+behaviour is**, it applies before the platform sees anything, and it defaults against us
+on one of the three platforms we support. GP-933 removed every symlink from the
+repository and added `tests/check-no-symlinks.cjs` to keep them out; each plugin now owns
+its hook libs as real files.
+
+Keep the rest of this section. It is the reasoning that was available before the failure,
+and it is a good record of how a question can be researched carefully and still be the
+wrong question — the doc-read conflict below was litigated at length while the actual
+defect sat in git's default configuration, unexamined.
 
 Upstream, verbatim:
 
@@ -65,27 +82,32 @@ Upstream, verbatim:
 > "For plugins installed with `--plugin-dir` or from a local path, **only symlinks that
 > resolve within the plugin's own directory are preserved. All others are skipped.**"
 
-`CLAUDE.md` currently says:
+`CLAUDE.md` said, until GP-933 deleted the claim along with its subject:
 
 > "`--plugin-dir` / local-path installs do **not** dereference cross-plugin symlinks.
 > Running from the repo works (the link resolves in place)."
 
-**These do not agree.** Our `hooks/lib/*.cjs` symlinks target `../../../shared/` — the
-marketplace root, i.e. _outside the plugin's own directory_. Upstream says those are
+**Those did not agree.** The `hooks/lib/*.cjs` symlinks then targeted `../../../shared/` —
+the marketplace root, i.e. _outside the plugin's own directory_. Upstream said those are
 **skipped** under `--plugin-dir`, which would mean a hook whose `require()` of its lib
-fails. Our docs say the link resolves in place.
+fails. Our docs said the link resolved in place.
 
-Both can be true if `--plugin-dir` loads from disk without a copy step, in which case the
-"skipped" rule describes only the copy path. That is a guess. Note also:
+Both could have been true if `--plugin-dir` loads from disk without a copy step, in which
+case the "skipped" rule describes only the copy path. That was a guess, and it stayed one.
+Note also:
 
 > "Installed plugins cannot reference files outside their directory. Paths that traverse
 > outside the plugin root (such as `../shared-utils`) will not work after installation."
 
-**Do not edit `CLAUDE.md` from this doc read alone.** The resolution is an actual run
-against a plugin whose lib symlinks point at `shared/`, checking whether the hook loads.
-`check:shared` guards the _shape_ of the links, not whether the platform honours them.
+Settling it would have taken an actual run against a plugin whose lib symlinks point at a
+marketplace-root directory, checking whether the hook loads — the shape guard of the day
+checked the _shape_ of the links, not whether the platform honoured them. That run was
+never made, and there is now nothing to make it against.
 
-### Partially resolved 2026-07-29 — directory-source installs DO resolve them
+### Historical — partially resolved 2026-07-29: directory-source installs DID resolve them
+
+_Everything below describes the repository as it was before GP-933. No symlinks remain, so
+none of it is current guidance; it is kept as the record of what was known when._
 
 Observed, not read. In a live interactive session with the repo registered as an
 `extraKnownMarketplaces` entry of `"source": "directory"`:
@@ -102,19 +124,19 @@ Observed, not read. In a live interactive session with the repo registered as an
 The offer code therefore cannot have come from the cache; it ran from the working tree,
 through a symlink that resolves outside the plugin directory. **The symlink was honoured.**
 
-Scope this claim carefully — it is narrower than the sentence in `CLAUDE.md`:
+The claim was narrow, and worth restating with its limits since it is the only part of
+this section that was ever established by a run:
 
-- **Proven:** a `"source": "directory"` marketplace entry loads in place, no copy step, and
-  cross-plugin symlinks into `shared/` resolve at runtime.
-- **Still untested:** `--plugin-dir` specifically. It is a different flag and may take a
-  different path. Upstream's "all others are skipped" is stated about the _copy_ into the
-  cache, so it plausibly never applies to an in-place load — but that remains inference.
-- **Unchanged:** the marketplace-install case, where dereferencing is what makes installed
-  plugins self-contained.
+- **Shown:** a `"source": "directory"` marketplace entry loads in place, with no copy step,
+  and cross-plugin symlinks into a marketplace-root directory resolved at runtime.
+- **Never tested:** `--plugin-dir` specifically. A different flag that may take a different
+  path. Upstream's "all others are skipped" is stated about the _copy_ into the cache, so
+  it plausibly never applied to an in-place load — but that stayed inference.
+- **Unchanged and still true:** the marketplace-install case, where dereferencing is what
+  makes installed plugins self-contained.
 
-So `CLAUDE.md`'s "running from the repo works (the link resolves in place)" is **confirmed
-for directory-source**, and its `--plugin-dir` half is still unverified. The flag in
-`CLAUDE.md` is narrowed to match rather than removed.
+Only the in-place-load half was ever confirmed; the `--plugin-dir` half never was, and now
+cannot be from this repository.
 
 An operational consequence worth knowing independently of the symlink question: with a
 directory-source install whose cache directory is empty, **the working tree is what runs**.
@@ -196,7 +218,7 @@ the repo root is not a plugin. `gutt-core/CLAUDE.md` would do nothing.
 **Measured 2026-07-31** against a real `claude` run with the plugin loaded from this
 working tree (GP-931). Not a doc read: the probe sent one prompt per verb through the e2e
 harness (`tests/e2e/lib/claude-run.cjs`) and read the resulting `additionalContext`
-attachments out of the session transcript. Only `shared/config-command.cjs` produces those
+attachments out of the session transcript. Only `gutt-core/hooks/lib/config-command.cjs` produces those
 strings, so an injection is proof the raw text reached `UserPromptSubmit` **and** the
 parser matched it. Script: `tests/e2e/probes/bare-verb-resolution.cjs`, committed so this
 result can be reproduced rather than taken on trust. It is not named `*.e2e.cjs` on

@@ -17,7 +17,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
-const PLUGIN_DIRS = ["gutt-core", "auto-lint-plugin"];
+const PLUGIN_DIRS = ["gutt-core"];
 
 /** Every handler in a plugin's hooks.json, flattened and tagged with its event. */
 function handlers(pluginDir) {
@@ -38,11 +38,10 @@ const ALL = PLUGIN_DIRS.flatMap(handlers);
  *
  * It used to be the `prompt` field of a `type: "prompt"` entry in hooks.json, so the
  * guards below read `stop.prompt`. GP-866 moved the handler to a command hook and the text
- * to `shared/stop-judge.cjs`; every assertion on its wording moved with it, unchanged.
+ * to `hooks/lib/stop-judge.cjs`; every assertion on its wording moved with it, unchanged.
  *
- * Reading it through the plugin's symlinked copy rather than from `shared/` directly is
- * deliberate: that is the path the hook actually requires, so a broken link fails these
- * guards instead of surfacing later as a judge that never fires.
+ * Reading it from the same path the hook requires is deliberate: a lib that has gone
+ * missing fails these guards rather than surfacing later as a judge that never fires.
  */
 const STOP_JUDGE_LIB = path.join(ROOT, "gutt-core", "hooks", "lib", "stop-judge.cjs");
 const STOP_JUDGE = require(STOP_JUDGE_LIB);
@@ -181,7 +180,7 @@ describe("hook architecture guards", () => {
 
   // A ≤60 code-line cap on every gutt-core hook used to live here, and it was the
   // only thing keeping procedure out of the hooks — it is what pushed GP-922's
-  // pointer prose into shared/builtin-memory.cjs. It was removed deliberately in
+  // pointer prose into hooks/lib/builtin-memory.cjs. It was removed deliberately in
   // GP-866 rather than worked around: the router needed a config-command row and
   // was at 58 of 60. Nothing enforces the shape now, so it is reviewer judgement.
   // The guards that remain still catch the failures the cap never did — a pointer
@@ -251,20 +250,21 @@ describe("hook architecture guards", () => {
     // "not `memory-search`" is documentation, not a pointer, and scanning it flagged
     // correct code. hooks.json is scanned whole: its Stop prompt is prose the model
     // actually receives.
-    // `shared/` is scanned alongside the hooks because GP-922 moved pointer prose
-    // there for the first time: the SessionStart migration offer is policy, so the
-    // thin-router cap above pushed it out of the hook and into
-    // `shared/builtin-memory.cjs`. Scanning only the hook directory would have left
-    // that pointer unguarded — precisely the quiet failure this test exists to catch.
+    // `hooks/lib/` is scanned alongside the hooks themselves because GP-922 moved
+    // pointer prose into a lib for the first time: the SessionStart migration offer
+    // is policy, so the thin-router cap above pushed it out of the hook and into
+    // `builtin-memory.cjs`. Scanning only the hook directory — `readdirSync` does not
+    // descend — would leave that pointer unguarded, precisely the quiet failure this
+    // test exists to catch.
     const hookDir = path.join(ROOT, "gutt-core", "hooks");
-    const sharedDir = path.join(ROOT, "shared");
+    const libDir = path.join(hookDir, "lib");
     const cjsIn = (dir) =>
       fs
         .readdirSync(dir)
         .filter((f) => f.endsWith(".cjs"))
         .map((f) => stripComments(fs.readFileSync(path.join(dir, f), "utf8")));
     const sources = cjsIn(hookDir)
-      .concat(cjsIn(sharedDir))
+      .concat(cjsIn(libDir))
       .concat(fs.readFileSync(path.join(hookDir, "hooks.json"), "utf8"));
 
     // Three shapes, because one is not enough. This guard was briefly decorative:
@@ -338,7 +338,7 @@ describe("hook architecture guards", () => {
   // stops working.
   describe("the /gutt-pro config command surface", () => {
     const ROUTER = path.join(ROOT, "gutt-core", "hooks", "user-prompt-submit.cjs");
-    const LIB = path.join(ROOT, "shared", "config-command.cjs");
+    const LIB = path.join(ROOT, "gutt-core", "hooks", "lib", "config-command.cjs");
 
     // Row order is load-bearing and invisible. Put the config branch below the
     // suppression check and `/gutt-pro:on` can never un-stick a plugin that is off:
@@ -379,7 +379,7 @@ describe("hook architecture guards", () => {
     // GP-931 dissolved the stem, so the guard iterates the parser's own list — a verb
     // added to `VERBS` with no command file is the failure this catches.
     it("ships a command file for every verb the parser accepts", () => {
-      const { VERBS } = require(path.join(ROOT, "shared", "config-command.cjs"));
+      const { VERBS } = require(path.join(ROOT, "gutt-core", "hooks", "lib", "config-command.cjs"));
       assert.ok(VERBS.length > 0, "the parser accepts no verbs");
       for (const verb of VERBS) {
         const file = path.join(ROOT, "gutt-core", "commands", `${verb}.md`);
@@ -1101,4 +1101,52 @@ describe("hook architecture guards", () => {
     });
     assert.deepEqual(missing, []);
   });
+});
+
+/**
+ * Hook libs must be real files on disk, in every plugin.
+ *
+ * `tests/check-no-symlinks.cjs` guards the *cause* — git mode 120000 in the index — and
+ * that is the right thing to block, because it is recorded identically on every
+ * platform. This guards the *symptom*: a lib whose bytes are a path string rather than
+ * JavaScript, which is what a Windows checkout of such a commit actually produces and
+ * what killed every hook at require() time in 3.0.0. The two are worth keeping separate,
+ * since CI runs on Linux where the cause is present but the symptom never appears.
+ */
+describe("every plugin ships its hook libs as real files", () => {
+  // Every plugin the marketplace lists, not the hand-written PLUGIN_DIRS above: that
+  // list is scoped to plugins with hook *shape* to constrain, whereas any plugin that
+  // grows a hooks/lib needs its files checked from the first one.
+  const libDirs = marketplacePluginDirs()
+    .map((d) => path.join(ROOT, d, "hooks", "lib"))
+    .filter((d) => fs.existsSync(d));
+
+  it("found at least one hooks/lib directory to check", () => {
+    assert.ok(
+      libDirs.length > 0,
+      "no plugin has a hooks/lib directory — this suite would pass vacuously"
+    );
+  });
+
+  for (const dir of libDirs) {
+    const rel = path.relative(ROOT, dir);
+    const libs = fs.readdirSync(dir).filter((f) => f.endsWith(".cjs"));
+
+    it(`${rel} contains libs to check`, () => {
+      assert.ok(libs.length > 0, `${rel} exists but holds no .cjs files`);
+    });
+
+    for (const name of libs) {
+      it(`${rel}/${name} is a real file holding JavaScript`, () => {
+        const abs = path.join(dir, name);
+        assert.ok(!fs.lstatSync(abs).isSymbolicLink(), `${abs} is a symlink`);
+        assert.match(
+          fs.readFileSync(abs, "utf8"),
+          /module\.exports/,
+          `${abs} does not look like JavaScript — a Windows checkout of a committed ` +
+            `symlink leaves the link target path here as the file's contents`
+        );
+      });
+    }
+  }
 });

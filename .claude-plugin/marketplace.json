@@ -15,12 +15,6 @@
       "category": "productivity"
     },
     {
-      "name": "auto-lint-plugin",
-      "source": "./auto-lint-plugin",
-      "description": "Auto-lints files after Edit/Write operations. Supports Python (ruff) and JavaScript/TypeScript (eslint).",
-      "category": "productivity"
-    },
-    {
       "name": "gutt-mentor",
       "source": "./gutt-mentor",
       "description": "Individual development programs and progress tracking in personal memory, via GUTT",

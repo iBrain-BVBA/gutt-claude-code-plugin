@@ -16,7 +16,7 @@ After merging feature/fix PRs to master, when it's time to cut a new release. Th
 Before starting, verify:
 
 1. **All PRs merged** — no open PRs targeting master that should be included
-2. **Tests pass** — run `node tests/cowork-hooks.test.cjs` and any other test suites
+2. **Tests pass** — run `node tests/cursor-host.test.cjs` and any other test suites
 3. **No broken hooks** — quick smoke test: `node tests/test-all-hooks.cjs` should pass
 4. **Changelog reviewed** — know what's in this release (check merged PRs since last tag)
 
@@ -45,7 +45,7 @@ Each plugin's `.claude-plugin/plugin.json` `"version"` is the **single source of
 
 1. **`package.json`** — top-level `"version"` (root/repo version)
 2. **`gutt-core/.claude-plugin/plugin.json`** — top-level `"version"`; **must equal `package.json`**
-3. Any other plugin you changed (e.g. **`auto-lint-plugin/.claude-plugin/plugin.json`**) — bump its own `"version"`; it is versioned independently and does **not** track `package.json`
+3. Any other plugin you changed (e.g. **`gutt-mentor/.claude-plugin/plugin.json`**) — bump its own `"version"`; it is versioned independently and does **not** track `package.json`
 
 **Do NOT** add a `"version"` to `.claude-plugin/marketplace.json` or any of its entries — `plugin.json` is the source of truth, and `npm run check:version` (Step 2b) fails if a stray version appears there.
 

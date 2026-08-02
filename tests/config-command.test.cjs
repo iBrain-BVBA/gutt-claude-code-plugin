@@ -23,8 +23,8 @@ const path = require("path");
 const os = require("os");
 const { execFileSync } = require("child_process");
 
-const command = require("../shared/config-command.cjs");
-const runtimeConfig = require("../shared/runtime-config.cjs");
+const command = require("../gutt-core/hooks/lib/config-command.cjs");
+const runtimeConfig = require("../gutt-core/hooks/lib/runtime-config.cjs");
 
 const { parseCommand, configCommandResult } = command;
 
@@ -474,7 +474,7 @@ describe("config command: mutations", () => {
     // Two commands, two processes, one machine-global file. The lock in
     // updateConfig is what stops the second read-modify-write from losing the first.
     const script = (text) =>
-      `require("${path.join(__dirname, "..", "shared", "config-command.cjs").replace(/\\/g, "\\\\")}")` +
+      `require("${path.join(__dirname, "..", "gutt-core", "hooks", "lib", "config-command.cjs").replace(/\\/g, "\\\\")}")` +
       `.configCommandResult(${JSON.stringify(text)}, "p", Date.now())`;
     const runs = ["/gutt-pro:disable", "/gutt-pro:mode hitl"].map((text) =>
       execFileSync(process.execPath, ["-e", script(text)], {

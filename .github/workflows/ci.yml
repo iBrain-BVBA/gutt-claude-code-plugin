@@ -29,8 +29,8 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Check shared libs (single source + symlinks)
-        run: npm run check:shared
+      - name: Check no file is committed as a symlink (Windows-safe packaging)
+        run: npm run check:no-symlinks
 
       - name: Check runtime-state location (R37)
         run: npm run check:state
@@ -82,6 +82,27 @@ jobs:
           node-version: "18"
 
       - name: Run hook smoke tests on the end-user runtime floor
+        run: node tests/test-all-hooks.cjs
+
+  # The symlink guard reads the git index, which is platform-independent by design — but
+  # that makes it a proxy for a defect only Windows produces, run only where the defect
+  # cannot occur. This is the direct check: git on Windows defaults to core.symlinks=false
+  # and writes a link's target path as the file's contents, so a committed symlink reaches
+  # this job as a lib full of "../../../shared/debug.cjs" and every hook dies parsing it.
+  # Spawning the hook entry points is what surfaces that. Zero-dep, so no install needed.
+  hook-windows-smoke:
+    name: Hook Smoke (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Run hook smoke tests on a Windows checkout
         run: node tests/test-all-hooks.cjs
 
   commitlint:

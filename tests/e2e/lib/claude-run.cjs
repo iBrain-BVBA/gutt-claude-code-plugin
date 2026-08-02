@@ -140,12 +140,60 @@ function createProject(label = "session") {
   return dir;
 }
 
-/** Remove a directory tree, ignoring failures — cleanup must never fail a test. */
+/** The name the generated companion plugin registers under. */
+const COMPANION_PLUGIN_NAME = "e2e-companion-plugin";
+
+/**
+ * Build a throwaway second plugin, for runs that need gutt to share a session.
+ *
+ * Coexistence tests need *another* plugin loaded; they do not need a particular one.
+ * Generating a minimal plugin keeps that requirement covered without the suite
+ * depending on some other plugin continuing to exist and continuing to ship hooks.
+ *
+ * Its handler is on `SessionEnd`, and the event choice is load-bearing twice over. A
+ * tool event never fires, because the coexistence run denies every tool — so the
+ * companion would load and sit idle, proving only that two plugins can be registered
+ * side by side. `SessionStart` does fire, but the CLI registers it as a single opaque
+ * async hook and never writes the command string to the debug log, so a run cannot tell
+ * whose SessionStart handler ran. `SessionEnd` fires on every run *and* is logged as
+ * `[<command>] completed with status N`, which is the only channel that attributes a
+ * completion to a specific plugin's script.
+ * @returns {string} absolute path to the new plugin directory
+ */
+function createCompanionPlugin() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-companion-"));
+  fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "hooks"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, ".claude-plugin", "plugin.json"),
+    JSON.stringify(
+      {
+        name: COMPANION_PLUGIN_NAME,
+        version: "0.0.0",
+        description: "Throwaway second plugin, used only to prove gutt coexists with one.",
+      },
+      null,
+      2
+    )
+  );
+  const handler = { type: "command", command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/noop.cjs"` };
+  fs.writeFileSync(
+    path.join(dir, "hooks", "hooks.json"),
+    JSON.stringify({ hooks: { SessionEnd: [{ matcher: "", hooks: [handler] }] } }, null, 2)
+  );
+  fs.writeFileSync(path.join(dir, "hooks", "noop.cjs"), "process.exit(0);\n");
+  return dir;
+}
+
+/**
+ * Remove a directory tree. Cleanup must never fail a test, but it must not be silent
+ * either — a swallowed failure here leaks a temp directory with nothing to show for it.
+ */
 function removeDir(dir) {
   try {
     fs.rmSync(dir, { recursive: true, force: true });
-  } catch {
-    /* best effort */
+  } catch (err) {
+    console.warn(`cleanup: could not remove ${dir} (${err.message})`);
   }
 }
 
@@ -923,6 +971,7 @@ function toolResultText(transcript) {
 
 module.exports = {
   BILLABLE_ENV_KEYS,
+  COMPANION_PLUGIN_NAME,
   DEFAULT_DISALLOWED_TOOLS,
   DEFAULT_MODEL,
   PLUGIN_DATA_ROOT,
@@ -932,6 +981,7 @@ module.exports = {
   additionalContextEvents,
   buildArgs,
   claudeVersion,
+  createCompanionPlugin,
   createProject,
   findSessionStateFile,
   findTranscript,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tests for shared/plugin-state.cjs — the R37 runtime-state helper (GP-855).
+ * Tests for hooks/lib/plugin-state.cjs — the R37 runtime-state helper (GP-855).
  *
  * Run: node --test tests/plugin-state.test.cjs
  */
@@ -11,7 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const state = require("../shared/plugin-state.cjs");
+const state = require("../gutt-core/hooks/lib/plugin-state.cjs");
 
 const ORIGINAL = process.env.CLAUDE_PLUGIN_DATA;
 function restoreEnv() {

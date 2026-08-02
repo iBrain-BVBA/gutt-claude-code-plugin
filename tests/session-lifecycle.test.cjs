@@ -13,10 +13,10 @@ const path = require("path");
 const os = require("os");
 const { spawn, spawnSync } = require("child_process");
 
-const pluginState = require("../shared/plugin-state.cjs");
-const sessionState = require("../shared/session-state.cjs");
-const runtimeConfig = require("../shared/runtime-config.cjs");
-const { guard } = require("../shared/debug.cjs");
+const pluginState = require("../gutt-core/hooks/lib/plugin-state.cjs");
+const sessionState = require("../gutt-core/hooks/lib/session-state.cjs");
+const runtimeConfig = require("../gutt-core/hooks/lib/runtime-config.cjs");
+const { guard } = require("../gutt-core/hooks/lib/debug.cjs");
 // The hook module, required rather than spawned: gated behind `require.main`, it
 // exports the real ttlSweep so the sweep tests below can't drift from shipped code.
 const { ttlSweep } = require("../gutt-core/hooks/session-start.cjs");

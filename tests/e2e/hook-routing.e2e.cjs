@@ -33,10 +33,13 @@ const path = require("node:path");
 const { after, before, describe, it } = require("node:test");
 
 const {
+  COMPANION_PLUGIN_NAME,
+  PLUGIN_DATA_ROOT,
   PLUGIN_DIR,
   REPO_ROOT,
   additionalContextEvents,
   claudeVersion,
+  createCompanionPlugin,
   createProject,
   findSessionStateFile,
   hookCompletions,
@@ -50,9 +53,7 @@ const {
   withPlantedConfig,
 } = require("./lib/claude-run.cjs");
 
-const { OUTCOMES, BROKEN_OUTCOMES } = require("../../shared/stop-judge.cjs");
-
-const AUTO_LINT_DIR = path.join(REPO_ROOT, "auto-lint-plugin");
+const { OUTCOMES, BROKEN_OUTCOMES } = require("../../gutt-core/hooks/lib/stop-judge.cjs");
 
 /**
  * The Stop outcomes this tier expects to see, read from the source of truth rather than
@@ -535,15 +536,17 @@ describe(
   { skip, timeout: 420000 },
   () => {
     let projectDir;
+    let companionDir;
     let run;
 
     before(
       async () => {
         projectDir = createProject("coexist");
+        companionDir = createCompanionPlugin();
         run = await runClaude({
           projectDir,
           sessionId: IDS.coexist,
-          pluginDirs: [PLUGIN_DIR, AUTO_LINT_DIR],
+          pluginDirs: [PLUGIN_DIR, companionDir],
           prompt: "Reply with exactly: pong",
         });
       },
@@ -555,6 +558,9 @@ describe(
       if (projectDir) {
         removeDir(projectDir);
       }
+      if (companionDir) {
+        removeDir(companionDir);
+      }
     });
 
     it("loads both plugins from this working tree", () => {
@@ -562,11 +568,15 @@ describe(
       const gutt = run.debug
         .split("\n")
         .filter((l) => /Read hooks\.json for plugin gutt-pro/.test(l));
-      const lint = run.debug
+      const companion = run.debug
         .split("\n")
-        .filter((l) => /Read hooks\.json for plugin auto-lint-plugin/.test(l));
+        .filter((l) => new RegExp(`Read hooks\\.json for plugin ${COMPANION_PLUGIN_NAME}`).test(l));
       assert.equal(gutt.length, 1, `expected exactly one gutt plugin to load, got ${gutt.length}`);
-      assert.equal(lint.length, 1, `auto-lint-plugin did not load: ${lint.length} reads`);
+      assert.equal(
+        companion.length,
+        1,
+        `the companion plugin did not load: ${companion.length} reads`
+      );
       assert.match(
         gutt[0],
         new RegExp(REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
@@ -599,10 +609,25 @@ describe(
       assert.deepEqual(blocked, [], "a hook raised a blocking error in a shared session");
     });
 
-    it("keeps its own state file, untouched by the other plugin", () => {
-      // Each plugin gets its own data dir, so auto-lint cannot reach gutt's state.
+    it("runs the companion's hook, rather than merely loading the plugin", () => {
+      // Loading proves registration; a completion proves both plugins handled an event
+      // in the same session, which is what coexistence has to mean. The companion's
+      // handler sits on SessionEnd because that is the only event whose completion the
+      // CLI attributes to a named script — SessionStart is registered as one opaque
+      // async hook whose command never reaches the debug log, so a companion there is
+      // unobservable rather than absent.
+      assert.deepEqual(hookCompletions(run.debug, "noop.cjs"), [0]);
+    });
+
+    it("keeps its own state file, and the companion writes no state at all", () => {
+      // Each plugin gets its own data dir, so the companion cannot reach gutt's state.
+      // Asserting against the companion's *own* dir is what gives this teeth: a path
+      // that already matched /gutt-pro-inline/ could not also contain the companion's
+      // name, so checking for its absence there could never have failed.
       assert.match(run.stateFile, /gutt-pro-inline/);
-      assert.doesNotMatch(run.stateFile, /auto-lint/);
+      const companionData = path.join(PLUGIN_DATA_ROOT, `${COMPANION_PLUGIN_NAME}-inline`);
+      const wrote = fs.existsSync(companionData) ? fs.readdirSync(companionData) : [];
+      assert.deepEqual(wrote, [], `the companion plugin wrote state: ${wrote.join(", ")}`);
     });
   }
 );

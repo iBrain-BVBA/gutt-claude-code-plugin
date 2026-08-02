@@ -1,1 +1,0 @@
-../../../shared/platform-detect.cjs

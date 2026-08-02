@@ -59,7 +59,7 @@ The reason for this workflow is that Copilot catches issues that local testing m
 
 ### Picking the base branch
 
-**Do not branch from the default branch reflexively.** `gh repo view --json defaultBranchRef` reports this repo's default as `master`, but `master` is **pre-3.0**: the 3.0 program lives on `release/3.0`, and a branch cut from `master` gets the old layout (no `gutt-core/`, no `shared/`) — every path in the plan is then wrong.
+**Do not branch from the default branch reflexively.** `gh repo view --json defaultBranchRef` reports this repo's default as `master`, but `master` is **pre-3.0**: the 3.0 program lives on `release/3.0`, and a branch cut from `master` gets the old layout (no `gutt-core/`) — every path in the plan is then wrong.
 
 So, before `git checkout -b`:
 
