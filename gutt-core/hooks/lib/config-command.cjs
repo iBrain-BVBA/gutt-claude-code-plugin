@@ -527,6 +527,29 @@ function runDisable(arg, typed) {
  * @param {string} typed
  * @returns {string}
  */
+/**
+ * Report a failed statusline write, without letting the framing contradict it.
+ *
+ * `writeSettings` was taught to distinguish "could not write it, it is unchanged"
+ * from "could not write it and could not put it back", and both callers then pasted
+ * the same reassuring clause in front of either — so the losing case arrived as
+ * *"gutt did not change your settings: ~/.claude/settings.json could not be written
+ * and could not be put back — it is missing."* A user who reads six words and stops
+ * has been told their settings file is fine at the moment it does not exist. Fixing
+ * that one layer down and re-introducing it one layer up is why this lives in a
+ * function rather than in a convention.
+ *
+ * @param {string} lead what the harmless case may say it did not do
+ * @param {{status: string, detail?: string}} result
+ * @returns {string}
+ */
+function statuslineFailure(lead, result) {
+  if (result.status === "settings-lost") {
+    return `gutt could not finish, and your settings.json was lost in the attempt. ${result.detail}`;
+  }
+  return `${lead}: ${result.detail}`;
+}
+
 function runStatusline(arg, typed) {
   const verb = arg === null ? "install" : arg.toLowerCase();
 
@@ -545,7 +568,7 @@ function runStatusline(arg, typed) {
       // the renderer moves under it on every update — and this is the command
       // someone runs *because* the status bar is blank, so it has to be able to see
       // that rather than reporting the settings key and stopping there.
-      const { shim, renderer } = statusline.shimResolves();
+      const { shim, current, renderer } = statusline.shimResolves();
       if (!shim) {
         return (
           "The gutt HUD is in your settings.json, but the file it points at is gone, so " +
@@ -557,6 +580,21 @@ function runStatusline(arg, typed) {
           "The gutt HUD is in your settings.json and its entry point is there, but the " +
           "renderer it forwards to is missing — usually a plugin update that could not " +
           "finish. Run /gutt-pro:statusline to repoint it."
+        );
+      }
+      // Resolves, but not to this version. The bar is not blank, so this is a report
+      // rather than a fault — and it is the one the user cannot see any other way,
+      // because everything downstream of a stale shim works exactly as well as it did
+      // in the version it still points at.
+      const shimFailure = sessionState.getState().statuslineShim;
+      if (!current) {
+        return (
+          "The gutt HUD is installed and rendering, but its entry point still points at a " +
+          "previous version of the plugin, so you are not seeing this version's status bar. " +
+          (shimFailure
+            ? `gutt tried to repoint it this session and could not (${shimFailure}). `
+            : "") +
+          "Run /gutt-pro:statusline to repoint it."
         );
       }
       return `The gutt HUD is installed. /gutt-pro:statusline off removes it.`;
@@ -576,10 +614,16 @@ function runStatusline(arg, typed) {
     // coming.
     const failure = sessionState.getState().statuslineReassert;
     if (failure) {
+      // The detail is printed here rather than deferred to a re-run. It is the only
+      // copy: on the losing path settings.json is now simply absent, so running the
+      // install again takes the "no file, create one" branch and reports plain
+      // success — the sentence naming where the original went would never be said
+      // again by anyone.
       return (
         "The gutt HUD is not in your settings.json, though you asked for it before. This " +
-        `session tried to put it back and could not (${failure}). Run /gutt-pro:statusline ` +
-        "to see the details and retry."
+        `session tried to put it back and could not (${failure.status}). ` +
+        (failure.detail ? `${failure.detail} ` : "") +
+        "Run /gutt-pro:statusline to retry."
       );
     }
     return (
@@ -609,12 +653,19 @@ function runStatusline(arg, typed) {
     }
     const result = statusline.removeEntry();
     if (!result.ok) {
-      return `gutt did not change your settings: ${result.detail}`;
+      return statuslineFailure("gutt did not change your settings", result);
     }
+    // Both replies lead with the consent withdrawal, because that is the part that
+    // happened in every case and the part the user typed this for. "Nothing changed"
+    // was flatly wrong on the second branch: for someone whose HUD the platform had
+    // already dropped, and who typed `off` to stop it coming back, the durable flag
+    // that decides exactly that had just been cleared — the one thing they wanted was
+    // the one thing they were told had not occurred.
     return result.status === "removed"
-      ? "The gutt HUD is removed from ~/.claude/settings.json (the previous file is backed up). " +
-          "/gutt-pro:statusline puts it back."
-      : "The gutt HUD was not installed, so nothing changed.";
+      ? "The gutt HUD is removed from ~/.claude/settings.json and will not be restored " +
+          "automatically (the previous file is backed up). /gutt-pro:statusline puts it back."
+      : "The gutt HUD was not in your settings.json. gutt has recorded that you do not want " +
+          "it, so no later session will put it back.";
   }
 
   if (arg !== null && verb !== "install") {
@@ -627,7 +678,7 @@ function runStatusline(arg, typed) {
 
   const result = statusline.installEntry();
   if (!result.ok) {
-    return `gutt did not install the HUD: ${result.detail}`;
+    return statuslineFailure("gutt did not install the HUD", result);
   }
   // Recorded after the write, not before: consent authorises the repair in later
   // sessions, and there is nothing to repair if the first write never landed.
@@ -834,4 +885,8 @@ module.exports = {
   MAX_MINUTES,
   parseCommand,
   configCommandResult,
+  // Exported for tests. Pure, and the one piece of this surface where the framing can
+  // contradict the fact it is framing — worth pinning directly rather than through a
+  // failure that needs a platform-specific rename to provoke.
+  statuslineFailure,
 };

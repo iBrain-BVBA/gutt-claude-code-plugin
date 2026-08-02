@@ -121,20 +121,40 @@ function shimContents(target) {
     "// Rewritten automatically whenever the plugin updates; your edits will be lost.",
     "// The indirection exists because CLAUDE_PLUGIN_ROOT is version-scoped: this",
     "// path is stable, the one below is not.",
-    "//",
+    `var TARGET = ${JSON.stringify(target)};`,
     "// A status line is not a hook, so it is launched without the plugin",
     "// environment. This directory is the plugin data dir, so it is also the value",
     "// the renderer needs in order to find any session state at all.",
     "process.env.CLAUDE_PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA || __dirname;",
-    "// Guarded because this file outlives what it points at. Uninstalling the plugin",
-    "// deletes the renderer; an update that half-finished moves it. An unguarded",
-    "// require then throws, node exits non-zero, and the user gets a module-not-found",
-    "// stack trace where their status bar used to be, several times a second, from a",
-    "// plugin that may no longer be installed. Exiting quietly leaves an empty bar,",
-    "// which is what they would have had anyway.",
+    "// Guarded because this file outlives what it points at: uninstalling the plugin",
+    "// deletes the renderer. An unguarded require then throws, node exits non-zero,",
+    "// and the user gets a module-not-found stack trace where their status bar used",
+    "// to be, several times a second, from a plugin that may no longer be installed.",
+    "//",
+    "// But that is only one of the failures that lands here, and the other one is a",
+    "// bug rather than a tidy uninstall: a renderer that is present and does not",
+    "// load — a half-finished update, a transitive require gone missing, or a",
+    "// checkout that mangled the file, which is how 3.0.0 shipped dead on Windows.",
+    "// Silence is the right report for the first and is how the second went a whole",
+    "// release without being noticed, so they are told apart by whether the file is",
+    "// actually there.",
     "try {",
-    `  require(${JSON.stringify(target)});`,
-    "} catch {",
+    "  require(TARGET);",
+    "} catch (err) {",
+    '  var fs = require("fs");',
+    "  try {",
+    "    fs.appendFileSync(",
+    '      require("path").join(__dirname, "hook-errors.log"),',
+    '      new Date().toISOString() + " [statusline-shim] " + ((err && err.stack) || err) + "\\n"',
+    "    );",
+    "  } catch (ignored) {}",
+    "  try {",
+    "    if (fs.existsSync(TARGET)) {",
+    '      console.log("[gutt \\u26a0 statusline failed to load]");',
+    "    }",
+    "  } catch (ignored) {}",
+    "  // Always zero. A non-zero exit here buys nothing — nobody reads it — and costs",
+    "  // an error the user cannot act on, repeated on every refresh.",
     "  process.exitCode = 0;",
     "}",
     "",
@@ -192,6 +212,29 @@ function refreshShim() {
 }
 
 /**
+ * The path a shim already on disk will require, read out of the shim itself.
+ *
+ * The generated body writes the target through `JSON.stringify`, so reading it back
+ * with `JSON.parse` round-trips exactly — including the backslashes in a Windows
+ * path, which is the case a hand-rolled unquote would get wrong.
+ *
+ * @param {string} body contents of an existing shim
+ * @returns {string|null} the required path, or null if this is not a shim we wrote
+ */
+function shimTarget(body) {
+  const match = /^var TARGET = (".*");$/m.exec(body);
+  if (!match) {
+    return null;
+  }
+  try {
+    const target = JSON.parse(match[1]);
+    return typeof target === "string" && target !== "" ? target : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Does the installed HUD actually resolve, end to end?
  *
  * The question `/gutt-pro:statusline status` has to be able to answer, and could
@@ -200,13 +243,40 @@ function refreshShim() {
  * can break independently — the shim is deleted when the plugin is uninstalled, and
  * the renderer moves under it on every update.
  *
- * @returns {{shim: boolean, renderer: boolean}}
+ * **The renderer is the one the shim names, not the one this process would write.**
+ * Checking `rendererPath()` answers a question nobody asked: it is
+ * `${CLAUDE_PLUGIN_ROOT}/hooks/statusline.cjs`, which is this very file's neighbour,
+ * so it is present in essentially every circumstance where there is a command around
+ * to ask — including the one circumstance that matters, a shim left pointing into a
+ * previous version's directory after a failed update. That is the exact defect this
+ * function was added for, and reading the wrong path made it report "installed" over
+ * a blank bar. So the shim is opened and its target is followed.
+ *
+ * `current` is the third answer, and it is what distinguishes "stale but working"
+ * from "stale and dead": a shim can point at a real renderer from an older version
+ * that will happily run, which is not broken but is not what an upgrade intended.
+ *
+ * @returns {{shim: boolean, current: boolean, renderer: boolean}}
  */
 function shimResolves() {
   const shim = shimPath();
+  const missing = { shim: false, current: false, renderer: false };
+  if (!shim) {
+    return missing;
+  }
+  let body;
+  try {
+    body = fs.readFileSync(shim, "utf8");
+  } catch {
+    // Absent, or there and unreadable. Either way nothing starts from it, which is
+    // the answer the caller needs; the distinction has no different remedy.
+    return missing;
+  }
+  const target = shimTarget(body);
   return {
-    shim: Boolean(shim) && fs.existsSync(shim),
-    renderer: fs.existsSync(rendererPath()),
+    shim: true,
+    current: body === shimContents(rendererPath()),
+    renderer: target !== null && fs.existsSync(target),
   };
 }
 
@@ -281,7 +351,9 @@ function readSettings(settingsFile) {
  *      The marker set used to include the bare fragment `plugins`, which every
  *      plugin's data directory carries — so another vendor's status line under
  *      `~/.claude/plugins/data/` was classified as ours, and `removeEntry` would
- *      delete it. See `GUTT_PATH_MARKER`.
+ *      delete it. The name is matched as a whole path segment rather than as a
+ *      substring, so a directory that merely happens to spell `gutt` inside a
+ *      longer word does not confer ownership either. See `GUTT_PATH_SEGMENT`.
  *
  * Anything else is foreign, including a path that merely ends in the right name. The
  * cost is that an entry we wrote into an unmarked directory is disowned — it stops
@@ -350,7 +422,14 @@ function classifyStatusLine(settings) {
  * @returns {string|null} the backup's path, or null when it could not be written
  */
 function backupSettings(settingsFile, raw, now) {
-  const backup = statePath("migrations", `settings-backup-${now}.json`);
+  // Namespaced, because this module *prunes* what it writes and the 2.x migration
+  // writes its own settings backup into the same directory. Under a shared name the
+  // prune below cannot tell the two apart, and since this path runs about once per
+  // session on the platforms the repair exists for, the migration's one-shot copy —
+  // taken before it rewrote settings.json, and the only copy of that file from
+  // before the upgrade — was evicted within five sessions by newer copies of a
+  // different thing.
+  const backup = statePath("migrations", `settings-backup-statusline-${now}.json`);
   if (!backup) {
     // No data dir means nowhere safe to put the original, so nothing is rewritten.
     return null;
@@ -386,6 +465,16 @@ const KEEP_BACKUPS = 5;
  * Newest kept rather than oldest: the useful copy is the one from just before the
  * change someone is trying to undo.
  *
+ * **Only this module's own backups.** The pattern is anchored on the `statusline-`
+ * infix `backupSettings` writes, so the 2.x migration's copy — same directory, same
+ * `settings-backup-` prefix, and possibly the only surviving image of settings.json
+ * from before the upgrade — is not in the candidate set at all. A sweep that deletes
+ * user data has to be able to name what it owns.
+ *
+ * Each removal is logged for the same reason: this is the one place in the module
+ * that deletes something the user might want, and `rmSync(..., {force: true})` is
+ * silent about what it took.
+ *
  * @param {string} justWritten kept regardless, in case the sort cannot see it
  */
 function pruneBackups(justWritten) {
@@ -393,12 +482,13 @@ function pruneBackups(justWritten) {
   try {
     const backups = fs
       .readdirSync(dir)
-      .filter((name) => /^settings-backup-\d+\.json$/.test(name))
+      .filter((name) => /^settings-backup-statusline-\d+\.json$/.test(name))
       .sort();
     for (const name of backups.slice(0, Math.max(0, backups.length - KEEP_BACKUPS))) {
       const doomed = path.join(dir, name);
       if (doomed !== justWritten) {
         fs.rmSync(doomed, { force: true });
+        debugLog("statusline-install", `pruned old settings backup ${doomed}`);
       }
     }
   } catch (err) {
@@ -674,11 +764,18 @@ function removeEntry({ settingsFile, now = Date.now() } = {}) {
  * a foreign or unparseable settings.json means no write. Only the exact case of
  * "they said yes and it is gone" does anything.
  *
+ * The failure `detail` is carried out rather than discarded. This is the one caller
+ * of `installEntry` that runs with nobody watching, so it is also the one that can
+ * reach the whole-file loss path unattended — and `status` alone is an internal
+ * token. Told only `settings-lost`, the user is left with a word, while the sentence
+ * naming where their settings actually are stays in a variable that goes out of
+ * scope.
+ *
  * @param {Object} [opts]
  * @param {boolean} [opts.consented] whether the user ever ran the install command
  * @param {string} [opts.settingsFile]
  * @param {number} [opts.now]
- * @returns {{restored: boolean, status: string}}
+ * @returns {{restored: boolean, status: string, detail?: string}}
  */
 function reassertEntry({ consented, settingsFile, now = Date.now() } = {}) {
   if (!consented) {
@@ -697,7 +794,10 @@ function reassertEntry({ consented, settingsFile, now = Date.now() } = {}) {
     return { restored: false, status: "foreign" };
   }
   const result = installEntry({ settingsFile, now });
-  return { restored: result.ok, status: result.ok ? "restored" : result.status };
+  if (result.ok) {
+    return { restored: true, status: "restored" };
+  }
+  return { restored: false, status: result.status, detail: result.detail };
 }
 
 module.exports = {

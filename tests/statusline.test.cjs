@@ -26,6 +26,7 @@ const ROOT = path.join(__dirname, "..");
 const STATUSLINE = path.join(ROOT, "gutt-core", "hooks", "statusline.cjs");
 const INSTALL_LIB = path.join(ROOT, "gutt-core", "hooks", "lib", "statusline-install.cjs");
 const HOOKS_JSON = path.join(ROOT, "gutt-core", "hooks", "hooks.json");
+const command = require(path.join(ROOT, "gutt-core", "hooks", "lib", "config-command.cjs"));
 
 let sandbox;
 let dataDir;
@@ -46,7 +47,7 @@ let install;
  * @param {string} [opts.groupId] GUTT_GROUP_ID for this run; omitted means unset
  * @returns {string} the rendered line
  */
-function render(payload = {}, { raw, columns, groupId } = {}) {
+function render(payload = {}, { raw, columns, groupId, preload } = {}) {
   const env = { ...process.env, CLAUDE_PLUGIN_DATA: dataDir };
   if (columns === undefined) {
     delete env.COLUMNS;
@@ -60,11 +61,15 @@ function render(payload = {}, { raw, columns, groupId } = {}) {
   } else {
     env.GUTT_GROUP_ID = groupId;
   }
-  const result = spawnSync(process.execPath, [STATUSLINE], {
-    input: raw !== undefined ? raw : JSON.stringify(payload),
-    encoding: "utf8",
-    env,
-  });
+  const result = spawnSync(
+    process.execPath,
+    [...(preload ? ["--require", preload] : []), STATUSLINE],
+    {
+      input: raw !== undefined ? raw : JSON.stringify(payload),
+      encoding: "utf8",
+      env,
+    }
+  );
   assert.equal(result.status, 0, `statusline exited ${result.status}: ${result.stderr}`);
   return result.stdout.trim();
 }
@@ -81,6 +86,11 @@ function writeState(state) {
     record.connectionObservedAt = new Date().toISOString();
   }
   fs.writeFileSync(path.join(dir, "s1.json"), JSON.stringify(record));
+}
+
+/** Read back the session record a hook wrote. */
+function readSessionState(sessionId = "s1") {
+  return JSON.parse(fs.readFileSync(path.join(dataDir, "sessions", `${sessionId}.json`), "utf8"));
 }
 
 /** An ISO timestamp `minutes` in the past. */
@@ -353,6 +363,25 @@ describe("the HUD reports connection state", () => {
     assert.match(line, /!/);
   });
 
+  // The three spellings of "not a denial", which the render must treat alike. Only a
+  // probe that ran and came back negative may suppress the sign-in prompt; a probe
+  // that threw (null) and a probe that has not landed yet (undefined) may not, and
+  // `!== false` is what tells the three apart. Written as `mcpConfigured` alone it is
+  // a truthiness test, and both of these fall through to the branch reserved for a
+  // server nobody configured — so the user whose connector genuinely needs signing in
+  // gets a neutral glyph and no instruction at all.
+  for (const [label, mcpConfigured] of [
+    ["a probe that threw", null],
+    ["a probe that has not landed", undefined],
+  ]) {
+    it(`still asks for sign-in after ${label}`, () => {
+      writeState({ mcpConfigured, mcpToolsAvailable: "absent" });
+      const segment = render(PAYLOAD).match(/\[gutt[^\]]*\]/)[0];
+      assert.match(segment, /🟡/, `${label} must not be read as "nothing is configured"`);
+      assert.match(segment, /auth needed!/);
+    });
+  }
+
   it("keeps the auth marker until something contradicts it", () => {
     // An outstanding sign-in does not become untrue by going unattended, so a
     // half-hour-old auth failure still reads as auth. It used to decay to neutral,
@@ -594,6 +623,34 @@ describe("the HUD degrades rather than vanishing", () => {
     assert.doesNotMatch(render({ session_id: "s1" }), /\|/);
     assert.doesNotMatch(render({ session_id: "s1", cost: { total_cost_usd: 1.24 } }), /\|/);
   });
+
+  it("says it broke, rather than sitting on the glyph for 'nothing observed'", () => {
+    // The outer net catches a corrupt session record, a config that will not parse,
+    // and a plain bug in the renderer. Reporting all three as ⚪ made a renderer that
+    // fails on every one of the hundreds of invocations in a session look exactly like
+    // a quiet healthy one — and left no trace, so the file's only diagnostic surface
+    // was mute about the only thing it exists to catch.
+    //
+    // Forced by poisoning a dependency rather than by finding a bad input: the point
+    // is to cover the failures nobody predicted, so the test must not depend on
+    // predicting one.
+    const poison = path.join(sandbox, "poison-render.cjs");
+    const module = path.join(ROOT, "gutt-core", "hooks", "lib", "runtime-config.cjs");
+    fs.writeFileSync(
+      poison,
+      `const t = require.resolve(${JSON.stringify(module)});\n` +
+        `require(t);\n` +
+        `require.cache[t].exports.readConfig = () => { throw new Error("boom"); };\n`
+    );
+    const line = render(PAYLOAD, { preload: poison });
+    assert.match(line, /\[gutt/, "a status line that prints nothing is the original sin here");
+    assert.match(line, /⚠/, "and it must not be mistakable for a healthy session");
+    assert.doesNotMatch(line, /⚪/, "⚪ means 'nothing observed yet' and must keep meaning it");
+
+    const log = path.join(dataDir, "hook-errors.log");
+    assert.ok(fs.existsSync(log), "the reason must be recoverable afterwards");
+    assert.match(fs.readFileSync(log, "utf8"), /boom/);
+  });
 });
 
 describe("the inert manifest key", () => {
@@ -646,9 +703,67 @@ describe("the shim is what makes an upgrade invisible", () => {
     }
   });
 
+  it("says so, loudly, when the renderer is there and will not load", () => {
+    // The other failure that lands in the shim's catch, and the one silence is wrong
+    // for. A renderer that is *present* and throws is a bug — a half-finished update,
+    // a missing transitive require, or a checkout that mangled the file, which is
+    // exactly how 3.0.0 shipped dead on Windows and went a release without anyone
+    // noticing, because a blank bar looks like a plugin nobody installed.
+    const brokenRoot = path.join(sandbox, "broken-version");
+    fs.mkdirSync(path.join(brokenRoot, "hooks"), { recursive: true });
+    fs.writeFileSync(
+      path.join(brokenRoot, "hooks", "statusline.cjs"),
+      "this is not valid javascript ((("
+    );
+    const previous = process.env.CLAUDE_PLUGIN_ROOT;
+    process.env.CLAUDE_PLUGIN_ROOT = brokenRoot;
+    try {
+      delete require.cache[require.resolve(INSTALL_LIB)];
+      const broken = require(INSTALL_LIB);
+      const { path: shim } = broken.refreshShim();
+      const run = spawnSync(process.execPath, [shim], { input: "{}", encoding: "utf8" });
+      assert.equal(run.status, 0, "still never a non-zero exit — nobody reads it");
+      assert.match(run.stdout, /statusline failed to load/, "a broken renderer must not be silent");
+      // And the reason is recoverable, which silence never leaves behind.
+      const log = path.join(dataDir, "hook-errors.log");
+      assert.ok(fs.existsSync(log), "the reason must be written down somewhere");
+      assert.match(fs.readFileSync(log, "utf8"), /statusline-shim/);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = previous;
+      }
+      delete require.cache[require.resolve(INSTALL_LIB)];
+      install = require(INSTALL_LIB);
+    }
+  });
+
   it("does not rewrite when nothing moved", () => {
     install.refreshShim();
     assert.equal(install.refreshShim().status, "current");
+  });
+
+  it("follows the shim's own target when asked whether the HUD resolves", () => {
+    // The question is "does what is installed actually run", and the only thing that
+    // knows what is installed is the shim on disk. Checking `rendererPath()` instead
+    // answers a different question — is *this* version's renderer present — whose
+    // answer is yes in essentially every circumstance where there is a command around
+    // to ask, including the one circumstance that matters.
+    install.refreshShim();
+    assert.deepEqual(install.shimResolves(), { shim: true, current: true, renderer: true });
+
+    // A shim left behind by a version whose directory has since been removed: it reads
+    // fine, it is not this version's, and nothing starts from it.
+    const stale = path.join(sandbox, "v-old", "hooks", "statusline.cjs");
+    fs.writeFileSync(install.shimPath(), install.shimContents(stale));
+    assert.deepEqual(install.shimResolves(), { shim: true, current: false, renderer: false });
+
+    // And one pointing at a real renderer from an older version — stale, but working.
+    // Reporting this as broken would send the user to fix a bar that is rendering.
+    fs.mkdirSync(path.dirname(stale), { recursive: true });
+    fs.writeFileSync(stale, "// an older but perfectly loadable renderer\n");
+    assert.deepEqual(install.shimResolves(), { shim: true, current: false, renderer: true });
   });
 
   it("repoints itself when the plugin root moves, without touching settings", () => {
@@ -792,11 +907,60 @@ describe("installing the HUD", () => {
   it("backs the original up before rewriting it", () => {
     writeSettings({ model: "opus" });
     install.installEntry({ settingsFile, now: 1_700_000_000_000 });
-    const backup = path.join(dataDir, "migrations", "settings-backup-1700000000000.json");
+    const backup = path.join(
+      dataDir,
+      "migrations",
+      "settings-backup-statusline-1700000000000.json"
+    );
     assert.ok(fs.existsSync(backup));
     // The whole file verbatim: backing up only the changed key would still lose
     // the file if the rewrite went wrong.
     assert.match(JSON.parse(fs.readFileSync(backup, "utf8")).original, /"model": "opus"/);
+  });
+});
+
+describe("what the backup sweep may delete", () => {
+  /** The directory both backup writers share. */
+  function backupDir() {
+    return path.join(dataDir, "migrations");
+  }
+
+  it("keeps the newest few of its own and drops the rest", () => {
+    for (let i = 1; i <= 8; i += 1) {
+      writeSettings({ model: `v${i}` });
+      install.installEntry({ settingsFile, now: 1_700_000_000_000 + i });
+      // Put it back so the next install is a real change and takes a fresh backup.
+      writeSettings({ model: `v${i}` });
+    }
+    const kept = fs
+      .readdirSync(backupDir())
+      .filter((n) => n.startsWith("settings-backup-"))
+      .sort();
+    assert.equal(kept.length, 5, `expected five, got ${kept.join(", ")}`);
+    assert.equal(kept.at(-1), "settings-backup-statusline-1700000000008.json", "newest survives");
+  });
+
+  it("never touches the migration's copy, which may be the only one from before 3.x", () => {
+    // Same directory, same `settings-backup-` prefix, entirely different job: the 2.x
+    // migration takes one copy of settings.json before rewriting it, and that copy can
+    // be the last image of the file from before the upgrade. Under a shared name the
+    // sweep could not tell the two apart — and since this path runs about once per
+    // session on the platforms the repair exists for, the irreplaceable copy was
+    // evicted within five sessions by newer copies of something else.
+    fs.mkdirSync(backupDir(), { recursive: true });
+    const migration = path.join(backupDir(), "settings-backup-1600000000000.json");
+    fs.writeFileSync(migration, JSON.stringify({ migratedAt: "old", original: "{}" }));
+
+    for (let i = 1; i <= 8; i += 1) {
+      writeSettings({ model: `v${i}` });
+      install.installEntry({ settingsFile, now: 1_700_000_000_000 + i });
+      writeSettings({ model: `v${i}` });
+    }
+
+    assert.ok(
+      fs.existsSync(migration),
+      "the oldest file in the directory is the one that must not be swept"
+    );
   });
 });
 
@@ -1003,6 +1167,27 @@ describe("restoring a HUD the platform dropped (anthropics/claude-code#62486)", 
     assert.equal(result.status, "settings-unreadable");
     assert.equal(fs.readFileSync(settingsFile, "utf8"), "{ nope");
   });
+
+  it("carries the reason out with it, not just the label", () => {
+    // This is the one caller of installEntry that runs with nobody watching, so it is
+    // the one that can reach the whole-file loss path unattended. `status` alone is an
+    // internal token — told only "settings-lost", the user has a word, while the
+    // sentence naming where their settings actually went dies in a local variable.
+    // Nothing reconstructs it later: by then settings.json is simply absent, and a
+    // fresh install takes the "no file, create one" branch and reports plain success.
+    //
+    // Provoked through the backup, which is the first thing `installEntry` does that
+    // can fail with something worth saying: a plain file where the backup directory
+    // has to go means `mkdir` cannot run, so nothing is rewritten and the reason is
+    // the whole of what the user gets.
+    writeSettings({ model: "opus" });
+    fs.writeFileSync(path.join(dataDir, "migrations"), "not a directory");
+    const failed = install.reassertEntry({ consented: true, settingsFile });
+    assert.equal(failed.restored, false);
+    assert.equal(failed.status, "backup-failed");
+    assert.match(failed.detail, /backup/, "the reason must survive the return");
+    assert.equal(readSettings().statusLine, undefined, "and nothing may have been written");
+  });
 });
 
 describe("the /gutt-pro:statusline command surface", () => {
@@ -1060,6 +1245,44 @@ describe("the /gutt-pro:statusline command surface", () => {
 
     runCommand("/gutt-pro:statusline off");
     assert.equal(JSON.parse(fs.readFileSync(configPath, "utf8")).statusline.installed, false);
+  });
+
+  it("does not tell the user nothing happened when consent was withdrawn", () => {
+    // `off` with no HUD installed used to answer "nothing changed" — flatly wrong for
+    // its most likely caller, someone whose HUD the platform already dropped and who
+    // typed this to stop it coming back. The durable flag deciding exactly that had
+    // just been cleared: the one thing they wanted was the one thing they were told
+    // had not occurred.
+    const out = runCommand("/gutt-pro:statusline off");
+    assert.doesNotMatch(out, /nothing changed/i);
+    assert.match(out, /will not|do not want/i, "the reply must say the HUD stays away");
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(dataDir, "config.json"), "utf8")).statusline.installed,
+      false
+    );
+  });
+
+  it("never frames a lost settings.json as a file it did not change", () => {
+    // The module was taught to distinguish "could not write it, it is unchanged" from
+    // "could not write it and could not put it back" — and both callers then pasted
+    // the same reassuring clause in front of either, so the losing case arrived as
+    // "gutt did not change your settings: ... could not be put back — it is missing."
+    // A user who reads six words and stops has been told their settings file is fine
+    // at the moment it does not exist.
+    const lost = { ok: false, status: "settings-lost", detail: "it is missing. Copy is at /tmp/x" };
+    for (const lead of ["gutt did not change your settings", "gutt did not install the HUD"]) {
+      const message = command.statuslineFailure(lead, lost);
+      assert.doesNotMatch(message, /did not change|did not install/, `contradicted by: ${message}`);
+      assert.match(message, /lost/, "the loss has to be the headline, not the footnote");
+      assert.match(message, /Copy is at \/tmp\/x/, "and the remedy has to survive");
+    }
+    // The harmless case keeps its reassurance, which is what makes the other one mean
+    // something.
+    const unchanged = { ok: false, status: "write-failed", detail: "it is unchanged." };
+    assert.match(
+      command.statuslineFailure("gutt did not change your settings", unchanged),
+      /^gutt did not change your settings: /
+    );
   });
 
   it("names the forms rather than silently ignoring an unknown argument", () => {
@@ -1140,6 +1363,36 @@ describe("the async SessionStart hook maintains the HUD", () => {
       JSON.stringify({ statusline: { installed: true } })
     );
     assert.equal(runHook(home).status, 0);
+  });
+
+  it("stops reporting a repair failure once a later attempt works", () => {
+    // SessionStart fires again on resume, on /clear and on compact, all against the
+    // same session record — so a field written only on failure is written once and
+    // never corrected. Someone whose settings.json was briefly unparseable at startup,
+    // and who then fixed it, went on being told for the rest of the session that the
+    // repair "could not" run, and sent to debug a condition that no longer existed.
+    const home = path.join(sandbox, "home");
+    const settings = path.join(home, ".claude", "settings.json");
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dataDir, "config.json"),
+      JSON.stringify({ statusline: { installed: true } })
+    );
+
+    fs.writeFileSync(settings, "{ not json");
+    assert.equal(runHook(home).status, 0);
+    const failed = readSessionState().statuslineReassert;
+    assert.equal(failed.status, "settings-unreadable", "the failure must be recorded at all");
+
+    // The user fixes the file; the next SessionStart in this same session succeeds.
+    fs.writeFileSync(settings, JSON.stringify({ model: "opus" }, null, 2));
+    assert.equal(runHook(home).status, 0);
+    assert.ok(JSON.parse(fs.readFileSync(settings, "utf8")).statusLine, "and it did restore it");
+    assert.equal(
+      readSessionState().statuslineReassert,
+      null,
+      "a stale reason is worse than none — it names a cause that has been fixed"
+    );
   });
 });
 

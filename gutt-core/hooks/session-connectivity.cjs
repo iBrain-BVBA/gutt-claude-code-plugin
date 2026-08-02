@@ -84,9 +84,12 @@ process.stdin.on("end", () => {
       // prose. So the distinction now lives in the value a consumer actually reads.
       state.mcpConfigured = probe ? Boolean(diag.configured) : null;
       state.mcpUrl = diag.url || null;
-      // Diagnostic only — `mcpConfigured` above is what carries the failed-probe
-      // case to a reader. Kept because `/gutt-pro:health` and a debug session want
-      // the reason, not just the verdict.
+      // Diagnostic only, and deliberately so: `mcpConfigured` above is what carries
+      // the failed-probe case to a reader, and no code anywhere reads this. It is
+      // written for whoever opens the session record by hand while working out why a
+      // probe failed, which is the same audience as `hook-errors.log`. Claiming a
+      // code reader it does not have is what let the flattened `Boolean(...)` above
+      // look defensible for as long as it did.
       state.mcpError = diag.error || null;
       state.connectionCheckedAt = new Date().toISOString();
       return state;
@@ -119,7 +122,19 @@ process.stdin.on("end", () => {
   // The shim is what makes an upgrade invisible. The user's settings.json names a
   // stable path under ${CLAUDE_PLUGIN_DATA}; this repoints it at the current
   // CLAUDE_PLUGIN_ROOT, which every update moves. Unchanged content writes nothing.
-  guard("SessionStart/async", "statusline shim", refreshShim);
+  //
+  // The outcome is recorded on failure for the same reason the reassert below is:
+  // this is the caller that runs every session, and a data dir that is read-only or
+  // full leaves the shim pointing at a renderer the last update moved. Nothing else
+  // can find that afterwards — `shimResolves` sees a shim that reads and a target
+  // that exists, because a stale target from the previous version usually does.
+  guard("SessionStart/async", "statusline shim", () => {
+    const shim = refreshShim();
+    updateState((state) => {
+      state.statuslineShim = shim.status === "failed" ? `could not write ${shim.path}` : null;
+      return state;
+    });
+  });
 
   // The narrow repair for anthropics/claude-code#62486 — Claude Code rewrites
   // settings.json mid-session and drops keys it is not currently serialising,
@@ -132,16 +147,45 @@ process.stdin.on("end", () => {
   // evidence for, and which is wrong for exactly the user whose repair fails every
   // session on an unwritable settings file. Persisting the verdict is what lets that
   // command report what happened instead of what usually happens.
+  //
+  // **Every outcome writes, including the good ones.** SessionStart fires again on
+  // resume, on /clear and on compact, against the same session record, so a field
+  // only ever written on failure is written once and never corrected. A repair that
+  // failed at startup on a momentarily unreadable settings.json, and succeeded an
+  // hour later after the user fixed it, went on reporting the original reason for the
+  // rest of the session — sending them to debug a condition that no longer existed.
+  // Clearing on success costs the same write and makes the field mean "the latest
+  // attempt" rather than "the first one that ever went wrong".
+  let lostSettings = null;
   guard("SessionStart/async", "statusline reassert", () => {
     const outcome = reassertEntry({ consented: statuslineConsented() });
-    if (outcome.restored || outcome.status === "no-consent" || outcome.status === "present") {
-      return;
+    const settled =
+      outcome.restored || outcome.status === "no-consent" || outcome.status === "present";
+    if (outcome.status === "settings-lost") {
+      lostSettings = outcome.detail;
     }
     updateState((state) => {
-      state.statuslineReassert = outcome.status;
+      // The detail travels with the status. `settings-lost` is the case this whole
+      // repair has to be able to explain, and it is the one where the status alone is
+      // useless: the sentence naming where the user's settings ended up is the entire
+      // remedy, and re-running the command cannot reconstruct it — by then
+      // settings.json is simply absent and a fresh install reports plain success.
+      state.statuslineReassert = settled
+        ? null
+        : { status: outcome.status, detail: outcome.detail || null };
       return state;
     });
   });
+
+  // The one thing here that is not a courtesy. Every other message on this hook
+  // reports a condition the user can rediscover whenever they like; this one reports
+  // that their settings.json is gone and names the file holding its contents, and
+  // nothing else will say so unprompted. Printed first, and unconditionally, because
+  // it does not compete for attention with a note about memory configuration.
+  if (lostSettings) {
+    console.log(`⚠️ gutt could not restore your status line and your settings.json was lost in
+the attempt. ${lostSettings}`);
+  }
 
   // Best-effort user-facing note. An async hook's stdout is not guaranteed to
   // surface in the transcript; the state written above is the contract, this is

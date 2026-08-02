@@ -257,9 +257,24 @@ function noteConnection(status, now = Date.now()) {
 /**
  * Record whether the gutt tools are currently in the model's tool list.
  *
- * Written every prompt, unconditionally — including when the answer is "unknown".
- * Holding the previous value on an unknown would make a transcript that briefly
- * could not be read look like a connection state that had not changed.
+ * Written every prompt — including when the answer is "unknown", which retires a
+ * stale `available`: holding the previous value there would make a transcript that
+ * can no longer be read look like a connection that had not changed.
+ *
+ * **But an abstention may only retire a green.** `unknown` is not a reading, it is
+ * the absence of one — the transcript could not be read, or was read to the scan cap
+ * without reaching an answer — and the cap is the case that matters, because past it
+ * a long session answers `unknown` on every single prompt for the rest of its life.
+ * Letting that overwrite a stored `absent` deleted the one actionable thing the HUD
+ * had to say: the amber "auth needed" that a real `deferred_tools_delta` had
+ * established earlier in the very same transcript, replaced by a neutral glyph
+ * meaning "nothing observed yet" over a server known to be gone.
+ *
+ * This is the same asymmetry the renderer's uncorroborated-green expiry makes, and
+ * it has to exist in both places: that one governs how long a positive round trip
+ * speaks for itself, this one governs whether a warning survives at all. A stale
+ * warning costs one needless check. A withdrawn warning costs the instruction that
+ * would have fixed the problem.
  *
  * SessionStart writes it too, but only when it has an answer: at that point the
  * transcript is usually empty or still unwritten, and an abstention there would
@@ -273,8 +288,15 @@ function noteConnection(status, now = Date.now()) {
  * @param {number} [now] when the reading was taken; injectable for tests
  * @returns {Object} the persisted state
  */
+const HELD_AGAINST_UNKNOWN = ["absent", "auth", "pending"];
+
 function noteToolAvailability(availability, now = Date.now()) {
   return updateState((state) => {
+    if (availability === "unknown" && HELD_AGAINST_UNKNOWN.includes(state.mcpToolsAvailable)) {
+      // Not even the timestamp: it exists to say when this reading was taken, and
+      // no reading was taken.
+      return state;
+    }
     state.mcpToolsAvailable = availability;
     // Stamped so the per-tool path can debounce the transcript walk, and so this
     // reading — which outranks the round trip in the HUD — can be told apart from

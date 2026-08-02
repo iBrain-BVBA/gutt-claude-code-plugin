@@ -89,6 +89,7 @@ status line you wrote yourself is never touched or overwritten.
 | 🟡 `- auth needed!` | sign in again: the tools are gone, or a call came back unauthorised  |
 | 🔴                  | a call reached the server and failed for some other reason           |
 | ⚪                  | nothing observed yet                                                 |
+| ⚠                   | the status bar itself broke — see `hook-errors.log` in the data dir  |
 | `on`                | recall is live                                                       |
 | `off`               | durably disabled — `/gutt-pro:on` brings it back                     |
 | `zzz→14:30`         | snoozed until then; `zzz` alone means for the rest of this session   |
@@ -130,6 +131,12 @@ none of it drops, so `- auth needed!` survives on the narrowest bar.
 > ([#62486](https://github.com/anthropics/claude-code/issues/62486), closed as not
 > planned). The next session restores it automatically, or run
 > `/gutt-pro:statusline` again.
+>
+> **Bar blank, or showing `⚠`?** Run `/gutt-pro:statusline status`. It follows both
+> links behind the entry — the stable path in your `settings.json` and the renderer
+> that path forwards to — and says which one broke, including a repair that failed
+> earlier in this session. A `⚠` means the bar is running and something inside it
+> threw; the reason is in `hook-errors.log` in the plugin's data directory.
 
 ### Hooks
 

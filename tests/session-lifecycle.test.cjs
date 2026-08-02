@@ -51,10 +51,17 @@ function readSession(dir, sessionId) {
  * writes into the sandbox instead of the developer's real one.
  * @param {string} name - hook filename
  * @param {Object} payload - stdin JSON
- * @param {{dataDir: string, home: string}} env
+ * `preload` is a `--require` script, which runs before the hook module is loaded and
+ * can therefore replace an export the hook destructures at load time. It is how a
+ * probe is made to *throw* rather than to return a negative answer — a distinction
+ * that has its own branch in the hook and cannot be reached by any arrangement of
+ * files on disk, because every such arrangement is something the probe knows how to
+ * report on.
+ *
+ * @param {{dataDir: string, home: string, preload?: string}} env
  */
-function runHook(name, payload, { dataDir, home }) {
-  return spawnSync("node", [path.join(HOOKS, name)], {
+function runHook(name, payload, { dataDir, home, preload }) {
+  return spawnSync("node", [...(preload ? ["--require", preload] : []), path.join(HOOKS, name)], {
     input: JSON.stringify(payload),
     encoding: "utf8",
     env: {
@@ -65,6 +72,26 @@ function runHook(name, payload, { dataDir, home }) {
       CLAUDE_PROJECT_DIR: home,
     },
   });
+}
+
+/**
+ * Write a `--require` script that makes the MCP probe throw.
+ *
+ * @param {string} dir somewhere to put it
+ * @returns {string} path to pass as `preload`
+ */
+function poisonProbe(dir) {
+  const file = path.join(dir, "poison-probe.cjs");
+  const module = path.join(HOOKS, "lib", "mcp-config.cjs");
+  fs.writeFileSync(
+    file,
+    `const target = require.resolve(${JSON.stringify(module)});\n` +
+      `require(target);\n` +
+      `require.cache[target].exports.diagnoseGuttMcp = () => {\n` +
+      `  throw new Error("probe exploded");\n` +
+      `};\n`
+  );
+  return file;
 }
 
 // ---------------------------------------------------------------------------
@@ -1249,6 +1276,34 @@ describe("session lifecycle: hooks end to end", () => {
     );
   });
 
+  // The other half of that rule, and the half that costs the user something when it
+  // is missing. An abstention may retire a *green* — that is the test above — but it
+  // must not retire a warning. The case is not hypothetical: the transcript walk is
+  // capped, so once a long session accumulates more than the cap after the record
+  // that established `absent`, every prompt for the rest of that session answers
+  // `unknown`. Letting each one overwrite the stored verdict turned a correct
+  // "🟡 auth needed!" into the neutral glyph the HUD documents as "nothing observed
+  // yet" — over a server already known to be gone, permanently, with the one
+  // actionable instruction deleted.
+  for (const held of ["absent", "auth", "pending"]) {
+    it(`an unreadable transcript does not withdraw a stored "${held}"`, () => {
+      const empty = path.join(dir, `ups-hold-${held}.jsonl`);
+      fs.writeFileSync(empty, "");
+      seedSession(`e2e-hold-${held}`, { mcpToolsAvailable: held });
+      const r = runHook(
+        "user-prompt-submit.cjs",
+        { session_id: `e2e-hold-${held}`, prompt: "hello", transcript_path: empty },
+        { dataDir: dir, home }
+      );
+      assert.equal(r.status, 0);
+      assert.equal(
+        readSession(dir, `e2e-hold-${held}`).mcpToolsAvailable,
+        held,
+        "an abstention is not evidence, and must not overwrite a real reading"
+      );
+    });
+  }
+
   it("the connectivity hook never writes connectionStatus, however configured the server", () => {
     // The whole of GP-867 in one assertion, and until it existed nothing enforced
     // it: re-adding `state.connectionStatus = "ok"` to this hook left every test in
@@ -1277,28 +1332,41 @@ describe("session lifecycle: hooks end to end", () => {
   });
 
   it("the connectivity hook records that it could not tell, rather than denying", () => {
-    // `mcpConfigured: false` is a claim the HUD renders as `!` and documents as
-    // "run /gutt-pro:setup". A probe that threw has not earned it. Forced here by
-    // pointing the probe at a home directory whose .claude is a file, so the walk
-    // cannot read it.
-    const brokenHome = path.join(dir, "broken-home");
-    fs.mkdirSync(brokenHome, { recursive: true });
-    fs.writeFileSync(path.join(brokenHome, ".claude"), "not a directory");
+    // `mcpConfigured: false` is a claim the HUD renders as `!` and documents as "run
+    // /gutt-pro:setup". A probe that *threw* has not earned it, and must write null.
+    //
+    // The probe is poisoned rather than starved. An earlier version of this test
+    // pointed the hook at a home directory whose `.claude` was a file and assumed the
+    // walk would blow up — it does not: the probe handles that and returns a clean
+    // `{configured: false}`, which is a legitimate negative answer. So the test was
+    // taking the wrong branch and its assertion, `configured === false || null`,
+    // admitted exactly the value the fix exists to prevent. Both spellings passed.
     const r = runHook(
       "session-connectivity.cjs",
       { session_id: "e2e-cannot-tell" },
-      { dataDir: dir, home: brokenHome }
+      { dataDir: dir, home, preload: poisonProbe(dir) }
+    );
+    assert.equal(r.status, 0, "a thrown probe must not fail the session");
+    assert.strictEqual(
+      readSession(dir, "e2e-cannot-tell").mcpConfigured,
+      null,
+      "a probe that threw knows nothing — false is a claim it did not earn"
+    );
+  });
+
+  it("a probe that ran and found nothing still says so", () => {
+    // The other side of the same distinction, and the reason it cannot be collapsed:
+    // a real negative has to stay a real negative, or the HUD loses the `!` that tells
+    // an unconfigured user to run setup.
+    const bareHome = path.join(dir, "bare-home");
+    fs.mkdirSync(path.join(bareHome, ".claude"), { recursive: true });
+    const r = runHook(
+      "session-connectivity.cjs",
+      { session_id: "e2e-really-absent" },
+      { dataDir: dir, home: bareHome }
     );
     assert.equal(r.status, 0);
-    const configured = readSession(dir, "e2e-cannot-tell").mcpConfigured;
-    assert.notEqual(configured, true, "nothing was configured, so this cannot be true");
-    // Either a clean `false` (the probe ran and found nothing) or `null` (it could
-    // not tell). What it must never be is a `false` invented from a thrown probe —
-    // the assertion that matters is that the two are distinguishable at all.
-    assert.ok(
-      configured === false || configured === null,
-      `expected false or null, got ${JSON.stringify(configured)}`
-    );
+    assert.strictEqual(readSession(dir, "e2e-really-absent").mcpConfigured, false);
   });
 
   it("the connectivity hook survives a transcript path that is missing entirely", () => {

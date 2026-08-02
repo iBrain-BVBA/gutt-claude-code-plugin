@@ -9,8 +9,36 @@
   of which was the bare word `plugins` — and Claude Code puts every plugin's data
   under `~/.claude/plugins/data/`, so another vendor's `statusline.cjs` there read as
   ours. `/gutt-pro:statusline off` would have removed it and `/gutt-pro:statusline`
-  overwritten it. Attribution now requires the directory to name this plugin, which
-  the container they all share cannot satisfy (GP-867)
+  overwritten it. Attribution now requires a whole path _segment_ naming this plugin,
+  which neither the container every plugin shares nor a directory that merely spells
+  `gutt` inside a longer word can satisfy (GP-867)
+- **A blank status bar reported itself as healthy, twice over.** The generated entry
+  point swallowed every load failure identically, so a renderer that was present and
+  broken — a half-finished update, or the mangled checkout that shipped 3.0.0 dead on
+  Windows — looked exactly like a plugin that had been uninstalled. `status` could not
+  see it either: it checked whether _this_ version's renderer existed, which is true
+  in essentially every case where there is a command around to ask, rather than
+  following the path the entry point actually names. The entry point now distinguishes
+  a missing renderer from a broken one and writes the reason down, `status` follows the
+  real target and reports a stale entry point, and the renderer's own safety net says
+  it caught something instead of showing the glyph for "nothing observed yet" (GP-867)
+- **An unreadable transcript withdrew a sign-in warning it could not re-establish.**
+  Past the scan cap every prompt answers "unknown", and that abstention overwrote a
+  stored disconnection — turning a correct `🟡 - auth needed!` into a neutral glyph for
+  the rest of the session, deleting the one instruction the user could act on. An
+  abstention may now retire a green and nothing else (GP-867)
+- **A repair failure was reported for the rest of the session after it was fixed.**
+  SessionStart runs again on resume, `/clear` and compaction against the same record,
+  so a field only written on failure was never corrected. It now records every attempt,
+  and carries the reason out with it — on the path that can lose `settings.json`, the
+  sentence naming where the file went was being dropped in favour of an internal
+  token, and nothing could reconstruct it afterwards (GP-867)
+- **Two commands framed a lost `settings.json` as a file they had not touched.** The
+  distinction between "could not write it, it is unchanged" and "could not write it and
+  could not put it back" was made inside the module and then contradicted by both
+  callers, which prefixed either with `gutt did not change your settings`. `off` also
+  answered "nothing changed" after withdrawing the consent that decides whether the HUD
+  ever returns — the one thing its most likely caller wanted (GP-867)
 - **A failed settings write could leave `~/.claude/settings.json` missing.** The
   Windows rename fallback unlinks the target before its second attempt; if that
   attempt also failed, the generic cleanup then deleted the temp file holding the only
@@ -47,10 +75,13 @@
   a blocking `node` launch (~89ms against a ~74ms floor), so a 200-call session paid
   around 18 seconds for it. The prompt hook already re-reads availability every turn,
   so the gap that closed was one turn (GP-867)
-- **Settings backups no longer accumulate without bound.** They are written on a path
-  nothing sweeps, once per session where the platform drops the `statusLine` key, each
-  a verbatim copy of `settings.json` including its `env` block. The newest five are
-  kept (GP-867)
+- **Settings backups no longer accumulate without bound — or evict the wrong ones.**
+  They are written on a path nothing sweeps, once per session where the platform drops
+  the `statusLine` key, each a verbatim copy of `settings.json` including its `env`
+  block. The newest five are kept. The sweep is now namespaced to the backups it
+  writes: the 2.x migration puts its own copy in the same directory under the same
+  prefix, and that one can be the last image of `settings.json` from before the
+  upgrade — it was being evicted within five sessions (GP-867)
 
 ### Added
 

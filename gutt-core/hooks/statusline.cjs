@@ -30,6 +30,7 @@
 const { getState, init } = require("./lib/session-state.cjs");
 const { getGroupId } = require("./lib/config.cjs");
 const { readConfig, isSnoozed, snoozeDeadline } = require("./lib/runtime-config.cjs");
+const { debugLog } = require("./lib/debug.cjs");
 
 /**
  * Widths below which trailing segments start dropping.
@@ -319,7 +320,12 @@ function readPayload(raw) {
  * @returns {string}
  */
 function render(data) {
-  const sessionId = data.session_id || "unknown";
+  // Through `text()` like every other payload string. `init` defends itself — it
+  // sanitises whatever it is handed down to a safe filename — but this value is also
+  // compared against the stored snooze id, and there the two paths disagree: an
+  // object sanitises to "unknown" for the state file while comparing unequal to the
+  // recorded id, so a snooze the user set silently stops applying.
+  const sessionId = text(data.session_id) || "unknown";
   init(sessionId);
 
   const state = getState();
@@ -398,15 +404,25 @@ function render(data) {
  * whole unit of work whose output is contractually required, not around whichever
  * operation looked risky at the time. Every field above is validated at the point of
  * read, which is what keeps the *content* honest; this is what keeps the line present
- * on the day a validation is missed. It renders the neutral glyph, which is the true
- * statement when nothing could be established.
+ * on the day a validation is missed.
+ *
+ * **It says so, and it writes it down.** A net this wide catches a corrupt session
+ * record, a config that will not parse, and a plain bug in the renderer, and the
+ * first version of it reported all three as the neutral glyph — which the HUD already
+ * uses to mean "nothing observed yet". A renderer broken on every one of the hundreds
+ * of invocations in a session was therefore indistinguishable from a quiet, healthy
+ * one, and left no trace anywhere: this file's only diagnostic surface was mute
+ * about the only thing it existed to catch. So the degraded line carries the warning
+ * glyph and names itself, and the reason goes to the hook error log, which is where
+ * every other component here puts one.
  */
 process.stdin.on("end", () => {
   let line;
   try {
     line = render(readPayload(input));
-  } catch {
-    line = `[gutt ${connectionGlyph("unknown")}]`;
+  } catch (err) {
+    debugLog("statusline", `render failed: ${err?.stack || err}`);
+    line = "[gutt ⚠ statusline error]";
   }
   console.log(line);
   process.exitCode = 0;
