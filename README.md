@@ -226,7 +226,7 @@ predated the memory curriculum, or belong to a role plugin (E6). `git log` has t
 ### Mentoring (gutt-mentor plugin)
 
 Individual development programs in the **personal** memory scope, shipped as a
-separate plugin that depends on gutt-core: `individual-program-design` writes the
+separate plugin that depends on gutt-pro: `individual-program-design` writes the
 program (goals, milestones, check-in cadence) as one self-contained episode, and
 `progress-tracking` reads it back, reports status from the record alone, and
 chains the next check-in — so a fresh session picks up where the person stands
@@ -251,10 +251,10 @@ and gives general best practice, labeled as general.
 
 ### Developer ticket work (gutt-developer plugin)
 
-Developer-role skills for Jira tickets, shipped as a separate plugin that depends
-on gutt-core and composes its curriculum skills (`memory-search`,
-`graph-traversal`, `memory-capture`) rather than restating them. No hooks, no
-agents — three task-shaped skills:
+Developer-role skills for Jira tickets, shipped as a separate plugin that
+depends on gutt-pro (the core plugin, in `gutt-core/`) and composes its
+curriculum skills (`memory-search`, `graph-traversal`, `memory-capture`)
+rather than restating them. No hooks, no agents — three task-shaped skills:
 
 | Skill               | Purpose                                                                                      |
 | ------------------- | -------------------------------------------------------------------------------------------- |

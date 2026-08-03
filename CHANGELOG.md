@@ -5,7 +5,7 @@
 ### Added
 
 - New `gutt-developer` plugin — developer-role skills for Jira ticket work, backed
-  by organizational memory, composing the gutt-core curriculum skills rather than
+  by organizational memory, composing the gutt-pro curriculum skills rather than
   restating them (no hooks, no agents): `ticket-research` builds a cited context
   brief (what Jira says, what memory adds, gaps and open questions),
   `ticket-duplicates` resolves duplicate/overlap candidates from Jira search and
