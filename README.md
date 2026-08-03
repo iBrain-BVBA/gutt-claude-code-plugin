@@ -226,7 +226,7 @@ predated the memory curriculum, or belong to a role plugin (E6). `git log` has t
 ### Mentoring (gutt-mentor plugin)
 
 Individual development programs in the **personal** memory scope, shipped as a
-separate plugin that depends on gutt-core: `individual-program-design` writes the
+separate plugin that depends on gutt-pro: `individual-program-design` writes the
 program (goals, milestones, check-in cadence) as one self-contained episode, and
 `progress-tracking` reads it back, reports status from the record alone, and
 chains the next check-in — so a fresh session picks up where the person stands
@@ -248,6 +248,23 @@ materials list, and turns it into a program tracked the same way. **Everything i
 writes is personal — the program never goes to the org graph**, so it registers
 no agent identity and tags nothing. Where the graph is thin it says so plainly
 and gives general best practice, labeled as general.
+
+### Developer ticket work (gutt-developer plugin)
+
+Developer-role skills for Jira tickets, shipped as a separate plugin that
+depends on gutt-pro (the core plugin, in `gutt-core/`) and composes its
+curriculum skills (`memory-search`, `graph-traversal`, `memory-capture`)
+rather than restating them. No hooks, no agents — three task-shaped skills:
+
+| Skill               | Purpose                                                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| `ticket-research`   | Cited context brief: what Jira says, what memory adds (decisions, discussions, people), gaps |
+| `ticket-duplicates` | Duplicate/overlap candidates from Jira + memory, each resolved to an evidence-backed verdict |
+| `ticket-estimate`   | Effort range + risk areas grounded in comparable past work, with honest confidence labels    |
+
+All three are read-only: they never edit ticket fields, post at most one
+user-approved comment, and write nothing to memory (a durable finding routes
+through `memory-capture` and its trust-tier gate).
 
 ## Usage
 
@@ -285,7 +302,7 @@ Capture learnings using one of 4 patterns:
 ```
 gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── .claude-plugin/
-│   └── marketplace.json           # lists gutt-core + gutt-mentor
+│   └── marketplace.json           # lists gutt-core + gutt-mentor + gutt-developer
 ├── gutt-core/                      # core plugin — name/displayName: gutt-pro (dir keeps its name)
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
@@ -298,6 +315,8 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── gutt-mentor/                    # mentor plugin — onboarding + mentor agents, personal-scope program design/tracking (no hooks)
 │   ├── agents/                     # onboarding-guide, mentor
 │   └── skills/                     # individual-program-design, progress-tracking
+├── gutt-developer/                 # developer plugin — Jira ticket skills over org memory (no hooks)
+│   └── skills/                     # ticket-research, ticket-duplicates, ticket-estimate
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide
 ├── tests/
 ├── package.json

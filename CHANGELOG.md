@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- New `gutt-developer` plugin — developer-role skills for Jira ticket work, backed
+  by organizational memory, composing the gutt-pro curriculum skills rather than
+  restating them (no hooks, no agents): `ticket-research` builds a cited context
+  brief (what Jira says, what memory adds, gaps and open questions),
+  `ticket-duplicates` resolves duplicate/overlap candidates from Jira search and
+  memory into evidence-backed verdicts, and `ticket-estimate` grounds an effort
+  range and risk areas in comparable past work with honest confidence labels. All
+  three are read-only against Jira except a single user-approved comment, and
+  write nothing to memory
+
 ### Fixed
 
 - **gutt could delete or overwrite another plugin's status line.** Ownership of a
