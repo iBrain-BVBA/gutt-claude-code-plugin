@@ -53,7 +53,19 @@ const PLUGIN_PREFIX = "gutt-pro";
  * `gutt-core/commands/<verb>.md`, or the typed command expands to nothing and the
  * outcome this module injects has no reply to sit alongside.
  */
-const VERBS = ["config", "on", "off", "disable", "mode"];
+const VERBS = ["config", "on", "off", "disable", "mode", "agent-scope"];
+
+/**
+ * How many words a verb may take after itself. One is the rule, because a longer
+ * tail is nearly always prose the user did not mean as an argument —
+ * `/gutt-pro:off 30 and fix the tests` must not snooze.
+ *
+ * `agent-scope` is the exception: its form is a type *and* a value
+ * (`agent-scope project acme`), so a second word is the argument rather than a
+ * tail. Listed per-verb rather than raised globally so `off` keeps the protection
+ * the bound exists for.
+ */
+const MAX_ARGS = { "agent-scope": 2 };
 
 /**
  * Bounds on `/gutt-pro:off <minutes>`: whole minutes, 1 minute to 7 days.
@@ -69,7 +81,8 @@ const MAX_MINUTES = 10080;
 /** The forms, quoted back on anything unrecognised so the reply is actionable. */
 const FORMS =
   "/gutt-pro:config, /gutt-pro:on, /gutt-pro:off, /gutt-pro:off <minutes>, " +
-  "/gutt-pro:off session, /gutt-pro:disable, /gutt-pro:mode auto, /gutt-pro:mode hitl";
+  "/gutt-pro:off session, /gutt-pro:disable, /gutt-pro:mode auto, /gutt-pro:mode hitl, " +
+  "/gutt-pro:agent-scope show, /gutt-pro:agent-scope project|team|individual <name>";
 
 /**
  * `YYYY-MM-DD HH:MM` in local time. Hand-rolled rather than `toLocaleString`,
@@ -188,12 +201,14 @@ function parseCommand(raw) {
 
   const rest = words.slice(1);
   const arg = rest[0] ?? null;
-  // A second argument is always wrong — no form takes two — so it is carried
-  // through as an unrecognised parse rather than ignored.
-  if (rest.length > 1) {
-    return { verb: null, arg: null, typed, bare };
+  const value = rest[1] ?? null;
+  // A tail longer than the verb accepts is carried through as an unrecognised parse
+  // rather than ignored, so the reply names it instead of applying half of it. See
+  // `MAX_ARGS` for why the bound is per-verb.
+  if (rest.length > (MAX_ARGS[verb] ?? 1)) {
+    return { verb: null, arg: null, value: null, typed, bare };
   }
-  return { verb, arg, typed, bare };
+  return { verb, arg, value, typed, bare };
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +570,138 @@ function runMode(arg) {
 }
 
 /**
+ * How the effective agent scope was arrived at, in words.
+ *
+ * `show` has to name the step as well as the value, because the fallback steps are
+ * derived rather than chosen: a user seeing only `--acme-web` cannot tell whether
+ * they set it or whether it came off a git remote, and those two differ in whether
+ * moving the checkout changes the agent's identity.
+ *
+ * The derived steps are described, not computed. Resolving a git remote means
+ * running git, which this module must not do on a hook's budget — and the value is
+ * the agent's business at registration time, not the command's.
+ *
+ * @param {{type: string, value: string}|null} bound
+ * @returns {string}
+ */
+function scopeSource(bound) {
+  if (bound) {
+    return (
+      `bound here as a ${bound.type} scope, so every agent in this repo registers as ` +
+      `<name>--${bound.value}`
+    );
+  }
+  return (
+    "not bound here, so an agent falls back to the git remote's owner/repo, and to the " +
+    "working folder's name when there is no remote"
+  );
+}
+
+/**
+ * `/gutt-pro:agent-scope [show|<type> <name>]`.
+ *
+ * Binding is per repo, and the value is what agents suffix their registered name
+ * with. Two repos bound to the same value deliberately share one agent identity and
+ * therefore one pool of agent-scoped memory; two different values are isolated.
+ *
+ * Nothing here can un-bind a scope. Registration merges on name and group, so a
+ * value that has been written to is an identity that already exists in the graph and
+ * cannot be withdrawn — rebinding creates a *new* identity and abandons the old one
+ * rather than renaming it. That is why a bad type or an empty value is refused
+ * outright instead of being guessed at.
+ *
+ * @param {string|null} arg
+ * @param {string|null} value
+ * @param {Object} payload - the hook payload, for the per-project key
+ * @returns {string}
+ */
+function runAgentScope(arg, value, payload) {
+  // Required here rather than at the top of the file. This module loads on every
+  // prompt against a 50ms budget; `builtin-memory` costs a couple of milliseconds to
+  // load and only this verb needs it, so the cost belongs on the path that uses it.
+  // `require` caches, so a second invocation is free.
+  const { projectKey } = require("./builtin-memory.cjs");
+  const key = projectKey(payload);
+  if (!key) {
+    return (
+      "gutt could not tell which project this is, so the agent scope was neither read " +
+      "nor changed. This needs the session's working directory, which the hook did not " +
+      "receive."
+    );
+  }
+
+  const bound = config.readAgentScope(key);
+
+  // No argument: report, and leave the interactive flow to the command file. The
+  // hook cannot ask a question, and answering one would need a model.
+  if (arg === null) {
+    return (
+      `gutt agent scope for this repo: ${scopeSource(bound)}.\n` +
+      "No scope was set — this invocation carried no argument."
+    );
+  }
+
+  const kind = arg.toLowerCase();
+  if (kind === "show") {
+    // A tail on `show` is named rather than dropped, for the reason `config` names
+    // one: `agent-scope show acme` looks like it set something.
+    return value === null
+      ? `gutt agent scope for this repo: ${scopeSource(bound)}.`
+      : `gutt did not recognise "${arg} ${value}" — show takes no argument, and it ` +
+          `changes nothing. Use /gutt-pro:agent-scope <type> <name> to bind one. ` +
+          `Nothing was changed.`;
+  }
+
+  if (!config.SCOPE_TYPES.includes(kind)) {
+    return (
+      `gutt did not change the agent scope: the scope types are ` +
+      `${config.SCOPE_TYPES.join(", ")}, not "${arg}". Use ` +
+      `/gutt-pro:agent-scope <type> <name>, or /gutt-pro:agent-scope show. Nothing was changed.`
+    );
+  }
+
+  if (value === null) {
+    return (
+      `gutt did not change the agent scope: ${kind} needs a name, as ` +
+      `/gutt-pro:agent-scope ${kind} <name>. Nothing was changed.`
+    );
+  }
+
+  // The value lands inside a registered agent name, so it has to survive as one
+  // token. Refused rather than slugified: a silently rewritten label is a different
+  // identity from the one the user typed, and two people typing what they think is
+  // the same label would each get their own.
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(value)) {
+    return (
+      `gutt did not change the agent scope: "${value}" is not usable as a scope name. ` +
+      "Use lower-case letters, digits and single dashes, starting with a letter or " +
+      "digit. Nothing was changed."
+    );
+  }
+
+  if (bound && bound.value === value && bound.type === kind) {
+    return (
+      `gutt agent scope for this repo is already the ${kind} scope ${value}, unchanged — ` +
+      `agents here register as <name>--${value}.`
+    );
+  }
+
+  if (!config.setAgentScope(key, kind, value)) {
+    return writeFailed();
+  }
+
+  const was = bound
+    ? ` It was the ${bound.type} scope ${bound.value}; agents already registered under ` +
+      `<name>--${bound.value} keep that identity and their memory stays with it.`
+    : "";
+  return (
+    `gutt agent scope for this repo is now the ${kind} scope ${value} — agents here ` +
+    `register as <name>--${value}, and any other repo bound to ${value} shares that ` +
+    `identity and its memory.${was}`
+  );
+}
+
+/**
  * Attribution prepended to a bare-form outcome.
  *
  * A bare `/off` matches on prompt text alone, and the text does not say which
@@ -580,29 +727,35 @@ function attributeBare(outcome, verb) {
 /**
  * Run the config command in `rawPrompt`, if there is one.
  *
+ * `payload` is only read by the verbs that keep per-project state, and only after
+ * the parse has succeeded — so an ordinary prompt still costs one character
+ * comparison and no path work.
+ *
  * @param {unknown} rawPrompt - the prompt exactly as submitted, untruncated
  * @param {string|null} [sessionId]
  * @param {number} [now]
+ * @param {Object} [payload] - the hook payload, for verbs keyed per project
  * @returns {string|null} text for the hook to inject, or null when the prompt is
  *   not a config command and the hook should stay silent
  */
-function configCommandResult(rawPrompt, sessionId = null, now = Date.now()) {
+function configCommandResult(rawPrompt, sessionId = null, now = Date.now(), payload = {}) {
   const parsed = parseCommand(rawPrompt);
   if (!parsed) {
     return null;
   }
-  const outcome = runVerb(parsed, sessionId, now);
+  const outcome = runVerb(parsed, sessionId, now, payload);
   return parsed.bare ? attributeBare(outcome, parsed.verb) : outcome;
 }
 
 /**
  * Dispatch a parsed command to its handler.
- * @param {{verb: string|null, arg: string|null, typed: string}} parsed
+ * @param {{verb: string|null, arg: string|null, value: string|null, typed: string}} parsed
  * @param {string|null} sessionId
  * @param {number} now
+ * @param {Object} [payload]
  * @returns {string}
  */
-function runVerb(parsed, sessionId, now) {
+function runVerb(parsed, sessionId, now, payload = {}) {
   switch (parsed.verb) {
     case "config":
       // `config` takes no argument, so one is a typo worth naming rather than
@@ -627,6 +780,8 @@ function runVerb(parsed, sessionId, now) {
       return runDisable(parsed.arg, parsed.typed);
     case "mode":
       return runMode(parsed.arg);
+    case "agent-scope":
+      return runAgentScope(parsed.arg, parsed.value, payload);
     default:
       return (
         `gutt did not recognise "${parsed.typed}". The forms are: ${FORMS}. ` +

@@ -39,6 +39,30 @@
 
 ### Added
 
+- **`/gutt-pro:agent-scope` — per-repo agent identity binding, so one agent run from
+  two repos does not silently become one memory.** The bound label becomes the
+  `--<scope>` suffix on every agent name registered from that repo, stored per project
+  in `${CLAUDE_PLUGIN_DATA}/config.json` alongside the migration record. Repos bound to
+  the same label share one agent identity and one pool of agent-scoped memory on
+  purpose; different labels stay isolated. `show` reports the effective scope and which
+  step of the chain supplied it — bound label, then the git remote's `owner/repo`, then
+  the working folder's name.
+
+  Two consequences worth knowing. The convention now says **always suffix**, where it
+  previously said to ship a bare base name unless a clash forced otherwise: a clash is
+  invisible at the moment it matters, because registration merges on name and group and
+  org writes cannot be deleted or reassigned afterwards, so pooling by default is the
+  one unrecoverable choice. `agent-creator` and the `agent-memory-protocol` skill teach
+  the new default. And a bad type or an unusable label is refused rather than
+  normalised, because a silently rewritten label is a different permanent identity from
+  the one that was typed.
+
+  Run bare, the command reports what is in force and hands over to an interactive flow
+  that lists labels already in use, warns about ones belonging to other repos, and ends
+  by telling you the line to type. It cannot apply the choice itself — the effect comes
+  from the hook that sees the typed prompt, and a command the model invokes never
+  reaches that hook
+
 - **Coverage for two sweep behaviours that no test asserted.** The `root-debris` and
   `session-debris` steps could both be deleted outright with the suite staying green;
   the full-sweep test now asserts each reclaims its orphan and that a lock younger

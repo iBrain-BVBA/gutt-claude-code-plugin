@@ -118,6 +118,16 @@ model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
 | `/gutt-pro:disable`         | Turn recall off until `/gutt-pro:on` — survives restarts                                   |
 | `/gutt-pro:on`              | Clear an off, a snooze, and a disable                                                      |
 | `/gutt-pro:mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
+| `/gutt-pro:agent-scope`     | Bind this repo's agent scope, or run it bare to be walked through choosing one             |
+
+**Agent scope is per repo and decides whether agents share memory across repos.** The
+label becomes a suffix on every agent name registered here, so `pr-reviewer` becomes
+`pr-reviewer--<label>`. Repos bound to the same label share one agent identity and one
+pool of agent memory; different labels stay isolated. With nothing bound, the label comes
+from the git remote's `owner/repo`, or the working folder's name when there is no remote —
+so agents are separated by default. `/gutt-pro:agent-scope show` reports what is in force
+and which of those supplied it. A registered name cannot be un-merged afterwards, which is
+why binding deliberately beats letting two repos collide.
 
 **`off` is temporary and `disable` is durable.** The cheap, reversible action gets the
 short word; turning recall off for good has to be typed on purpose. If you used the 3.0

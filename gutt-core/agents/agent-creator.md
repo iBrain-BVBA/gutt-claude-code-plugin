@@ -80,12 +80,15 @@ Two paths. Pick by whether the agent writes.
 
 1. **Base name** — stable, descriptive, kebab-case, derived from the agent's purpose
    (`pr-reviewer`, `jira-agent`). Not from a path.
-2. **Scope suffix, only when something forces one.** A `--<scope>` suffix separates instances
-   of one agent inside a single group. Three cases:
-   - The repo has a bound agent-scope config → suffix with that value.
-   - No config and no collision → **ship the base name alone. This is the default.**
-   - A collision forces separation (steps 4–5) → propose a suffix, taking its value from the
-     git remote's `owner/repo`, or the working folder's name when there is no remote.
+2. **Scope suffix, always.** A `--<scope>` suffix separates instances of one agent inside a
+   single group, and the emitted agent carries one in every case. Resolve its value from the
+   first step that yields one: the scope bound to this repo → the git remote's `owner/repo` →
+   the working folder's name. **Do not ship a base name alone** — a bare name merges with
+   whatever already registered under it the first time the agent writes, and org writes cannot
+   be deleted or reassigned afterwards. Suffixing is the recoverable default; sharing a scope
+   on purpose is one command away, un-pooling is not.
+   Emit the resolution as the runtime rule, not the resolved value: the agent re-resolves it
+   where it runs, which is not necessarily where it was scaffolded.
 3. **Resolve the target group** — the group this agent will write to. You need it now for the
    collision check in step 4. It does **not** get baked into the generated file; the emitted
    block resolves it at runtime.

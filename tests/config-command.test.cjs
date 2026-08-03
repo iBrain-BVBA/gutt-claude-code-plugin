@@ -70,12 +70,14 @@ describe("config command: parsing", () => {
     assert.deepEqual(parseCommand("/gutt-pro:off 30"), {
       verb: "off",
       arg: "30",
+      value: null,
       typed: "/gutt-pro:off 30",
       bare: false,
     });
     assert.deepEqual(parseCommand("/off 30"), {
       verb: "off",
       arg: "30",
+      value: null,
       typed: "/off 30",
       bare: true,
     });
@@ -686,5 +688,166 @@ describe("config command: rendering", () => {
     for (const verb of command.VERBS) {
       assert.match(text, new RegExp(`/gutt-pro:${verb}`), `the forms line omits ${verb}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Agent scope binding
+// ---------------------------------------------------------------------------
+
+/**
+ * The agent scope verb is the first that takes two words and the first keyed per
+ * project, so the cases worth spending assertions on are the ones a passing old suite
+ * would not have caught: that a refusal writes nothing at all, that the stored label
+ * round-trips byte-for-byte rather than being slugified into a different identity, and
+ * that two projects are separate key spaces.
+ *
+ * Every negative case asserts on the file as well as the message. The label ends up
+ * inside a permanent agent name, so a reply saying "nothing was changed" while a value
+ * landed on disk is the failure that matters here.
+ */
+describe("config command: agent scope", () => {
+  let dir;
+
+  // `projectKey` takes the basename of the transcript's directory, so these are two
+  // distinct projects with no filesystem needed and no dependence on the runner's cwd.
+  const REPO_A = { transcript_path: "/tmp/gutt-test/-Users-x-repo-a/session.jsonl" };
+  const REPO_B = { transcript_path: "/tmp/gutt-test/-Users-x-repo-b/session.jsonl" };
+  const KEY_A = "-Users-x-repo-a";
+  const KEY_B = "-Users-x-repo-b";
+
+  function stored() {
+    const file = path.join(dir, "config.json");
+    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null;
+  }
+
+  /** The recorded scope for one project, or undefined when nothing is stored. */
+  function scopeOf(key) {
+    return stored()?.projects?.[key]?.agentScope;
+  }
+
+  function run(text, payload = REPO_A) {
+    return configCommandResult(text, SESSION, NOW, payload);
+  }
+
+  before(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-cc-scope-"));
+    process.env.CLAUDE_PLUGIN_DATA = dir;
+  });
+  beforeEach(() => {
+    fs.rmSync(path.join(dir, "config.json"), { force: true });
+  });
+  after(() => {
+    restoreEnv();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("takes a type and a value, where every other verb takes one word", () => {
+    // The per-verb argument bound. `off` must keep refusing a two-word tail, or
+    // `/gutt-pro:off 30 and fix the tests` silently snoozes.
+    const parsed = parseCommand("/gutt-pro:agent-scope project acme");
+    assert.equal(parsed.verb, "agent-scope");
+    assert.equal(parsed.arg, "project");
+    assert.equal(parsed.value, "acme");
+    assert.equal(
+      parseCommand("/gutt-pro:off 30 session").verb,
+      null,
+      "raising the bound for one verb must not raise it for the others"
+    );
+    assert.equal(
+      parseCommand("/gutt-pro:agent-scope project acme extra").verb,
+      null,
+      "and the agent-scope bound is two, not unlimited"
+    );
+  });
+
+  it("binds a scope and says what agents will register as", () => {
+    const text = run("/gutt-pro:agent-scope project acme");
+    assert.match(text, /--acme/, "the reply must show the suffix, not just the label");
+    assert.deepEqual(scopeOf(KEY_A), { type: "project", value: "acme" });
+  });
+
+  it("reports the effective scope and which step supplied it", () => {
+    // Unbound: the reply has to name the fallback steps, because a user who sees only a
+    // suffix cannot tell whether they chose it or a git remote did.
+    const before = run("/gutt-pro:agent-scope show");
+    assert.match(before, /not bound here/);
+    assert.match(before, /git remote/);
+    assert.match(before, /folder/);
+
+    run("/gutt-pro:agent-scope team platform");
+    const after = run("/gutt-pro:agent-scope show");
+    assert.match(after, /bound here as a team scope/);
+    assert.match(after, /--platform/);
+  });
+
+  it("keeps each project's binding separate", () => {
+    run("/gutt-pro:agent-scope project acme", REPO_A);
+    run("/gutt-pro:agent-scope project acme", REPO_B);
+    // Same label in two repos is the deliberate sharing case: two records, one identity.
+    assert.deepEqual(scopeOf(KEY_A), scopeOf(KEY_B));
+
+    run("/gutt-pro:agent-scope project other", REPO_B);
+    assert.equal(scopeOf(KEY_A).value, "acme", "rebinding one repo must not touch the other");
+    assert.equal(scopeOf(KEY_B).value, "other");
+  });
+
+  it("says a rebind abandons the old identity rather than renaming it", () => {
+    run("/gutt-pro:agent-scope project acme");
+    const text = run("/gutt-pro:agent-scope project acme-two");
+    assert.match(text, /keep that identity/, "the old agents' memory does not move");
+    assert.equal(scopeOf(KEY_A).value, "acme-two");
+  });
+
+  it("reports an unchanged rebind instead of claiming a change", () => {
+    run("/gutt-pro:agent-scope project acme");
+    assert.match(run("/gutt-pro:agent-scope project acme"), /already .*unchanged/);
+  });
+
+  it("refuses an unknown type, a missing value and an unusable label, writing nothing", () => {
+    for (const text of [
+      "/gutt-pro:agent-scope squad acme",
+      "/gutt-pro:agent-scope project",
+      "/gutt-pro:agent-scope project Acme_Portal",
+      "/gutt-pro:agent-scope project -leading",
+      "/gutt-pro:agent-scope show acme",
+    ]) {
+      const reply = run(text);
+      assert.match(reply, /Nothing was changed/, text);
+      assert.equal(stored(), null, `${text} must not create a config file`);
+    }
+  });
+
+  it("reports rather than guesses when no argument was given", () => {
+    // The hand-off to the command file's interactive flow. The hook cannot ask a
+    // question, so the one thing it must not do is pick a label.
+    const text = run("/gutt-pro:agent-scope");
+    assert.match(text, /carried no argument/);
+    assert.equal(stored(), null, "a bare invocation is a read, never a write");
+  });
+
+  it("refuses when the project cannot be identified", () => {
+    const text = run("/gutt-pro:agent-scope project acme", {});
+    assert.match(text, /could not tell which project/);
+    assert.equal(stored(), null);
+  });
+
+  it("rejects a bad type through the setter as well as through the command", () => {
+    // The command validates, but the setter is exported and will acquire other callers.
+    assert.equal(runtimeConfig.setAgentScope(KEY_A, "squad", "acme"), false);
+    assert.equal(runtimeConfig.setAgentScope(KEY_A, "project", ""), false);
+    assert.equal(runtimeConfig.setAgentScope(null, "project", "acme"), false);
+    assert.equal(stored(), null);
+  });
+
+  it("treats an unrecognised stored record as unbound", () => {
+    // A hand-edited or future-version record must not become the name an agent
+    // registers under, because that write cannot be taken back.
+    runtimeConfig.setAgentScope(KEY_A, "project", "acme");
+    const raw = stored();
+    raw.projects[KEY_A].agentScope = { type: "squad", value: "acme" };
+    fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify(raw));
+    assert.equal(runtimeConfig.readAgentScope(KEY_A), null);
+    assert.match(run("/gutt-pro:agent-scope show"), /not bound here/);
   });
 });

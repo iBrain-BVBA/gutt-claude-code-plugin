@@ -501,6 +501,67 @@ function setMigrationState(projectKey, status, now = Date.now()) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Agent scope binding, per project
+// ---------------------------------------------------------------------------
+
+/**
+ * The scope types the binding accepts. The type is stored so `agent-scope show` can
+ * name what kind of label is in force; it does not affect the registered name, which
+ * is built from the value alone. Two repos therefore share an agent when their
+ * *values* match, whatever type each was set as.
+ */
+const SCOPE_TYPES = ["project", "team", "individual"];
+
+/**
+ * The bound agent scope for one project, or null when nothing is bound.
+ *
+ * A stored type this version does not know is treated as unbound rather than
+ * trusted, for the same reason `readMigrationState` does: the value decides an
+ * identity that cannot be un-merged once written to, so an unrecognised record must
+ * not silently become the name an agent registers under.
+ *
+ * @param {string|null} projectKey - from `builtin-memory.projectKey()`
+ * @returns {{type: string, value: string}|null}
+ */
+function readAgentScope(projectKey) {
+  if (!projectKey) {
+    return null;
+  }
+  const stored = readRawConfig()?.[PROJECTS_KEY]?.[projectKey]?.agentScope;
+  const type = stored?.type;
+  const value = stored?.value;
+  if (!SCOPE_TYPES.includes(type) || typeof value !== "string" || !value) {
+    return null;
+  }
+  return { type, value };
+}
+
+/**
+ * Bind an agent scope to one project. Rejects an unknown type or an empty value
+ * rather than storing it — a typo here becomes a permanent agent identity.
+ *
+ * @param {string|null} projectKey
+ * @param {string} type
+ * @param {string} value
+ * @returns {boolean} true if written
+ */
+function setAgentScope(projectKey, type, value) {
+  if (!projectKey || !SCOPE_TYPES.includes(type) || typeof value !== "string" || !value) {
+    return false;
+  }
+  return updateConfig((config) => {
+    const next = config || {};
+    const stored = next[PROJECTS_KEY];
+    // Same defensive read as `setMigrationState`: a corrupt scalar here would throw
+    // inside the lock, and a throw inside the lock is a lock left held.
+    const projects = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    projects[projectKey] = { ...projects[projectKey], agentScope: { type, value } };
+    next[PROJECTS_KEY] = projects;
+    return next;
+  });
+}
+
 module.exports = {
   DEFAULTS,
   PROJECTS_KEY,
@@ -508,6 +569,7 @@ module.exports = {
   PREFERENCE_KEYS,
   MODES,
   MIGRATION_STATES,
+  SCOPE_TYPES,
   configPath,
   readConfig,
   readRawConfig,
@@ -525,4 +587,7 @@ module.exports = {
   readMigrationState,
   isMigrationSettled,
   setMigrationState,
+  // agent scope binding
+  readAgentScope,
+  setAgentScope,
 };

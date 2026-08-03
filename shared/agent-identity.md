@@ -14,19 +14,31 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
 - Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`). Those two, and every
   `pr-reviewer` below, are illustrative — no agent by that name ships in this repo.
 - Identity is keyed on **name + group** (see Register), so different groups separate
-  same-named agents on their own. Add a `--<scope>` suffix — `pr-reviewer--acme-web` —
-  only to run separate instances of one agent **inside the same group** (per team,
-  project, or individual context sharing one org graph). The double dash marks where
-  the name ends and the scope begins; a single dash would be ambiguous inside
-  kebab-case names.
+  same-named agents on their own. Inside one group they do not separate themselves:
+  **always carry a `--<scope>` suffix** — `pr-reviewer--acme-web` — so that one agent
+  run from two repos is two identities unless someone chose otherwise. The double dash
+  marks where the name ends and the scope begins; a single dash would be ambiguous
+  inside kebab-case names.
+- **Why always, and not only when a clash appears:** a clash is not visible at the
+  moment it matters. Registration merges on name + group, so the first write under a
+  bare name silently joins whatever else already registered under it, and org writes
+  cannot be deleted or reassigned afterwards. Suffixing by default is recoverable —
+  a scope deliberately shared is one command away — while pooling by default is not.
 - Two handles, two uses: the registered **name** (keeps the `--`) is the identity key —
   pass it to `register_agent` and as `agent_id` on writes and scoped searches. The
   **node ID** is the slugified semantic ID, which collapses `--` to a single `-`
   (`gutt_pro:Agent:pr-reviewer-acme-web`) — it is what ID parameters (`center_node_id`,
   `get_episodes_for_entity`, …) expect. Don't build it by hand: `register_agent` returns
   it (`id`, plus the `uuid`).
-- Resolve which name to use in this order: bound config (the `/gutt-pro:agent-scope` setting,
-  when it exists) → the git remote's owner/repo → the working folder's name.
+- Resolve the scope in this order, taking the first that yields a value: the scope bound
+  to this repo (`/gutt-pro:agent-scope show` reports it, and says which step supplied it)
+  → the git remote's `owner/repo` → the working folder's name. The chain always yields
+  something, so there is no unsuffixed case to fall back to.
+- A bound scope is the only step a person chose, so it is the only one that survives
+  moving or re-cloning the checkout. Two repos bound to the same value share one identity
+  and therefore one pool of agent memory — that is how several repos of one product get a
+  single agent — and two different values stay isolated. Where that sharing is wanted,
+  bind it; do not rely on two remotes happening to resolve alike.
 
 ## Register (once, before tagging or scoped recall)
 

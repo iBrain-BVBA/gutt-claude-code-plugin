@@ -22,8 +22,11 @@ registration, no tagging.
 1. **Register first.** `register_agent(name="…", description="…", group_id="…")`
    before any agent-scoped read or tagged write — idempotent, keyed on name +
    group. Pass `group_id` explicitly when you can write to more than one group;
-   keep the returned node `id`/`uuid` for verification (step 5). Resolve the name
-   per the reference (bound config → git remote → folder). If a scoped call later
+   keep the returned node `id`/`uuid` for verification (step 5). The name always
+   carries a `--<scope>` suffix; resolve it per the reference, taking the first step
+   that yields a value (scope bound to this repo → git remote's `owner/repo` →
+   working folder's name). Never register a bare base name — it merges with whatever
+   already holds that name in the group, and that cannot be undone. If a scoped call later
    fails with an unknown-agent error: re-register, retry. **Read-only agents skip
    this step** — agent scope is provenance over writes, so an agent that never
    writes has an empty scope by construction: skip registration, skip tagging,

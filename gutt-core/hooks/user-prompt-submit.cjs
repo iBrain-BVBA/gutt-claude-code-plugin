@@ -140,11 +140,16 @@ process.stdin.on("end", () => {
   let rawPrompt = "";
   let prompt = "unknown";
   let sessionId = "unknown";
+  // Carried for the config verbs that keep per-project state and so need to know
+  // which project this is. Kept as the two fields `projectKey()` reads rather than
+  // the whole payload, so an unparseable stdin leaves it empty instead of undefined.
+  let payload = {};
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
     rawPrompt = String(data.prompt || data.message || "unknown");
     prompt = rawPrompt.slice(0, 200);
     sessionId = data.session_id || "unknown";
+    payload = { cwd: data.cwd, transcript_path: data.transcript_path };
   } catch {
     // Unparseable stdin still exits 0 — this hook must never block a prompt.
   }
@@ -165,7 +170,7 @@ process.stdin.on("end", () => {
     // Above `advanceTurn()` for the same reason row 1 is: a config turn is
     // bookkeeping, not conversation. Burning `firstPromptPending` on `/gutt-pro:config`
     // would cost the session its one memory pointer.
-    const commandResult = configCommandResult(rawPrompt, sessionId);
+    const commandResult = configCommandResult(rawPrompt, sessionId, Date.now(), payload);
     if (commandResult) {
       emit(commandResult);
       return;
