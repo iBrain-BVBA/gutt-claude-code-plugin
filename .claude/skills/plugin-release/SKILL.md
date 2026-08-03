@@ -49,19 +49,19 @@ Each plugin's `.claude-plugin/plugin.json` `"version"` is the **single source of
 
 **Do NOT** add a `"version"` to `.claude-plugin/marketplace.json` or any of its entries — `plugin.json` is the source of truth, and `npm run check:version` (Step 2b) fails if a stray version appears there.
 
-Use `mcp__github__push_files` to update the changed manifests in a single commit to main:
+Put the bump in a **one-commit PR against `main`** — branch, commit the changed manifests, open the PR, merge once checks are green:
 
-```
-mcp__github__push_files(
-  owner="iBrain-BVBA",
-  repo="gutt-claude-code-plugin",
-  branch="main",
-  message="chore: bump version to X.Y.Z",
-  files=[...package.json + the bumped plugin.json file(s)...]
-)
+```bash
+git checkout -b chore/bump-vX.Y.Z main
+# edit package.json + the plugin.json file(s)
+git commit -am "chore: bump version to X.Y.Z"
+git push -u origin chore/bump-vX.Y.Z
+gh pr create --base main --title "chore: bump version to X.Y.Z"
 ```
 
-**NOTE:** Version bump commits go directly to main. This is an intentional exception to the PR workflow — version bumps are mechanical (no code logic changes) and happen after all feature PRs are already merged and reviewed. The github-workflow skill's "no direct pushes to main" rule does not apply to version bump commits. Note that `main` is a protected branch requiring a PR and one approving review, so a direct push needs an admin bypass; if that is not available, put the bump in a one-commit PR.
+**Why a PR and not a direct push.** `main` is protected: it requires a pull request plus one approving review, and the "Lint & Format Check" and "Commit Message Lint" checks. A direct push — `git push origin main`, or `mcp__github__push_files` with `branch="main"` — is refused unless you hold admin and deliberately bypass the ruleset. Do not plan the release around a bypass being available.
+
+A bump is genuinely mechanical, so it does not need the Copilot review a feature PR does; it still needs the branch's checks to pass, and `check:version` (Step 2b) runs among them, which is the real reason this path is worth the extra minute. If you do hold admin and the review requirement is the only thing standing in the way, `gh pr merge <N> --merge --admin` closes it without a second person — still through the PR, so the change stays recorded.
 
 ## Step 2b: Verify Version Sync
 
