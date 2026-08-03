@@ -17,6 +17,7 @@ const pluginState = require("../gutt-core/hooks/lib/plugin-state.cjs");
 const sessionState = require("../gutt-core/hooks/lib/session-state.cjs");
 const runtimeConfig = require("../gutt-core/hooks/lib/runtime-config.cjs");
 const { guard } = require("../gutt-core/hooks/lib/debug.cjs");
+const { canSymlink } = require("./helpers/capabilities.cjs");
 // The hook module, required rather than spawned: gated behind `require.main`, it
 // exports the real ttlSweep so the sweep tests below can't drift from shipped code.
 const { ttlSweep } = require("../gutt-core/hooks/session-start.cjs");
@@ -620,10 +621,15 @@ describe("session lifecycle: concurrent writers", () => {
     const lockPath = `${statePathForSession}.lock`;
     fs.mkdirSync(path.dirname(lockPath), { recursive: true });
 
-    for (const [shape, make] of [
+    // Filtered rather than skipped wholesale: the directory shape reproduces the same
+    // EEXIST-then-unlink-throws hot loop and needs no special privilege, so a host that
+    // cannot create symlinks still exercises the contract instead of testing nothing.
+    const shapes = [
       ["directory", () => fs.mkdirSync(lockPath)],
       ["dangling symlink", () => fs.symlinkSync(path.join(dir, "does-not-exist"), lockPath)],
-    ]) {
+    ].filter(([shape]) => shape !== "dangling symlink" || canSymlink());
+
+    for (const [shape, make] of shapes) {
       fs.rmSync(lockPath, { recursive: true, force: true });
       make();
       let elapsed;

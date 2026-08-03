@@ -52,13 +52,21 @@ function projectsRoot() {
 }
 
 /**
- * Claude Code's project-directory encoding: the absolute cwd with every `/`, `.`
- * and `_` flattened to `-`, e.g. `/Users/me/projects/app` → `-Users-me-projects-app`.
+ * Claude Code's project-directory encoding: the absolute cwd with every separator,
+ * `.` and `_` flattened to `-`, e.g. `/Users/me/projects/app` → `-Users-me-projects-app`.
  *
  * Reverse-engineered from the directories on disk, not from a published contract,
  * which is exactly why it is the **fallback**. `storeDir()` prefers deriving the
  * path from `transcript_path`, where no encoding guess is involved at all. Keep this
  * for payloads that carry `cwd` and nothing else.
+ *
+ * The class covers `\` and `:` as well as `/`, because on Windows the separator is a
+ * backslash and the path carries a drive letter: `C:\dev\app` → `C--dev-app`, which is
+ * how Claude Code actually names the directory (verified against `~/.claude/projects`
+ * on a Windows install). Omitting them left the encoded name holding its separators, so
+ * `path.join(projectsRoot(), …)` produced `…\projects\C:\dev\app` — a second drive letter
+ * mid-path, which is not a legal Windows path and can never exist. The store was
+ * therefore never found on Windows and the migration silently never fired.
  *
  * Note the encoding is lossy — `/a/b-c` and `/a/b/c` both encode to `-a-b-c`. That
  * is inherited, not introduced: two such projects already *share* one built-in store,
@@ -68,7 +76,7 @@ function projectsRoot() {
  * @returns {string}
  */
 function encodeProjectDir(cwd) {
-  return String(cwd).replace(/[/._]/g, "-");
+  return String(cwd).replace(/[/\\:._]/g, "-");
 }
 
 /**
