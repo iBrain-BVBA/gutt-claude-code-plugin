@@ -4,7 +4,7 @@
 
 Steps:
 
-1. Add the marketplace: `claude plugin marketplace add https://raw.githubusercontent.com/iBrain-BVBA/gutt-claude-code-plugin/master/.claude-plugin/marketplace.json`
+1. Add the marketplace: `claude plugin marketplace add https://raw.githubusercontent.com/iBrain-BVBA/gutt-claude-code-plugin/main/.claude-plugin/marketplace.json`
 2. Install the plugin: `claude plugin install gutt-pro --marketplace gutt-plugins`
 3. Run `/setup` or `/start` in a Claude Code session to connect to your organization's gutt MCP endpoint
 4. Restart Claude Code and authenticate via `/mcp` → `gutt-mcp-remote` → Authenticate

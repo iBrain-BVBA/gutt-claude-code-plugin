@@ -41,7 +41,7 @@ The rules below are toolchain-independent. Tool names are given for both.
 
 **Never do:**
 
-- Push directly to `master` or `main`
+- Push directly to `main`
 - Merge without Copilot having reviewed
 
 ## Standard Workflow
@@ -59,9 +59,9 @@ The reason for this workflow is that Copilot catches issues that local testing m
 
 ### Picking the base branch
 
-**Do not branch from the default branch reflexively.** `gh repo view --json defaultBranchRef` reports this repo's default as `master`, but `master` is **pre-3.0**: the 3.0 program lives on `release/3.0`, and a branch cut from `master` gets the old layout (no `gutt-core/`) — every path in the plan is then wrong.
+**Confirm the base carries the layout you are about to edit.** The default branch is `main`, and it carries the 3.0 layout (`gutt-core/`, `gutt-mentor/`, `gutt-developer/`) — so for new work it is normally the right base. What is no longer right is `release/3.0`: it still exists for the PRs that were already open against it, but it sits behind `main`, and a branch cut from it will not have what landed since.
 
-So, before `git checkout -b`:
+The general trap remains: a base chosen by name rather than by content gets you the wrong layout, and then every path in the plan is wrong. So, before `git checkout -b`:
 
 - Take the base from the ticket, the epic, or the user. If the story belongs to a release program, its release branch is the base.
 - **Verify by looking at the base's tree**, not its name: `git ls-tree --name-only origin/<base>` should contain the directories you are about to edit. This is the cheap check that catches a wrong base before any work is committed to it.
@@ -106,7 +106,7 @@ The organization is **iBrain-BVBA**. Always use `iBrain-BVBA` as the owner.
 
 Key repos:
 
-- `gutt-claude-code-plugin` — Claude Code/Cowork plugin (hooks, skills, MCP). Default branch `master`; active 3.0 work bases on `release/3.0`.
+- `gutt-claude-code-plugin` — Claude Code/Cowork plugin (hooks, skills, MCP). Default branch `main`, which carries the 3.0 layout and is the base for new work.
 
 If unsure about a repo name, search with `mcp__github__search_repositories` or `gh repo list iBrain-BVBA`.
 
