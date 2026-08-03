@@ -16,7 +16,7 @@ check-ins against it. Underneath, `memory-capture` owns write discipline
 (classify, dedup, size caps, write-tool discovery, queued≠persisted),
 `memory-search` owns query phrasing and the relevance gate, and
 `agent-memory-protocol` owns identity for when an agent runs this. Those ship
-with the gutt-core plugin; without it, follow the rules below and note the gap in
+with the gutt-pro plugin; without it, follow the rules below and note the gap in
 one line.
 
 ## Hard rules (non-negotiable — read first)

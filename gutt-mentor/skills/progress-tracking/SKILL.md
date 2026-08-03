@@ -15,7 +15,7 @@ questions from the record alone.
 the check-in record. Underneath, `memory-search` owns read discipline,
 `memory-capture` write discipline, `graph-traversal` multi-hop questions, and
 `agent-memory-protocol` identity for when an agent runs this — all four from the
-gutt-core plugin. Without it, follow the rules below and note the gap in one line.
+gutt-pro plugin. Without it, follow the rules below and note the gap in one line.
 
 ## Hard rules (non-negotiable — read first)
 

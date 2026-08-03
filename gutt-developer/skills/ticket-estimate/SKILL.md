@@ -14,18 +14,22 @@ to it is the team's act, not the skill's.
 
 Underneath, `memory-search` owns the search ladder and the relevance gate,
 `graph-traversal` owns relationship walking, and `memory-capture` owns any
-durable write; they ship with the gutt-core plugin (this plugin depends on
+durable write; they ship with the gutt-pro plugin (this plugin depends on
 it). Without them, follow the rules below and note the gap in one line. Jira
 access comes from whatever Atlassian tooling the session surfaces; names and
 prefixes vary per install.
 
 ## Hard rules (non-negotiable — read first)
 
-1. **Never write an estimate into Jira.** No story-point fields, no estimate
-   fields, no status changes — the output is advice in the reply. The one
-   permitted write is a comment, drafted and posted only after the user
-   approves the exact text in this session (markdown; it cannot be edited or
-   deleted from here).
+1. **Jira is read-only here — never write an estimate into it.** No
+   story-point fields, no estimate fields, no status changes, no edits to any
+   other field — the output is advice in the reply. The one permitted write is
+   a comment, drafted and posted only after the user approves the exact text
+   in this session. Treat it as final — approval is the gate, not an undo; a
+   truly needed correction re-approves the text and targets the existing
+   comment if the tool allows, rather than posting a second one. Write
+   markdown and set the tool's content-format parameter to markdown when it
+   exposes one.
 2. **Confidence is honest.** Thin comparables → say `low confidence` and why.
    An estimate with no comparables at all is a guess — label it a guess rather
    than dress it up as analysis. Fabricated confidence is the one failure mode
@@ -41,8 +45,11 @@ prefixes vary per install.
 5. **Every comparable and risk is real and cited** — a resolved ticket key
    with its resolution date, or a memory episode, lesson, or incident (id,
    date). No invented history, and no risk without its evidence.
-6. **Explicit `group_ids` on org reads when the result may be shared** — take
-   the group name from session results or ask; never guess one. **Bare tool
+6. **Org scope is checked at the output** — pass explicit `group_ids` naming
+   the org group on reads (take the name from session results or ask; never
+   guess one), treat scope as server-decided, and before any comparable or
+   risk enters the offered comment, confirm that item's own scope is the org
+   group; personal-scope material stays in the in-session output. **Bare tool
    names**, probed with ToolSearch. **No memory writes** — a durable sizing
    lesson goes through `memory-capture`'s gate.
 
@@ -77,7 +84,9 @@ found" — which itself forces `low confidence` per rule 2.
 `memory-search` for incidents, lessons, and decisions touching the components
 and dependencies from step 1. An area with incident history, a dependency that
 stalled before, a decision that constrains the approach — each lands in the
-risk table with its citation. A `ticket-research` brief already in context
+risk table with its citation; deepen a hop via `graph-traversal` only where a
+summary names an incident or decision without stating it. A `ticket-research`
+brief already in context
 seeds this: its area-history findings are the risk table's first draft —
 extend them rather than re-searching. And where the record shows the area has
 little or no automated test coverage, say so explicitly: a change that cannot
@@ -118,7 +127,7 @@ be cheaply verified widens both the risk and the range.
 
 ## References
 
-- Search ladder and relevance gate: `memory-search` (gutt-core); deeper
+- Search ladder and relevance gate: `memory-search` (gutt-pro); deeper
   relationship checks: `graph-traversal`; durable captures: `memory-capture`;
   identity if an agent runs this: `agent-memory-protocol`.
 - Siblings: `ticket-research` (context brief — reuse its output when fresh),

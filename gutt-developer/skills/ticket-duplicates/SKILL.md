@@ -11,10 +11,11 @@ discussed and rejected. This skill searches both, then resolves every candidate
 to an evidence-backed verdict. A resolved duplicate is a win twice over: the
 work may already be done, and its history says what it cost.
 
-Underneath, `memory-search` owns the search ladder and the relevance gate, and
-`memory-capture` owns any durable write; both ship with the gutt-core plugin
-(this plugin depends on it) — without them, follow the rules below and note
-the gap in one line. Jira access comes from whatever Atlassian tooling the
+Underneath, `memory-search` owns the search ladder and the relevance gate,
+`graph-traversal` owns relationship walking when a candidate needs one more
+hop, and `memory-capture` owns any durable write; all three ship with the
+gutt-pro plugin (this plugin depends on it) — without them, follow the rules
+below and note the gap in one line. Jira access comes from whatever Atlassian tooling the
 session surfaces; find it in your tool list — names and prefixes vary per
 install.
 
@@ -23,8 +24,11 @@ install.
 1. **Jira is read-only here — recommend, never act.** No linking, closing,
    labeling, or field edits; those are the human's calls. The only write this
    skill may produce is one comment, drafted and posted only after the user
-   approves the exact text in this session (it posts as markdown and cannot be
-   edited or deleted from here).
+   approves the exact text in this session. Treat it as final — approval is
+   the gate, not an undo; a truly needed correction re-approves the text and
+   targets the existing comment if the tool allows, rather than posting a
+   second one. Write markdown and set the tool's content-format parameter to
+   markdown when it exposes one.
 2. **Every candidate gets resolved.** Each surfaced candidate ends as a verdict
    or an explicit "not assessed (reason)" — never silently dropped. An
    unresolved candidate is exactly the false reassurance this skill exists to
@@ -37,9 +41,12 @@ install.
 4. **"Nothing found" carries its scope.** A clean result states what was
    searched — the JQL angles and the memory phrasings — so absence is a
    checkable claim, not a shrug.
-5. **Explicit `group_ids` on org reads when the result may be shared.** Take
-   the group name from results already in the session or ask; never guess one.
-   Omitting `group_ids` silently includes personal scope.
+5. **Org scope is enforced at the output, not the request.** Pass explicit
+   `group_ids` naming the org group on reads — take the name from session
+   results or ask; never guess one. And treat scope as server-decided: before
+   any candidate or verdict enters the offered comment, confirm that item's
+   own scope is the org group; personal-scope material stays in the in-session
+   report, marked as personal.
 6. **Bare tool names**, probed with ToolSearch before concluding one is
    missing; the `mcp__…__` prefix varies per install.
 7. **No memory writes.** A duplication pattern worth keeping goes through
@@ -49,7 +56,9 @@ install.
 
 A ticket — or a not-yet-filed draft; pasted text is fine — that might repeat
 something already filed, done, or rejected. Not for the full background brief
-(`ticket-research`) and not for sizing (`ticket-estimate`).
+(`ticket-research`), not for sizing (`ticket-estimate`), and not for "has
+anyone worked on X" questions with no ticket or draft in play — that is
+`memory-search` directly.
 
 ## Step 1 — characterize the target
 
@@ -100,10 +109,10 @@ Resolve every candidate (rule 2), order duplicates first, and report:
 <link / close as duplicate / split the overlap / proceed — the human acts>
 ```
 
-**Stop rule:** at most three JQL angles plus `memory-search`'s own stop rule,
-and one widening pass if every first-round candidate judges `distinct`. Beyond
-that, report what was searched and stop — absence proven within a stated scope
-beats an endless hunt.
+**Stop rule:** at most three JQL angles plus `memory-search`'s own stop-early
+conditions, and one widening pass if every first-round candidate judges
+`distinct`. Beyond that, report what was searched and stop — absence proven
+within a stated scope beats an endless hunt.
 
 ## Degradation
 
@@ -115,7 +124,7 @@ beats an endless hunt.
 
 ## References
 
-- Search ladder and relevance gate: `memory-search` (gutt-core); relationship
+- Search ladder and relevance gate: `memory-search` (gutt-pro); relationship
   walking when a candidate needs one more hop: `graph-traversal`.
 - Durable captures: `memory-capture`. Identity if an agent runs this:
   `agent-memory-protocol`.

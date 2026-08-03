@@ -15,7 +15,7 @@ its source, and thin evidence is labeled thin rather than smoothed over.
 Underneath, `memory-search` owns the search ladder and the relevance gate,
 `graph-traversal` owns relationship walking when a summary names more than it
 states, and `memory-capture` owns any durable write. Those ship with the
-gutt-core plugin (this plugin depends on it); without them, follow the rules
+gutt-pro plugin (this plugin depends on it); without them, follow the rules
 below and note the gap in one line. Jira access comes from whatever Atlassian
 tooling the session surfaces — an issue fetch, a JQL search, a comment tool.
 Find them in your tool list; names and prefixes vary per install.
@@ -25,20 +25,28 @@ Find them in your tool list; names and prefixes vary per install.
 1. **Jira is read-only here — with one gated exception.** Never edit a ticket's
    fields, status, description, or acceptance criteria. The only write this
    skill may produce is **one comment**, drafted in your reply and posted only
-   after the user approves the exact text in this session. A posted comment
-   cannot be edited or deleted from here, so the approved draft is the text
-   that has to be right — and it posts as markdown, not wiki markup.
-2. **Everything cited.** Every brief item names its source: a ticket field, a
-   comment (author, date), a memory node, fact, or episode (id, date), or a
-   linked ticket key. A claim you cannot cite does not go in the brief.
+   after the user approves the exact text in this session. Treat the posted
+   comment as final: approval is the gate, not an undo. If a correction is
+   truly needed and the comment tool can target an existing comment, use that
+   with freshly approved text rather than posting a second comment. Write the
+   body as markdown and set the tool's content-format parameter to markdown
+   when it exposes one.
+2. **Every finding cited.** Every positive finding names its source: a ticket
+   field, a comment (author, date), a memory node, fact, or episode (id,
+   date), or a linked ticket key. A claim you cannot cite does not go in the
+   brief. Gaps are the exception by nature: a gap names what is absent and
+   where an answer might come from, not a source.
 3. **Evidence, not verdicts.** Report what was found and what it implies as a
    question, not a conclusion — "X was decided on <date> (id) — does it still
    hold here?" beats "do X". The developer keeps the judgment.
-4. **Explicit `group_ids` on org reads when the brief may be shared.** Omitting
-   `group_ids` silently includes the user's personal scope, and a brief that
-   becomes a Jira comment must not leak private notes. Take the group name from
-   results already in the session or ask; never guess one — a guessed group id
-   is a fabricated identifier.
+4. **Org scope is enforced at the output, not the request.** Pass explicit
+   `group_ids` naming the org group on reads — take the name from results
+   already in the session or ask; never guess one, a guessed group id is a
+   fabricated identifier. And treat scope as server-decided: the parameter
+   states intent, it does not reliably filter. The check that holds happens at
+   condense time — before any item enters the offered Jira comment, confirm
+   that item's own scope is the org group; personal-scope findings stay in the
+   in-session brief, marked as personal.
 5. **Bare tool names.** Call memory and Jira tools by whatever names your tool
    list surfaces; the `mcp__…__` prefix varies per install. Probe with
    ToolSearch before concluding a tool is missing.
@@ -70,8 +78,9 @@ No Jira tooling in the session → Degradation (pasted text works).
 
 Run `memory-search` rung 1 on the extracted terms — the subject, the "why"
 phrasing ("decision about <subject>", "<subject> discussed"), and the people —
-following its reformulation and stop rules. Deepen a hop via `graph-traversal`
-only where a summary names a decision or discussion without stating it.
+following its reformulation loop and its stop-early conditions. Deepen a hop
+via `graph-traversal` only where a summary names a decision or discussion
+without stating it.
 
 **Minimum recall outcome — owe this list before writing the brief**, with an
 explicit "none found" per category rather than silence:
@@ -126,8 +135,9 @@ whose context really is complete.
 ## Offering the comment
 
 After presenting the brief, offer to condense it into a Jira comment — the
-"what memory adds" and "gaps" sections only; the ticket does not need itself
-restated. Post per rule 1: exact approved text, once.
+"what memory adds" and "gaps" sections only, filtered to org-scope items per
+rule 4; the ticket does not need itself restated. Post per rule 1: exact
+approved text, once.
 
 ## Degradation
 
@@ -140,7 +150,7 @@ restated. Post per rule 1: exact approved text, once.
 ## References
 
 - Search ladder, relevance gate, summary-first reads: `memory-search`
-  (gutt-core) — its `references/tools.md` holds the per-tool contracts.
+  (gutt-pro) — its `references/tools.md` holds the per-tool contracts.
 - Relationship walking and edge-currency checks: `graph-traversal`.
 - Durable captures out of a research session: `memory-capture`.
 - If an agent runs this as itself, `agent-memory-protocol` owns identity and
