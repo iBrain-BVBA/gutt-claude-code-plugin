@@ -1,1 +1,6 @@
 npx lint-staged
+
+# Reads the git index, which during a lint-staged run is exactly what is about to be
+# committed — so this is the cheapest place to catch a symlink, and the only one that
+# catches it before it reaches a Windows clone. Fast and zero-dep.
+node tests/check-no-symlinks.cjs

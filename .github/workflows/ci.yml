@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, release/3.0]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, release/3.0]
 
 jobs:
   lint:
@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -28,6 +28,95 @@ jobs:
 
       - name: Check formatting
         run: npm run format:check
+
+      - name: Check no file is committed as a symlink (Windows-safe packaging)
+        run: npm run check:no-symlinks
+
+      - name: Check runtime-state location (R37)
+        run: npm run check:state
+
+      - name: Check version sync (plugin.json ↔ package.json)
+        run: npm run check:version
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Report the Node version under test
+        run: node --version
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run hook smoke tests
+        run: node tests/test-all-hooks.cjs
+
+  # The toolchain version above is ours. Hooks are not: Claude Code spawns them with
+  # whatever `node` the end user has on PATH, so the hook entry points get smoke-tested
+  # on the floor separately, to catch syntax or API that only exists in a newer runtime
+  # before it reaches someone's session as a broken hook.
+  #
+  # The floor is the one `package.json` declares — `engines.node`, and nothing else. It
+  # was pinned here to 18 while that field said >=24, so this job was certifying hooks
+  # against a runtime we already refuse to install on: every job in this file was green
+  # for a combination no user can be in, and a real 24-only construct would have been
+  # reported as a compatibility failure. A floor asserted in two places drifts; this one
+  # had. Zero-dep by design, so this needs no install and stays fast.
+  hook-runtime-compat:
+    name: Hook Runtime Compat (floor)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read the declared floor from package.json
+        id: floor
+        run: |
+          FLOOR=$(node -p "require('./package.json').engines.node.replace(/[^0-9.]/g, '').split('.')[0]")
+          test -n "$FLOOR" || { echo "engines.node is missing or unparseable"; exit 1; }
+          echo "version=$FLOOR" >> "$GITHUB_OUTPUT"
+          echo "Hook runtime floor: Node $FLOOR"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.floor.outputs.version }}
+
+      - name: Run hook smoke tests on the end-user runtime floor
+        run: node tests/test-all-hooks.cjs
+
+  # The symlink guard reads the git index, which is platform-independent by design — but
+  # that makes it a proxy for a defect only Windows produces, run only where the defect
+  # cannot occur. This is the direct check: git on Windows defaults to core.symlinks=false
+  # and writes a link's target path as the file's contents, so a committed symlink reaches
+  # this job as a lib full of "../../../shared/debug.cjs" and every hook dies parsing it.
+  # Spawning the hook entry points is what surfaces that. Zero-dep, so no install needed.
+  hook-windows-smoke:
+    name: Hook Smoke (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Run hook smoke tests on a Windows checkout
+        run: node tests/test-all-hooks.cjs
 
   commitlint:
     name: Commit Message Lint
@@ -42,7 +131,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies

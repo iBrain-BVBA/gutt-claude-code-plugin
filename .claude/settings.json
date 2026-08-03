@@ -11,8 +11,9 @@
       "Bash(bash *)",
       "mcp__atlassian__*",
       "mcp__github__*",
-      "mcp__*gutt*__*",
-      "mcp__*Gutt*__*"
+      "mcp__gutt-pro-memory__*",
+      "mcp__gutt-mcp-remote__*",
+      "mcp__claude_ai_gutt-pro-memory__*"
     ],
     "deny": []
   },

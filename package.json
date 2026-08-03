@@ -1,27 +1,25 @@
 {
-  "name": "gutt-claude-code-plugin",
-  "version": "2.7.1",
+  "name": "gutt-pro",
+  "version": "3.0.0",
   "description": "GUTT Plugin for Claude Code - Memory integration and enhanced tooling",
   "private": true,
   "type": "module",
   "files": [
-    "agents",
-    "commands",
-    "hooks",
-    "plugins",
-    "skills",
-    "rules",
+    "gutt-core",
+    "gutt-mentor",
+    "gutt-developer",
     "docs",
     ".claude-plugin",
-    ".cursor-plugin",
-    "mcp.json",
-    "config.json.example",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test tests/**/*.test.js tests/**/*.test.cjs",
-    "test:all": "node --test tests/**/*.test.js tests/**/*.test.cjs && node tests/test-all-hooks.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:all": "node --test tests/*.test.cjs && node tests/test-all-hooks.cjs && node tests/check-no-symlinks.cjs && node tests/check-state-location.cjs && node tests/check-version-sync.cjs",
+    "test:e2e": "node --test tests/e2e/*.e2e.cjs",
+    "check:no-symlinks": "node tests/check-no-symlinks.cjs",
+    "check:state": "node tests/check-state-location.cjs",
+    "check:version": "node tests/check-version-sync.cjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -38,17 +36,8 @@
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0"
   },
-  "lint-staged": {
-    "*.{js,cjs,mjs,ts,jsx,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,yml,yaml}": [
-      "prettier --write"
-    ]
-  },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "docx": "^9.5.3"

@@ -1,8 +1,8 @@
 ---
 name: plugin-dev
-description: Core development agent for the gutt-claude-code-plugin. Handles all plugin development work including writing hooks, creating agents and skills, updating manifests, writing tests, debugging hooks, and navigating the plugin architecture.
+description: Core development agent for the gutt-pro plugin. Handles all plugin development work including writing hooks, creating agents and skills, updating manifests, writing tests, debugging hooks, and navigating the plugin architecture.
 model: opus
-whenToUse: Use for ANY development work on the gutt-claude-code-plugin itself — writing or modifying hooks, creating agent/skill definitions, updating plugin manifests, writing tests, debugging hook execution, or understanding the plugin architecture.
+whenToUse: Use for ANY development work on the gutt-pro plugin itself — writing or modifying hooks, creating agent/skill definitions, updating plugin manifests, writing tests, debugging hook execution, or understanding the plugin architecture.
 allowedTools:
   - Read
   - Edit
@@ -14,7 +14,7 @@ allowedTools:
 
 # Plugin Dev Agent
 
-The go-to agent for all development work on the gutt-claude-code-plugin. Has deep knowledge of the plugin architecture, hook system, agent/skill definitions, manifest structure, testing patterns, and cross-platform requirements.
+The go-to agent for all development work on the gutt-pro plugin. Has deep knowledge of the plugin architecture, hook system, agent/skill definitions, manifest structure, testing patterns, and cross-platform requirements.
 
 ## Trigger
 
@@ -86,31 +86,33 @@ Hooks must exit with code 0 unless the hook intentionally blocks a tool call (e.
 
 ### State Management
 
-- Hook state is stored in `.claude/hooks/.state/`
-- State is cleared on `SessionStart` event
-- Use atomic writes (temp + delete + rename) for Windows safety
+- Hook state lives under `${CLAUDE_PLUGIN_DATA}` (R37, GP-855) — never the project tree; see `docs/runtime-state-convention.md`
+- State is cleared/swept on `SessionStart`
+- Use `plugin-state.writeJson()` for atomic writes; it returns `false` on failure, so check the return
 
-## Shared Libraries Reference
+## Hook Libraries Reference
 
-| File                         | Key Exports                                                                                   | Purpose                              |
-| ---------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `env.cjs`                    | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `PROJECT_STATE_DIR`, `USER_CONFIG_DIR` | IDE and path detection               |
-| `constants.cjs`              | `MEMORY_AGENTS`, `LESSON_SKIP_AGENTS`, `PLAN_AGENT_TYPES`                                     | Shared constant lists                |
-| `debug.cjs`                  | `debugLog()`                                                                                  | Error logging to hook-errors.log     |
-| `mcp-config.cjs`             | `isGuttMcpConfigured()`, `getGuttMcpUrl()`                                                    | MCP server discovery                 |
-| `config.cjs`                 | `getGroupId()`, `getConfig()`                                                                 | Config loading from config.json      |
-| `memory-cache.cjs`           | `getMemoryCache()`, `setLastSearchQuery()`                                                    | Session-scoped memory cache          |
-| `session-state.cjs`          | `getState()`, `incrementMemoryQueries()`                                                      | Persistent state management          |
-| `seed-registry.cjs`          | `getAgentSeed()`, `parseGroundingCall()`                                                      | Agent seed prompts                   |
-| `platform-detect.cjs`        | `isCursor()`, `supportsDecisionBlock()`                                                       | IDE feature detection                |
-| `intent-extractor.cjs`       | `extractIntent()`                                                                             | NLP intent parsing from user prompts |
-| `agent-discovery.cjs`        | `discoverAgents()`                                                                            | Graph-based agent search             |
-| `playbook-matcher.cjs`       | `matchPlaybook()`                                                                             | Rule engine for routing              |
-| `router.cjs`                 | `makeRoutingDecision()`                                                                       | Central routing logic                |
-| `transcript-parser.cjs`      | `parseTranscript()`                                                                           | Conversation transcript parsing      |
-| `plan-feedback-detector.cjs` | `detectPlanContext()`                                                                         | Plan context analysis                |
-| `decision-authority.cjs`     | Policy checking                                                                               | Decision authority enforcement       |
-| `text-utils.cjs`             | `sanitizeForDisplay()`                                                                        | String sanitization                  |
+Each plugin owns its libs outright as real files — `gutt-core/hooks/lib/`, no symlinks,
+nothing shared across plugins. **Read the directory before trusting this table**
+(`ls gutt-core/hooks/lib/`): a row here with no file, or a file with no row, means the
+table is what is stale.
+
+| File                       | Key Exports                                                              | Purpose                                     |
+| -------------------------- | ------------------------------------------------------------------------ | ------------------------------------------- |
+| `env.cjs`                  | `PLUGIN_ROOT`, `PROJECT_DIR`, `IDE`, `STATE_DIR_NAME`, `USER_CONFIG_DIR` | IDE and path detection                      |
+| `debug.cjs`                | `debugLog()`, `guard()`, `logFile()`                                     | Error logging to `hook-errors.log`          |
+| `config.cjs`               | `getGroupId()`, `getConfig()`                                            | Static config loading from `config.json`    |
+| `runtime-config.cjs`       | `readConfig()`, `MODES`, `isSnoozed()`                                   | Mutable runtime config — _not_ `config.cjs` |
+| `mcp-config.cjs`           | `isGuttMcpConfigured()`, `getGuttMcpUrl()`, `diagnoseGuttMcp()`          | MCP server discovery                        |
+| `plugin-state.cjs`         | `readJson()`, `writeJson()`, `withLock()`, `sweep()`                     | The only sanctioned state writer (R37)      |
+| `session-state.cjs`        | `getState()`, `updateState()`, `beginSession()`                          | Persistent per-session state                |
+| `session-sweep.cjs`        | `ttlSweep()`, `SESSION_TTL_MS`                                           | SessionStart TTL sweep                      |
+| `nested-run.cjs`           | `isNestedRun()`, `childEnv()`                                            | Guard against nested `claude -p` runs       |
+| `stop-judge.cjs`           | `JUDGE_CONDITION`, `JUDGE_TIMEOUT_MS`, `VERDICT_SCHEMA`                  | Stop capture judge                          |
+| `config-command.cjs`       | `parseCommand()`, `configCommandResult()`                                | The `/gutt` config surface                  |
+| `migrations.cjs`           | `MIGRATIONS_VERSION`, `findOrphanedPluginData()`                         | One-shot 2.x cleanup                        |
+| `builtin-memory.cjs`       | `hasMigratableStore()`, `offerContext()`                                 | Claude Code's own memory store              |
+| `builtin-memory-store.cjs` | `backupStore()`, `deleteVerified()`                                      | Migration backup and deletion gate          |
 
 ## Hook Lifecycle Events
 
@@ -235,7 +237,7 @@ Group ID is resolved in priority order:
 2. Verify stdin consumption — broken pipe errors mean stdin is not being read
 3. Verify exit code — non-zero exits block the IDE pipeline
 4. Test in isolation: pipe sample JSON to the hook via command line
-5. Check state files in `.claude/hooks/.state/` for corruption
+5. Check state files under `${CLAUDE_PLUGIN_DATA}` for corruption
 6. Verify `hooks.json` registration matches the expected lifecycle event and tool_name
 
 ### When Updating Manifests

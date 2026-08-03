@@ -9,20 +9,22 @@
   },
   "plugins": [
     {
-      "name": "gutt-claude-code-plugin",
+      "name": "gutt-pro",
+      "source": "./gutt-core",
       "description": "Persistent organizational memory for Claude Code via GUTT",
-      "version": "2.7.0",
-      "author": {
-        "name": "iBRAIN BV",
-        "email": "support@gutt.pro"
-      },
-      "source": "./",
-      "category": "productivity",
-      "homepage": "https://gutt.pro",
-      "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
-      "license": "MIT",
-      "keywords": ["memory", "organizational-memory", "knowledge-graph", "gutt", "productivity"],
-      "tags": ["memory", "knowledge-graph", "organizational-memory", "ai-agents"]
+      "category": "productivity"
+    },
+    {
+      "name": "gutt-mentor",
+      "source": "./gutt-mentor",
+      "description": "Individual development programs and progress tracking in personal memory, via GUTT",
+      "category": "productivity"
+    },
+    {
+      "name": "gutt-developer",
+      "source": "./gutt-developer",
+      "description": "Developer skills for Jira tickets — context research, duplicate detection, estimate grounding — backed by GUTT organizational memory",
+      "category": "productivity"
     }
   ]
 }

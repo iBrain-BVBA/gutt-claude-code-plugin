@@ -1,6 +1,6 @@
 ---
 name: plugin-release
-description: "Handles the gutt-claude-code-plugin release process: version bump, tag creation, GitHub release, and marketplace update. Also use for diagnosing version sync issues. Triggers on: release, bump version, publish, tag, new version, ship it, cut a release, marketplace update, version mismatch, can't update, up to date but wrong version, plugin won't update, version out of sync, wrong version."
+description: "Handles the gutt-pro release process: version bump, tag creation, GitHub release, and marketplace update. Also use for diagnosing version sync issues. Triggers on: release, bump version, publish, tag, new version, ship it, cut a release, marketplace update, version mismatch, can't update, up to date but wrong version, plugin won't update, version out of sync, wrong version."
 ---
 
 # Plugin Release
@@ -16,8 +16,8 @@ After merging feature/fix PRs to master, when it's time to cut a new release. Th
 Before starting, verify:
 
 1. **All PRs merged** — no open PRs targeting master that should be included
-2. **Tests pass** — run `node tests/cowork-hooks.test.cjs` and any other test suites
-3. **No broken hooks** — quick smoke test: `node hooks/stop-lessons.cjs < /dev/null` should exit cleanly
+2. **Tests pass** — run `node tests/cursor-host.test.cjs` and any other test suites
+3. **No broken hooks** — quick smoke test: `node tests/test-all-hooks.cjs` should pass
 4. **Changelog reviewed** — know what's in this release (check merged PRs since last tag)
 
 ```bash
@@ -37,35 +37,19 @@ Use semantic versioning (semver):
 
 **Ask the user** if the version isn't obvious from the changes. When in doubt, MINOR for features, PATCH for fixes.
 
-## Step 2: Bump Version in 3 Files
+## Step 2: Bump Version
 
-**CRITICAL:** All 3 files must have the same version. This is the most common release mistake.
+Each plugin's `.claude-plugin/plugin.json` `"version"` is the **single source of truth** for that plugin — `marketplace.json` deliberately carries no version fields (GP-852), and the update mechanism reads `plugin.json`'s version as its cache key. The root `package.json` version tracks the **root plugin**, `gutt-core` (whose `name` is `gutt-pro`, same as `package.json`).
 
 ### Files to update:
 
-1. **`package.json`** — top-level `"version"` field
-2. **`.claude-plugin/plugin.json`** — top-level `"version"` field
-3. **`.claude-plugin/marketplace.json`** — `plugins[0].version` field (NOT the top-level `version` which is the marketplace schema version `1.0.0`)
+1. **`package.json`** — top-level `"version"` (root/repo version)
+2. **`gutt-core/.claude-plugin/plugin.json`** — top-level `"version"`; **must equal `package.json`**
+3. Any other plugin you changed (e.g. **`gutt-mentor/.claude-plugin/plugin.json`**) — bump its own `"version"`; it is versioned independently and does **not** track `package.json`
 
-### How to bump:
+**Do NOT** add a `"version"` to `.claude-plugin/marketplace.json` or any of its entries — `plugin.json` is the source of truth, and `npm run check:version` (Step 2b) fails if a stray version appears there.
 
-```javascript
-// package.json
-{ "version": "X.Y.Z" }  // ← Update this
-
-// .claude-plugin/plugin.json
-{ "version": "X.Y.Z" }  // ← Update this
-
-// .claude-plugin/marketplace.json
-{
-  "version": "1.0.0",  // ← DO NOT CHANGE (marketplace schema version)
-  "plugins": [{
-    "version": "X.Y.Z"  // ← Update this
-  }]
-}
-```
-
-Use `mcp__github__push_files` to update all 3 in a single commit to master:
+Use `mcp__github__push_files` to update the changed manifests in a single commit to master:
 
 ```
 mcp__github__push_files(
@@ -73,11 +57,21 @@ mcp__github__push_files(
   repo="gutt-claude-code-plugin",
   branch="master",
   message="chore: bump version to X.Y.Z",
-  files=[...all 3 files with updated version...]
+  files=[...package.json + the bumped plugin.json file(s)...]
 )
 ```
 
 **NOTE:** Version bump commits go directly to master. This is an intentional exception to the PR workflow — version bumps are mechanical (no code logic changes) and happen after all feature PRs are already merged and reviewed. The github-workflow skill's "no direct pushes to master" rule does not apply to version bump commits.
+
+## Step 2b: Verify Version Sync
+
+Before tagging, confirm the version invariant holds:
+
+```bash
+npm run check:version
+```
+
+This is the same zero-dep guard CI runs (`tests/check-version-sync.cjs`, GP-854): it fails if `gutt-core`'s `plugin.json` version and `package.json` disagree, or if any `marketplace.json` entry carries a `version`. **Do not create the tag/release until it exits clean** — a release cut out-of-sync silently blocks users from receiving the update.
 
 ## Step 3: Create Git Tag and GitHub Release
 
@@ -141,7 +135,7 @@ Use this template:
 Users with auto-update enabled will receive this version automatically. Manual install:
 
 ```
-/plugin install gutt-claude-code-plugin@gutt-plugins
+/plugin install gutt-pro@gutt-plugins
 ```
 ````
 
@@ -170,14 +164,14 @@ After the release is created:
 3. **Test install:**
 
    ```
-   /plugin install gutt-claude-code-plugin@gutt-plugins
+   /plugin install gutt-pro@gutt-plugins
    ```
 
 4. **Capture the release in memory:**
    ```
    mcp__gutt-mcp-remote__add_memory(
      name="Plugin Release vX.Y.Z",
-     episode_body="Released gutt-claude-code-plugin vX.Y.Z. Changes: <summary>. Tag: vX.Y.Z.",
+     episode_body="Released gutt-pro vX.Y.Z. Changes: <summary>. Tag: vX.Y.Z.",
      source="text",
      source_description="plugin-release skill",
      last_n_episodes=0
@@ -186,31 +180,35 @@ After the release is created:
 
 ## Common Mistakes
 
-| Mistake                                         | Prevention                                                                         |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Forgetting one of the 3 version files           | Always use `mcp__github__push_files` with all 3 in one commit                      |
-| Bumping marketplace.json top-level version      | That's `1.0.0` (schema version) — don't touch it                                   |
-| Creating branch instead of tag                  | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
-| Missing `Co-Authored-By` in version bump commit | Include if Claude authored the bump                                                |
-| Not verifying after release                     | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release`        |
+| Mistake                                            | Prevention                                                                         |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Bumping package.json but not gutt-core plugin.json | Run `npm run check:version` before tagging (CI runs it too)                        |
+| Adding a `version` to marketplace.json             | It carries none by design (GP-852); plugin.json is the source of truth             |
+| Creating branch instead of tag                     | `mcp__github__create_branch` ≠ tag creation — use `gh release create` or GitHub UI |
+| Missing `Co-Authored-By` in version bump commit    | Include if Claude authored the bump                                                |
+| Not verifying after release                        | Always check `mcp__github__list_tags` and `mcp__github__get_latest_release`        |
 
 ## Troubleshooting: Version Sync Issues
 
 If the plugin reports "up to date" but the version is wrong:
 
-1. **Check all 3 version files match:**
+1. **Run the sync check:**
    ```bash
-   grep '"version"' package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
+   npm run check:version
    ```
-2. **Most likely cause:** `marketplace.json` was missed during the last version bump — this is the file the plugin installer checks
-3. **Fix:** Update the out-of-sync file, commit, push, and create a new tag if needed
+2. **Check by hand if needed:**
+   ```bash
+   grep '"version"' package.json gutt-core/.claude-plugin/plugin.json
+   ```
+3. **Most likely cause:** `package.json` and `gutt-core/.claude-plugin/plugin.json` drifted apart, or a new tag was never created. `plugin.json`'s version is the update cache key — if it didn't change, Claude Code reports "already up to date."
+4. **Fix:** Sync the versions, commit, push, and create a new tag.
 
 ## Repository Details
 
 - **Owner:** `iBrain-BVBA`
 - **Repo:** `gutt-claude-code-plugin`
 - **Default branch:** `master`
-- **Version files:** `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+- **Version files:** `package.json`, `gutt-core/.claude-plugin/plugin.json` (+ each plugin's own `.claude-plugin/plugin.json`)
 - **Tag format:** `vX.Y.Z`
 - **Auto-update:** Users with Claude Code auto-update get new versions from git tags
 
@@ -220,11 +218,11 @@ These skills live in the same repo under `skills/`:
 
 - **github-workflow** (`skills/github-workflow/`): Handles pre-merge workflow (PRs, Copilot review). This skill picks up after merge.
 - **memory-capture** (`skills/memory-capture/`): Use to record the release event in organizational memory.
-- **memory-retrieval** (`skills/memory-retrieval/`): Search past release context before starting.
+- **memory-search** (`skills/memory-search/`): Search past release context before starting.
 
 The **jira-ticket-creation** skill lives in the user's Cowork skills directory and can be used to link releases to Jira tickets (e.g., GP-530).
 
 ## Version
 
 Version: 1.0.0
-Compatible with: gutt-claude-code-plugin v1.2.0+
+Compatible with: gutt-pro v1.2.0+

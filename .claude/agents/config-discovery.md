@@ -95,7 +95,7 @@ Output markdown with:
 
 ## Recommendations
 
-1. Install gutt-claude-code-plugin in all repos
+1. Install gutt-pro in all repos
 2. Update outdated components
 ```
 
