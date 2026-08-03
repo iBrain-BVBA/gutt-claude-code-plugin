@@ -9,13 +9,13 @@ description: "Handles the gutt-pro release process: version bump, tag creation, 
 
 ## When to Use
 
-After merging feature/fix PRs to master, when it's time to cut a new release. This skill handles version bumping, tagging, and release creation.
+After merging feature/fix PRs to main, when it's time to cut a new release. This skill handles version bumping, tagging, and release creation.
 
 ## Pre-Release Checklist
 
 Before starting, verify:
 
-1. **All PRs merged** — no open PRs targeting master that should be included
+1. **All PRs merged** — no open PRs targeting main that should be included
 2. **Tests pass** — run `node tests/cursor-host.test.cjs` and any other test suites
 3. **No broken hooks** — quick smoke test: `node tests/test-all-hooks.cjs` should pass
 4. **Changelog reviewed** — know what's in this release (check merged PRs since last tag)
@@ -49,19 +49,19 @@ Each plugin's `.claude-plugin/plugin.json` `"version"` is the **single source of
 
 **Do NOT** add a `"version"` to `.claude-plugin/marketplace.json` or any of its entries — `plugin.json` is the source of truth, and `npm run check:version` (Step 2b) fails if a stray version appears there.
 
-Use `mcp__github__push_files` to update the changed manifests in a single commit to master:
+Use `mcp__github__push_files` to update the changed manifests in a single commit to main:
 
 ```
 mcp__github__push_files(
   owner="iBrain-BVBA",
   repo="gutt-claude-code-plugin",
-  branch="master",
+  branch="main",
   message="chore: bump version to X.Y.Z",
   files=[...package.json + the bumped plugin.json file(s)...]
 )
 ```
 
-**NOTE:** Version bump commits go directly to master. This is an intentional exception to the PR workflow — version bumps are mechanical (no code logic changes) and happen after all feature PRs are already merged and reviewed. The github-workflow skill's "no direct pushes to master" rule does not apply to version bump commits.
+**NOTE:** Version bump commits go directly to main. This is an intentional exception to the PR workflow — version bumps are mechanical (no code logic changes) and happen after all feature PRs are already merged and reviewed. The github-workflow skill's "no direct pushes to main" rule does not apply to version bump commits. Note that `main` is a protected branch requiring a PR and one approving review, so a direct push needs an admin bypass; if that is not available, put the bump in a one-commit PR.
 
 ## Step 2b: Verify Version Sync
 
@@ -88,7 +88,7 @@ Examples: `v1.3.0`, `v1.2.7`, `v2.0.0`
 ```bash
 gh release create vX.Y.Z \
   --repo iBrain-BVBA/gutt-claude-code-plugin \
-  --target master \
+  --target main \
   --title "vX.Y.Z - <Release Title>" \
   --notes "<release notes>"
 ```
@@ -101,7 +101,7 @@ The GitHub MCP tools do NOT include `create_release` or `create_tag`. If `gh` CL
 2. Direct the user to: `https://github.com/iBrain-BVBA/gutt-claude-code-plugin/releases/new`
 3. Provide:
    - Tag: `vX.Y.Z`
-   - Target: `master`
+   - Target: `main`
    - Title: `vX.Y.Z - <Release Title>`
    - Release notes (pre-written)
 
@@ -207,7 +207,7 @@ If the plugin reports "up to date" but the version is wrong:
 
 - **Owner:** `iBrain-BVBA`
 - **Repo:** `gutt-claude-code-plugin`
-- **Default branch:** `master`
+- **Default branch:** `main`
 - **Version files:** `package.json`, `gutt-core/.claude-plugin/plugin.json` (+ each plugin's own `.claude-plugin/plugin.json`)
 - **Tag format:** `vX.Y.Z`
 - **Auto-update:** Users with Claude Code auto-update get new versions from git tags
