@@ -19,6 +19,12 @@
       "source": "./gutt-mentor",
       "description": "Individual development programs and progress tracking in personal memory, via GUTT",
       "category": "productivity"
+    },
+    {
+      "name": "gutt-developer",
+      "source": "./gutt-developer",
+      "description": "Developer skills for Jira tickets — context research, duplicate detection, estimate grounding — backed by GUTT organizational memory",
+      "category": "productivity"
     }
   ]
 }

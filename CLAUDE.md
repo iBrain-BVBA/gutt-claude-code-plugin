@@ -12,13 +12,14 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 
 ```
 gutt-plugins/               # marketplace repo (root is NOT a plugin)
-├── .claude-plugin/         # marketplace.json — lists gutt-core + gutt-mentor
+├── .claude-plugin/         # marketplace.json — lists gutt-core + gutt-mentor + gutt-developer
 ├── gutt-core/              # core plugin (name + displayName: gutt-pro; dir name kept)
 │   ├── .claude-plugin/     # plugin.json
 │   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
 │   ├── skills/ agents/ commands/
 │   └── rules/ mcp.json config.json.example
 ├── gutt-mentor/            # mentor plugin (depends on gutt-core) — onboarding + mentor agents, personal-scope program design/tracking
+├── gutt-developer/         # developer plugin (depends on gutt-core) — Jira ticket skills: research, duplicates, estimate; no hooks
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── tests/                  # Unit and E2E tests
 ├── evals/                  # prompt/skill bench — not shipped, not in test:all (see below)
