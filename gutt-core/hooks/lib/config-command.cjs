@@ -4,7 +4,8 @@
  *
  * `/gutt-pro:config`, `/gutt-pro:on`, `/gutt-pro:off [minutes|session]`,
  * `/gutt-pro:disable`, `/gutt-pro:mode auto|hitl`,
- * `/gutt-pro:statusline [off|status]`. Everything here is
+ * `/gutt-pro:statusline [off|status]`,
+ * `/gutt-pro:agent-scope [show|<type> <name>]`. Everything here is
  * deterministic: the UserPromptSubmit hook hands us the raw prompt text, we parse
  * it, mutate `config.json` through `runtime-config.cjs`, and return the outcome as
  * a string for the hook to inject as `additionalContext`. No model reads the
@@ -56,7 +57,7 @@ const PLUGIN_PREFIX = "gutt-pro";
  * `gutt-core/commands/<verb>.md`, or the typed command expands to nothing and the
  * outcome this module injects has no reply to sit alongside.
  */
-const VERBS = ["config", "on", "off", "disable", "mode", "statusline"];
+const VERBS = ["config", "on", "off", "disable", "mode", "statusline", "agent-scope"];
 
 /**
  * Verbs accepted **only** in their namespaced spelling.
@@ -76,11 +77,32 @@ const VERBS = ["config", "on", "off", "disable", "mode", "statusline"];
  * asking. So the collision has to prevent the write, not merely announce it after
  * the fact.
  *
+ * `agent-scope` is here for the second half of that reasoning rather than the first.
+ * No built-in claims the name, but the test the entry really encodes is whether the
+ * attribution line is a sufficient mitigation — and it is sufficient only where
+ * `/gutt-pro:on` can undo what happened. A bound scope cannot be undone: it becomes
+ * the name agents register under, registration merges on name and group, and org
+ * writes cannot be deleted or reassigned. So a prompt that may have been aimed at
+ * someone else's `/agent-scope` must not reach the write, and being told afterwards
+ * is not a remedy.
+ *
  * A `Set` rather than a second array because membership is the only question asked
  * of it, and it will not stay a single entry — every verb this plugin adds whose
  * name a built-in might also want belongs here.
  */
-const NAMESPACED_ONLY = new Set(["statusline"]);
+const NAMESPACED_ONLY = new Set(["statusline", "agent-scope"]);
+
+/**
+ * How many words a verb may take after itself. One is the rule, because a longer tail
+ * is nearly always prose the user did not mean as an argument — `/gutt-pro:off 30 and
+ * fix the tests` must not snooze.
+ *
+ * `agent-scope` is the exception: its form is a type *and* a value
+ * (`agent-scope project acme`), so a second word is the argument rather than a tail.
+ * Listed per-verb rather than raised globally so `off` keeps the protection the bound
+ * exists for.
+ */
+const MAX_ARGS = { "agent-scope": 2 };
 
 /**
  * Bounds on `/gutt-pro:off <minutes>`: whole minutes, 1 minute to 7 days.
@@ -97,7 +119,8 @@ const MAX_MINUTES = 10080;
 const FORMS =
   "/gutt-pro:config, /gutt-pro:on, /gutt-pro:off, /gutt-pro:off <minutes>, " +
   "/gutt-pro:off session, /gutt-pro:disable, /gutt-pro:mode auto, /gutt-pro:mode hitl, " +
-  "/gutt-pro:statusline, /gutt-pro:statusline off, /gutt-pro:statusline status";
+  "/gutt-pro:statusline, /gutt-pro:statusline off, /gutt-pro:statusline status, " +
+  `/gutt-pro:agent-scope show, /gutt-pro:agent-scope ${config.SCOPE_TYPES.join("|")} <name>`;
 
 /**
  * `YYYY-MM-DD HH:MM` in local time. Hand-rolled rather than `toLocaleString`,
@@ -193,7 +216,7 @@ function plural(n, word) {
  * answer; that is rare enough, and loud beats quiet in both directions.
  *
  * @param {unknown} raw
- * @returns {{verb: string|null, arg: string|null, typed: string, bare: boolean}|null}
+ * @returns {{verb: string|null, arg: string|null, value: string|null, typed: string, bare: boolean}|null}
  */
 function parseCommand(raw) {
   const typed = typeof raw === "string" ? raw.trim() : "";
@@ -228,12 +251,14 @@ function parseCommand(raw) {
 
   const rest = words.slice(1);
   const arg = rest[0] ?? null;
-  // A second argument is always wrong — no form takes two — so it is carried
-  // through as an unrecognised parse rather than ignored.
-  if (rest.length > 1) {
-    return { verb: null, arg: null, typed, bare };
+  const value = rest[1] ?? null;
+  // A tail longer than the verb accepts is carried through as an unrecognised parse
+  // rather than ignored, so the reply names it instead of applying half of it. See
+  // `MAX_ARGS` for why the bound is per-verb.
+  if (rest.length > (MAX_ARGS[verb] ?? 1)) {
+    return { verb: null, arg: null, value: null, typed, bare };
   }
-  return { verb, arg, typed, bare };
+  return { verb, arg, value, typed, bare };
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +400,8 @@ function renderConfig(sessionId, now) {
   if (state === "unreadable") {
     return (
       `gutt configuration could not be read from ${file}: the file is present but is not ` +
-      "valid JSON. The built-in defaults are in force — recall enabled, capture mode auto, " +
+      "valid JSON, or is JSON that is not a settings object. The built-in defaults are in " +
+      "force — recall enabled, capture mode auto, " +
       "no snooze — and no setting can be saved until it is fixed, because a write would have " +
       "to overwrite state gutt could not read. Move the file aside or delete it and gutt " +
       "will recreate it."
@@ -836,39 +862,258 @@ function runMode(arg) {
  * @returns {string}
  */
 function attributeBare(outcome, verb) {
+  // A null verb is a command whose tail failed the parse: it was read, not applied,
+  // and the attribution must not claim otherwise.
   const form = verb ? `/${PLUGIN_PREFIX}:${verb}` : `a /${PLUGIN_PREFIX} command`;
+  const claim = verb ? "and acted on it" : "but could not apply it";
+  const explicit = verb ? form : `the /${PLUGIN_PREFIX}:<verb> spelling`;
   return (
-    `gutt read the bare command in this prompt as ${form} and acted on it. ` +
-    `Use ${form} explicitly if another plugin also provides that name.\n${outcome}`
+    `gutt read the bare command in this prompt as ${form} ${claim}. ` +
+    `Use ${explicit} explicitly if another plugin also provides that name.\n${outcome}`
   );
+}
+
+// ---------------------------------------------------------------------------
+// `/gutt-pro:agent-scope`
+// ---------------------------------------------------------------------------
+
+/**
+ * The phrase `commands/agent-scope.md` branches on to know it must run the interactive
+ * flow rather than relay a result.
+ *
+ * A literal shared between code and prompt text, because the alternative is the command
+ * file pattern-matching a sentence and the two drifting apart silently. Both halves of
+ * that contract are asserted by a test: this string appears in the no-argument outcome,
+ * and it appears in the command file.
+ */
+const SCOPE_NO_ARG = "no argument given";
+
+/**
+ * How the effective agent scope was arrived at, in words.
+ *
+ * `show` names the step as well as the value, because the fallback steps are derived
+ * rather than chosen: a user seeing only `--acme-web` cannot tell whether they set it or
+ * whether it came off a git remote, and those differ in whether moving the checkout
+ * changes the agent's identity.
+ *
+ * The derived steps are described, not computed. Resolving a git remote means running
+ * git, which this module does not do on a prompt hook — and the value is the agent's
+ * business at registration time, not this command's.
+ *
+ * @param {{type: string, value: string}|null} bound
+ * @returns {string}
+ */
+function scopeSource(bound) {
+  if (bound) {
+    return (
+      `bound here as a ${bound.type} scope, so agents that register from this working ` +
+      `directory do so as <name>--${bound.value}`
+    );
+  }
+  return (
+    "not bound here, so an agent derives one instead — from the git remote's owner/repo, " +
+    "or the working folder's name when there is no remote"
+  );
+}
+
+/**
+ * A clause naming a stored record this version will not act on, or the empty string.
+ *
+ * Worth its own sentence because the record is evidence about the graph, not just a bad
+ * setting: if a label is stored, agents may already have registered under it, and that
+ * identity is permanent whether or not this version understands the record wrapping it.
+ * Reporting a bind over such a record as a first bind would throw away the only local
+ * trace of what those agents are called.
+ *
+ * `replaced` switches the tense. The state is read before the write, so on a successful
+ * bind the record being described is already gone — saying it "is stored" would send the
+ * user looking in the file for something this command just overwrote.
+ *
+ * @param {Object|null} stored
+ * @param {boolean} [replaced] - true when the caller has since overwritten the record
+ * @returns {string}
+ */
+function unrecognisedClause(stored, replaced = false) {
+  // This is the one render path whose value FAILED validation — config.json is
+  // hand-editable, so the label may hold anything (newlines, arbitrary length) and
+  // is shown escaped and capped rather than interpolated raw into the context.
+  const raw = typeof stored?.value === "string" && stored.value ? stored.value : null;
+  const label = raw && JSON.stringify(raw.length > 64 ? `${raw.slice(0, 64)}…` : raw);
+  if (!label) {
+    return replaced
+      ? " Note: a stored record that this version does not recognise was replaced."
+      : " Note: a record is stored here that this version does not recognise, so it is being" +
+          " treated as nothing bound.";
+  }
+  const held = replaced
+    ? `a record naming ${label} was stored here that this version does not recognise, and it ` +
+      `has now been replaced`
+    : `a record naming ${label} is stored here that this version does not recognise, so it is ` +
+      `being treated as nothing bound`;
+  return (
+    ` Note: ${held} — agents may already be registered as <name>--${label}. That identity ` +
+    "cannot be reassigned, and nothing here changes it."
+  );
+}
+
+/**
+ * `/gutt-pro:agent-scope [show|<type> <name>]`.
+ *
+ * Binding is per *working directory*, not per repo — see the key `projectKey` returns.
+ * The value is what agents suffix their registered name with. Two directories bound to
+ * the same value deliberately share one agent identity and therefore one pool of
+ * agent-scoped memory; two different values are isolated.
+ *
+ * Nothing here can un-bind a scope. Registration merges on name and group, so a value
+ * that has been written to is an identity that already exists in the graph and cannot be
+ * withdrawn — rebinding creates a *new* identity and abandons the old one rather than
+ * renaming it. That is why a bad type or an unusable label is refused outright instead of
+ * being normalised: a silently rewritten label is a different permanent identity from the
+ * one that was typed.
+ *
+ * @param {string|null} arg
+ * @param {string|null} value
+ * @param {Object} payload - the hook payload, for the per-project key
+ * @returns {string}
+ */
+function runAgentScope(arg, value, payload) {
+  // Required here rather than at the top of the file: only this verb needs it, and this
+  // module loads on every prompt. `require` caches, so a second invocation is free.
+  const { projectKey } = require("./builtin-memory.cjs");
+  const key = projectKey(payload);
+  if (!key) {
+    return (
+      "gutt could not tell which project this is, so the agent scope was neither read nor " +
+      "changed. This needs the session's transcript path or its working directory, and the " +
+      "hook received neither."
+    );
+  }
+
+  const { state, scope: bound, stored } = config.readAgentScopeState(key);
+
+  // An unreadable config.json is not an unbound one. Saying "not bound here" on a file
+  // that failed to parse is the mistake `runOn` was rewritten to stop making, and here it
+  // would invite the user to bind a scope this directory may already have.
+  if (state === "unreadable") {
+    return (
+      "gutt could not read the agent scope: config.json is present but gutt could not read " +
+      "settings out of it, so whether this working directory is bound is unknown — and " +
+      "nothing can be bound until the file is fixed, because a write would have to " +
+      "overwrite state gutt could not read. Move it aside or delete it and gutt will " +
+      "recreate it. Nothing was changed."
+    );
+  }
+
+  const rejected = state === "unrecognised" ? unrecognisedClause(stored) : "";
+
+  // No argument: report, and leave the interactive flow to the command file. The hook
+  // cannot ask a question, and answering one would need a model.
+  if (arg === null) {
+    return (
+      `gutt agent scope — ${SCOPE_NO_ARG}, so nothing was read as a request to change ` +
+      `anything. As it stands: ${scopeSource(bound)}.${rejected}`
+    );
+  }
+
+  const kind = arg.toLowerCase();
+  if (kind === "show") {
+    // A tail on `show` is named rather than dropped, for the reason `config` names one:
+    // `agent-scope show acme` looks like it set something.
+    return value === null
+      ? `gutt agent scope for this working directory: ${scopeSource(bound)}.${rejected}`
+      : `gutt did not recognise "${arg} ${value}" — show takes no argument, and it changes ` +
+          "nothing. Use /gutt-pro:agent-scope <type> <name> to bind one. Nothing was changed.";
+  }
+
+  if (!config.SCOPE_TYPES.includes(kind)) {
+    return (
+      "gutt did not change the agent scope: the scope types are " +
+      `${config.SCOPE_TYPES.join(", ")}, not "${arg}". Use /gutt-pro:agent-scope <type> ` +
+      "<name>, or /gutt-pro:agent-scope show. Nothing was changed."
+    );
+  }
+
+  if (value === null) {
+    return (
+      `gutt did not change the agent scope: ${kind} needs a name, as ` +
+      `/gutt-pro:agent-scope ${kind} <name>. Nothing was changed.`
+    );
+  }
+
+  // Refused rather than normalised. The value lands inside a registered agent name, so a
+  // silently rewritten label is a different permanent identity from the one typed — and
+  // two people typing what they each think is the same label would get one apiece.
+  if (!config.isScopeValue(value)) {
+    return (
+      `gutt did not change the agent scope: "${value}" is not usable as a scope name. Use ` +
+      "lower-case letters and digits separated by single dashes, starting and ending with a " +
+      `letter or digit, at most ${config.SCOPE_VALUE_MAX} characters. Nothing was changed.`
+    );
+  }
+
+  if (bound && bound.value === value && bound.type === kind) {
+    return (
+      `gutt agent scope for this working directory is already the ${kind} scope ${value}, ` +
+      `unchanged — agents here register as <name>--${value}.`
+    );
+  }
+
+  if (!config.setAgentScope(key, kind, value)) {
+    return writeFailed();
+  }
+
+  // The identity is the value alone, so a type-only change abandons nothing and must not
+  // be reported as though it had. Only a changed value strands a previous identity.
+  let change;
+  if (bound && bound.value === value) {
+    change =
+      `is now labelled a ${kind} scope rather than a ${bound.type} one. The value is ` +
+      `unchanged, so the identity is the same: agents here still register as <name>--${value}.`;
+  } else {
+    const was = bound
+      ? ` It was the ${bound.type} scope ${bound.value}; agents already registered as ` +
+        `<name>--${bound.value} keep that identity and their memory stays with it.`
+      : "";
+    change =
+      `is now the ${kind} scope ${value} — agents here register as <name>--${value}, and any ` +
+      `other working directory bound to ${value} shares that identity and its memory.${was}`;
+  }
+  const replacedNote = state === "unrecognised" ? unrecognisedClause(stored, true) : "";
+  return `gutt agent scope for this working directory ${change}${replacedNote}`;
 }
 
 /**
  * Run the config command in `rawPrompt`, if there is one.
  *
+ * `payload` is read only by the verbs that keep per-project state, and only after the
+ * parse has succeeded — so an ordinary prompt still costs one character comparison and
+ * no path work.
+ *
  * @param {unknown} rawPrompt - the prompt exactly as submitted, untruncated
  * @param {string|null} [sessionId]
  * @param {number} [now]
+ * @param {Object} [payload] - the hook payload, for verbs keyed per project
  * @returns {string|null} text for the hook to inject, or null when the prompt is
  *   not a config command and the hook should stay silent
  */
-function configCommandResult(rawPrompt, sessionId = null, now = Date.now()) {
+function configCommandResult(rawPrompt, sessionId = null, now = Date.now(), payload = {}) {
   const parsed = parseCommand(rawPrompt);
   if (!parsed) {
     return null;
   }
-  const outcome = runVerb(parsed, sessionId, now);
+  const outcome = runVerb(parsed, sessionId, now, payload);
   return parsed.bare ? attributeBare(outcome, parsed.verb) : outcome;
 }
 
 /**
  * Dispatch a parsed command to its handler.
- * @param {{verb: string|null, arg: string|null, typed: string}} parsed
+ * @param {{verb: string|null, arg: string|null, value: string|null, typed: string}} parsed
  * @param {string|null} sessionId
  * @param {number} now
+ * @param {Object} [payload]
  * @returns {string}
  */
-function runVerb(parsed, sessionId, now) {
+function runVerb(parsed, sessionId, now, payload = {}) {
   switch (parsed.verb) {
     case "config":
       // `config` takes no argument, so one is a typo worth naming rather than
@@ -895,6 +1140,8 @@ function runVerb(parsed, sessionId, now) {
       return runMode(parsed.arg);
     case "statusline":
       return runStatusline(parsed.arg, parsed.typed);
+    case "agent-scope":
+      return runAgentScope(parsed.arg, parsed.value, payload);
     default:
       return (
         `gutt did not recognise "${parsed.typed}". The forms are: ${FORMS}. ` +
@@ -909,6 +1156,11 @@ module.exports = {
   NAMESPACED_ONLY,
   MIN_MINUTES,
   MAX_MINUTES,
+  MAX_ARGS,
+  // The code half of the contract with `commands/agent-scope.md`, which branches on this
+  // phrase to decide whether to run the interactive flow. Exported so a test can assert
+  // both halves still contain it rather than trusting two files to stay in step.
+  SCOPE_NO_ARG,
   parseCommand,
   configCommandResult,
   // Exported for tests. Pure, and the one piece of this surface where the framing can

@@ -85,7 +85,7 @@ wrong is written once and never corrected:
 | `mode`                           | `/gutt-pro:mode`                     | `runtime-config.cjs` (GP-866) | machine-global  |
 | `snoozeUntil`, `snoozeSessionId` | `/gutt-pro:off [N\|session]`, sweeps | `runtime-config.cjs` (GP-863) | machine-global  |
 | `migrationsVersion`              | `migrations.cjs` (GP-895)            | `migrations.cjs`              | machine-global  |
-| `projects`                       | migration offer (GP-922)             | `runtime-config.cjs` (GP-922) | **per project** |
+| `projects`                       | migration offer, agent scope         | `runtime-config.cjs`          | **per project** |
 | `statusline`                     | `/gutt-pro:statusline` (GP-867)      | `runtime-config.cjs` (GP-867) | machine-global  |
 
 `runtime-config.cjs` may mutate only the keys in its `OWNED_KEYS` list — the two
@@ -120,10 +120,16 @@ skip a repo still holding a full local store.
   "projects": {
     "-Users-me-projects-app": {
       "memoryMigration": { "status": "migrated", "at": "2026-07-29T18:00:00.000Z" },
+      "agentScope": { "type": "project", "value": "acme-web" },
     },
   },
 }
 ```
+
+Two sub-keys, written by two different commands, which is why both writers spread the
+existing record forward rather than replacing it: dropping the spread in either would
+destroy the other's answer, and a lost `memoryMigration` is indistinguishable from never
+having been asked, so the offer would return forever.
 
 **Keyed by the encoded Claude Code project-directory name** — the basename of the
 directory holding the session transcript, e.g. `-Users-me-projects-app`. Derived from
@@ -144,6 +150,27 @@ file cannot become a permanent silence.
 This record is machine-local while the store it describes is not, which is why it is
 not the only gate on the offer — see `hooks/lib/builtin-memory.cjs` for the structural
 second one.
+
+#### `agentScope`
+
+`{type, value}`, written by `/gutt-pro:agent-scope`. `type` is one of `project`, `team`
+or `individual` and is a label for whoever reads it back; the `value` alone becomes the
+`--<scope>` suffix on agent names registered from this directory, so two directories
+share an agent identity when their **values** match, whatever type each was set as.
+
+`value` is validated on write **and on read**, against lower-case letters and digits
+separated by single dashes. Both ends, because the file is hand-editable and the value
+decides an identity that cannot be withdrawn — registration merges on name and group, and
+org writes cannot be deleted or reassigned. A record this version will not act on is
+reported as such rather than treated as absent, since a stored label is evidence that
+agents may already carry it.
+
+Inheriting the migration record's key has one consequence worth stating plainly: the key
+is the working directory, not the repository. A second checkout of one project is two
+bindings, a session started from a subdirectory is a third, and the lossy encoding means
+two unrelated directories can share one. That is correct for "has this store been dealt
+with" and merely tolerable for an identity — the honest fix needs the git repository
+root, which a prompt hook does not shell out for.
 
 ### Retired locations
 

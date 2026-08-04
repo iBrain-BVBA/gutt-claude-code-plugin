@@ -44,7 +44,7 @@ const {
 const { guttToolAvailability } = require("./lib/mcp-availability.cjs");
 const { isSuppressed } = require("./lib/runtime-config.cjs");
 const { configCommandResult } = require("./lib/config-command.cjs");
-const { guard } = require("./lib/debug.cjs");
+const { guard, debugLog } = require("./lib/debug.cjs");
 const { isNestedRun } = require("./lib/nested-run.cjs");
 
 // Nothing to do inside a judge subprocess: its prompt is ours, not the user's, so a
@@ -147,14 +147,24 @@ process.stdin.on("end", () => {
   let prompt = "unknown";
   let sessionId = "unknown";
   let transcriptPath = null;
+  // Carried for the config verbs that keep per-project state and so need to know which
+  // project this is. Kept as the two fields `projectKey()` reads rather than the whole
+  // payload, so an unparseable stdin leaves it empty instead of undefined.
+  let payload = {};
   try {
     const data = JSON.parse(input.replace(/^\uFEFF/, "").trim() || "{}");
     rawPrompt = String(data.prompt || data.message || "unknown");
     prompt = rawPrompt.slice(0, 200);
     sessionId = data.session_id || "unknown";
     transcriptPath = data.transcript_path || null;
-  } catch {
-    // Unparseable stdin still exits 0 — this hook must never block a prompt.
+    payload = { cwd: data.cwd, transcript_path: data.transcript_path };
+  } catch (err) {
+    // Unparseable stdin still exits 0 — this hook must never block a prompt. Logged
+    // rather than swallowed outright, because a dropped payload now costs more than a
+    // missed recall pointer: a `/gutt-pro:*` command typed in this turn is silently not
+    // applied, and the user reads the command file's "nothing was applied" as fact.
+    // Exiting 0 does not require leaving no trace.
+    debugLog("UserPromptSubmit", `unreadable stdin; prompt not routed: ${err.message}`);
   }
 
   init(sessionId);
@@ -182,7 +192,7 @@ process.stdin.on("end", () => {
     // Above `advanceTurn()` for the same reason row 1 is: a config turn is
     // bookkeeping, not conversation. Burning `firstPromptPending` on `/gutt-pro:config`
     // would cost the session its one memory pointer.
-    const commandResult = configCommandResult(rawPrompt, sessionId);
+    const commandResult = configCommandResult(rawPrompt, sessionId, Date.now(), payload);
     if (commandResult) {
       emit(commandResult);
       return;
