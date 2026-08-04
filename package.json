@@ -1,6 +1,6 @@
 {
   "name": "gutt-pro",
-  "version": "3.0.0",
+  "version": "3.0.2",
   "description": "GUTT Plugin for Claude Code - Memory integration and enhanced tooling",
   "private": true,
   "type": "module",
@@ -8,6 +8,7 @@
     "gutt-core",
     "gutt-mentor",
     "gutt-developer",
+    "gutt-product",
     "docs",
     ".claude-plugin",
     "README.md",

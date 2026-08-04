@@ -266,6 +266,28 @@ All three are read-only: they never edit ticket fields, post at most one
 user-approved comment, and write nothing to memory (a durable finding routes
 through `memory-capture` and its trust-tier gate).
 
+### Backlog prioritization (gutt-product plugin)
+
+Product-leadership skills for Jira backlogs, shipped as a separate plugin that
+depends on gutt-pro and composes its curriculum skills the same way. No hooks,
+no agents:
+
+| Skill                    | Purpose                                                                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `backlog-prioritization` | Ranks a backlog slice on the project's own criteria, each position justified by cited evidence, plus a one-page summary for leadership |
+
+A backlog ordered on ticket fields alone re-decides what the organization has
+already decided. This skill puts the evidence that changes the order next to
+each item — decisions and client commitments that bind it, dependencies, history
+in the areas it touches, overlap with its neighbours — and reports the order
+that implies. The criteria come from the project's own field schema, read at
+runtime, so a team's custom value or effort fields are used rather than an
+imported scoring framework.
+
+Read-only against Jira like the developer skills: it never writes a rank or
+priority field. The order is a proposal, and items with no supporting evidence
+are labelled as such and left where the board had them.
+
 ## Usage
 
 ### Memory Search
@@ -302,7 +324,7 @@ Capture learnings using one of 4 patterns:
 ```
 gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── .claude-plugin/
-│   └── marketplace.json           # lists gutt-core + gutt-mentor + gutt-developer
+│   └── marketplace.json           # lists gutt-core + gutt-mentor + gutt-developer + gutt-product
 ├── gutt-core/                      # core plugin — name/displayName: gutt-pro (dir keeps its name)
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
@@ -317,6 +339,8 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   └── skills/                     # individual-program-design, progress-tracking
 ├── gutt-developer/                 # developer plugin — Jira ticket skills over org memory (no hooks)
 │   └── skills/                     # ticket-research, ticket-duplicates, ticket-estimate
+├── gutt-product/                   # product plugin — backlog prioritization over org memory (no hooks)
+│   └── skills/                     # backlog-prioritization
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide
 ├── tests/
 ├── package.json

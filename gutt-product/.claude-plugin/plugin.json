@@ -1,0 +1,14 @@
+{
+  "name": "gutt-product",
+  "version": "0.1.0",
+  "dependencies": ["gutt-pro"],
+  "author": {
+    "name": "iBRAIN BV",
+    "email": "support@gutt.pro"
+  },
+  "description": "Product leadership skills for Jira backlogs — memory-backed prioritization with an executive summary — backed by GUTT organizational memory",
+  "homepage": "https://gutt.pro",
+  "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
+  "license": "MIT",
+  "keywords": ["product", "backlog", "prioritization", "jira", "organizational-memory", "gutt"]
+}
