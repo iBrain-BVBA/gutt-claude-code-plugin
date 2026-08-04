@@ -169,6 +169,21 @@ model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
 | `/gutt-pro:on`              | Clear an off, a snooze, and a disable                                                      |
 | `/gutt-pro:mode auto\|hitl` | Set the capture mode: `auto` writes a capture directly, `hitl` confirms each subject first |
 | `/gutt-pro:statusline`      | Install the HUD in your `~/.claude/settings.json` (`off` removes it, `status` reports it)  |
+| `/gutt-pro:agent-scope`     | Bind the agent scope for this directory, or run it bare to be walked through choosing one  |
+
+**Agent scope decides whether agents share memory across checkouts.** The label becomes
+a suffix on every agent name registered here, so `pr-reviewer` becomes
+`pr-reviewer--<label>`. Directories bound to the same label share one agent identity and
+one pool of agent memory; different labels stay isolated. With nothing bound, an agent
+derives a label from the git remote's `owner/repo`, or the working folder's name when
+there is no remote. `/gutt-pro:agent-scope show` reports whether a label is bound here
+and, if it is, which one — it does not resolve the derived steps, because that means
+running git and this is a prompt hook. A registered name cannot be un-merged afterwards,
+which is why binding deliberately beats letting two checkouts collide.
+
+The binding is keyed on the **working directory**, not the repository, and it lives in
+this machine's plugin data. A second checkout, a session started from a subdirectory, or
+a directory that gets moved is a separate binding — re-bind after any of those.
 
 **`off` is temporary and `disable` is durable.** The cheap, reversible action gets the
 short word; turning recall off for good has to be typed on purpose. If you used the 3.0

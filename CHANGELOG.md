@@ -19,6 +19,62 @@
   consolidation, and the risk flags. Read-only against Jira — it never writes a
   rank or priority field, and writes nothing to memory
 
+## [3.0.1] - 2026-08-04
+
+### Added
+
+- **`/gutt-pro:agent-scope` — agent identity binding, so one agent run from two
+  checkouts does not silently become one memory.** The bound label becomes the
+  `--<scope>` suffix on every agent name registered from that working directory, stored
+  per project in `${CLAUDE_PLUGIN_DATA}/config.json` alongside the migration record.
+  Directories bound to the same label share one agent identity and one pool of
+  agent-scoped memory on purpose; different labels stay isolated. `show` reports whether
+  a label is bound here and which one; it names the derived fallbacks — the git remote's
+  `owner/repo`, then the working folder's name — without resolving them, because that
+  means running git and this is a prompt hook.
+
+  Three consequences worth knowing. The convention now says **always suffix**, where it
+  previously said to ship a bare base name unless a clash forced otherwise: a clash is
+  invisible at the moment it matters, because registration merges on name and group and
+  org writes cannot be deleted or reassigned afterwards, so pooling by default is the one
+  unrecoverable choice. `agent-creator` and the `agent-memory-protocol` skill teach the
+  new default. A bad type or an unusable label is refused rather than normalised, because
+  a silently rewritten label is a different permanent identity from the one that was
+  typed — and single dashes are a constraint rather than a preference, since the node ID
+  derived from a name collapses `--` to `-` and a label containing `--` would make two
+  different registered names one node. And the verb is accepted only in its namespaced
+  spelling: the attribution line the other bare verbs rely on assumes `/gutt-pro:on` can
+  undo what happened, which is exactly what a bound identity cannot do.
+
+  The binding is keyed on the working directory rather than the repository, inheriting the
+  migration record's key — so a second checkout, or a session started in a subdirectory,
+  is a separate binding.
+
+  Run bare, the command reports what is in force and hands over to an interactive flow
+  that lists labels already in use, warns about ones belonging to other contexts, and ends
+  by telling you the line to type. It cannot apply the choice itself — the effect comes
+  from the hook that sees the typed prompt, and a command the model invokes never reaches
+  that hook.
+
+### Fixed
+
+- **A `config.json` holding valid JSON that is not an object made every setter report
+  success while storing nothing.** The write path refused a file that failed to parse but
+  passed an array or a scalar straight through, and each setter then assigned its key onto
+  it: on an array that vanishes at stringify time, on a string or number it throws out of
+  the locked write. Either way the caller saw a successful write, so `/gutt-pro:off 30`,
+  `/gutt-pro:mode`, `/gutt-pro:disable` and the per-project records all confirmed changes
+  that never landed. Such a file is now refused the same way an unparseable one is, and
+  reported through the existing "could not save that" path. `/gutt-pro:config` likewise
+  stops rendering built-in defaults under a header saying it read them.
+
+- **A hand-edited scalar under `projects.<key>` silently destroyed that project's
+  records.** Both writers there spread the existing record forward; spreading a string
+  explodes it into indexed character keys, so a `"declined"` migration answer became
+  `{"0":"d","1":"e",…}` and the offer returned every session while the write reported
+  success. Both levels are now coerced to an object first, which turns it into a clean
+  overwrite of a record that could not be read.
+
 ## [3.0.0] - 2026-08-03
 
 ### Added

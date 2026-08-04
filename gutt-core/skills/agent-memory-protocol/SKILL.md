@@ -17,13 +17,53 @@ Use this when you act as a **named agent** (a subagent, a role agent). Writing
 from the main session with no agent identity is just `memory-capture` — no
 registration, no tagging.
 
+## Finding the scope bound to this directory (do this before step 1)
+
+Your registered name carries a `--<scope>` suffix, and the first place to look for its
+value is the binding a person set with `/gutt-pro:agent-scope`. You cannot run that
+command to ask — it only takes effect when a human types it — so read the stored value
+directly:
+
+- **`<DATA_DIR>`** — `${CLAUDE_PLUGIN_DATA}`, interpolated into this sentence for you. Do
+  not pass `$CLAUDE_PLUGIN_DATA` through to a shell and do not `export` it: only hooks are
+  given it, so it expands to nothing in a command you run.
+- Read `<DATA_DIR>/config.json` and look under `projects`. The key is the **name Claude Code
+  gives this project's transcript directory**, which you can derive from your working
+  directory: resolve its symlinks, then replace every path separator, drive-letter colon,
+  `.` and `_` with a single `-` — each character becomes its own dash, so two adjacent ones
+  yield `--` (this is not the run-collapsing rule scope values are normalised with). So
+  `/Users/me/my_app` is `-Users-me-my-app`, `/Users/me/.config/app` is
+  `-Users-me--config-app`, and on Windows `C:\dev\my.app` is `C--dev-my-app`. Take
+  `projects.<that key>.agentScope.value`.
+  - Resolve the symlinks first (`pwd -P`): on macOS `/tmp` and `/var` are links into
+    `/private`, and the unresolved spelling gives a key that never matches.
+  - Match the key **exactly**. If nothing matches, treat it as unbound and fall through —
+    never pick the closest-looking entry, because a wrong match binds this directory to
+    another one's identity, permanently.
+
+Use that value as your scope only when it is in the stored legal form — lower-case letters
+and digits separated by single dashes, at most 64 characters, the same rule the hook
+enforces on read. When the file is missing, the key is absent, the record does not carry a
+plain `value` string, or the value fails that shape check, **there is no binding** — fall
+through to the derived steps in the reference (git remote, then folder name) and normalise
+as it describes. Falling through is the normal case, not an error; do not report it. The one
+exception: a config.json that exists but does not parse says nothing about whether a binding
+is in force — still fall through, but say so in one line, because the identity you register
+is permanent and a binding may exist that could not be read.
+
+Never invent a scope, and never register a bare base name because the lookup came back
+empty — the derived steps always yield something.
+
 ## The protocol
 
 1. **Register first.** `register_agent(name="…", description="…", group_id="…")`
    before any agent-scoped read or tagged write — idempotent, keyed on name +
    group. Pass `group_id` explicitly when you can write to more than one group;
-   keep the returned node `id`/`uuid` for verification (step 5). Resolve the name
-   per the reference (bound config → git remote → folder). If a scoped call later
+   keep the returned node `id`/`uuid` for verification (step 5). The name always
+   carries a `--<scope>` suffix; resolve and normalise it per the reference, taking
+   the first step that yields a value (scope bound here → git remote's `owner/repo`
+   → working folder's name). Never register a bare base name — it merges with
+   whatever already holds that name in the group, and that cannot be undone. If a scoped call later
    fails with an unknown-agent error: re-register, retry. **Read-only agents skip
    this step** — agent scope is provenance over writes, so an agent that never
    writes has an empty scope by construction: skip registration, skip tagging,

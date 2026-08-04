@@ -164,11 +164,21 @@ function readRawConfig() {
  * parse reports values it never read — under a header that says it read them. Every
  * other caller wants a value and is right to take the defaults.
  *
+ * Valid JSON that is not an object counts as unreadable, not as "ok" with odd contents.
+ * An array or a scalar carries none of the keys a caller will ask for, so treating it as
+ * readable means answering every question about it with the default — which is the
+ * misreport this function exists to prevent, arrived at by a different route. It is also
+ * what `updateConfig` refuses to overwrite, so calling it readable here would promise a
+ * write that cannot happen.
+ *
  * @returns {{state: "absent"|"ok"|"unreadable", raw: Object|null}}
  */
 function readRawConfigState() {
   const value = readJsonOrUnreadable(configPath());
-  if (value === UNREADABLE) {
+  if (
+    value === UNREADABLE ||
+    (value !== null && (typeof value !== "object" || Array.isArray(value)))
+  ) {
     return { state: "unreadable", raw: null };
   }
   return value ? { state: "ok", raw: value } : { state: "absent", raw: null };
@@ -295,6 +305,17 @@ function updateConfig(mutate) {
       // failed write the command surface already knows how to report.
       if (stored === UNREADABLE) {
         debugLog("runtime-config", `refusing to overwrite unreadable ${file}`);
+        return false;
+      }
+      // Valid JSON that is not an object gets the same refusal, for the same reason
+      // and one step further along. An array or a scalar parses cleanly, so the check
+      // above passes it through — and then every mutator below assigns its own key
+      // onto it. On an array that assignment succeeds and `JSON.stringify` drops it,
+      // so the write "lands" having stored nothing; on a primitive it throws in strict
+      // mode, out of the locked callback. Both reach the caller as a successful write,
+      // which is the one outcome this module must never report.
+      if (stored !== null && (typeof stored !== "object" || Array.isArray(stored))) {
+        debugLog("runtime-config", `refusing to overwrite non-object ${file}`);
         return false;
       }
       const next = mutate(stored);
@@ -547,6 +568,36 @@ function setStatuslineConsent(installed, now = Date.now()) {
 }
 
 /**
+ * The `projects` map and one project's record from a config being mutated, with both
+ * levels coerced to plain objects.
+ *
+ * Two writers now keep state under `projects.<key>`, and both spread the existing
+ * record forward to avoid clobbering the other's. That spread is what needs guarding:
+ * a hand-edited scalar at either level survives `JSON.parse`, and spreading a string
+ * explodes it into indexed character keys, so `"declined"` becomes
+ * `{"0":"d","1":"e",…}` and the record it stood for is gone while the write reports
+ * success. Coercing both levels to `{}` turns that into a clean overwrite of a record
+ * this module could not read, which is the same trade `updateConfig` makes one level up.
+ *
+ * @param {Object} config - the config object being mutated
+ * @param {string} projectKey
+ * @returns {{projects: Object, record: Object}}
+ */
+function projectRecord(config, projectKey) {
+  const storedProjects = config[PROJECTS_KEY];
+  const projects =
+    storedProjects && typeof storedProjects === "object" && !Array.isArray(storedProjects)
+      ? storedProjects
+      : {};
+  const storedRecord = projects[projectKey];
+  const record =
+    storedRecord && typeof storedRecord === "object" && !Array.isArray(storedRecord)
+      ? storedRecord
+      : {};
+  return { projects, record };
+}
+
+/**
  * Record the answer for one project. Rejects an unknown status rather than storing
  * it — a typo must not silently become a permanent `declined`.
  *
@@ -561,15 +612,133 @@ function setMigrationState(projectKey, status, now = Date.now()) {
   }
   return updateConfig((config) => {
     const next = config || {};
-    const stored = next[PROJECTS_KEY];
-    // Only reuse the stored value when it is actually an object. A corrupt or
-    // hand-edited scalar here would otherwise throw inside the lock, and a throw
-    // inside the lock is a lock left held.
-    const projects = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    const { projects, record } = projectRecord(next, projectKey);
     projects[projectKey] = {
-      ...projects[projectKey],
+      ...record,
       memoryMigration: { status, at: new Date(now).toISOString() },
     };
+    next[PROJECTS_KEY] = projects;
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Agent scope binding, per project
+// ---------------------------------------------------------------------------
+
+/**
+ * The scope types the binding accepts. The type is a label for the person reading
+ * `agent-scope show`; the registered agent name is built from the value alone. Two
+ * projects therefore share an agent identity when their *values* match, whatever type
+ * each was set as.
+ */
+const SCOPE_TYPES = ["project", "team", "individual"];
+
+/**
+ * What a scope value may be, in one place because three callers must agree.
+ *
+ * The value is pasted into a registered agent name as `<name>--<value>`, and the node
+ * ID derived from that name collapses `--` to a single `-`. So a value containing `--`
+ * makes two different registered names slug to one node: `pr-reviewer--a--b` and
+ * `pr-reviewer--a-b` both become `pr-reviewer-a-b`. Registration merges on name and
+ * group and org writes cannot be reassigned, so that collision is permanent — which is
+ * why single dashes are a constraint here and not a style preference. Leading and
+ * trailing dashes are out for the same reason: they produce names that differ from a
+ * neighbour's only by a character the slug drops.
+ *
+ * Enforced on write *and* on read. `config.json` is a plain file a user can edit, and a
+ * value that reaches an agent decides an identity that cannot be withdrawn, so the
+ * reader cannot assume the writer that stored it was this one.
+ */
+const SCOPE_VALUE = /^[a-z0-9](?:-?[a-z0-9])*$/;
+
+/**
+ * Ceiling on a scope value's length. Nothing breaks at 65 characters; the bound exists
+ * because the value becomes a permanent node name and a pasted paragraph should be
+ * refused while it is still refusable.
+ */
+const SCOPE_VALUE_MAX = 64;
+
+/**
+ * Is this usable as a scope value? Exported so the command surface refuses with the
+ * same rule the store enforces, rather than a second copy of it that can drift.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isScopeValue(value) {
+  return typeof value === "string" && value.length <= SCOPE_VALUE_MAX && SCOPE_VALUE.test(value);
+}
+
+/**
+ * The bound agent scope for one project, with the reasons it might be absent kept
+ * apart.
+ *
+ * Four states, because a caller that collapses them misreports. `absent` means nothing
+ * is bound. `unreadable` means `config.json` did not parse, so whether something is
+ * bound is unknown — answering "nothing is bound" there is the mistake `runOn` was
+ * rewritten to stop making. `unrecognised` means a record *is* stored that this version
+ * will not act on; the raw record comes back with it so the caller can name the label
+ * it holds, because agents may already be registered under it.
+ *
+ * @param {string|null} projectKey - from `builtin-memory.projectKey()`
+ * @returns {{state: "absent"|"ok"|"unreadable"|"unrecognised", scope: {type: string, value: string}|null, stored: Object|null}}
+ */
+function readAgentScopeState(projectKey) {
+  if (!projectKey) {
+    return { state: "absent", scope: null, stored: null };
+  }
+  const { state, raw } = readRawConfigState();
+  if (state === "unreadable") {
+    return { state: "unreadable", scope: null, stored: null };
+  }
+  const stored = raw?.[PROJECTS_KEY]?.[projectKey]?.agentScope ?? null;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return {
+      state: stored === null || stored === undefined ? "absent" : "unrecognised",
+      scope: null,
+      stored,
+    };
+  }
+  if (!SCOPE_TYPES.includes(stored.type) || !isScopeValue(stored.value)) {
+    return { state: "unrecognised", scope: null, stored };
+  }
+  return { state: "ok", scope: { type: stored.type, value: stored.value }, stored };
+}
+
+/**
+ * The bound agent scope for one project, or null when nothing usable is bound.
+ *
+ * The plain accessor, for callers that only need the value. Anything reporting to a
+ * user wants `readAgentScopeState` instead, so it can tell "nothing bound" from "could
+ * not read" from "stored but not understood".
+ *
+ * @param {string|null} projectKey
+ * @returns {{type: string, value: string}|null}
+ */
+function readAgentScope(projectKey) {
+  return readAgentScopeState(projectKey).scope;
+}
+
+/**
+ * Bind an agent scope to one project.
+ *
+ * Validates the value's shape here as well as at the command surface. This is
+ * exported, so the command is not guaranteed to be the only caller — and the cost of a
+ * bad value getting through is a permanent agent identity, not a bad setting.
+ *
+ * @param {string|null} projectKey
+ * @param {string} type
+ * @param {string} value
+ * @returns {boolean} true if written
+ */
+function setAgentScope(projectKey, type, value) {
+  if (!projectKey || !SCOPE_TYPES.includes(type) || !isScopeValue(value)) {
+    return false;
+  }
+  return updateConfig((config) => {
+    const next = config || {};
+    const { projects, record } = projectRecord(next, projectKey);
+    projects[projectKey] = { ...record, agentScope: { type, value } };
     next[PROJECTS_KEY] = projects;
     return next;
   });
@@ -604,4 +773,11 @@ module.exports = {
   readMigrationState,
   isMigrationSettled,
   setMigrationState,
+  // agent scope binding
+  SCOPE_TYPES,
+  SCOPE_VALUE_MAX,
+  isScopeValue,
+  readAgentScope,
+  readAgentScopeState,
+  setAgentScope,
 };
