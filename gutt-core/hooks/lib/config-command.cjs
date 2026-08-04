@@ -862,10 +862,14 @@ function runMode(arg) {
  * @returns {string}
  */
 function attributeBare(outcome, verb) {
+  // A null verb is a command whose tail failed the parse: it was read, not applied,
+  // and the attribution must not claim otherwise.
   const form = verb ? `/${PLUGIN_PREFIX}:${verb}` : `a /${PLUGIN_PREFIX} command`;
+  const claim = verb ? "and acted on it" : "but could not apply it";
+  const explicit = verb ? form : `the /${PLUGIN_PREFIX}:<verb> spelling`;
   return (
-    `gutt read the bare command in this prompt as ${form} and acted on it. ` +
-    `Use ${form} explicitly if another plugin also provides that name.\n${outcome}`
+    `gutt read the bare command in this prompt as ${form} ${claim}. ` +
+    `Use ${explicit} explicitly if another plugin also provides that name.\n${outcome}`
   );
 }
 
@@ -930,7 +934,11 @@ function scopeSource(bound) {
  * @returns {string}
  */
 function unrecognisedClause(stored, replaced = false) {
-  const label = typeof stored?.value === "string" && stored.value ? stored.value : null;
+  // This is the one render path whose value FAILED validation — config.json is
+  // hand-editable, so the label may hold anything (newlines, arbitrary length) and
+  // is shown escaped and capped rather than interpolated raw into the context.
+  const raw = typeof stored?.value === "string" && stored.value ? stored.value : null;
+  const label = raw && JSON.stringify(raw.length > 64 ? `${raw.slice(0, 64)}…` : raw);
   if (!label) {
     return replaced
       ? " Note: a stored record that this version does not recognise was replaced."
