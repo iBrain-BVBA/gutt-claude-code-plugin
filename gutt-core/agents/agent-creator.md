@@ -156,22 +156,28 @@ Protocol`, capitalised, no trailing parenthetical.
 ### Step 4: Emit the protocol blocks
 
 Fill the scaffold-time placeholders — `<agent-name>`, the description, the capture list, the
-minimum outcome — and leave none behind. The `group_id` line is **not** one of them: it stays
-as written, resolved by the agent at runtime (Step 2 resolved the group only for the collision
-check). Emit the blocks verbatim otherwise — they encode rules that are easy to invert.
+minimum outcome — and leave none behind. Two are **not** scaffold-time and stay as written:
+the `group_id` line, resolved by the agent at runtime (Step 2 resolved the group only for the
+collision check), and `<scope>`, which the emitted block resolves where the agent runs per
+Step 2 — filling it here would bake a value Step 2 says to leave as the rule. Emit the blocks
+verbatim otherwise — they encode rules that are easy to invert.
 
 #### Writers
 
 ````markdown
 ## Agent identity
 
-You act as the registered agent **`<agent-name>`**. Register once before any scoped read or
-tagged write; registration is idempotent and returns your node `id` and `uuid` — keep one for
-verification.
+You act as the registered agent **`<agent-name>--<scope>`**. Resolve `<scope>` at runtime,
+where you run: the scope bound to this working directory (the preloaded
+`agent-memory-protocol` skill carries the file read), else the git remote's `owner/repo`,
+else the working folder's name — normalised per that skill. Never register the base name
+alone: registration merges on name + group, and org writes cannot be reassigned. Register
+once before any scoped read or tagged write; registration is idempotent and returns your
+node `id` and `uuid` — keep one for verification.
 
 ```
 register_agent(
-  name="<agent-name>",
+  name="<agent-name>--<scope>",     # <scope> resolved at runtime, never omitted
   description="<what this agent does, one or two sentences>",
   group_id=<resolved at runtime — the group you write to>)   # pass explicitly when you can write to more than one
 ```
@@ -195,8 +201,8 @@ filter toggled. Stop as soon as the question is answered; an unnecessary hop is 
 thoroughness.
 
 1. **Your scope — "what did I conclude or see before?"**
-   `search_memory_nodes(query="<the specific thing>", agent_id="<agent-name>", include_related=true)`
-   and `fetch_lessons_learned(query="<the specific thing>", agent_id="<agent-name>")`
+   `search_memory_nodes(query="<the specific thing>", agent_id="<agent-name>--<scope>", include_related=true)`
+   and `fetch_lessons_learned(query="<the specific thing>", agent_id="<agent-name>--<scope>")`
 2. **Group-wide — "what does the org know?" Never skip this.** The same calls without
    `agent_id`, phrased as an org question: decisions, other teams' lessons, tickets, ownership.
    Your own scope is empty on a first run; the group graph is not.
@@ -222,7 +228,7 @@ Write what the next run of you would want and could not re-derive. Tool discover
 volume, and write verification are `memory-capture`'s job — it is preloaded, so do not restate
 it. This section only adds identity:
 
-1. **Tag every org write** with `agent_id="<agent-name>"`, and pass `last_n_episodes=0`. Tagging
+1. **Tag every org write** with `agent_id="<agent-name>--<scope>"`, and pass `last_n_episodes=0`. Tagging
    hides nothing: a tagged episode is still found by anyone's un-scoped search, the tag only
    adds it to your scope on top.
 2. **Capture:** `<what this agent should record>`. **Don't capture:** anything already in the

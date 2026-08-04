@@ -1780,6 +1780,37 @@ describe("UserPromptSubmit: deterministic trigger matrix", () => {
     assert.match(ctx, /memory-search/, "the pointer is still owed after a config turn");
   });
 
+  it("row 0: agent-scope gets the payload fields and binds under the project key", () => {
+    // The one case that pins the router-to-verb plumbing. The library suite builds its
+    // own payloads, so dropping the payload argument from the router's
+    // `configCommandResult` call leaves every test green while every real invocation
+    // answers "could not tell which project this is". Only a spawned hook can catch it.
+    runHook(
+      "session-start.cjs",
+      { session_id: "m-scope", source: "startup" },
+      { dataDir: dir, home }
+    );
+    const r = runHook(
+      "user-prompt-submit.cjs",
+      {
+        session_id: "m-scope",
+        prompt: "/gutt-pro:agent-scope project acme",
+        transcript_path: "/tmp/gutt-test/-Users-x-router/session.jsonl",
+      },
+      { dataDir: dir, home }
+    );
+    assert.equal(r.status, 0, r.stderr);
+    const ctx = JSON.parse(r.stdout.trim()).hookSpecificOutput.additionalContext;
+    assert.doesNotMatch(ctx, /could not tell which project/, "payload was not threaded");
+    assert.match(ctx, /--acme/);
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+    assert.deepEqual(
+      raw.projects["-Users-x-router"].agentScope,
+      { type: "project", value: "acme" },
+      "the bind must land under the transcript-derived key"
+    );
+  });
+
   // The highest-value case here. Put row 0 below the suppression row and `/gutt-pro:on`
   // can never un-stick the plugin: the off switch becomes one-way and hand-editing
   // config.json is the only way back. Nothing else would report that.

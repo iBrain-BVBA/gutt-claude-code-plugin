@@ -64,7 +64,7 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
 
 ```
 register_agent(
-  name="pr-reviewer",
+  name="pr-reviewer--acme-web",     # always suffixed; resolve the scope per the Name rules
   description="Reviews PRs for correctness and team standards",
   group_id="<group>")
 ```
@@ -159,12 +159,12 @@ register_agent(
   group_id="<group>")               # omit only if you can write to exactly one group
 
 # Recall before work — your scope, then the group:
-search_memory_nodes(query="<task>", agent_id="<agent-name>", include_related=true)
-fetch_lessons_learned(query="<task>", agent_id="<agent-name>")
+search_memory_nodes(query="<task>", agent_id="<agent-name>--<scope>", include_related=true)
+fetch_lessons_learned(query="<task>", agent_id="<agent-name>--<scope>")
 # … then the same two WITHOUT agent_id, for org-wide knowledge.
 
 # Capture after work — tag every write (write-tool name varies; see memory-capture):
 add_memory(name="<Typed: title>", episode_body="<one self-contained insight>",
-           agent_id="<agent-name>", last_n_episodes=0)
+           agent_id="<agent-name>--<scope>", last_n_episodes=0)
 # Verify when it matters: get_episodes_for_entity("<node id or uuid from registration>")
 ```

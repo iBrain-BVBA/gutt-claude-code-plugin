@@ -30,18 +30,26 @@ directly:
 - Read `<DATA_DIR>/config.json` and look under `projects`. The key is the **name Claude Code
   gives this project's transcript directory**, which you can derive from your working
   directory: resolve its symlinks, then replace every path separator, drive-letter colon,
-  `.` and `_` with a single `-`. So `/Users/me/my_app` is `-Users-me-my-app`, and on Windows
-  `C:\dev\my.app` is `C--dev-my-app`. Take `projects.<that key>.agentScope.value`.
+  `.` and `_` with a single `-` — each character becomes its own dash, so two adjacent ones
+  yield `--` (this is not the run-collapsing rule scope values are normalised with). So
+  `/Users/me/my_app` is `-Users-me-my-app`, `/Users/me/.config/app` is
+  `-Users-me--config-app`, and on Windows `C:\dev\my.app` is `C--dev-my-app`. Take
+  `projects.<that key>.agentScope.value`.
   - Resolve the symlinks first (`pwd -P`): on macOS `/tmp` and `/var` are links into
     `/private`, and the unresolved spelling gives a key that never matches.
   - Match the key **exactly**. If nothing matches, treat it as unbound and fall through —
     never pick the closest-looking entry, because a wrong match binds this directory to
     another one's identity, permanently.
 
-Use that value as your scope when it is present. When the file is missing, the key is
-absent, or the record does not carry a plain `value` string, **there is no binding** — fall
+Use that value as your scope only when it is in the stored legal form — lower-case letters
+and digits separated by single dashes, at most 64 characters, the same rule the hook
+enforces on read. When the file is missing, the key is absent, the record does not carry a
+plain `value` string, or the value fails that shape check, **there is no binding** — fall
 through to the derived steps in the reference (git remote, then folder name) and normalise
-as it describes. Falling through is the normal case, not an error; do not report it.
+as it describes. Falling through is the normal case, not an error; do not report it. The one
+exception: a config.json that exists but does not parse says nothing about whether a binding
+is in force — still fall through, but say so in one line, because the identity you register
+is permanent and a binding may exist that could not be read.
 
 Never invent a scope, and never register a bare base name because the lookup came back
 empty — the derived steps always yield something.

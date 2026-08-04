@@ -868,6 +868,35 @@ describe("config command: agent scope", () => {
     assert.deepEqual(scopeOf(KEY_A), { type: "project", value: "acme" }, "migration ate it");
   });
 
+  it("coerces a hand-edited scalar at either projects level instead of exploding it", () => {
+    // Spreading a string explodes it into indexed character keys — "declined" becomes
+    // {"0":"d","1":"e",…} — and pre-fix the write reported success while the record it
+    // stood for was gone. Both levels are coerced to objects before the spread.
+    plant({ projects: { [KEY_A]: "declined" } });
+    assert.match(run("/gutt-pro:agent-scope project acme"), /--acme/);
+    assert.deepEqual(
+      stored().projects[KEY_A],
+      { agentScope: { type: "project", value: "acme" } },
+      "the unreadable record is overwritten clean, with no character keys"
+    );
+
+    plant({ projects: "declined" });
+    assert.equal(runtimeConfig.setMigrationState(KEY_A, "later", NOW), true);
+    assert.equal(stored().projects[KEY_A].memoryMigration.status, "later");
+    assert.equal("0" in stored().projects, false, "no character keys at the map level");
+  });
+
+  it("refuses to write over a config that is valid JSON but not an object", () => {
+    // The command path catches this on its read pre-check, so pin the write guard
+    // itself through the exported setter: without it, assigning onto an array "lands",
+    // stringify drops it, and the caller is told a value stored that never did.
+    for (const raw of ["[1,2,3]", '"hello"', "42"]) {
+      plant(raw);
+      assert.equal(runtimeConfig.setAgentScope(KEY_A, "project", "acme"), false, raw);
+      assert.equal(fs.readFileSync(file(), "utf8"), raw, "the bytes must be left alone");
+    }
+  });
+
   it("reports the bound scope and which step supplied it", () => {
     // Unbound: the reply names the derived steps, because a user who sees only a suffix
     // cannot tell whether they chose it or a git remote did. It does not resolve them —
