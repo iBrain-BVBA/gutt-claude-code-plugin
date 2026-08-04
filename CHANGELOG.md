@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.0.2] - 2026-08-04
+
+### Added
+
+- New `gutt-product` plugin — product-leadership skills for Jira backlogs,
+  backed by organizational memory, composing the gutt-pro curriculum skills
+  rather than restating them (no hooks, no agents). Its one launch skill,
+  `backlog-prioritization`, ranks a JQL-scoped backlog slice on criteria read
+  from the project's own field schema at runtime — so a team's custom value or
+  effort fields are used instead of an imported scoring framework — and
+  justifies each item's position with cited evidence from memory: decisions and
+  client commitments that bind it, dependency edges, incident and rework
+  history in the areas it touches, and overlap with neighbouring items. Items
+  with no supporting evidence are labelled and left where the board had them
+  rather than moved on confidence alone. The run closes with a one-page
+  summary for leadership: what to do next, the biggest available
+  consolidation, and the risk flags. Read-only against Jira — it never writes a
+  rank or priority field, and writes nothing to memory
+
 ## [3.0.1] - 2026-08-04
 
 ### Added
