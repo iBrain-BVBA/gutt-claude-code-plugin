@@ -80,12 +80,16 @@ Two paths. Pick by whether the agent writes.
 
 1. **Base name** — stable, descriptive, kebab-case, derived from the agent's purpose
    (`pr-reviewer`, `jira-agent`). Not from a path.
-2. **Scope suffix, only when something forces one.** A `--<scope>` suffix separates instances
-   of one agent inside a single group. Three cases:
-   - The repo has a bound agent-scope config → suffix with that value.
-   - No config and no collision → **ship the base name alone. This is the default.**
-   - A collision forces separation (steps 4–5) → propose a suffix, taking its value from the
-     git remote's `owner/repo`, or the working folder's name when there is no remote.
+2. **Scope suffix, always.** A `--<scope>` suffix separates instances of one agent inside a
+   single group, and the emitted agent carries one in every case. Resolve its value from the
+   first step that yields one: the scope bound to this working directory → the git remote's
+   `owner/repo` → the working folder's name, normalised as the reference describes.
+   **Do not ship a base name alone** — a bare name merges with whatever already registered
+   under it the first time the agent writes, and org writes cannot be deleted or reassigned
+   afterwards. Suffixing is the recoverable default; sharing a scope on purpose is one command
+   away, un-pooling is not.
+   Emit the resolution as the runtime rule, not the resolved value: the agent re-resolves it
+   where it runs, which is not necessarily where it was scaffolded.
 3. **Resolve the target group** — the group this agent will write to. You need it now for the
    collision check in step 4. It does **not** get baked into the generated file; the emitted
    block resolves it at runtime.
@@ -95,8 +99,10 @@ Two paths. Pick by whether the agent writes.
    a separate one.
 5. **Never silently adopt a foreign anchor.** If a match exists and roughly 30–50% or more of
    its edges point at a different repo or project, it is not this agent. Surface it and propose
-   either a different base name or a `--<scope>` suffix — the suffix lives in the name, so it
-   changes the merge key. Do not proceed on a name the user has not confirmed.
+   either a different base name or a **different scope value** — both live in the name, so
+   either changes the merge key. Adding a suffix is not an option here: step 2 already put one
+   there, and the collision you are looking at is between two names that both have one. Do not
+   proceed on a name the user has not confirmed.
 
 **Read-only agents.** Agent scope is provenance over _writes_, so an agent that never writes has
 an empty scope by construction: registering buys it nothing, and a scoped recall could only ever

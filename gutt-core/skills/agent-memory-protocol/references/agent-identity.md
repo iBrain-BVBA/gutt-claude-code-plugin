@@ -14,19 +14,51 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
 - Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`). Those two, and every
   `pr-reviewer` below, are illustrative — no agent by that name ships in this repo.
 - Identity is keyed on **name + group** (see Register), so different groups separate
-  same-named agents on their own. Add a `--<scope>` suffix — `pr-reviewer--acme-web` —
-  only to run separate instances of one agent **inside the same group** (per team,
-  project, or individual context sharing one org graph). The double dash marks where
-  the name ends and the scope begins; a single dash would be ambiguous inside
-  kebab-case names.
+  same-named agents on their own. Inside one group they do not separate themselves:
+  **always carry a `--<scope>` suffix** — `pr-reviewer--acme-web` — so that one agent
+  run from two places is two identities unless someone chose otherwise. The double dash
+  marks where the name ends and the scope begins; a single dash would be ambiguous
+  inside kebab-case names.
+- **Why always, and not only when a clash appears:** a clash is not visible at the
+  moment it matters. Registration merges on name + group, so the first write under a
+  bare name silently joins whatever else already registered under it, and org writes
+  cannot be deleted or reassigned afterwards. Suffixing by default is recoverable —
+  a scope deliberately shared is one command away — while pooling by default is not.
 - Two handles, two uses: the registered **name** (keeps the `--`) is the identity key —
   pass it to `register_agent` and as `agent_id` on writes and scoped searches. The
   **node ID** is the slugified semantic ID, which collapses `--` to a single `-`
-  (`gutt_pro:Agent:pr-reviewer-acme-web`) — it is what ID parameters (`center_node_id`,
+  (`{alias}:Agent:pr-reviewer-acme-web`) — it is what ID parameters (`center_node_id`,
   `get_episodes_for_entity`, …) expect. Don't build it by hand: `register_agent` returns
   it (`id`, plus the `uuid`).
-- Resolve which name to use in this order: bound config (the `/gutt-pro:agent-scope` setting,
-  when it exists) → the git remote's owner/repo → the working folder's name.
+- Because the slug collapses `--`, a scope value containing `--` would make two
+  different registered names one node. So a scope value is **lower-case letters and
+  digits separated by single dashes**, starting and ending with a letter or digit.
+- Resolve the scope from the first of these that yields a value: **(1)** the scope bound
+  to this working directory, if one is bound; **(2)** the git remote's `owner/repo`;
+  **(3)** the working folder's name.
+- **Step 1 is a file read, not a command.** The binding lives in the plugin's own data
+  directory, and the command that writes it only takes effect when a human types it — so an
+  agent looks the value up rather than asking for it. The `agent-memory-protocol` skill
+  carries the resolved path and the key to look under, because only a skill body is handed
+  that directory. Nothing is wrong when the lookup finds nothing: unbound is the common
+  case, and steps 2 and 3 always yield something.
+- **Normalise whatever steps 2 and 3 give you**, because neither yields a legal scope
+  value on its own — a remote is `owner/repo` and a folder may be `My_App`. Lower-case it,
+  replace every run of characters outside `a-z0-9` with a single dash, then trim leading
+  and trailing dashes: `Acme-Corp/My_App` becomes `acme-corp-my-app`. Do it the same way
+  every time — the result is a permanent identity, and two agents normalising differently
+  in the same place become two agents. A bound scope needs none of this; it is already
+  stored in the legal form.
+- A bound scope is the only step a person chose, and the only one that is stable against
+  the others changing — a remote can be renamed and a folder can be moved. It is also
+  the only one that is _local_: it lives in this machine's plugin data, keyed by working
+  directory, so it does not travel with a clone and does not follow a directory that is
+  moved or re-created. Re-bind after either. Steps 2 and 3 need no setup but are derived,
+  so they change whenever what they are derived from changes.
+- Two places bound to the same value share one identity and therefore one pool of agent
+  memory — that is how several checkouts of one product get a single agent — and two
+  different values stay isolated. Where that sharing is wanted, bind it; do not rely on
+  two remotes happening to normalise alike.
 
 ## Register (once, before tagging or scoped recall)
 
@@ -107,10 +139,10 @@ is down.
   node from another context (repo/project) just because the name matches — it pollutes both
   subgraphs. Check _before_ you register, because there is no opting out afterwards:
   registration MERGEs on **name + group**, so the same name in the same group always resolves to
-  the existing node — you cannot ask for a separate one. The only escapes are a different base
-  name or a `--<scope>` suffix, which lives in the name and so changes the merge key. Spotting a
-  foreign anchor: if more than ~30–50% of its edges point at a different repo/project, it isn't
-  yours.
+  the existing node — you cannot ask for a separate one. Since every name already carries a
+  suffix, the escapes are a different base name or a **different scope value** — adding a suffix
+  is not one, because there is already one there. Spotting a foreign anchor: if more than
+  ~30–50% of its edges point at a different context, it isn't yours.
 - **`last_n_episodes=0` on every org-scope write.**
 - **Personal scope stays untagged.** The server supports agent identity in personal scope
   too — don't use it: register in an org group, and keep personal-scope writes untagged.
@@ -122,7 +154,7 @@ Drop this into a role agent to make it memory-aware:
 ```
 # On start, register once (idempotent; the response returns your node id + uuid):
 register_agent(
-  name="<agent-name>",              # stable; --<scope> only to separate contexts in one group
+  name="<agent-name>--<scope>",     # always suffixed; resolve <scope> per the Name rules
   description="<what this agent does, one or two sentences>",
   group_id="<group>")               # omit only if you can write to exactly one group
 
