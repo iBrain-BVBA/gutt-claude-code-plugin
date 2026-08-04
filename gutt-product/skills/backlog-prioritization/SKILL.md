@@ -72,10 +72,13 @@ vary per install.
 
 Deciding what to work on next, preparing a planning or roadmap conversation, or
 reporting backlog state upward. Not for sizing a single ticket
-(`ticket-estimate`), not for the background on one ticket
-(`ticket-research`), and not for resolving whether two tickets are the same
-thing (`ticket-duplicates` — this skill notes overlap as a ranking signal and
-hands the verdict there).
+(`gutt-developer:ticket-estimate`), not for the background on one ticket
+(`gutt-developer:ticket-research`), and not for resolving whether two tickets
+are the same thing (`gutt-developer:ticket-duplicates` — this skill notes
+overlap as a ranking signal and hands the verdict there). Those three live in a
+separate plugin this one does not depend on; where it is not installed, say
+which part of the question you are not the right skill for rather than
+attempting it.
 
 ## Step 1 — the slice and the criteria
 
@@ -180,6 +183,8 @@ argued with, and an unarguable ranking is the one that gets ignored.
   `memory-capture`; identity if an agent runs this: `agent-memory-protocol`.
 - Reply shape for the summary — substance first, lists ranked and capped, one
   next action last: `output-style` (gutt-pro).
-- Siblings: `ticket-duplicates` (owns the same-or-different verdict this skill
-  only flags), `ticket-estimate` (owns effort and risk for a single item),
-  `ticket-research` (owns one ticket's background).
+- Single-ticket work belongs to the developer plugin, which is separate from
+  this one and may not be installed: `gutt-developer:ticket-duplicates` owns the
+  same-or-different verdict this skill only flags,
+  `gutt-developer:ticket-estimate` owns effort and risk for one item, and
+  `gutt-developer:ticket-research` owns one ticket's background.
