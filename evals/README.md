@@ -35,6 +35,7 @@ unit of comparison here.
 | `stop-judge`     | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
 | `prompt-pointer` | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious          |
 | `capture-close`  | After a fired capture has been written: does the reply report it _and_ close on the work, or drop one of the two              |
+| `weekly-recap`   | The time-window recap skill: does "last week" become absolute dates and a mention walk, and does the report keep the window   |
 
 A suite is no longer confined to scoring verdicts. `run_matrix` takes a `system` argument
 and `run.py` passes a suite's own `SYSTEM` when it defines one, so a suite can frame the
