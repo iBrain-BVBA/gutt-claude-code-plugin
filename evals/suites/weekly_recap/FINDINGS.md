@@ -120,7 +120,7 @@ per case (V0 / V1): workshop-mentions 3/3 / 0/3 · bare-recap~ 3/3 / 0/3 ·
 distractor-excluded 3/3 / 0/3 · quiet-week 3/3 / 2/3
 ```
 
-Headline across rounds: **the shipped text sits at 92–100% (12/12 in the
+Headline across rounds: **the shipped text sits at 83–100% (12/12 in the
 certifying round) against 0–25% for the same model, same tools, no skill** —
 the incident's failure mode does not survive the skill, and the control never
 clears it. The round 1 → 6 path is the useful history: one real skill defect
@@ -129,3 +129,38 @@ dates, a paren-less ban that punished the correct stop condition written as
 prose, an excuse vocabulary blind to "predates"/"Jul") — every one found by
 reading raws, not tables. Do not tighten the window or excuse regexes back
 without re-reading rounds 2 and 5.
+
+## Round 7 — validity clause added after external review
+
+A PR review comment survived validation: the themed sweep inherits the
+server's valid-only default (`include_invalidated=False`, per the tools
+reference), so a fact created inside the window and superseded after it —
+a reversed decision, a resolved incident — silently never enters the recap.
+Neither the canned-result report cases nor the live run had exercised that
+path. Rule 4 gained the counter-instruction (windowed sweeps pass
+`include_invalidated=true`; superseded items enter labelled), both call
+sites point at it, and `bare-recap` now also requires the parameter to be
+named — its column is stricter than in rounds 1–6, so compare it only
+forward from here.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    12913   83%        78%       0     missing:mention-walk 1/12 · window-start 1/12 · window-end 1/12
+V1-none           0    8%        11%       0     window-start 8/12 · window-end 8/12 · sweep-validity 3/12 · coverage-note 3/12 · mention-walk 2/12 · subject-entry 2/12 · empty-is-named 2/12
+
+per case (V0 / V1): workshop-mentions 2/3 / 0/3 · bare-recap~ 3/3 / 0/3 ·
+distractor-excluded 2/3 / 0/3 · quiet-week 3/3 / 1/3
+```
+
+The new check earned its keep at once — every V0 `bare-recap` trial named
+`include_invalidated` unprompted, one workshop plan even carrying rule 4's
+rationale ("reversals are part of the week's story") — while the control
+cannot produce it. Both V0 misses are known shapes, read from the raws,
+and neither touches the new clause: one workshop-mentions plan jumped
+straight to the centered-fact-search fallback on an _assumed_-busy subject
+(the walk is the default; the fallback is for observed overflow or visible
+bulk — a mild compliance miss worth watching, not yet worth text), and one
+distractor-excluded report resolved "last week" as the trailing 7 days —
+rule 1's residual, seen intermittently since round 1; that reply still
+excluded the June distractor and kept only in-window items. 83% sits in
+the measured band (rounds 5–7: 83, 100, 83) over an ~11-point floor.

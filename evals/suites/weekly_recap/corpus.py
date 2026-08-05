@@ -123,7 +123,8 @@ GATHERED_QUIET = """\
      valid_at 2026-06-20T11:00:00+02:00 — "…Dana raised the index-rebuild risk…"
 
 [themed sweep] search_memory_facts(query="decisions, incidents, meetings",
-  created_after="2026-07-27T00:00:00+02:00", created_before="2026-08-02T23:59:59+02:00")
+  created_after="2026-07-27T00:00:00+02:00", created_before="2026-08-02T23:59:59+02:00",
+  include_invalidated=True)
   -> no facts in range"""
 
 
@@ -165,6 +166,10 @@ def build():
                 ("window-start", r"2026-07-(29|30)|jul(?:y)?[ .]*(29|30)\b|\b(29|30)[ .]*jul"),
                 ("window-end", r"2026-08-05|aug(?:ust)?[ .]*0?5\b|\b0?5[ .]*aug"),
                 ("fact-windowing", r"created_after"),
+                # Added with the skill's validity clause (round 7): a windowed
+                # sweep that keeps the server's valid-only default silently
+                # drops facts superseded after the window.
+                ("sweep-validity", r"include_invalidated"),
             ],
             "must_not": [INVENTED_DATE_PARAM],
             "distractors": [],

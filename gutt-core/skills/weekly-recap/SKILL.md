@@ -44,7 +44,12 @@ per install.
    no loosely-matching filler.
 4. **Use the time filters that exist; never fake the ones that don't.**
    Fact search takes server-side `created_after` / `created_before` — use
-   them for the sweep. Episode listings take no date parameters; paging
+   them for the sweep — and by default it returns only facts still valid
+   now, which is the wrong default for a recap: a decision made in the
+   window and reversed after it would silently vanish. Windowed sweeps
+   pass `include_invalidated=true`, and an item the graph marks as later
+   superseded enters the report labelled so — a reversal is part of the
+   week's story, not noise. Episode listings take no date parameters; paging
    moves from newest toward oldest — page until the timestamps cross the
    window start; the stop condition is a date, not a count. The two
    listings order by different clocks — the per-group listing by event
@@ -125,7 +130,8 @@ The walk can also exceed the response cap outright — a known failure on
 quite ordinary entities, not only hubs. When it does, or when the
 subject's history is visibly busy, pivot instead of paging harder:
 windowed fact search centered on the subject (`center_node_id` with
-`created_after` / `created_before`), then follow the `episodes` ids on
+`created_after` / `created_before`, validity per rule 4), then follow
+the `episodes` ids on
 the facts that matter with `get_episode`, one at a time. Bounded pages,
 but a ranked view, not an exhaustive edge listing — run it once per
 step 3 theme rather than as one catch-all query, and never read an
@@ -141,7 +147,9 @@ The wide sweep — themed queries against the date filters that exist:
   with `created_after` / `created_before` — run once broad and then per
   theme: decisions and commitments, incidents and lessons, meetings, work
   items. The date filter does the windowing; the query does the theming;
-  the relevance gate stays in force. Those filters window by when the
+  the relevance gate stays in force; validity per rule 4 —
+  `include_invalidated=true`, superseded items labelled. Those filters
+  window by when the
   graph learned a fact — the right axis for "what landed this week"; the
   episode behind a fact settles when the thing itself happened.
 - For the incidents-and-lessons theme, `fetch_lessons_learned` earns its
