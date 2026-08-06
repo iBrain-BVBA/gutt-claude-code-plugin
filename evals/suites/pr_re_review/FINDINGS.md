@@ -152,6 +152,28 @@ instruction — the scorer shape the `~` on that label already carries, and why 
 confident column (92%) is the honest headline. Both are recorded for the next hardening
 pass rather than churned mid-delivery.
 
+## Round 7 — after the 3.0.4 follow-up edits
+
+The follow-up removed the Jira-comment sentence from rule 1, reframed the
+history-vs-diff line ("part of the risk lives in the team's history, not only in the
+diff"), and fixed the advertised `fetch_lessons_learned` signature to carry `group_ids`.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    13719   73%        83%       0     ungrouped-write 1/15 · group-on-write 1/15
+                                                 no-history-bleed 1/15 · unmarked:session-leak 1/15
+                                                 metadata-gap-named 1/15
+V1-none           0    0%         0%       0
+
+per case (V0 / V1): recall-before-lanes 3/3 · capture-gate~ 1/3 · unverified-findings 2/3 ·
+empty-recall 3/3 · pasted-diff-degrade 2/3   (V1: 0/3 on all five)
+```
+
+Inside the round-6 band (73%/83% against 80%/92%): `capture-gate~` keeps carrying its
+scorer-shaped losses, `unverified-findings` gave back one trial to the session-leak
+distractor, and `pasted-diff-degrade` repeated its single metadata-gap miss. Every V0
+loss is a single-trial shape already on record; nothing the follow-up touched moved.
+
 ## What the numbers say
 
 **The four checks V1 loses on every trial are the four the skill exists for.**

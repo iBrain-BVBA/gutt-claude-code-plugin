@@ -173,6 +173,35 @@ decline — "File this story as-is" — in words the `declines-to-split` pattern
 cover. There the check missed, not the skill; one trial in fifteen is not a reason to
 rewrite it, so both are recorded for the next hardening pass instead.
 
+## Round 8 — after the 3.0.4 follow-up edits
+
+The follow-up tightened rule 2 — same two behaviours, translate or name as
+untranslatable, minus the closing sentence that contradicted its own example — retitled
+rule 3 to "checkable" (with `not checkable|uncheckable` added to the
+`criteria-called-out` alternation), wired `graph-traversal` into the intro, Step 3, and
+References, and fixed the advertised `fetch_lessons_learned` signature to carry
+`group_ids`.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    10293   73%        67%       0     names-cannot-file 2/15 · unmarked:#412 1/15
+                                                 declines-to-split 1/15 · names-overlap-gap 1/15
+V1-none           0    7%         0%       0     jira-dependency 5/15 · confidence 4/15 · +6
+
+per case (V0 / V1): plan-no-filing 3/3 · github-grammar-bait 2/3 · already-one-slice 2/3 ·
+untestable-criteria~ 3/3 · pasted-degrade 1/3   (V1: 0/3 · 0/3 · 0/3 · 1/3 · 0/3)
+```
+
+The rule-2 rewrite held: the grammar checks did not move, and the single `#412` trial is
+the same residual as every round since 3. The real signal is `pasted-degrade` at 1/3
+after round 7's 3/3 — the raws confirm the failing replies genuinely omit the
+disclosures ("nothing can be filed"; overlap-uncheckable) rather than phrase them past
+the patterns, and the Degradation text is identical between the rounds. Read rounds 7
+and 8 together as bracketing a skill that carries the two disclosures unreliably at
+three trials. Candidate fix for a later round, deliberately not taken mid-delivery: put
+both disclosures into the proposal template itself (a "what could not be checked" line),
+making them structural instead of remembered.
+
 ## What the numbers say
 
 **The checks V1 loses on every trial are the ones the skill exists for**:

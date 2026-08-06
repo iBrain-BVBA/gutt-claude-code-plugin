@@ -26,8 +26,8 @@ prefixes vary per install.
 
 1. **Jira is read-only here — never write a severity into it.** No priority or
    severity fields, no component or label edits, no status transitions, no
-   assignment. The one permitted write is a comment, drafted and posted only
-   after the user approves the exact text in this session. Treat it as final —
+   assignment. The one permitted write is a comment the user explicitly asked
+   for, posted only after they approve the exact text in this session. Treat it as final —
    approval is the gate, not an undo; a truly needed correction re-approves the
    text and targets the existing comment if the tool allows, rather than posting
    a second one. Write markdown and set the tool's content-format parameter to
@@ -61,6 +61,8 @@ prefixes vary per install.
    fabricated identifier. Treat scope as server-decided: before any finding
    enters the offered comment, confirm that item's own scope is the org group;
    personal-scope findings stay in the in-session brief, marked as personal.
+   The same filter applies before any finding enters a comment the user asked
+   to have posted.
    **Bare tool names**, probed with ToolSearch before concluding one is missing.
    **No memory writes** — a durable root-cause lesson goes through
    `memory-capture` and its trust-tier gate.
@@ -174,14 +176,6 @@ surface is a weak one, and the brief says so.
 
 Lines where nothing was found stay in the brief as "none found" — absence is
 information, and it is what makes the brief trustworthy on a genuinely new bug.
-
-## Offering the comment
-
-After presenting the brief, offer to condense it into a Jira comment — the
-similar-failures and gaps sections, and the severity with its rubric; filtered
-to org-scope items per rule 7. The reporter does not need their own ticket read
-back to them. Post per rule 1: exact approved text, once. Say plainly that the
-severity in the comment is a recommendation and that nobody's field was changed.
 
 ## Degradation
 

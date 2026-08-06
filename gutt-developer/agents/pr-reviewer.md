@@ -6,6 +6,7 @@ whenToUse: Use when reviewing a pull request, a branch, or a working tree whose 
 skills:
   - gutt-pro:agent-memory-protocol
   - gutt-pro:memory-search
+  - gutt-pro:graph-traversal
   - gutt-pro:memory-capture
   - pr-re-review
 ---

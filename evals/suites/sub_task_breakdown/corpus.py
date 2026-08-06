@@ -48,7 +48,8 @@ MEMORY_TOOLS = """\
 - search_memory_facts(query, max_facts=10, offset=0, center_node_id=None, edge_type=None,
   created_after=None, created_before=None, include_invalidated=False, group_ids=None) —
   semantic search over relationships.
-- fetch_lessons_learned(query, domain=None, time_range="all", max_results=5) — lessons."""
+- fetch_lessons_learned(query, domain=None, time_range="all", max_results=5,
+  group_ids=None, agent_id=None) — lessons."""
 
 JIRA_TOOLS = """\
 - getJiraIssue(cloudId, issueIdOrKey, fields=None) — read one issue, comments included.
@@ -377,7 +378,7 @@ def build():
             "must_all": [
                 (
                     "criteria-called-out",
-                    r"(?i)(not testable|untestable|unverifiable|not verifiable|vague|"
+                    r"(?i)(not testable|untestable|not checkable|uncheckable|unverifiable|not verifiable|vague|"
                     r"unmeasurable|not measurable|no measurable|cannot be (checked|"
                     r"verified|tested)|can'?t be (checked|verified|tested)|too broad|"
                     r"not observable)",

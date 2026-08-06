@@ -1,6 +1,6 @@
 ---
 name: pr-re-review
-description: "Review a pull request against what the organization already knows — its recorded standards and agreements, the findings this team has accepted before, and the incident history of the files being touched — with each finding verified at the source before it is reported, and accepted findings offered up as lessons afterwards. Produces a review for a human to act on, never a verdict pushed to the pull request unasked. Use on a PR whose risk is in the history rather than in the diff. Triggers on: review this PR, re-review, review my changes, does this follow our standards, code review, what did we say about this, have we been bitten here, review before merge, second pass on this PR."
+description: "Review a pull request against what the organization already knows — its recorded standards and agreements, the findings this team has accepted before, and the incident history of the files being touched — with each finding verified at the source before it is reported, and accepted findings offered up as lessons afterwards. Produces a review for a human to act on, never a verdict pushed to the pull request unasked. Use on a PR where part of the risk lives in the team's history, not only in the diff. Triggers on: review this PR, re-review, review my changes, does this follow our standards, code review, what did we say about this, have we been bitten here, review before merge, second pass on this PR."
 ---
 
 # PR Re-review
@@ -36,8 +36,7 @@ install.
    edits, and no inline comments posted as a side effect of reviewing. Posting
    any of it is a separate act, done only when the user asks in this session and
    approves the exact text: it is outward-facing, other people are notified, and
-   an apology does not retract it. Silence is not approval. The same terms cover
-   a Jira comment; a ticket's own fields and criteria are never edited.
+   an apology does not retract it. Silence is not approval.
 2. **Every reported finding is verified at the source, and the verification is
    what makes it reportable.** Before a finding reaches the output, open the file
    at the line and confirm the claim holds in the code as it now stands —
@@ -84,9 +83,9 @@ install.
 
 ## When to use
 
-A pull request where the risk lives in history rather than in the diff — a
-sensitive area, a repeat pattern, a team with recorded agreements worth holding
-the change to. Also for a self-review before opening one. Not for the diff-local
+A pull request where part of the risk lives in the team's history as well as in
+the diff — a sensitive area, a repeat pattern, a team with recorded agreements
+worth holding the change to. Also for a self-review before opening one. Not for the diff-local
 sweep a project's own gates and a plain reading already do, not for hunting
 duplicate tickets (`ticket-duplicates`), and not for triaging a failure that has
 already shipped (`bug-investigation`).

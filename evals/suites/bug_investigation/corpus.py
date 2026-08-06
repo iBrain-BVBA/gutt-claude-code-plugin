@@ -53,7 +53,8 @@ MEMORY_TOOLS = """\
 - search_memory_facts(query, max_facts=10, offset=0, center_node_id=None, edge_type=None,
   created_after=None, created_before=None, include_invalidated=False, group_ids=None) —
   semantic search over relationships.
-- fetch_lessons_learned(query, domain=None, time_range="all", max_results=5) — lessons.
+- fetch_lessons_learned(query, domain=None, time_range="all", max_results=5,
+  group_ids=None, agent_id=None) — lessons.
 - get_episode(id) — one episode, full body.
 - get_node_edges(node_id, edge_type=None) — all edges of a node."""
 

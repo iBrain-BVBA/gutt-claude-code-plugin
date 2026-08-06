@@ -51,7 +51,8 @@ MEMORY_TOOLS = """\
 - search_memory_facts(query, max_facts=10, offset=0, center_node_id=None, edge_type=None,
   created_after=None, created_before=None, include_invalidated=False, group_ids=None) —
   semantic search over relationships.
-- fetch_lessons_learned(query, domain=None, time_range="all", max_results=5) — lessons.
+- fetch_lessons_learned(query, domain=None, time_range="all", max_results=5,
+  group_ids=None, agent_id=None) — lessons.
 - add_memory(name, episode_body, source="text", group_id=None, agent_id=None,
   last_n_episodes=10) — write one episode.
 - get_episodes_for_entity(entity_id, last_n=10, offset=0) — episodes mentioning an entity.

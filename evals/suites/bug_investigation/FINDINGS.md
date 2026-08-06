@@ -107,6 +107,26 @@ signature search phrased past the pattern, a degradation line omitted, one reply
 raw UUID into the brief — which is what a noise floor looks like rather than a defect with
 a location.
 
+## Round 6 — after the 3.0.4 follow-up edits
+
+The pre-PR follow-up reworded rule 1 (the permitted comment is one the user explicitly
+asked for), cut the proactive "Offering the comment" section, extended rule 7's output
+filter to asked-for comments, and fixed the advertised `fetch_lessons_learned` signature
+to carry `group_ids` — it had dropped the one parameter the suite scores (found by
+Copilot review).
+
+```
+variant       chars    all  confident  errors
+V0-shipped     9890  100%       100%       0
+V1-none           0    0%         0%       0
+
+per case (V0 / V1): key-triage 3/3 · pasted-degrade~ 3/3 · resemblance-not-cause 3/3 ·
+novel-signature 3/3   (V1: 0/3 on all four)
+```
+
+First clean sweep for this suite — the cuts cost nothing the checks can see, and the
+signature fix did not move the group-scope behaviour, which V0 carried before and after.
+
 ## What the numbers say
 
 **V1 scores zero on every case in every round**, and it is worth being precise about

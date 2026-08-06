@@ -1,6 +1,6 @@
 ---
 name: sub-task-breakdown
-description: "Break one story into the sub-tasks it actually decomposes into — each with a title, testable acceptance criteria, a grounded effort range, and its dependencies — in Jira's own vocabulary and nobody else's. Produces a proposal to argue with, never sub-tasks written into Jira unless explicitly asked for. Use when a story is too big to start, or before refinement. Triggers on: break this down, split this story, sub-tasks for, decompose, too big to start, slice this, what are the pieces, sequence the work, task breakdown, how do we split this."
+description: "Break one story into the sub-tasks it actually decomposes into — each with a title, checkable acceptance criteria, a grounded effort range, and its dependencies — in Jira's own vocabulary and nobody else's. Produces a proposal to argue with, never sub-tasks written into Jira unless explicitly asked for. Use when a story is too big to start, or before refinement. Triggers on: break this down, split this story, sub-tasks for, decompose, too big to start, slice this, what are the pieces, sequence the work, task breakdown, how do we split this."
 ---
 
 # Sub-task Breakdown
@@ -13,10 +13,11 @@ comparable past work, and the dependencies that fix their order. The output is a
 proposal. Which slices are right, and whether they get filed at all, stays with
 the team.
 
-Underneath, `memory-search` owns the search ladder and the relevance gate, and
-`memory-capture` owns any durable write; both ship with the gutt-pro plugin
-(this plugin depends on it) — without them, follow the rules below and note the
-gap in one line. Jira access comes from whatever Atlassian tooling the session
+Underneath, `memory-search` owns the search ladder and the relevance gate,
+`graph-traversal` owns relationship walking when a summary names a thing
+without stating it, and `memory-capture` owns any durable write; all three ship
+with the gutt-pro plugin (this plugin depends on it) — without them, follow the
+rules below and note the gap in one line. Jira access comes from whatever Atlassian tooling the session
 surfaces; find it in your tool list — names and prefixes vary per install.
 
 ## Hard rules (non-negotiable — read first)
@@ -30,24 +31,21 @@ surfaces; find it in your tool list — names and prefixes vary per install.
    written. Creating issues is outward-facing and not undone by an apology:
    approval is the gate, and silence is not approval. The other permitted write
    is one comment, on the same exact-text terms.
-2. **Jira's vocabulary only — no other tracker's mechanics anywhere in the
-   output.** No `#123` issue references, no `Closes #…` / `Fixes #…` trailers,
-   no checklist-as-linking, no branch-or-label conventions standing in for
-   parentage. A dependency is a Jira issue link (`blocks` / `is blocked by`); a
-   parent is the parent field of a sub-task issue type; acceptance criteria are
-   text in the sub-task's own description. If the session's tooling exposes some
-   other tracker, it is still not the output format — this skill emits Jira.
+2. **Jira's vocabulary only — no other tracker's mechanics in the output.** A
+   dependency is a Jira issue link (`blocks` / `is blocked by`); a parent is
+   the parent field of a sub-task issue type; acceptance criteria are text in
+   the sub-task's own description. No `#123` references, no `Closes #…`
+   trailers, no checklist-as-linking — whatever tracker the session exposes,
+   this skill emits Jira. That includes foreign references quoted from the
+   parent's own text, which is where they usually get in: **translate** each to
+   the Jira key it means, or **name it as untranslatable** — "the parent cites
+   `#412`, which does not resolve to a Jira issue; ask the author which ticket
+   it means." Never pass one through unaccounted.
 
-   **The parent's own text does not get a pass**, and it is where these
-   normally get in. A foreign reference in the story is either **translated** —
-   resolved to the Jira key it means and linked as such — or **named as
-   untranslatable**: "the parent cites `#412`, which does not resolve to a Jira
-   issue; ask the author which ticket it means." Never pass the sigil through,
-   not even while quoting.
-
-3. **Acceptance criteria are testable or they are not criteria.** Each one
+3. **Acceptance criteria are checkable or they are not criteria.** Each one
    states an observable outcome someone else could check without asking the
-   author what was meant. "Refactor the handler" is a title, not a criterion;
+   author what was meant — checkable by a person, not necessarily by an
+   automated test. "Refactor the handler" is a title, not a criterion;
    "the handler rejects a payload over 1 MB with a 413 and logs the size" is a
    criterion. A sub-task whose criteria you cannot make observable is a sign the
    slice is wrong — resize it rather than writing a vague criterion.
@@ -126,7 +124,9 @@ incidents cluster. Every one of these reads carries the org group's `group_ids`
 (rule 7); a read that omits it is scoped by the server, not by you. One search
 pass usually serves several slices; do not re-run it per row. A `ticket-estimate`
 or `ticket-research` output already in context is the grounding — extend it
-rather than searching again.
+rather than searching again. Deepen one hop via `graph-traversal` only where a
+comparable's summary names a dependency, incident, or decision without stating
+it.
 
 **Minimum outcome:** every row carries either a cited comparable or an explicit
 "no comparable found", which per rule 4 forces `low confidence` on that row.
@@ -195,7 +195,7 @@ When that happens:
 - Effort method, comparables, and risk grounding: `ticket-estimate` — this skill
   applies it per slice rather than restating it.
 - Story background before slicing: `ticket-research`.
-- Search ladder and relevance gate: `memory-search` (gutt-pro); durable
-  captures: `memory-capture`.
+- Search ladder and relevance gate: `memory-search` (gutt-pro); relationship
+  walking: `graph-traversal`; durable captures: `memory-capture`.
 - If an agent runs this as itself, `agent-memory-protocol` owns identity and
   registration.
