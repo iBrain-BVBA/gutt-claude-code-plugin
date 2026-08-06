@@ -1,5 +1,27 @@
 # Changelog
 
+## [3.0.3] - 2026-08-05
+
+### Added
+
+- New `weekly-recap` skill in the core plugin — a cited, time-windowed recap of
+  what happened around a person, project, or team: mentions of the subject,
+  decisions and commitments, incidents and lessons, meetings, and work items.
+  Exists because semantic search ranks by meaning and knows nothing about "last
+  week" — asked for recent mentions, it returns the best matches from any month.
+  The skill writes the missing traversal down: resolve the window to absolute
+  dates before any call, walk the subject's mention history back until it
+  leaves the window, sweep the themes with the date filters that do exist, and
+  report coverage honestly — a quiet week reads "nothing recorded", never
+  "nothing happened". Composes the memory curriculum (`memory-search`,
+  `graph-traversal`) rather than restating it; enriches from work-tracker
+  tooling (issues the subject touched, pages mentioning them) when the session
+  surfaces it and degrades in one line when it doesn't. Read-only everywhere: it
+  never writes to memory or any external system. A new `weekly-recap` eval
+  suite replays the originating incident — "where was I mentioned last week?"
+  against the same tool surface with and without the skill — and scores plans
+  and reports against hand-written expected outcomes.
+
 ## [3.0.2] - 2026-08-04
 
 ### Added
