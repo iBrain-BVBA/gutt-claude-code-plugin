@@ -141,7 +141,11 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
         try:
             raw = ask(build_prompt(variants[vname], case), model=model,
                       system=system, allow_tools=allow_tools, cwd=run_dir)
-            rec["raw"] = raw[:3000]
+            # Stored for diagnosis only — scoring below sees the full reply. 3000 was too
+            # tight: a plan-shaped reply puts its last step past that mark, so a failure
+            # label pointing at the capture step had no evidence behind it in the raw file
+            # and read as "the call never happened". Raws are gitignored, so the cost is disk.
+            rec["raw"] = raw[:6000]
             if raw.startswith("<blocked"):
                 halted.set()
                 rec.update({"error": raw, "blocked": True})

@@ -24,6 +24,9 @@ SUITES = {
     "prompt-pointer": "suites.prompt_pointer.suite",
     "capture-close": "suites.capture_close.suite",
     "weekly-recap": "suites.weekly_recap.suite",
+    "bug-investigation": "suites.bug_investigation.suite",
+    "sub-task-breakdown": "suites.sub_task_breakdown.suite",
+    "pr-re-review": "suites.pr_re_review.suite",
 }
 
 

@@ -1,5 +1,67 @@
 # Changelog
 
+## [3.0.4] - 2026-08-06
+
+### Added
+
+- **The `gutt-developer` plugin's remaining launch skills — `bug-investigation`,
+  `sub-task-breakdown`, `pr-re-review`.** The research trio that shipped first
+  answered questions about a ticket; these three act on one. All read-only
+  against Jira by default, all cite what they claim, and all compose the
+  gutt-pro memory curriculum rather than restating it.
+
+  `bug-investigation` turns a bug into a triage brief: a severity that carries
+  the rubric it was scored against, a ranked suspected area that says what would
+  refute it, and the similar past failures the organization has already paid for
+  — including what fixed them and whether the record says the fix held. A
+  matching signature stays a lead, never a root cause. Works from a bug key
+  where Atlassian tooling is connected and from pasted report text where it is
+  not; the pasted path is supported, not a consolation. Duplicate verdicts stay
+  with `ticket-duplicates`, and an outage in flight is operations work, not
+  this.
+
+  `sub-task-breakdown` turns one story into the slices it actually decomposes
+  into — title, testable acceptance criteria, an effort range grounded in cited
+  comparable work, and dependencies as real ordering constraints. Jira's
+  vocabulary only: a dependency is an issue link, a parent is the parent field,
+  and another tracker's mechanics do not survive into the output even when the
+  input is written in them. It says when a story is already one slice instead of
+  manufacturing ceremony the board then carries forever, and it holds the
+  breakdown when the criteria cannot be checked. Proposal-first: sub-tasks are
+  created only on an explicit ask and only after the exact set is approved.
+
+  `pr-re-review` reviews a change against what the organization recorded — its
+  agreements and decisions, the findings this team already accepted, the
+  incident history of the touched files — briefs parallel narrow review lanes
+  with that, and then verifies every finding at the source before reporting it,
+  because a fan-out of confident narrow readers reliably produces findings that
+  are already handled elsewhere in the same diff. A finding resting on a house
+  rule quotes and cites the record it came from; a paraphrase is not a standard.
+  Accepted findings can go back to memory afterwards, gated on an explicit human
+  signal and written to the engagement's group scope with the stored group
+  verified. Nothing is posted, approved, or requested-changes without approval of
+  the exact text. Its parallel-lane structure is adapted from the official
+  pr-review-toolkit plugin (Apache-2.0); the plugin's `ATTRIBUTION.md` records
+  the pinned source commit, what was taken, and what was replaced.
+
+- **Two `gutt-developer` agents — `pr-reviewer` and `bug-investigator`.**
+  Personas over the skills above, carrying the one thing a skill cannot: who is
+  doing the work. Both register a memory identity with the mandatory
+  `--<scope>` suffix, recall their own scope before the group's, and tag any
+  write they author — so "I raised this here before and the team accepted it"
+  becomes a citable finding rather than a claim. Both stop before writing when
+  nobody is present to give the signal. The review lanes are subagents spawned
+  for one review, not shipped agent definitions.
+
+- **Three eval suites — `bug-investigation`, `sub-task-breakdown`,
+  `pr-re-review`** — each scoring the shipped skill text read from the working
+  tree against the same task with no skill at all, on hand-labelled cases whose
+  input provenance is varied deliberately: a ticket key with full tooling, the
+  same work from pasted text with none, and pre-gathered results. The cases are
+  built around the failures that a fluent answer hides — a resemblance promoted
+  to a root cause, another tracker's grammar carried into a Jira board, a lane
+  finding the diff already handles, a house rule the graph never supplied.
+
 ## [3.0.3] - 2026-08-05
 
 ### Added
