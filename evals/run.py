@@ -48,8 +48,9 @@ def main():
     args = ap.parse_args()
 
     if args.list or not args.suite:
+        width = max(len(n) for n in SUITES)
         for name, mod in SUITES.items():
-            print(f"{name:14} {importlib.import_module(mod).DESCRIPTION}")
+            print(f"{name:{width}} {importlib.import_module(mod).DESCRIPTION}")
         return 0
     if args.suite not in SUITES:
         print(f"unknown suite {args.suite!r}; try --list", file=sys.stderr)

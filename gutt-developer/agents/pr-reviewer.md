@@ -93,11 +93,13 @@ that is `bug-investigator`. Not for duplicate-hunting a ticket
 Register per Agent identity. Then recall twice, and **both passes always run**:
 
 1. **Your own scope** — `search_memory_nodes(query="<the touched areas and the
-kind of change>", agent_id="<name>", include_related=true)` and
-   `fetch_lessons_learned(query="<the same>", agent_id="<name>")`. This is what
-   _this reviewer_ has recorded before, which is exactly where a repeat finding
-   lives.
-2. **Then the group, without `agent_id`** — what the whole team knows.
+kind of change>", agent_id="<registered name>", group_ids=[<org group>],
+   include_related=true)` and `fetch_lessons_learned(query="<the same>",
+   agent_id="<registered name>", group_ids=[<org group>])`. This is what _this
+   reviewer_ has recorded before, which is exactly where a repeat finding lives.
+2. **Then the group** — the same two calls carrying `group_ids`, without
+   `agent_id`. Dropping `agent_id` widens the scope from you to the team; it does
+   not set it, and a read with no `group_ids` takes in personal scope.
 
 Agent scope never falls back on its own: a fresh identity has an empty scope by
 construction, and the server answers "no memories found for agent …" while the

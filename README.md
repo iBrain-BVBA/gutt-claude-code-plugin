@@ -269,17 +269,26 @@ and gives general best practice, labeled as general.
 Developer-role skills for Jira tickets, shipped as a separate plugin that
 depends on gutt-pro (the core plugin, in `gutt-core/`) and composes its
 curriculum skills (`memory-search`, `graph-traversal`, `memory-capture`)
-rather than restating them. No hooks, no agents — three task-shaped skills:
+rather than restating them. No hooks — six task-shaped skills and two agents:
 
-| Skill               | Purpose                                                                                      |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| `ticket-research`   | Cited context brief: what Jira says, what memory adds (decisions, discussions, people), gaps |
-| `ticket-duplicates` | Duplicate/overlap candidates from Jira + memory, each resolved to an evidence-backed verdict |
-| `ticket-estimate`   | Effort range + risk areas grounded in comparable past work, with honest confidence labels    |
+| Skill                | Purpose                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `ticket-research`    | Cited context brief: what Jira says, what memory adds (decisions, discussions, people), gaps |
+| `ticket-duplicates`  | Duplicate/overlap candidates from Jira + memory, each resolved to an evidence-backed verdict |
+| `ticket-estimate`    | Effort range + risk areas grounded in comparable past work, with honest confidence labels    |
+| `bug-investigation`  | Triage from a bug key: severity against a rubric, a refutable suspected area, cited history  |
+| `sub-task-breakdown` | Jira-native sub-tasks carrying acceptance criteria, effort and dependencies — nothing filed  |
+| `pr-re-review`       | Review against recorded standards and incident history, each finding verified at the source  |
 
-All three are read-only: they never edit ticket fields, post at most one
-user-approved comment, and write nothing to memory (a durable finding routes
-through `memory-capture` and its trust-tier gate).
+Two agents run the last two of those as registered memory identities, so a
+repeat finding can be cited as one: `pr-reviewer` and `bug-investigator`.
+
+All six leave Jira alone: they never edit ticket fields and post at most one
+user-approved comment. Five write nothing to memory at all. The exception is
+`pr-re-review`, which after the team has settled which findings it accepts may
+offer to record them — routed through `memory-capture` and its trust-tier gate,
+so a Lesson still needs an explicit human signal, and an unattended run stops
+and writes nothing.
 
 ### Backlog prioritization (gutt-product plugin)
 
@@ -352,8 +361,10 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── gutt-mentor/                    # mentor plugin — onboarding + mentor agents, personal-scope program design/tracking (no hooks)
 │   ├── agents/                     # onboarding-guide, mentor
 │   └── skills/                     # individual-program-design, progress-tracking
-├── gutt-developer/                 # developer plugin — Jira ticket skills over org memory (no hooks)
-│   └── skills/                     # ticket-research, ticket-duplicates, ticket-estimate
+├── gutt-developer/                 # developer plugin — ticket, bug and review skills over org memory (no hooks)
+│   ├── agents/                     # pr-reviewer, bug-investigator
+│   └── skills/                     # ticket-research, ticket-duplicates, ticket-estimate,
+│                                   # bug-investigation, sub-task-breakdown, pr-re-review
 ├── gutt-product/                   # product plugin — backlog prioritization over org memory (no hooks)
 │   └── skills/                     # backlog-prioritization
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide

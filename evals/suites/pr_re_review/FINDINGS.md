@@ -10,7 +10,7 @@ argue with.
 
 Judge model: `claude-haiku-4-5-20251001` (FAST_MODEL), 3 trials per (variant, case).
 Raw files are keyed on suite-trials-variants, so **rounds at the same depth overwrite
-each other's raw records** — the tables below are the surviving record of rounds 1–5.
+each other's raw records** — the tables below are the surviving record of rounds 1–7.
 
 ## Round 1 — first cut
 

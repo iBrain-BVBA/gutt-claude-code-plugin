@@ -93,11 +93,14 @@ motion. Not for deciding whether the bug is already filed
 Register per Agent identity. Then recall twice, and **both passes always run**:
 
 1. **Your own scope** — `search_memory_nodes(query="<the signature and the
-surface>", agent_id="<name>", include_related=true)` and
-   `fetch_lessons_learned(query="<the same>", agent_id="<name>")`. This is what
-   _this investigator_ has already established, which is where a repeat failure
-   shows up first.
-2. **Then the group, without `agent_id`** — what the whole team knows.
+surface>", agent_id="<registered name>", group_ids=[<org group>],
+   include_related=true)` and `fetch_lessons_learned(query="<the same>",
+   agent_id="<registered name>", group_ids=[<org group>])`. This is what _this
+   investigator_ has already established, which is where a repeat failure shows
+   up first.
+2. **Then the group** — the same two calls carrying `group_ids`, without
+   `agent_id`. Dropping `agent_id` widens the scope from you to the team; it does
+   not set it, and a read with no `group_ids` takes in personal scope.
 
 Agent scope never falls back on its own: a fresh identity has an empty scope by
 construction and the server answers "no memories found for agent …" while the

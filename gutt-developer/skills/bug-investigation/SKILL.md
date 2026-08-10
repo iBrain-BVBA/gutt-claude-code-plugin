@@ -187,6 +187,11 @@ information, and it is what makes the brief trustworthy on a genuinely new bug.
   ticket-only half, cap severity confidence at `medium`, and say in one line
   that history grounding was skipped — with no history, "never seen before" is
   not a finding you are entitled to.
+- **Either way, the brief is built from the ticket and from memory — not from
+  the code.** This skill does not read the repository, so "what shipped into
+  this area recently" is not part of the evidence unless the ticket says. Say so
+  when the suspected area rests on history alone; a reviewer who checks the
+  recent changes may rank it differently, and should.
 - Either way: never stall, and name the degradation next to the claim it
   weakens.
 
