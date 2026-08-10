@@ -24,6 +24,9 @@ SUITES = {
     "prompt-pointer": "suites.prompt_pointer.suite",
     "capture-close": "suites.capture_close.suite",
     "weekly-recap": "suites.weekly_recap.suite",
+    "bug-investigation": "suites.bug_investigation.suite",
+    "sub-task-breakdown": "suites.sub_task_breakdown.suite",
+    "pr-re-review": "suites.pr_re_review.suite",
 }
 
 
@@ -45,8 +48,9 @@ def main():
     args = ap.parse_args()
 
     if args.list or not args.suite:
+        width = max(len(n) for n in SUITES)
         for name, mod in SUITES.items():
-            print(f"{name:14} {importlib.import_module(mod).DESCRIPTION}")
+            print(f"{name:{width}} {importlib.import_module(mod).DESCRIPTION}")
         return 0
     if args.suite not in SUITES:
         print(f"unknown suite {args.suite!r}; try --list", file=sys.stderr)

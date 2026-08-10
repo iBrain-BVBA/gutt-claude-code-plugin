@@ -23,7 +23,7 @@
     {
       "name": "gutt-developer",
       "source": "./gutt-developer",
-      "description": "Developer skills for Jira tickets — context research, duplicate detection, estimate grounding — backed by GUTT organizational memory",
+      "description": "Developer skills and agents for Jira tickets and pull requests — context research, duplicates, estimates, bug triage, story breakdown, memory-informed review — backed by GUTT organizational memory",
       "category": "productivity"
     },
     {

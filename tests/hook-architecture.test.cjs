@@ -229,6 +229,82 @@ describe("hook architecture guards", () => {
     assert.deepEqual(defects, [], `skill frontmatter defects: ${defects.join("; ")}`);
   });
 
+  // An org-graph write is permanent and cannot be reassigned from a normal session, so
+  // prose that tells an agent to make one must also tell it which group the write lands
+  // in. Omitting `group_id` is not "no group": the server picks an unspecified one of the
+  // caller's groups, which is how a finding meant for one engagement ends up in a graph
+  // nobody working on it reads.
+  //
+  // Repo-wide with a named exemption list rather than scoped to the newest plugin — a
+  // guard that only inspects one directory reports success about every other one.
+  it("prose that instructs an org-graph write names the group it lands in", () => {
+    // These predate the guard: each names the write tool without naming a scope. Whether
+    // that is a real gap in each is not this guard's call and nothing here changes them.
+    // They are listed so the divergence is recorded rather than silently tolerated.
+    const PRE_EXISTING = [
+      "gutt-core/skills/migrate-memory/SKILL.md",
+      "gutt-core/skills/onboard/SKILL.md",
+      "gutt-core/skills/skills-discovery/SKILL.md",
+    ];
+    // `add_memory` bare, or the per-group alias form, or `register_agent` — registration
+    // creates the agent's node in a group and is the gateway every tagged write goes
+    // through. `add_personal_memory` is a different tool and takes no group — personal
+    // scope is derived from the login.
+    const ORG_WRITE = /\badd_memory\b|\badd_memory_to_|\bregister_agent\b/;
+    const promptFiles = (plugin) => {
+      const out = [];
+      const push = (dir, depth) => {
+        if (!fs.existsSync(dir)) {
+          return;
+        }
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory() && depth > 0) {
+            push(full, depth - 1);
+          } else if (e.isFile() && e.name.endsWith(".md")) {
+            out.push(path.relative(ROOT, full).split(path.sep).join("/"));
+          }
+        }
+      };
+      push(path.join(ROOT, plugin, "skills"), 2); // skills/<name>/{SKILL.md,references/*.md}
+      push(path.join(ROOT, plugin, "agents"), 0);
+      return out;
+    };
+
+    const defects = [];
+    const unusedExemptions = new Set(PRE_EXISTING);
+    let inspected = 0;
+    for (const plugin of marketplacePluginDirs()) {
+      for (const rel of promptFiles(plugin)) {
+        const text = fs.readFileSync(path.join(ROOT, rel), "utf8");
+        if (!ORG_WRITE.test(text)) {
+          continue;
+        }
+        inspected += 1;
+        if (text.includes("group_id")) {
+          unusedExemptions.delete(rel);
+          if (PRE_EXISTING.includes(rel)) {
+            defects.push(`${rel}: names a group now — remove it from PRE_EXISTING`);
+          }
+          continue;
+        }
+        if (PRE_EXISTING.includes(rel)) {
+          unusedExemptions.delete(rel);
+          continue;
+        }
+        defects.push(`${rel}: instructs an org-graph write without naming group_id`);
+      }
+    }
+
+    // A guard that matched nothing must fail rather than pass: the write-tool names could
+    // change under it and every assertion above would go quiet.
+    assert.ok(inspected >= 5, `expected several files naming an org write, saw ${inspected}`);
+    for (const stale of unusedExemptions) {
+      defects.push(`${stale}: exempted but no longer names an org write — drop the entry`);
+    }
+    assert.deepEqual(defects, [], `org-write scope defects: ${defects.join("; ")}`);
+  });
+
   // A thin router's whole output is a pointer at a skill. If the skill is renamed
   // the pointer still ships, the model is told to run something that does not
   // exist, and nothing anywhere reports an error — the quietest failure the
