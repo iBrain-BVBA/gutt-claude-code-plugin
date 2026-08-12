@@ -693,6 +693,21 @@ describe("the one-owner-per-skill gate", () => {
     assert.match(out.stderr, /without referencing the core skill that owns/);
   });
 
+  it("does not accept an unrelated core-skill mention on a raw tool's behalf", (t) => {
+    // The scaffold references memory-search and its siblings but not agent-memory-protocol,
+    // which owns register_agent — any core-skill mention used to satisfy the rule.
+    const { dir, out } = withMutation((target) =>
+      fs.appendFileSync(skillFile(target), "\nRegister first with register_agent, then proceed.\n")
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(
+      out.stderr,
+      /names register_agent without referencing the core skill that owns it \(agent-memory-protocol\)/
+    );
+  });
+
   it("catches a skill whose name no longer matches its directory", (t) => {
     const { dir, out } = withMutation((target) =>
       patch(skillFile(target), `name: ${SKILL}`, "name: something-else")
@@ -849,6 +864,22 @@ Pinned at commit **\`${sha}\`** — the commit that was read.
     );
   });
 
+  it("does not accept a stray checksum on the pin statement's behalf", (t) => {
+    // Any 40-hex anywhere in the section used to satisfy the pin rule, so an attribution
+    // tracking a branch passed as long as some unrelated identifier looked like a commit.
+    const { dir, out } = withMutation((target) => {
+      const f = path.join(target, "ATTRIBUTION.md");
+      let text = fs.readFileSync(f, "utf8");
+      text = text.replace(/^Pinned at commit[^\n]*/m, "Tracks the upstream default branch.");
+      text += "\nUnrelated integrity checksum: fedcba9876543210fedcba9876543210fedcba98.\n";
+      fs.writeFileSync(f, text);
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /pins no 40-character commit SHA in a "Pinned at commit" statement/);
+  });
+
   it("catches an attribution file that describes no borrowing at all", (t) => {
     // An empty attribution reads as a completed check where none happened.
     const { dir, out } = withMutation((target) =>
@@ -940,6 +971,32 @@ describe("the identity gate, remaining branches", () => {
     assert.match(out.stderr, /registers no identity/);
   });
 
+  it("catches a scoped call naming a different agent's identity", (t) => {
+    // Containment of `--` was enough before, so a suffixed literal pointing at some other
+    // agent — a typo'd own name included — read and wrote the wrong scope silently.
+    const { dir, out } = withMutation((target) =>
+      patch(
+        agentFile(target),
+        `agent_id="${AGENT}--<scope>", include_related`,
+        `agent_id="other-agent--<scope>", include_related`
+      )
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /names a different identity than this agent registers/);
+  });
+
+  it("catches a registered name carrying the tokens but not as its suffix", (t) => {
+    const { dir, out } = withMutation((target) =>
+      patch(agentFile(target), `name="${AGENT}--<scope>"`, `name="<scope>--${AGENT}"`)
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /does not end with `--<scope>`/);
+  });
+
   it("catches an identity block that never states the group-wide recall pass", (t) => {
     const { dir, out } = withMutation((target) => {
       const f = agentFile(target);
@@ -962,6 +1019,7 @@ describe("the frontmatter gate, on quoted values", () => {
     ["unclosed by inner quotes", `"prose with "a phrase" inside"`, /does not close cleanly/],
     ["a quoted key followed by a mapping", `"a label": value`, /does not close cleanly/],
     ["a trailing colon with nothing after it", `ends with a colon:`, /holding a colon/],
+    ["a flow collection that never closes", `[unterminated`, /does not close on its line/],
   ];
   for (const [label, value, expected] of CASES) {
     it(`catches ${label}`, (t) => {
@@ -978,7 +1036,7 @@ describe("the frontmatter gate, on quoted values", () => {
   }
 
   // Pinning the rule against a real YAML parser would need either a duplicate of the rule
-  // here or the checker restructured into an importable module. The three cases above bound
-  // it on the exact hazards, and the repository-clean run bounds the other direction, which
+  // here or the checker restructured into an importable module. The cases above bound it
+  // on the exact hazards, and the repository-clean run bounds the other direction, which
   // is proportionate for a hand-rolled stand-in this narrow.
 });

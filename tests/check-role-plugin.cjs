@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * The role-plugin review step: the mechanically checkable half of the two gates in
- * `templates/role-plugin/README.md`, plus the structural rules a role plugin loads
+ * `templates/role-plugin.md`, plus the structural rules a role plugin loads
  * correctly under.
  *
  * Scope. By default every plugin the marketplace lists is a role plugin except the
@@ -46,24 +46,19 @@ const rel = (abs) => path.relative(ROOT, abs).split(path.sep).join("/");
  */
 const CORE_NAME = readJson(path.join(ROOT, "package.json")).name;
 
-/** Core memory skills a role plugin references rather than re-implements. */
-const CORE_SKILLS = [
-  "memory-search",
-  "memory-capture",
-  "graph-traversal",
-  "agent-memory-protocol",
-  "conflict-adjudication",
-  "output-style",
-];
-
-/** Raw graph tool names. A skill naming these owes the reader the skill that owns them. */
-const RAW_TOOLS = [
-  "search_memory_nodes",
-  "search_memory_facts",
-  "add_memory",
-  "fetch_lessons_learned",
-  "register_agent",
-];
+/**
+ * Raw graph tool names, each with the core skill(s) that own its guidance. A skill naming
+ * one of these owes the reader that owner specifically — a mention of any core skill used
+ * to satisfy the rule, so a skill could restate register_agent guidance while pointing only
+ * at output-style.
+ */
+const RAW_TOOL_OWNERS = new Map([
+  ["search_memory_nodes", ["memory-search"]],
+  ["search_memory_facts", ["memory-search", "graph-traversal"]],
+  ["add_memory", ["memory-capture"]],
+  ["fetch_lessons_learned", ["memory-search"]],
+  ["register_agent", ["agent-memory-protocol"]],
+]);
 
 // ── frontmatter ────────────────────────────────────────────────────────────────
 
@@ -104,7 +99,10 @@ const unquote = (v) => v.replace(/^["'](.*)["']$/s, "$1");
  *
  * So a value opening a quote must be a complete single-line quoted scalar and nothing
  * else, and the colon test accepts end-of-line as well as a following space. Block scalars
- * (`|`, `>`) and flow collections carry their content past this line and are left alone.
+ * (`|`, `>`) carry their content past this line and are left alone; a flow collection has
+ * to close on its opening line. Multi-line flow collections are legal YAML, but no
+ * frontmatter here uses one, and flagging that rarity loudly beats waving through
+ * `description: [unterminated`, which drops the block like the other three shapes.
  * @param {string[]} lines
  * @returns {string[]} offending keys, each with what is wrong
  */
@@ -116,7 +114,13 @@ function unquotedColonScalars(lines) {
       continue;
     }
     const value = m[2].trim();
-    if (!value || /^[>|[{]/.test(value)) {
+    if (!value || /^[>|]/.test(value)) {
+      continue;
+    }
+    if (value.startsWith("[") || value.startsWith("{")) {
+      if (!value.endsWith(value.startsWith("[") ? "]" : "}")) {
+        bad.push(`${m[1]} (a flow collection that does not close on its line)`);
+      }
       continue;
     }
     if (value.startsWith('"')) {
@@ -325,15 +329,26 @@ function checkAgent(file, requireShape = true) {
           `register_agent name "${named[1]}" bakes in a resolved scope — leave "<scope>" for ` +
             "the agent to resolve where it runs"
         );
+      } else if (!/--<scope>$/.test(named[1])) {
+        // Containing both tokens is not the convention; ending with them is. A reversed or
+        // extended form still gets a unique merge key, so what this stops is shape drift,
+        // not pooling — but one drifted name becomes the example the next agent copies.
+        err(
+          f,
+          `register_agent name "${named[1]}" does not end with \`--<scope>\` — the scope ` +
+            "suffix is terminal, nothing follows it"
+        );
       }
     }
     if (!/^## Learning Protocol$/m.test(text)) {
       err(f, "registers an identity but has no `## Learning Protocol` section");
     }
     // Scoped calls carry the identity in one of two forms that both survive being
-    // scaffolded elsewhere: the suffixed name, or an indirection back to the registered
-    // one. A bare resolved literal is the failure — it pools this agent's writes with
-    // every other instance in the group.
+    // scaffolded elsewhere: this agent's own suffixed name, or an indirection back to the
+    // registered one (a value opening `<`). A bare resolved literal pools this agent's
+    // writes with every other instance in the group; a suffixed literal that names some
+    // OTHER agent silently reads and writes the wrong scope, which containment alone
+    // waved through.
     const ids = [...text.matchAll(/agent_id\s*=\s*["']([^"']*)["']/g)].map((m) => m[1]);
     if (!ids.length) {
       err(
@@ -342,14 +357,22 @@ function checkAgent(file, requireShape = true) {
       );
     }
     for (const id of new Set(ids)) {
-      if (id.includes("--") || id.includes("<")) {
+      if (id.startsWith("<")) {
         continue;
       }
-      err(
-        f,
-        `agent_id="${id}" is a bare resolved name — pass the \`--<scope>\`-suffixed name, or ` +
-          "refer to the registered name so there is one source of truth for it"
-      );
+      if (!id.includes("--")) {
+        err(
+          f,
+          `agent_id="${id}" is a bare resolved name — pass the \`--<scope>\`-suffixed name, or ` +
+            "refer to the registered name so there is one source of truth for it"
+        );
+      } else if (!id.startsWith(`${name}--`)) {
+        err(
+          f,
+          `agent_id="${id}" names a different identity than this agent registers ` +
+            `("${name}--<scope>") — scoped calls carry the agent's own registered name`
+        );
+      }
     }
     if (!/without\s+`?agent_id`?|[Gg]roup-wide/.test(text)) {
       err(f, "identity block never states the group-wide recall pass, which is never skipped");
@@ -404,14 +427,16 @@ function checkSkill(dir) {
     err(f, 'frontmatter "description" is required — it decides whether the skill loads at all');
   }
 
-  // One owner per skill: name the owning core skill rather than restating its rules.
-  const raw = RAW_TOOLS.filter((t) => text.includes(t));
-  if (raw.length && !CORE_SKILLS.some((s) => text.includes(s))) {
-    err(
-      f,
-      `names raw graph tools (${raw.join(", ")}) without referencing the core skill that owns ` +
-        "them — reference it instead of restating tool guidance"
-    );
+  // One owner per skill: each raw tool named owes the reader its own owner, not just any
+  // core skill — an unrelated mention used to satisfy this.
+  for (const [tool, owners] of RAW_TOOL_OWNERS) {
+    if (text.includes(tool) && !owners.some((s) => text.includes(s))) {
+      err(
+        f,
+        `names ${tool} without referencing the core skill that owns it (${owners.join(" or ")}) — ` +
+          "reference it instead of restating tool guidance"
+      );
+    }
   }
   const prefixed = text.match(/mcp__[a-zA-Z0-9_-]+__/);
   if (prefixed) {
@@ -561,11 +586,13 @@ function checkContent(dir) {
             "names the upstream — state the upstream's own licence there, not this repository's"
         );
       }
-      if (!/\b[0-9a-f]{40}\b/.test(section)) {
+      // The hex must sit in the pin statement itself. Anywhere-in-section let an unrelated
+      // checksum satisfy the rule on behalf of a borrowing that tracks a branch.
+      if (!/\bPinned at commit\b[^\n]*\b[0-9a-f]{40}\b/i.test(section)) {
         err(
           f,
-          `"${where}" pins no 40-character commit SHA — a named repository without one records ` +
-            "that something was borrowed but not what"
+          `"${where}" pins no 40-character commit SHA in a "Pinned at commit" statement — a ` +
+            "named repository without one records that something was borrowed but not what"
         );
       }
       if (!/github\.com\//.test(section)) {

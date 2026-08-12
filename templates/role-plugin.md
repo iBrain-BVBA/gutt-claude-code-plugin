@@ -180,9 +180,11 @@ passes all of this before it merges:
 
 `tests/check-role-plugin.cjs` is the executable half of both gates — the structural rules,
 the licensing gate, and the delivery-context gate that can be checked mechanically. It runs
-in `npm run test:all` and in CI, and it covers every plugin the marketplace lists that
-depends on the core plugin, so a new role plugin is picked up by registering it in
-`marketplace.json` and nowhere else.
+in `npm run test:all` and in CI, and it covers every plugin the marketplace lists except
+the core one, identified by name — classified by exclusion on purpose, so that dropping
+the core dependency fails the rule that requires it instead of quietly removing the plugin
+from the gates. A new role plugin is picked up by registering it in `marketplace.json` and
+nowhere else.
 
 It cannot check the judgement calls — whether what was replaced is substantial enough to be
 an adaptation, whether a governance step was really preserved. Those stay human, which is
