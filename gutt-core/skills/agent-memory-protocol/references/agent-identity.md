@@ -11,8 +11,8 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
 
 - A registered agent is a node `{alias}:Agent:{name}` — you supply `{name}`; the server
   derives the `{alias}:Agent:` prefix from the memory group (e.g. `gutt_pro:Agent:pr-reviewer`).
-- Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`). Those two, and every
-  `pr-reviewer` below, are illustrative — no agent by that name ships in this repo.
+- Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`). Every name in the examples
+  below is illustrative; resolve your own from your purpose rather than copying one.
 - Identity is keyed on **name + group** (see Register), so different groups separate
   same-named agents on their own. Inside one group they do not separate themselves:
   **always carry a `--<scope>` suffix** — `pr-reviewer--acme-web` — so that one agent
@@ -93,8 +93,9 @@ register_agent(
 - **When you capture another agent's run, tag that agent instead of yourself.** An episode
   carries exactly one `agent_id` — a single scalar, with no list and no metadata
   side-channel — so the choice is exclusive. A capture agent writing on its own account stamps
-  its own name; capturing a `gutt-mentor` run on that agent's behalf, it stamps
-  `agent_id="gutt-mentor"`. Decide **per episode, not per invocation** — one end-of-session run
+  its own name; capturing another agent's run on that agent's behalf, it stamps that agent's
+  registered name — `agent_id="onboarding-guide--acme-web"`, suffix and all, exactly as that
+  agent registered it. Decide **per episode, not per invocation** — one end-of-session run
   can yield both. The delegating agent names itself in its delegation prompt; default to your
   own name when it doesn't.
 - Tagging hides nothing: a tagged write is still found by anyone's un-scoped search — the

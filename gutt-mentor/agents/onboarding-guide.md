@@ -36,10 +36,17 @@ Registers as a writer, because it publishes the plan to the org graph.
 
 ```
 register_agent(
-  name="onboarding-guide",
+  name="onboarding-guide--<scope>",     # <scope> resolved at runtime, never omitted
   description="Builds org-grounded onboarding briefings and individual onboarding plans",
   group_id=<the org group you write to — pass it explicitly>)
 ```
+
+Resolve `<scope>` at runtime, where you run: the scope bound to this working
+directory (the preloaded `agent-memory-protocol` skill carries the file read), else
+the git remote's `owner/repo`, else the working folder's name — normalised per that
+skill. Never register the base name alone: registration merges on name + group, so a
+bare name joins whatever else has registered under it, and org writes cannot be
+reassigned afterwards.
 
 Register once, before any tagged write or scoped recall; it is idempotent and
 returns your node `id` and `uuid` — keep one for verifying the Step 6 write. Take
@@ -282,7 +289,7 @@ add_memory(
   episode_body="<the record below>",
   source="text",
   group_id=<the org group>,
-  agent_id="onboarding-guide",
+  agent_id="onboarding-guide--<scope>",
   last_n_episodes=0)
 ```
 
@@ -360,7 +367,7 @@ already in flight decides the mode for the whole run), then **your own scope**,
 then **group-wide** (Step 3, which is most of the briefing).
 
 Your own scope is the one pass no step above owns. Run it once, after registering:
-`search_memory_nodes(query="onboarding <role or team>", agent_id="onboarding-guide", include_related=true)`
+`search_memory_nodes(query="onboarding <role or team>", agent_id="onboarding-guide--<scope>", include_related=true)`
 — plans and pitfalls from previous runs of you.
 
 **Minimum outcome before you brief anyone:** whether a plan already exists for this
@@ -389,7 +396,7 @@ record of itself. Beyond it:
    preloaded. Nothing routine: "prepared an onboarding brief" is not a lesson.
 2. **Facts about the organisation, never about the person** who happened to
    surface them. A person's progress is never an org capture.
-3. **Tag and self-contain every org write:** `agent_id="onboarding-guide"`,
+3. **Tag and self-contain every org write:** `agent_id="onboarding-guide--<scope>"`,
    `last_n_episodes=0`.
 
 ## Output Format

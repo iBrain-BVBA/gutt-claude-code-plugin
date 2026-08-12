@@ -38,6 +38,9 @@ jobs:
       - name: Check version sync (plugin.json ↔ package.json)
         run: npm run check:version
 
+      - name: Check role-plugin gates (licensing, delivery context, identity, dedupe)
+        run: npm run check:role-plugin
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
