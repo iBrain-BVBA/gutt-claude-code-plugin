@@ -235,6 +235,22 @@ describe("the licensing gate", () => {
     assert.match(out.stderr, /official plugins repository/);
   });
 
+  it("catches the same forbidden repository in nonstandard casing", (t) => {
+    // GitHub resolves owner/repo names case-insensitively, so a capitalized form names
+    // exactly the same prohibited source.
+    const { dir, out } = withMutation((target) =>
+      patch(
+        skillFile(target),
+        "## When to use",
+        "Adapted from https://github.com/Anthropics/Claude-Code.\n\n## When to use"
+      )
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /official plugins repository/);
+  });
+
   it("catches a no-derivatives baseline", (t) => {
     const { dir, out } = withMutation((target) =>
       patch(

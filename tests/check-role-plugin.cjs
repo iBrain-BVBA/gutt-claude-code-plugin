@@ -447,7 +447,10 @@ function checkSkill(dir) {
 // Gate 1 — baseline-fork licensing.
 const FORBIDDEN_SOURCE = [
   [
-    /anthropics\/claude-code(?![a-z-])/,
+    // Case-insensitive because GitHub resolves owner/repo names that way — a capitalized
+    // form names the same prohibited source. Under /i the lookahead also excludes
+    // uppercase continuations, so extension repositories stay un-banned in any casing.
+    /anthropics\/claude-code(?![a-z-])/i,
     "Anthropic content must come from the official plugins repository, not the product repository",
   ],
   [/CC[ -]BY[ -]NC/i, "a non-commercial Creative Commons licence is not usable here"],
