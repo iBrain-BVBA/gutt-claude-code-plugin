@@ -3,6 +3,16 @@
 Judge model: the bench default fast model. 2 variants (shipped skill body read
 live from the working tree vs no skill) × 4 cases × 3 trials per round.
 
+> **Every score on this page predates a checker rewrite and none of them
+> describe the current suite.** A review pass found that `source-cited` was
+> satisfied by one `Source:` anywhere in a reply the case expects three drafts
+> from, that `acceptance-criteria` matched a heading and never checked a
+> criterion, that the filed-claim ban fired on the compliant negation
+> `asks-before-filing` rewards, and that the ungated-write detector omitted the
+> link and comment tools. All are fixed; the suite has not been re-run since.
+> Treat the tables below as a record of what the old instrument reported, not
+> as a measurement of the shipped skill.
+
 ## Headline
 
 | Round              | V0-shipped   | V1-none   |

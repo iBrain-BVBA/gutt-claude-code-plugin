@@ -18,10 +18,11 @@
   that always carry their justification, and applies only the actions the user
   approves — one at a time, or as a batch whose text names every key. Counts
   are recounted from the working set rather than estimated, and the clustering
-  bar is put in front of the user on a sample before it scales. Both skills
-  read issue types, fields, workflow transitions, and link names from the
-  project itself rather than assuming any, so they run unchanged on another
-  organization's Jira. Eval suites for both ship under `evals/`.
+  bar is put in front of the user on a sample before it scales. Neither skill
+  assumes a Jira configuration: `story-creation` reads issue types, create-screen
+  fields and link names from the project, `backlog-dedupe` reads issue types,
+  workflow transitions and link names, so both run unchanged on another
+  organization's tracker. Eval suites for both ship under `evals/`.
 
 ### Changed
 

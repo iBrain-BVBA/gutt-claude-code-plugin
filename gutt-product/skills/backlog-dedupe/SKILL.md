@@ -33,11 +33,15 @@ your tool list — names and prefixes vary per install.
    one other permitted write is a comment, drafted and posted only after the
    user approves the exact text. Write markdown and set the tool's
    content-format parameter to markdown when it exposes one.
-2. **Fetch the slice once, then work the copy.** Pull the slice into an
-   enumerated working set — key, summary, status, age, last activity — in one
-   pass, and cluster against that. Per-ticket live calls across a slice multiply
-   cost and stall long before the slice ends; fetch an item's full detail only
-   for the few whose verdict turns on it.
+2. **Fetch the slice once and whole, then work the copy.** Pull the slice into
+   an enumerated working set — key, summary, status, age, last activity — and
+   cluster against that. One pass means the entire slice, not the first page:
+   search results are paginated, so follow the pages until the set is complete,
+   or narrow the query until it fits one, and say which you did next to the
+   count. A total recounted over a truncated page is precise and wrong, and
+   nothing downstream can detect it. Per-ticket live calls across a slice
+   multiply cost and stall long before the slice ends; fetch an item's full
+   detail only for the few whose verdict turns on it.
 3. **Counts are recounted, never estimated — and "every" and "none" are
    counts.** Cluster sizes, stale totals, and any claim of how many tickets
    something covers are computed by enumerating the working set. A number that
@@ -123,10 +127,14 @@ slice ends in exactly one bucket, and the buckets sum to the slice count
   consolidation into a single item is the proposal.
 - **Stale candidate** — aged, inactive, superseded or decided against, with
   rule 4's justification.
+- **Arguable** — the verdict stays genuinely contested once the evidence is in.
+  It is counted here and handed to the single-ticket check (When to use) rather
+  than forced into a verdict the evidence does not carry.
 - **Keep** — pulls its own weight as filed.
 
-A pair whose verdict stays genuinely arguable is flagged as arguable and handed
-to the single-ticket check (When to use) rather than forced into a bucket.
+Arguable is a bucket, not an exemption: an item parked there still counts toward
+the slice, or the partition stops summing and every later number is short by
+however many were quietly set aside.
 
 ## Step 4 — the proposal
 
@@ -135,7 +143,8 @@ to the single-ticket check (When to use) rather than forced into a bucket.
 
 ## Calibration
 
-<the known-answer sample and its verdicts — rule 5>
+<the sample, each verdict, and the evidence behind it — rule 5; say for each
+whether anything confirmed it or it stands on your reading alone>
 
 ## Duplicate and overlap clusters
 

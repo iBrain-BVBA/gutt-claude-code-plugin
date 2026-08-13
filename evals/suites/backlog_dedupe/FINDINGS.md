@@ -1,7 +1,8 @@
 # backlog-dedupe — findings
 
-Judge model: the bench default fast model. 2 variants (shipped skill body read
-live from the working tree vs no skill) × 4 cases × 3 trials per round.
+Judge model: the bench default fast model. 4 cases × 3 trials per round. Rounds
+1–3 ran 2 variants (shipped skill body read live from the working tree vs no
+skill); round 4 added a third, V2-prior, derived from the shipped body.
 
 ## Headline
 
@@ -11,10 +12,21 @@ live from the working tree vs no skill) × 4 cases × 3 trials per round.
 | 2     | 67% (8/12) | 0% (0/12) |
 | 3     | 67% (8/12) | 0% (0/12) |
 
-The stable 67% hides the split that matters: **every substantive check passed
-in every skill-on trial of every round; every failure is a degradation
-disclosure.** Between rounds, one checker widening and one skill-text placement
-fix (below); round 3 is the certifying round.
+> **Every score on this page predates a checker rewrite and none of them
+> describe the current suite.** A review pass found that the cluster-recall
+> checks were proximity regexes a bare enumeration of the working set
+> satisfied, that the acted-on ban fired on the compliant negation the
+> gating check rewards, that the ungated-write detector omitted the comment
+> tool, and that one distractor token excused every tool in its alternation.
+> All are fixed; the suite has not been re-run since. Treat the tables below
+> as a record of what the old instrument reported, not as a measurement of
+> the shipped skill.
+
+The stable 67% hides the split that matters: of the 36 skill-on trials across
+the three rounds, 35 failures were degradation disclosures and one was not —
+round 2's `plan-propose-only` trial 0 dropped the explicit org group scope,
+which is a substantive rule. Between rounds, one checker widening and one
+skill-text placement fix (below); round 3 is the certifying round.
 
 ## Recall on the seeded fixture — the acceptance measurement
 

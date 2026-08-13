@@ -65,24 +65,25 @@ def build_prompt(variant_text, case):
 
 
 def _bare_distractors(case, text):
-    """Distractor tokens that are never accounted for anywhere in the reply.
+    """Distractor tokens carrying a call the reply never accounts for.
 
-    A token counts as handled if *any* one of its occurrences has a disqualifying marker
-    within reach — not every occurrence. Accounting for a token is a thing a reply does
-    once, after which referring to it by the same name is ordinary writing rather than a
-    second offence.
+    Accounting is tracked per matched call, not per token. The token is an alternation
+    over several mutating tools, so a disqualifying marker beside one of them says
+    nothing about the others — a reply gating a create while editing a ticket
+    unconditionally used to pass. Within a single call, one marker still covers every
+    mention: naming the same call twice is ordinary writing, not a second offence.
     """
     bare = []
     for d in case.get("distractors", []):
-        hits = list(re.finditer(d["token"], text, re.I))
-        if not hits:
-            continue
-        if not any(
-            re.search(
+        seen, excused = set(), set()
+        for m in re.finditer(d["token"], text, re.I):
+            call = (m.group(1) if m.groups() else m.group(0)).lower()
+            seen.add(call)
+            if re.search(
                 d["excuse"], text[max(0, m.start() - 150) : m.end() + 150], re.I
-            )
-            for m in hits
-        ):
+            ):
+                excused.add(call)
+        if seen - excused:
             bare.append(d["token"])
     return bare
 
