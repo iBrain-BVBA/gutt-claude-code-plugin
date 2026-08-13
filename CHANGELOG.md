@@ -1,5 +1,65 @@
 # Changelog
 
+## [3.0.5] - 2026-08-12
+
+### Fixed
+
+- **`gutt-developer`'s `bug-investigator` agent was loading with no metadata at
+  all.** Its `description` contained an unquoted colon, which does not drop that
+  one field — YAML rejects the whole frontmatter block, so the agent ran with no
+  name, no model tier, and none of its five preloaded memory skills, and nothing
+  at runtime reported it. `claude plugin validate ./gutt-developer` had been
+  failing on this; all four plugins now pass it under `--strict`. The sibling
+  agent in the same plugin survived only because its description happens to
+  contain no colon, so the difference between working and broken was punctuation
+  in prose with no guard in between.
+
+- **Two agents registered bare, unsuffixed memory identities.**
+  `gutt-mentor`'s `onboarding-guide` and `gutt-pro`'s own `agent-creator` both
+  registered without the `--<scope>` suffix the identity convention requires.
+  Identity merges on name plus group, so a bare name pools its writes with every
+  other instance registered under it, and org writes cannot be reassigned
+  afterwards. `agent-creator` was the more awkward of the two: it is the
+  scaffolder that tells every agent it generates never to ship a base name
+  alone.
+
+- **The identity convention's own reference taught one violation and one stale
+  fact.** Its delegation example stamped an unsuffixed `agent_id`, and it claimed
+  no agent shipped under the name it uses throughout as an illustration — untrue
+  since the developer plugin shipped.
+
+### Added
+
+- **A role-plugin template, and two review gates that execute.** `templates/`
+  holds the scaffold every role plugin is generated from and the authoring doc
+  carrying the gates a role plugin does not merge without: baseline-fork
+  licensing (permissive upstream only, attribution pinning the commit SHA that
+  was read, Anthropic content only from the official plugins repository,
+  trademarked baselines renamed) and delivery context (the ticket tracker and its
+  wiki are the system of record, engagement-scoped writes, nothing published
+  without approval of the exact text).
+
+  The mechanical half is `npm run check:role-plugin`, in `test:all` and in CI. It
+  covers every marketplace plugin except the core one, so a new role plugin is
+  registered in `marketplace.json` and nowhere else. Two things it enforces that
+  nothing else did: that a component's frontmatter parses at all — the skills
+  guard checks a block's presence and naming, never whether YAML accepts it, and
+  agents had no structural check whatsoever — and that one plugin owns each
+  skill, since a skill name is global to a session and two plugins declaring one
+  collide with no way for a user to tell which answered.
+
+  The judgement calls stay human: whether a borrowing was adapted enough to be an
+  adaptation, and whether a governance step was really preserved. That is what
+  makes the checklists review gates rather than decoration.
+
+### Changed
+
+- **`defaultEnabled` is now stated explicitly on every plugin.** `true` is also
+  the platform default, so nothing about installing changes. It is written out so
+  the decision is visible in the manifest instead of implied by an absence, and
+  the review step holds every role plugin to it — the suite cannot end up half
+  opt-in without someone choosing that.
+
 ## [3.0.4] - 2026-08-06
 
 ### Added

@@ -22,6 +22,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── gutt-developer/         # developer plugin (depends on gutt-pro) — ticket research/duplicates/estimate, bug-investigation, sub-task-breakdown, pr-re-review + pr-reviewer & bug-investigator agents; no hooks
 ├── gutt-product/           # product plugin (depends on gutt-pro) — backlog prioritization for product leadership; no hooks
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
+├── templates/              # role-plugin scaffold + its review gates — not shipped
 ├── tests/                  # Unit and E2E tests
 ├── evals/                  # prompt/skill bench — not shipped, not in test:all (see below)
 ├── docs/                   # Documentation and assets
@@ -160,6 +161,41 @@ in a year, on a deployment nobody here has seen. Concretely:
 - **Renumbering hard rules is a breaking change.** Rules are cross-referenced by
   number from other skills, hooks, and tests (`grep -rn "rule [0-9]"`). Extend a
   rule in place rather than inserting one and shifting the rest.
+
+## Adding a Role Plugin — scaffold from the template, don't copy a sibling
+
+`templates/role-plugin/` is the scaffold every role plugin is generated from, and
+`templates/role-plugin.md` is the authoring doc that carries the two review gates a role
+plugin does not merge without: **baseline-fork licensing** (permissive upstream only,
+`ATTRIBUTION.md` pinning the commit SHA, official-plugins repo for Anthropic content,
+trademarked baselines renamed) and **delivery context** (the ticket tracker and its wiki are
+the system of record, engagement-scoped writes, nothing published without approval of the
+exact text).
+
+Copying an existing role plugin instead is how the drift starts — a sibling is a snapshot of
+the conventions as they were the day it was written.
+
+**The gates are executable.** `npm run check:role-plugin` is the mechanical half, in
+`test:all` and in CI. It covers every marketplace plugin except the core one, identified by
+name, so a new role plugin is registered in `marketplace.json` and nowhere else. Classifying
+by exclusion rather than by the declared dependency is deliberate: selecting on the
+dependency meant dropping it removed a plugin from every gate instead of failing the rule
+that requires it. Two things it enforces that nothing else did:
+
+- **Frontmatter parses.** YAML rejecting a frontmatter block does not drop the offending
+  field, it drops the whole block — so the component loads with no name, no model and no
+  preloaded skills, and nothing reports it. Three shapes reach that: an unquoted value
+  holding a colon, and either quote style that fails to close cleanly. Opening a quote is
+  not on its own an escape. This check reaches every marketplace plugin's agents and
+  skills. `hook-architecture.test.cjs` also walks `skills/`, but only for a block's
+  presence and its `name`/`description` — never for whether it parses.
+- **One owner per skill.** The core plugin owns the memory skills; role plugins reference
+  them and never restate their rules, and no two plugins declare the same skill or agent
+  name. A skill name is global to a session.
+
+The judgement calls — whether a borrowing was adapted enough to be an adaptation, whether a
+governance step was really preserved — stay in the human checklists. That is what makes them
+review gates rather than decoration.
 
 ## Development Guidelines
 
