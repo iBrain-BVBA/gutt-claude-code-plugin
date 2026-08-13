@@ -25,19 +25,28 @@ your tool list — names and prefixes vary per install.
 1. **Propose-only — nothing in Jira changes without per-action approval.** No
    close, cancel, merge, link, label, or field edit lands unless the user
    approved that specific action, or an explicitly named batch of them, in this
-   session. Approval is the gate, not an undo; silence is not approval. The one
-   other permitted write is a comment, drafted and posted only after the user
-   approves the exact text. Write markdown and set the tool's content-format
-   parameter to markdown when it exposes one.
+   session. Approval is the gate, not an undo; silence is not approval. A batch
+   counts as named only where the text the user reads before answering carries
+   every key and what happens to each — a label standing for them is not that
+   text. One ask decides one thing: nothing unrelated rides along in the same
+   question, and housekeeping never shares a question with a Jira action. The
+   one other permitted write is a comment, drafted and posted only after the
+   user approves the exact text. Write markdown and set the tool's
+   content-format parameter to markdown when it exposes one.
 2. **Fetch the slice once, then work the copy.** Pull the slice into an
    enumerated working set — key, summary, status, age, last activity — in one
    pass, and cluster against that. Per-ticket live calls across a slice multiply
    cost and stall long before the slice ends; fetch an item's full detail only
    for the few whose verdict turns on it.
-3. **Counts are recounted, never estimated.** Cluster sizes, stale totals, and
-   any claim of how many tickets something covers are computed by enumerating
-   the working set. A number that cannot be recounted from the set does not
-   enter the output.
+3. **Counts are recounted, never estimated — and "every" and "none" are
+   counts.** Cluster sizes, stale totals, and any claim of how many tickets
+   something covers are computed by enumerating the working set. A number that
+   cannot be recounted from the set does not enter the output. A claim about all
+   of something — every edit in a history, no real activity on a ticket — is the
+   same claim wearing a different word: enumerate it, give the tally, and name
+   the exceptions. "Twenty of twenty-two entries are sprint moves" is a finding;
+   "every entry is a sprint move" is that finding with the exceptions dropped,
+   and the exceptions are often where the real activity is.
 4. **Every cluster carries its evidence; every stale candidate carries its
    justification.** A cluster names its ticket keys, the outcome they share (not
    the wording), and any memory record tying them together — each with id and
@@ -120,8 +129,8 @@ to the single-ticket check (When to use) rather than forced into a bucket.
 
 ## Duplicate and overlap clusters
 
-| #   | Tickets | Shared outcome | Evidence (source, date) | Proposal |
-| --- | ------- | -------------- | ----------------------- | -------- |
+| #   | Tickets | Shared outcome | Evidence (source, date) or `similarity only` | Proposal |
+| --- | ------- | -------------- | -------------------------------------------- | -------- |
 
 ## Consolidations
 
@@ -133,8 +142,8 @@ to the single-ticket check (When to use) rather than forced into a bucket.
 
 ## Stale candidates
 
-| Ticket | Age / last activity | Why it looks dead (evidence) | Proposal |
-| ------ | ------------------- | ---------------------------- | -------- |
+| Ticket | Age / last activity | Why it looks dead — evidence, or `similarity only` | Proposal |
+| ------ | ------------------- | -------------------------------------------------- | -------- |
 
 ## Untouched
 
@@ -146,6 +155,10 @@ to the single-ticket check (When to use) rather than forced into a bucket.
 - What was searched: <the memory phrasings and Jira angles>
 - What would change a verdict: <the open questions>
 ```
+
+Every row of both tables fills its evidence cell — a source and a date, or the
+literal `similarity only`. Prose that names no source is an unfilled cell: the
+reader cannot tell a cited verdict from a plausible one.
 
 Then the decisions, one at a time or as an explicitly named batch: for each
 proposal the user approves — close, cancel, link as duplicate, create the
