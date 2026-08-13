@@ -87,6 +87,14 @@ function fmPairs(lines) {
 const unquote = (v) => v.replace(/^["'](.*)["']$/s, "$1");
 
 /**
+ * A complete single-line double-quoted scalar. The escape alternatives are YAML's defined
+ * set and nothing else: a catch-all `\\.` would accept `\q`, which YAML rejects — and this
+ * gate exists to catch documents YAML rejects, so accepting one is the failure that matters.
+ */
+const DOUBLE_QUOTED =
+  /^"(?:[^"\\]|\\(?:[0abtnvfre "/\\N_LP]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}))*"$/;
+
+/**
  * The parse hazard that costs a whole frontmatter block: YAML rejects the document and the
  * component loads with every field silently dropped, with nothing at runtime reporting it.
  *
@@ -124,7 +132,7 @@ function unquotedColonScalars(lines) {
       continue;
     }
     if (value.startsWith('"')) {
-      if (!/^"(?:[^"\\]|\\.)*"$/.test(value)) {
+      if (!DOUBLE_QUOTED.test(value)) {
         bad.push(`${m[1]} (a double-quoted value that does not close cleanly)`);
       }
       continue;
@@ -212,8 +220,11 @@ function checkManifest(dir, manifest) {
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(manifest.name || ""))) {
     err(file, `"name" must be kebab-case (got ${JSON.stringify(manifest.name)})`);
   }
-  // Omit the version and the git SHA becomes it, so every commit reads as an update.
-  if (!/^\d+\.\d+\.\d+/.test(String(manifest.version || ""))) {
+  // Omit the version and the git SHA becomes it, so every commit reads as an update. Anchored
+  // at both ends: matching only the prefix accepted `1.2.3.4` while reporting semver checked.
+  if (
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(String(manifest.version || ""))
+  ) {
     err(file, `"version" must be semver (got ${JSON.stringify(manifest.version)})`);
   }
   const deps = Array.isArray(manifest.dependencies) ? manifest.dependencies : [];
@@ -736,19 +747,24 @@ let agents = 0;
 let skills = 0;
 for (const p of rolePlugins) {
   checkManifest(p.dir, manifestOf(p.dir));
+  let own = 0;
   for (const a of agentFiles(p.dir)) {
     checkAgent(a);
     agents++;
+    own++;
   }
   for (const s of skillDirs(p.dir)) {
     checkSkill(s);
     skills++;
+    own++;
+  }
+  // Per plugin, and either kind counts — one shipping only skills is normal here. The
+  // marketplace-wide totals cannot stand in for this: they stay non-zero while an individual
+  // plugin contributes nothing, which is exactly the plugin that went uninspected.
+  if (!own) {
+    err(rel(p.dir), "ships no agents and no skills — nothing was inspected");
   }
   checkContent(p.dir);
-}
-
-if (!agents && !skills) {
-  fail("the role plugins ship no agents and no skills — nothing was inspected");
 }
 
 if (errors.length) {

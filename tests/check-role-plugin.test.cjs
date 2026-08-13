@@ -423,6 +423,34 @@ describe("the frontmatter gate", () => {
     assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
     assert.match(out.stderr, /"model" must be one of/);
   });
+
+  // The hazard drops a skill's metadata exactly as it drops an agent's, and the rules are
+  // separate code paths — so each needs its own case. These assert on the SKILL.md path as
+  // well as the message, or they would pass on the agent-side rule firing instead.
+  it("catches a skill whose frontmatter block is missing entirely", (t) => {
+    const { dir, out } = withMutation((target) =>
+      fs.writeFileSync(skillFile(target), `# ${SKILL}\n\nA skill that lost its frontmatter.\n`)
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /SKILL\.md: no YAML frontmatter block/);
+  });
+
+  it("catches the unquoted colon in a skill's frontmatter, not just an agent's", (t) => {
+    const { dir, out } = withMutation((target) => {
+      const f = skillFile(target);
+      const text = fs.readFileSync(f, "utf8");
+      fs.writeFileSync(
+        f,
+        text.replace(/^description: .*$/m, "description: Rank the backlog: with evidence")
+      );
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /SKILL\.md: frontmatter description \(an unquoted value holding/);
+  });
 });
 
 describe("the manifest gate", () => {
@@ -436,6 +464,31 @@ describe("the manifest gate", () => {
 
     assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
     assert.match(out.stderr, /"dependencies" must name/);
+  });
+
+  it("catches a version with trailing characters the error message claims to reject", (t) => {
+    const { dir, out } = withMutation((target) => {
+      const m = JSON.parse(fs.readFileSync(manifestFile(target), "utf8"));
+      m.version = "1.2.3.4";
+      fs.writeFileSync(manifestFile(target), JSON.stringify(m, null, 2));
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /"version" must be semver/);
+  });
+
+  it("accepts a prerelease and build version", (t) => {
+    // Anchoring the rule at both ends is what makes the case above fail; this is the half
+    // that would break silently if the anchor were added without the rest of semver.
+    const { dir, out } = withMutation((target) => {
+      const m = JSON.parse(fs.readFileSync(manifestFile(target), "utf8"));
+      m.version = "1.2.3-beta.1+build.5";
+      fs.writeFileSync(manifestFile(target), JSON.stringify(m, null, 2));
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 0, `expected a pass, got:\n${out.stdout}${out.stderr}`);
   });
 
   it("catches a plugin opting itself out of the suite's install behaviour", (t) => {
@@ -578,6 +631,41 @@ describe("marketplace mode", () => {
 
     const out = run();
     assert.equal(out.status, 0, `expected a pass, got:\n${out.stdout}${out.stderr}`);
+  });
+
+  it("catches one plugin contributing nothing, while its siblings keep the totals up", (t) => {
+    // The counts the run reports are marketplace-wide, so a sibling with components hides a
+    // plugin with none. Two role plugins is the smallest fixture that tells the per-plugin
+    // rule apart from a total that merely happens to be non-zero.
+    const { dir, run } = tempMarketplace({
+      plugins: [
+        { name: "gutt-pro", dir: "core", skills: ["memory-search"] },
+        { name: "gutt-role-a", dir: "role-a", skills: ["some-activity"] },
+        { name: "gutt-role-b", dir: "role-b", skills: [] },
+      ],
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const out = run();
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /role-b: ships no agents and no skills/);
+  });
+
+  it("catches the frontmatter parse hazard in the core plugin's own skills", (t) => {
+    // Nothing else covers the core plugin for this: the skills guard elsewhere checks a
+    // block's presence and its name, never whether YAML accepts it.
+    const { dir, run } = tempMarketplace();
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const file = path.join(dir, "core", "skills", "memory-search", "SKILL.md");
+    fs.writeFileSync(
+      file,
+      "---\nname: memory-search\ndescription: Recall first: then act\n---\n\n# memory-search\n"
+    );
+
+    const out = run();
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /core\/skills\/memory-search\/SKILL\.md: frontmatter description/);
   });
 
   it("catches a role plugin that dropped the core dependency", (t) => {
@@ -1028,6 +1116,26 @@ describe("the identity gate, remaining branches", () => {
   });
 });
 
+describe("the authoring doc and the checker", () => {
+  it("names every section heading the checker requires", () => {
+    const source = fs.readFileSync(CHECK, "utf8");
+    const required = [
+      ...new Set([...source.matchAll(/\/\^## ([A-Za-z][A-Za-z ]*)\$\//g)].map((m) => m[1])),
+    ];
+    // An extraction that matched nothing would satisfy the loop below while checking nothing,
+    // which is the failure this whole file exists to make impossible.
+    assert.ok(required.length >= 3, `expected several required headings, found ${required.length}`);
+
+    const doc = fs.readFileSync(path.join(ROOT, "templates", "role-plugin.md"), "utf8");
+    for (const heading of required) {
+      assert.ok(
+        doc.includes(`## ${heading}`),
+        `templates/role-plugin.md never mentions "## ${heading}", which the review step requires`
+      );
+    }
+  });
+});
+
 describe("the frontmatter gate, on quoted values", () => {
   // Opening a quote is not an escape from the parse hazard — a quote helps only when it
   // terminates the value. Each of these is invalid YAML that an earlier rule waved through.
@@ -1036,6 +1144,10 @@ describe("the frontmatter gate, on quoted values", () => {
     ["a quoted key followed by a mapping", `"a label": value`, /does not close cleanly/],
     ["a trailing colon with nothing after it", `ends with a colon:`, /holding a colon/],
     ["a flow collection that never closes", `[unterminated`, /does not close on its line/],
+    // YAML defines a fixed escape set. A catch-all escape rule accepts these two and the
+    // platform then rejects the document, which is the hazard rather than a near-miss of it.
+    ["an escape YAML does not define", `"an \\q escape"`, /does not close cleanly/],
+    ["a malformed unicode escape", `"an \\uZZZZ escape"`, /does not close cleanly/],
   ];
   for (const [label, value, expected] of CASES) {
     it(`catches ${label}`, (t) => {
@@ -1050,6 +1162,20 @@ describe("the frontmatter gate, on quoted values", () => {
       assert.match(out.stderr, expected);
     });
   }
+
+  it("leaves an escape YAML does define alone", (t) => {
+    // The other direction, and the one the repository-clean run cannot bound: no shipped
+    // description contains a backslash, so nothing else would notice the rule over-tightening
+    // into rejecting valid frontmatter.
+    const { dir, out } = withMutation((target) => {
+      const f = agentFile(target);
+      const text = fs.readFileSync(f, "utf8");
+      fs.writeFileSync(f, text.replace(/^description: .*$/m, `description: "a \\n escape"`));
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 0, `expected a pass, got:\n${out.stdout}${out.stderr}`);
+  });
 
   // Pinning the rule against a real YAML parser would need either a duplicate of the rule
   // here or the checker restructured into an importable module. The cases above bound it
