@@ -5,13 +5,20 @@ live from the working tree vs no skill) × 4 cases × 3 trials per round.
 
 ## Headline
 
-| Round             | V0-shipped  | V1-none   |
-| ----------------- | ----------- | --------- |
-| 1                 | 83% (10/12) | 8% (1/12) |
-| 2 (blind, re-run) | 83% (10/12) | 8% (1/12) |
+| Round              | V0-shipped   | V1-none   |
+| ------------------ | ------------ | --------- |
+| 1                  | 83% (10/12)  | 8% (1/12) |
+| 2 (blind, re-run)  | 83% (10/12)  | 8% (1/12) |
+| 3 (live-run edits) | 100% (12/12) | 8% (1/12) |
 
 Between rounds 1 and 2 one checker bug was fixed (below); the skill text was
-not changed. Round 2 is the certifying round.
+not changed. Round 3 ran the text hardened after the live run (rules 2, 3 and
+6 extended — see the live-run section) and is the certifying round. Read its
+100% honestly: the two cells rounds 1–2 lost were pasted-degrade disclosure
+wordings, and a single-cell move sits inside this bench's documented flutter —
+the claim the round supports is that the three substantive cases have been at
+ceiling in every clean round and the degradation case no longer lags, not that
+the edits bought seventeen points.
 
 ## What the skill buys, per case (round 2)
 
@@ -45,6 +52,36 @@ not changed. Round 2 is the certifying round.
   3's behaviour — and the ban regex matched the substring `chang` inside
   `unchanged`. Fixed with a word boundary; the label is trustworthy from
   round 2 on.
+
+## Live-run round (real meeting, real ticket)
+
+A manual acceptance run against the real tracker — a genuine meeting's notes
+as the source, a filed ticket as the edit target — scored by hand against a
+prepared checklist:
+
+- **Drafting: strong, and not in the way the name suggests.** One story
+  drafted and eight decided-against asks dismissed with citations, in 5m49s;
+  the citations spot-checked at source were real and correctly characterised,
+  and no invented detail appeared. Most of the value was in the sourced
+  dismissals — the run's conclusion was that a time-to-ready number must be
+  reported next to what was _established_, not only what was drafted, or the
+  metric understates the thing that works.
+- **Editing: substance held, the visible step did not.** The write carried
+  exactly one field with exactly the asked value — but went fetch→write with
+  no diff shown: a fully-specified ask ("change A to B") collapsed the
+  proposal step, leaving the harness permission dialog as the only
+  checkpoint. Rule 3 was extended ("the diff is shown before the write,
+  always") and re-measured on the edit case alone at 10 trials: **8/10** —
+  materially better, short of a guarantee. The remaining gap is a prose
+  ceiling: closing it for real means a pre-tool-use gate in code, proposed as
+  a follow-up rather than more wording.
+- **Two more live-only findings became rules.** The opening memory read
+  passed no explicit group scope and surfaced personal-scope material —
+  contained by judgment, not by the rule — so rule 6 now requires explicit
+  `group_ids` from the first read. And a full-text search rejected for output
+  size was narrowed to one field and treated as complete, so Degradation now
+  covers partial results and rule 2 requires dismissal evidence to carry its
+  scope inside the claim.
 
 ## Reading guide
 

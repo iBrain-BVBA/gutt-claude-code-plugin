@@ -30,17 +30,30 @@ vary per install.
    an apology: approval is the gate, and silence is not approval. The same
    exact-text terms govern the one permitted comment. Write markdown and set the
    tool's content-format parameter to markdown when it exposes one.
-2. **Every draft cites its source, and gaps stay visible.** Each draft names
-   where it came from — the transcript passage, the page section, the user's
-   ask. What the source does not say is not invented to round a story out: it
-   goes under open questions, in the draft, where refinement can see it. A
-   plausible detail with no source is the costliest failure here, because it
-   reads exactly like the real thing.
-3. **Editing is a diff against the fetched story, never a rewrite.** Read the
-   story as it stands before proposing changes. The proposal shows each field —
-   what it says now, what it would say, and why — and touches nothing the user
-   did not ask about. A one-field change that arrives as a regenerated
-   description resets wording the team already argued over.
+2. **Every draft cites its source, and gaps stay visible — a dismissal is a
+   claim too.** Each draft names where it came from — the transcript passage,
+   the page section, the user's ask. What the source does not say is not
+   invented to round a story out: it goes under open questions, in the draft,
+   where refinement can see it. A plausible detail with no source is the
+   costliest failure here, because it reads exactly like the real thing.
+   Deciding _not_ to draft something carries the same bar: already built,
+   already decided, already filed — each cites what establishes it, and code
+   having shipped is not the tracker agreeing. Where the evidence came back
+   partial — truncated by an output limit, narrowed to one field or one subject —
+   the scope goes inside the claim rather than a footnote under it, because a
+   narrowed search cannot support an absence. A wrong dismissal drops the work
+   silently; a wrong draft only earns a comment.
+3. **Editing is a diff against the fetched story, never a rewrite — and the diff
+   is shown before the write, always.** Read the story as it stands before
+   proposing changes. The proposal shows each field — what it says now, what it
+   would say, and why — and touches nothing the user did not ask about. A
+   one-field change that arrives as a regenerated description resets wording the
+   team already argued over. An ask that already spells out both the old and the
+   new value does not retire the step: only the fetched story settles whether the
+   old value is still what the field says, and the diff is the last place a wrong
+   target or a stale value is visible. Going from fetch straight to write leaves
+   the tool's own confirmation prompt as the only checkpoint, which is not one
+   this skill gets to rely on.
 4. **Acceptance criteria are checkable or the draft says why not.** Each
    criterion states an observable outcome someone other than the author could
    verify. Where the source does not support one, the draft carries the open
@@ -49,13 +62,16 @@ vary per install.
    — pasted or fetched — and draft against that copy. Live re-reads per draft
    multiply cost and drift; fetch again only when the user says the source
    changed.
-6. **Org scope is checked at the output.** Pass explicit `group_ids` naming the
-   org group on reads — take the name from session results or ask; never guess
-   one — and treat scope as server-decided. Nothing from another client's
-   engagement enters a draft or a filed story; personal-scope material stays in
-   the in-session proposal, marked as personal. **Bare tool names**, probed with
-   ToolSearch before concluding one is missing; the `mcp__…__` prefix varies per
-   install.
+6. **Every read passes explicit `group_ids`, starting with the first one.** Take
+   the org group's name from session results or ask; never guess one, and treat
+   scope as server-decided. An omitted `group_ids` does not mean the org group —
+   it means an unspecified set that includes personal scope, and the opening
+   pass, made before there is anything to check results against, is where that
+   goes unnoticed. Scope is then checked again at the output: nothing from
+   another client's engagement enters a draft or a filed story; personal-scope
+   material stays in the in-session proposal, marked as personal. **Bare tool
+   names**, probed with ToolSearch before concluding one is missing; the
+   `mcp__…__` prefix varies per install.
 7. **Memory writes go through `memory-capture` — and accepted stories are worth
    one.** Once the user has approved and the stories are filed, offer to capture
    the outcome — what was asked, what was created, the keys — through
@@ -125,7 +141,9 @@ big and complete.
 ## Not drafted
 
 <what the source contained and this deliberately left out — already covered,
-already decided against, too vague to carry criteria — so the user can overrule>
+already decided against, too vague to carry criteria — each with what
+establishes it, or the check that would have and did not run, so the user can
+overrule>
 
 ## What this rests on
 
@@ -162,6 +180,11 @@ engagement's group.
 - **No memory tools:** probe with ToolSearch first; if truly absent, draft from
   the source alone and mark every draft `no memory evidence` — the grounding and
   duplicate-smell half was skipped.
+- **A search that came back partial** — rejected for output size, narrowed to one
+  field, run on one subject where several were meant: re-run it narrower until
+  each subject is actually covered, or report the uncovered ones as unchecked. A
+  reduced scan standing in for the intended one is how a dismissal gets made on
+  evidence that was never gathered.
 - Never stall; the degradation line sits at the top of the output it limits.
 
 ## References
