@@ -1,12 +1,12 @@
 ---
 name: backlog-dedupe
-description: "Scan a JQL-scoped slice of a Jira backlog for tickets that are really the same work: duplicate and overlap clusters with cited evidence, consolidation proposals that map source tickets to one drafted feature, and stale candidates each carrying its justification. Propose-only — every close, cancel, merge, or link waits for the user's per-action approval. Use when a backlog has grown noisy, before a planning pass, or when old tickets need recycling into something current. Triggers on: scan the backlog for duplicates, clean up the backlog, consolidate these tickets, overlapping work across the backlog, stale tickets, backlog hygiene, merge candidates, recycle old tickets, too many open tickets."
+description: "Scan a JQL-scoped slice of a Jira backlog for tickets that are really the same work: duplicate and overlap clusters with cited evidence, consolidation proposals that map source tickets to one drafted item, and stale candidates each carrying its justification. Propose-only — every close, cancel, merge, or link waits for the user's per-action approval. Use when a backlog has grown noisy, before a planning pass, or when old tickets need recycling into something current. Triggers on: scan the backlog for duplicates, clean up the backlog, consolidate these tickets, overlapping work across the backlog, stale tickets, backlog hygiene, merge candidates, recycle old tickets, too many open tickets."
 ---
 
 # Backlog Dedupe & Aggregation
 
 Backlogs accumulate the same ask in different words: filed twice a year apart,
-filed small three times instead of once as a feature, or left open long after a
+filed small three times instead of once as one piece of work, or left open long after a
 decision quietly retired it. Every planning pass then pays for the noise. This
 skill scans a bounded slice, clusters what is really one piece of work, proposes
 what the clusters consolidate into, and lists what looks dead — every claim
@@ -23,7 +23,7 @@ your tool list — names and prefixes vary per install.
 ## Hard rules (non-negotiable — read first)
 
 1. **Propose-only — nothing in Jira changes without per-action approval.** No
-   close, cancel, merge, link, label, or field edit lands unless the user
+   close, cancel, merge, link, label, issue creation, or field edit lands unless the user
    approved that specific action, or an explicitly named batch of them, in this
    session. Approval is the gate, not an undo; silence is not approval. A batch
    counts as named only where the text the user reads before answering carries
@@ -54,19 +54,29 @@ your tool list — names and prefixes vary per install.
    decided against it. A bare list of old tickets is exactly the output this
    skill must never produce.
 5. **Calibrate on a sample before scaling.** Before clustering the full slice,
-   test the bar on a handful of items whose answer is already known — at least
-   one clearly current, one clearly stale or duplicated — and report those
-   verdicts with the output. A bar that misreads the sample does not get scaled
-   to the slice.
+   run the bar over a handful of items and report those verdicts first — at
+   least one you read as clearly current and one as clearly stale or duplicated,
+   each with the evidence that put it there. Where the user or the record can
+   confirm them, that is the check; where neither can, the sample still puts the
+   bar in front of the user early enough to be argued with. A bar that misreads
+   the sample does not get scaled to the slice.
 6. **Org scope is checked at the output, and engagements do not mix.** Pass
    explicit `group_ids` naming the org group on reads — take the name from
    session results or ask; never guess one — and treat scope as server-decided.
    Nothing from another client's engagement enters any query, cluster, or
    proposal — check per line, not per run. The run summary, once decisions are
-   made, goes through `memory-capture`'s gate into the engagement's own group
-   (explicit `group_id`, the same never-guess terms).
+   made, goes through `memory-capture`'s gate into the engagement's own group,
+   chosen deliberately on the same never-guess terms and targeted by whatever
+   means `memory-capture` says targets it.
 7. **Bare tool names**, probed with ToolSearch before concluding one is missing;
    the `mcp__…__` prefix varies per install.
+8. **Issue types, workflow transitions, and link names come from the
+   organization, not from this skill.** Read what the project actually exposes
+   before proposing against it: its issue types, the transitions its workflow
+   defines, the link types the instance carries. A consolidation is proposed at
+   whatever type that project uses for work of its size, and an action is named
+   the way the workflow names it. Never hardcode one; where a proposal needs a
+   shape the project does not have, say so rather than inventing it.
 
 ## When to use
 
@@ -78,7 +88,7 @@ not installed, flag the pair as arguable rather than deciding it). Not for
 ranking the slice (`backlog-prioritization`, this plugin — its overlap evidence
 is this skill's output when both run), and not for drafting or reshaping
 individual stories (`story-creation`, this plugin — an approved consolidation's
-feature draft is refined there).
+draft is refined there).
 
 ## Step 1 — the slice
 
@@ -108,9 +118,9 @@ slice ends in exactly one bucket, and the buckets sum to the slice count
 (rule 3):
 
 - **Duplicate cluster** — the same outcome sought more than once; one survivor,
-  or one new feature, would replace the rest.
+  or one new item covering them all, would replace the rest.
 - **Overlap cluster** — parts of one piece of work filed separately;
-  consolidation into a feature is the proposal.
+  consolidation into a single item is the proposal.
 - **Stale candidate** — aged, inactive, superseded or decided against, with
   rule 4's justification.
 - **Keep** — pulls its own weight as filed.
@@ -134,10 +144,10 @@ to the single-ticket check (When to use) rather than forced into a bucket.
 
 ## Consolidations
 
-### <cluster #> → <proposed feature summary>
+### <cluster #> → <proposed consolidation summary, at the project's own type>
 
-- **Draft description:** <what the feature is, built from the clustered
-  tickets' own asks>
+- **Draft description:** <what the consolidated item is, built from the
+  clustered tickets' own asks>
 - **Source tickets:** <keys — what each contributes, what closing it loses>
 
 ## Stale candidates
@@ -161,11 +171,11 @@ literal `similarity only`. Prose that names no source is an unfilled cell: the
 reader cannot tell a cited verdict from a plausible one.
 
 Then the decisions, one at a time or as an explicitly named batch: for each
-proposal the user approves — close, cancel, link as duplicate, create the
-consolidation feature — apply exactly that action, report the key and result,
-and stop at the first surprise. A consolidation feature is created on the same
-exact-content terms as any story, and refined via `story-creation` when it needs
-more than the draft. Report failures item by item; a partial pass is the normal
+proposal the user approves — close, cancel, link as a duplicate in the
+instance's own link type, create the consolidated item — apply exactly that
+action, report the key and result, and stop at the first surprise. A
+consolidated item is created on the same exact-content terms as any story, and
+refined via `story-creation` when it needs more than the draft. Report failures item by item; a partial pass is the normal
 failure, and the user needs to know where it stopped.
 
 ## Step 5 — the record
@@ -195,7 +205,7 @@ group (rule 6). The next scan of this backlog starts from what this one decided.
 - Reply shape — substance first, lists ranked and capped: `output-style`
   (gutt-pro).
 - Siblings in this plugin: `backlog-prioritization` (consumes these clusters as
-  ranking evidence), `story-creation` (refines a consolidation's feature draft).
+  ranking evidence), `story-creation` (refines a consolidation's draft).
 - The same-or-different verdict on one pair of tickets belongs to
   `gutt-developer:ticket-duplicates`, in a separate plugin this one does not
   depend on.

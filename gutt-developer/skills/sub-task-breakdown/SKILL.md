@@ -1,6 +1,6 @@
 ---
 name: sub-task-breakdown
-description: "Break one story into the sub-tasks it actually decomposes into — each with a title, checkable acceptance criteria, a grounded effort range, and its dependencies — in Jira's own vocabulary and nobody else's. Produces a proposal to argue with, never sub-tasks written into Jira unless explicitly asked for. Use when a story is too big to start, or before refinement. Triggers on: break this down, split this story, sub-tasks for, decompose, too big to start, slice this, what are the pieces, sequence the work, task breakdown, how do we split this."
+description: "Break one story into the sub-tasks it actually decomposes into — each with a title, checkable acceptance criteria, a grounded effort range, and its dependencies — in Jira's own vocabulary and nobody else's. Produces a proposal to argue with, never sub-tasks written into Jira unless explicitly asked for. Use when a story is too big to start, or before refinement. Triggers on: break this down, split this story into sub-tasks, sub-tasks for, decompose, too big to start, slice this, what are the pieces, sequence the work, task breakdown, how do we break this into tasks."
 ---
 
 # Sub-task Breakdown

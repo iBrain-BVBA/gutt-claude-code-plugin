@@ -9,17 +9,19 @@
   source material — a meeting transcript, a wiki page, a freeform ask — each
   draft citing the passage it came from and carrying testable acceptance
   criteria, and manages the ones already filed: per-field diffs instead of
-  rewrites, splits into sibling stories, links, stale-text refreshes. Nothing
-  is created or edited in Jira without approval of the exact content in the
-  session, and without Jira tooling it degrades to ready-to-paste markdown
-  that says so. `backlog-dedupe` scans a JQL-scoped slice into an enumerated
-  working set, clusters what is really one piece of work with evidence from
-  memory and wording, proposes consolidations into features and stale
-  candidates that always carry their justification, and applies only the
-  actions the user approves one by one. Counts are recounted from the working
-  set rather than estimated, and the clustering bar is calibrated on
-  known-answer samples before it scales. Eval suites for both ship under
-  `evals/`.
+  rewrites, splits into sibling stories, links, stale-text refreshes. Every
+  create and edit is gated on approval of the exact content in the session,
+  and without Jira tooling it degrades to ready-to-paste markdown that says
+  so. `backlog-dedupe` scans a JQL-scoped slice into an enumerated working
+  set, clusters what is really one piece of work with evidence from memory and
+  wording, proposes consolidations into a single item and stale candidates
+  that always carry their justification, and applies only the actions the user
+  approves — one at a time, or as a batch whose text names every key. Counts
+  are recounted from the working set rather than estimated, and the clustering
+  bar is put in front of the user on a sample before it scales. Both skills
+  read issue types, fields, workflow transitions, and link names from the
+  project itself rather than assuming any, so they run unchanged on another
+  organization's Jira. Eval suites for both ship under `evals/`.
 
 ### Changed
 
@@ -31,7 +33,7 @@
   parent. `backlog-prioritization` now cites a dedupe run's clusters as its
   overlap evidence when one is in the session, rather than re-deriving overlap
   ad hoc — closing the gap it shipped with when no dedupe skill existed.
-  `gutt-product` is 0.2.0.
+  `gutt-product` is 0.2.0, `gutt-developer` 0.2.2.
 
 ## [3.0.5] - 2026-08-12
 

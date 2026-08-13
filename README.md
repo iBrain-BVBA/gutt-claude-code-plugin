@@ -296,26 +296,30 @@ Product-leadership skills for Jira backlogs, shipped as a separate plugin that
 depends on gutt-pro and composes its curriculum skills the same way. No hooks,
 no agents:
 
-| Skill                    | Purpose                                                                                                                                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `story-creation`         | Drafts Jira-ready stories from transcripts, pages, and asks, and manages filed ones — per-field diffs, sibling-story splits, links — every write user-approved |
-| `backlog-dedupe`         | Clusters a backlog slice into duplicates and overlaps with cited evidence, proposes consolidations into features and justified stale candidates                |
-| `backlog-prioritization` | Ranks a backlog slice on the project's own criteria, each position justified by cited evidence, plus a one-page summary for leadership                         |
+| Skill                    | Purpose                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `story-creation`         | Drafts Jira-ready stories from transcripts, pages, and asks, and manages filed ones — per-field diffs, sibling-story splits, links — writes gated on approval |
+| `backlog-dedupe`         | Clusters a backlog slice into duplicates and overlaps with cited evidence, proposes consolidations and justified stale candidates                             |
+| `backlog-prioritization` | Ranks a backlog slice on the project's own criteria, each position justified by cited evidence, plus a one-page summary for leadership                        |
 
 A backlog ordered on ticket fields alone re-decides what the organization has
 already decided. These skills put the evidence next to each item — decisions and
 client commitments, dependencies, incident history, overlap with neighbours —
 and they compose: a dedupe run's clusters become the prioritization's overlap
-evidence, and an approved consolidation's feature draft is refined into a story
-by `story-creation`. Prioritization criteria come from the project's own field
-schema, read at runtime, so a team's custom value or effort fields are used
-rather than an imported scoring framework.
+evidence, and an approved consolidation's draft is refined into a story by
+`story-creation`. All three read the project's own configuration at runtime —
+criteria from its field schema, and issue types, workflow transitions and link
+names from the instance — so a team's custom fields are used rather than an
+imported framework, and the skills run unchanged on another organization's
+Jira.
 
-Jira stays the human's. `backlog-prioritization` never writes a rank or
-priority field; `backlog-dedupe` proposes every close, merge, or link and
-applies only what the user approves per action; `story-creation` files or edits
-nothing without the exact content approved in the session. Claims with no
-supporting evidence are labelled as such rather than presented with confidence.
+Two of the three can write to Jira, and every write is gated.
+`backlog-dedupe` proposes each close, cancel, merge, link and issue creation
+and applies only what the user approves, per action or as a batch whose text
+names every key; `story-creation` gates each create and edit on approval of the
+exact content in the session. `backlog-prioritization` writes nothing — never a
+rank or priority field. Claims with no supporting evidence are labelled as such
+rather than presented with confidence.
 
 ## Usage
 

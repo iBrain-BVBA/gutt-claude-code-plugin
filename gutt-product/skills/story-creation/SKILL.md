@@ -1,6 +1,6 @@
 ---
 name: story-creation
-description: "Draft Jira-ready stories from source material — a meeting transcript, a wiki page, a freeform ask — and manage the ones already filed: structured updates, splits into sibling stories, links, and refreshes of stale text. Every draft cites its source and carries testable acceptance criteria; nothing is created or edited in Jira without approval of the exact content in the session, and without Jira tooling the output is ready-to-paste markdown. Use when discussion needs to become tickets, or a filed story no longer says what the team means. Triggers on: create stories from this transcript, draft tickets from this meeting, turn these notes into stories, write a story for, draft a Jira story, update this story, rework the description, split into separate stories, refresh this stale story."
+description: "Draft Jira-ready stories from source material — a meeting transcript, a wiki page, a freeform ask — and manage the ones already filed: structured updates, splits into sibling stories, links, and refreshes of stale text. Every draft cites its source and carries testable acceptance criteria; every create and edit is gated on approval of the exact content in the session, and without Jira tooling the output is ready-to-paste markdown. Use when discussion needs to become tickets, or a filed story no longer says what the team means. Triggers on: create stories from this transcript, draft tickets from this meeting, turn these notes into stories, write a story for, draft a Jira story, update this story, rework the description, split into separate stories, refresh this stale story."
 ---
 
 # Story Creation & Management
@@ -26,8 +26,11 @@ vary per install.
 1. **Jira writes exist here, and every one is gated.** Stories are created, and
    fields edited, only when the user asks for that in this session and approves
    the exact content as it will be written — per story, or as an explicitly
-   named batch. Creating and editing issues is outward-facing and not undone by
-   an apology: approval is the gate, and silence is not approval. The same
+   named batch. A batch counts as named only where the text the user reads
+   before answering carries every draft and what happens to each — a count or a
+   label standing for them is not that text. Creating and editing issues is
+   outward-facing and not undone by an apology: approval is the gate, and
+   silence is not approval. The same
    exact-text terms govern the one permitted comment. Write markdown and set the
    tool's content-format parameter to markdown when it exposes one.
 2. **Every draft cites its source, and gaps stay visible — a dismissal is a
@@ -64,7 +67,8 @@ vary per install.
    changed.
 6. **Every read passes explicit `group_ids`, starting with the first one.** Take
    the org group's name from session results or ask; never guess one, and treat
-   scope as server-decided. An omitted `group_ids` does not mean the org group —
+   scope as server-decided. Where the session has surfaced no group yet, ask
+   before the first read rather than running one unscoped and repairing after. An omitted `group_ids` does not mean the org group —
    it means an unspecified set that includes personal scope, and the opening
    pass, made before there is anything to check results against, is where that
    goes unnoticed. Scope is then checked again at the output: nothing from
@@ -75,9 +79,15 @@ vary per install.
 7. **Memory writes go through `memory-capture` — and accepted stories are worth
    one.** Once the user has approved and the stories are filed, offer to capture
    the outcome — what was asked, what was created, the keys — through
-   `memory-capture`'s gate into the engagement's own group (explicit `group_id`,
-   on rule 6's never-guess terms). Rejected drafts are not captured; they were
-   proposals.
+   `memory-capture`'s gate into the engagement's own group, chosen deliberately
+   on rule 6's never-guess terms and targeted by whatever means `memory-capture`
+   says targets it. Rejected drafts are not captured; they were proposals.
+8. **Issue types, fields, and link names come from the organization, not from
+   this skill.** Read what the project actually exposes before drafting to it:
+   its issue types, the fields its create screen carries, the link types the
+   instance defines. Never hardcode one and never assume a shape exists because
+   it is common; where what a draft needs is not exposed, say so and draft to
+   what is.
 
 ## When to use
 
@@ -93,9 +103,9 @@ verdict there). Both live in a separate plugin this one does not depend on;
 where one is not installed, say which part of the ask you are not covering
 rather than attempting it. Not for sweeping a whole backlog slice for duplicate
 clusters (`backlog-dedupe`, this plugin) or ranking one (`backlog-prioritization`,
-this plugin). Decomposing an epic into its full child-story set is refinement
-analysis this skill does not own — it drafts stories from the source material it
-is given.
+this plugin). Given an epic, draft from what the epic itself states and say
+plainly that the child set is partial: settling an epic's full child-story set
+is refinement analysis, and it needs the team rather than a source document.
 
 ## Step 1 — the source and the target
 
@@ -160,10 +170,10 @@ above — and what remains in the original.
 Present the drafts; the user picks, per story or as an explicitly named batch,
 and approves the exact content (rule 1). Only then:
 
-- create each story with its approved summary, description, and criteria, and
-  report the keys as they land;
-- create dependency links (`blocks` / `is blocked by`) after the issues exist,
-  and report the links created;
+- create each story with its approved content, in the fields that project
+  exposes for it, and report the keys as they land;
+- create dependency links after the issues exist, using the link types the
+  instance defines, and report the links created;
 - for edits, write only the approved fields — nothing else;
 - report failures item by item. A partial filing is the normal failure here, and
   the user needs to know exactly where it stopped.
