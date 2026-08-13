@@ -466,30 +466,36 @@ describe("the manifest gate", () => {
     assert.match(out.stderr, /"dependencies" must name/);
   });
 
-  it("catches a version with trailing characters the error message claims to reject", (t) => {
-    const { dir, out } = withMutation((target) => {
-      const m = JSON.parse(fs.readFileSync(manifestFile(target), "utf8"));
-      m.version = "1.2.3.4";
-      fs.writeFileSync(manifestFile(target), JSON.stringify(m, null, 2));
+  // The message says the value is semver, so the rule owes the whole grammar. Anchoring alone
+  // still admitted the unobvious half — leading zeroes in numeric identifiers, and empty
+  // dot-separated ones — so the accepted cases are here too: over-tightening this rule would
+  // reject versions the marketplace already ships, and no other test would notice.
+  const VERSIONS = [
+    ["trailing characters", "1.2.3.4", false],
+    ["a leading zero in a core identifier", "01.2.3", false],
+    ["an empty prerelease identifier", "1.2.3-alpha..1", false],
+    ["an empty build identifier", "1.2.3+build.", false],
+    ["a leading zero in a numeric prerelease identifier", "1.2.3-01", false],
+    ["a prerelease and build version", "1.2.3-beta.1+build.5", true],
+    ["a hyphen inside a prerelease identifier", "1.2.3-alpha-1", true],
+  ];
+  for (const [label, version, accepted] of VERSIONS) {
+    it(`${accepted ? "accepts" : "catches"} ${label}`, (t) => {
+      const { dir, out } = withMutation((target) => {
+        const m = JSON.parse(fs.readFileSync(manifestFile(target), "utf8"));
+        m.version = version;
+        fs.writeFileSync(manifestFile(target), JSON.stringify(m, null, 2));
+      });
+      t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+      if (accepted) {
+        assert.equal(out.status, 0, `expected a pass, got:\n${out.stdout}${out.stderr}`);
+        return;
+      }
+      assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+      assert.match(out.stderr, /"version" must be semver/);
     });
-    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
-    assert.match(out.stderr, /"version" must be semver/);
-  });
-
-  it("accepts a prerelease and build version", (t) => {
-    // Anchoring the rule at both ends is what makes the case above fail; this is the half
-    // that would break silently if the anchor were added without the rest of semver.
-    const { dir, out } = withMutation((target) => {
-      const m = JSON.parse(fs.readFileSync(manifestFile(target), "utf8"));
-      m.version = "1.2.3-beta.1+build.5";
-      fs.writeFileSync(manifestFile(target), JSON.stringify(m, null, 2));
-    });
-    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-    assert.equal(out.status, 0, `expected a pass, got:\n${out.stdout}${out.stderr}`);
-  });
+  }
 
   it("catches a plugin opting itself out of the suite's install behaviour", (t) => {
     const { dir, out } = withMutation((target) => {

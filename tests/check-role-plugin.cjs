@@ -211,6 +211,15 @@ const skillDirs = (dir) => {
 
 // ── the checks ─────────────────────────────────────────────────────────────────
 
+/**
+ * SemVer 2.0.0, the expression published at semver.org. Taken whole rather than approximated:
+ * the rule's message says the value is semver, so it owes the whole grammar — and the parts an
+ * anchored hand-rolled pattern still waves through are the unobvious ones, leading zeroes in
+ * numeric identifiers and empty dot-separated identifiers.
+ */
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
 function checkManifest(dir, manifest) {
   const file = rel(path.join(dir, ".claude-plugin", "plugin.json"));
   if (!manifest) {
@@ -220,11 +229,8 @@ function checkManifest(dir, manifest) {
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(manifest.name || ""))) {
     err(file, `"name" must be kebab-case (got ${JSON.stringify(manifest.name)})`);
   }
-  // Omit the version and the git SHA becomes it, so every commit reads as an update. Anchored
-  // at both ends: matching only the prefix accepted `1.2.3.4` while reporting semver checked.
-  if (
-    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(String(manifest.version || ""))
-  ) {
+  // Omit the version and the git SHA becomes it, so every commit reads as an update.
+  if (!SEMVER.test(String(manifest.version || ""))) {
     err(file, `"version" must be semver (got ${JSON.stringify(manifest.version)})`);
   }
   const deps = Array.isArray(manifest.dependencies) ? manifest.dependencies : [];
