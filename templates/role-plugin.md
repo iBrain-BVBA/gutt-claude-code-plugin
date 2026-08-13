@@ -40,8 +40,8 @@ Then, in the copy:
 6. Run the review step:
 
 ```bash
-npm run check:role-plugin        # the two gates below, plus the structural rules
-claude plugin validate ./gutt-<role>   # the platform's own validator, when the CLI is to hand
+npm run check:role-plugin                      # the two gates below, plus the structural rules
+claude plugin validate ./gutt-<role> --strict  # the platform's own validator, when the CLI is to hand
 ```
 
 Drop a skill or the agent if the role does not need one. A plugin with skills and no agent
@@ -109,6 +109,11 @@ Three things the review step checks, because each has been got wrong:
 An agent that never writes org-side registers nothing, tags nothing, and runs no scoped
 recall — it gets the read-only variant, and a registration it cannot use is a bug, not a
 precaution.
+
+Two further sections are checked by exact heading: **`## Grounding Protocol`** on every
+role-plugin agent, and **`## Learning Protocol`** on every agent that registers an identity.
+Both ship in the template, so copying it whole satisfies them — deleting one because the role
+looks not to need it is what fails the review step.
 
 ## One owner per skill
 
