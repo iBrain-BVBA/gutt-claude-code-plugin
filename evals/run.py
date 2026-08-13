@@ -27,6 +27,8 @@ SUITES = {
     "bug-investigation": "suites.bug_investigation.suite",
     "sub-task-breakdown": "suites.sub_task_breakdown.suite",
     "pr-re-review": "suites.pr_re_review.suite",
+    "story-creation": "suites.story_creation.suite",
+    "backlog-dedupe": "suites.backlog_dedupe.suite",
 }
 
 

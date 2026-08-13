@@ -290,27 +290,32 @@ offer to record them — routed through `memory-capture` and its trust-tier gate
 so a Lesson still needs an explicit human signal, and an unattended run stops
 and writes nothing.
 
-### Backlog prioritization (gutt-product plugin)
+### Product leadership (gutt-product plugin)
 
 Product-leadership skills for Jira backlogs, shipped as a separate plugin that
 depends on gutt-pro and composes its curriculum skills the same way. No hooks,
 no agents:
 
-| Skill                    | Purpose                                                                                                                                |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `backlog-prioritization` | Ranks a backlog slice on the project's own criteria, each position justified by cited evidence, plus a one-page summary for leadership |
+| Skill                    | Purpose                                                                                                                                                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `story-creation`         | Drafts Jira-ready stories from transcripts, pages, and asks, and manages filed ones — per-field diffs, sibling-story splits, links — every write user-approved |
+| `backlog-dedupe`         | Clusters a backlog slice into duplicates and overlaps with cited evidence, proposes consolidations into features and justified stale candidates                |
+| `backlog-prioritization` | Ranks a backlog slice on the project's own criteria, each position justified by cited evidence, plus a one-page summary for leadership                         |
 
 A backlog ordered on ticket fields alone re-decides what the organization has
-already decided. This skill puts the evidence that changes the order next to
-each item — decisions and client commitments that bind it, dependencies, history
-in the areas it touches, overlap with its neighbours — and reports the order
-that implies. The criteria come from the project's own field schema, read at
-runtime, so a team's custom value or effort fields are used rather than an
-imported scoring framework.
+already decided. These skills put the evidence next to each item — decisions and
+client commitments, dependencies, incident history, overlap with neighbours —
+and they compose: a dedupe run's clusters become the prioritization's overlap
+evidence, and an approved consolidation's feature draft is refined into a story
+by `story-creation`. Prioritization criteria come from the project's own field
+schema, read at runtime, so a team's custom value or effort fields are used
+rather than an imported scoring framework.
 
-Read-only against Jira like the developer skills: it never writes a rank or
-priority field. The order is a proposal, and items with no supporting evidence
-are labelled as such and left where the board had them.
+Jira stays the human's. `backlog-prioritization` never writes a rank or
+priority field; `backlog-dedupe` proposes every close, merge, or link and
+applies only what the user approves per action; `story-creation` files or edits
+nothing without the exact content approved in the session. Claims with no
+supporting evidence are labelled as such rather than presented with confidence.
 
 ## Usage
 
@@ -365,8 +370,8 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   ├── agents/                     # pr-reviewer, bug-investigator
 │   └── skills/                     # ticket-research, ticket-duplicates, ticket-estimate,
 │                                   # bug-investigation, sub-task-breakdown, pr-re-review
-├── gutt-product/                   # product plugin — backlog prioritization over org memory (no hooks)
-│   └── skills/                     # backlog-prioritization
+├── gutt-product/                   # product plugin — story creation, backlog dedupe + prioritization over org memory (no hooks)
+│   └── skills/                     # story-creation, backlog-dedupe, backlog-prioritization
 ├── docs/                           # banner, HUD screenshot, team-onboarding guide
 ├── tests/
 ├── package.json

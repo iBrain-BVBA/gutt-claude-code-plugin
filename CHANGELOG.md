@@ -1,5 +1,38 @@
 # Changelog
 
+## [3.0.6] - 2026-08-13
+
+### Added
+
+- **`gutt-product` gains story creation and backlog dedupe, completing its
+  backlog-management set.** `story-creation` drafts Jira-ready stories from
+  source material — a meeting transcript, a wiki page, a freeform ask — each
+  draft citing the passage it came from and carrying testable acceptance
+  criteria, and manages the ones already filed: per-field diffs instead of
+  rewrites, splits into sibling stories, links, stale-text refreshes. Nothing
+  is created or edited in Jira without approval of the exact content in the
+  session, and without Jira tooling it degrades to ready-to-paste markdown
+  that says so. `backlog-dedupe` scans a JQL-scoped slice into an enumerated
+  working set, clusters what is really one piece of work with evidence from
+  memory and wording, proposes consolidations into features and stale
+  candidates that always carry their justification, and applies only the
+  actions the user approves one by one. Counts are recounted from the working
+  set rather than estimated, and the clustering bar is calibrated on
+  known-answer samples before it scales. Eval suites for both ship under
+  `evals/`.
+
+### Changed
+
+- **The suite's seams now route backlog work to the right skill.**
+  `gutt-developer`'s `ticket-duplicates` says a whole-slice sweep belongs to
+  `backlog-dedupe` and keeps the single-pair verdict for itself;
+  `sub-task-breakdown` says a split that should produce sibling stories is
+  `story-creation`'s, its own output staying sub-tasks under an unchanged
+  parent. `backlog-prioritization` now cites a dedupe run's clusters as its
+  overlap evidence when one is in the session, rather than re-deriving overlap
+  ad hoc — closing the gap it shipped with when no dedupe skill existed.
+  `gutt-product` is 0.2.0.
+
 ## [3.0.5] - 2026-08-12
 
 ### Fixed
