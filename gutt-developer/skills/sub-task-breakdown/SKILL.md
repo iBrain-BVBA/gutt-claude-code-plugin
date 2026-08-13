@@ -84,7 +84,11 @@ A story nobody can start, or refinement prep for one. Not for sizing a story
 that needs no splitting (`ticket-estimate` on its own), not for the background
 of a story whose purpose is unclear (`ticket-research` first — a breakdown of a
 misunderstood story is worse than none), and not for designing the
-implementation.
+implementation. And not for splitting a story into sibling stories — this
+skill's output is always sub-task issues under an unchanged parent; a split
+that should produce stories is `gutt-product:story-creation`, in a separate
+plugin this one does not depend on. Where it is not installed, say the ask
+needs that shape rather than filing sub-tasks in its place.
 
 ## Step 1 — the parent, and whether it can be sliced yet
 
