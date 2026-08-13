@@ -79,8 +79,12 @@ def _bare_distractors(case, text):
         for m in re.finditer(d["token"], text, re.I):
             call = (m.group(1) if m.groups() else m.group(0)).lower()
             seen.add(call)
+            # Asymmetric on purpose: a gate is written before the calls it governs
+            # ("Once approved:" heading a list of calls), so reaching further back
+            # than forward is what a section-level gate needs. A symmetric ±150
+            # scored every call but the first in such a list as bare.
             if re.search(
-                d["excuse"], text[max(0, m.start() - 150) : m.end() + 150], re.I
+                d["excuse"], text[max(0, m.start() - 600) : m.end() + 150], re.I
             ):
                 excused.add(call)
         if seen - excused:

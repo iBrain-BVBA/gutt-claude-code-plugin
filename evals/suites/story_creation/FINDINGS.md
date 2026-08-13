@@ -3,15 +3,15 @@
 Judge model: the bench default fast model. 2 variants (shipped skill body read
 live from the working tree vs no skill) × 4 cases × 3 trials per round.
 
-> **Every score on this page predates a checker rewrite and none of them
-> describe the current suite.** A review pass found that `source-cited` was
-> satisfied by one `Source:` anywhere in a reply the case expects three drafts
-> from, that `acceptance-criteria` matched a heading and never checked a
-> criterion, that the filed-claim ban fired on the compliant negation
-> `asks-before-filing` rewards, and that the ungated-write detector omitted the
-> link and comment tools. All are fixed; the suite has not been re-run since.
-> Treat the tables below as a record of what the old instrument reported, not
-> as a measurement of the shipped skill.
+> **Rounds 1–3 were scored by an instrument that has since been rewritten, and
+> nothing should be read across that line.** A review pass found `source-cited`
+> satisfied by one `Source:` in a case seeding three drafts,
+> `acceptance-criteria` matching a heading and never a criterion, the
+> filed-claim ban firing on the compliant negation `asks-before-filing`
+> rewards, and the ungated-write detector missing the link and comment tools.
+> Round 4 is the first round measured by checks that require the behaviour they
+> name. The earlier rounds are kept as a record of what the old instrument
+> reported, not as a baseline round 4 fell short of.
 
 ## Headline
 
@@ -20,6 +20,26 @@ live from the working tree vs no skill) × 4 cases × 3 trials per round.
 | 1                  | 83% (10/12)  | 8% (1/12) |
 | 2 (blind, re-run)  | 83% (10/12)  | 8% (1/12) |
 | 3 (live-run edits) | 100% (12/12) | 8% (1/12) |
+| 4 (strict checks)  | 58% (7/12)   | 8% (1/12) |
+
+## Round 4 measured the bench's own variance, and it is larger than the effects
+
+Round 4 was scored twice on the same skill text and the same rewritten checkers,
+against two independently generated sets of replies: **11/12 and then 7/12.** A
+four-cell spread on identical inputs, where the earlier rounds treated a
+one-cell move as the flutter and read three-cell moves as findings.
+
+The losses spread across three different cases rather than concentrating in one,
+so this is ordinary run-to-run variation in the replies, not a case that broke.
+The consequence is blunt: **at four cases by three trials this suite separates
+skill from no-skill and nothing finer.** That gap is enormous and survives any
+plausible noise — 58% against 8% here, and the control has never cleared 17% in
+any round. Every round-to-round narrative above it, including round 3's 100% and
+the reading that the live-run edits bought anything measurable, rests on
+differences smaller than the spread just measured on one arm.
+
+Raising the trial count is the only thing that changes this. Nothing about the
+skill text can be concluded from a single 12-cell round.
 
 Between rounds 1 and 2 one checker bug was fixed (below); the skill text was
 not changed. Round 3 ran the text hardened after the live run (rules 2, 3 and

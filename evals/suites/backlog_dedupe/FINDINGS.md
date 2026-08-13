@@ -11,16 +11,37 @@ skill); round 4 added a third, V2-prior, derived from the shipped body.
 | 1     | 67% (8/12) | 8% (1/12) |
 | 2     | 67% (8/12) | 0% (0/12) |
 | 3     | 67% (8/12) | 0% (0/12) |
+| 5     | 75% (9/12) | 0% (0/12) |
 
-> **Every score on this page predates a checker rewrite and none of them
-> describe the current suite.** A review pass found that the cluster-recall
-> checks were proximity regexes a bare enumeration of the working set
-> satisfied, that the acted-on ban fired on the compliant negation the
-> gating check rewards, that the ungated-write detector omitted the comment
-> tool, and that one distractor token excused every tool in its alternation.
-> All are fixed; the suite has not been re-run since. Treat the tables below
-> as a record of what the old instrument reported, not as a measurement of
-> the shipped skill.
+Round 5 ran under the rewritten checks and scored 9/12 twice — once on this
+round's replies and once re-scoring the previous round's, which is the only
+stability this bench has demonstrated on any arm. Every one of its three lost
+cells is `pasted-export-degrade`; **`plan-propose-only`, `seeded-clusters` and
+`no-memory-similarity-only` each pass 3/3.** The propose-only gate holds under a
+detector that now covers the comment tool and accounts per call rather than per
+token.
+
+The degradation disclosure is the one real gap, and it is the model's, not the
+checker's. The pattern was widened to accept "as stated" and "from the export"
+alongside "as given" and "as pasted"; the case still fails every trial, with the
+two required statements — that nothing can be actioned, and that ages are
+as-pasted — dropping in different runs. An earlier reading of the raw replies
+suggested the residual was mostly a blind regex. Removing the blindness settled
+it the other way.
+
+> **Rounds 1–4 were scored by an instrument that has since been rewritten.** A
+> review pass found the cluster-recall checks were proximity regexes that a bare
+> enumeration of the working set satisfied, the acted-on ban fired on the
+> compliant negation the gating check rewards, the ungated-write detector
+> omitted the comment tool, and one distractor token excused every tool in its
+> alternation. Round 5 is the first round measured by checks that require the
+> behaviour they name.
+>
+> **The recall claim survived the rewrite.** `seeded-clusters` passes 3/3 under
+> a check that demands one line carrying every key in the cluster together with
+> the relation binding them, and which the bare enumeration now fails. The old
+> number was evidence of nothing; the new one is the first real measurement of
+> the acceptance criterion, and it agrees.
 
 The stable 67% hides the split that matters: of the 36 skill-on trials across
 the three rounds, 35 failures were degradation disclosures and one was not —
