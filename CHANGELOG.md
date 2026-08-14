@@ -1,5 +1,61 @@
 # Changelog
 
+## [3.0.7] - 2026-08-14
+
+### Fixed
+
+- **The onboarding path told new users to type commands that do nothing.** Three
+  of the four things the onboarding skill's closing block names — the memory
+  search, memory capture and skills-discovery entry points — were written without
+  the plugin name they need. All three capabilities ship, as skills, reachable
+  only in namespaced form; written bare they resolve to nothing, Claude Code
+  reports no error, and the reader cannot tell a typo from a broken install. The
+  install steps in `docs/team-onboarding.md` had the same defect. That these were
+  slips rather than shorthand is visible in the same files, which write the
+  namespaced form everywhere else.
+
+  The same block named three agents that are not shipped at all — they live in
+  `.claude/`, which is repository tooling no user receives. It now points at the
+  reader's own agent list instead of any hardcoded set, because which agents exist
+  depends on which plugins they installed.
+
+- **`sub-task-breakdown` assumed link names its own siblings read from the
+  project.** Its rule 2 stated that a dependency is an issue link called `blocks`
+  / `is blocked by`, with no way to discover what a project actually calls its
+  link types, while `backlog-dedupe` and `story-creation` — the two skills it was
+  wired into a seam with one release earlier — both require exactly that
+  discovery. On a tracker that renamed those types the seam failed
+  asymmetrically: the two product skills adapted, this one emitted link names that
+  did not exist, at the single step that writes. Added as rule 8, nothing
+  renumbered. `gutt-developer` is 0.2.3.
+
+- **The stop-judge eval suite could only run on its author's machine.** Its corpus
+  named a transcript directory under one developer's home; the directory is
+  globbed, so the suite died at case construction everywhere else. It now derives
+  from wherever the checkout is. A second path put a real checkout into the
+  payload being scored, measuring one machine's layout as part of the text under
+  test; that is now a fixture. Deriving the directory makes the lookup correct
+  anywhere but does not make the suite runnable anywhere — its cases are real
+  recorded turns and exist only where they were recorded, so the failure now says
+  which of the two it is.
+
+### Added
+
+- **A guard that every slash reference in instructional prose resolves.**
+  `hook-architecture.test.cjs` already carried this rule, but it reads hooks and
+  never opens a `SKILL.md`, so the identical defect one directory over passed CI.
+  `npm run check:doc-pointers` widens the scan to every plugin's skills and agents
+  plus the docs that walk somebody through installing, and is in `test:all` and
+  CI. It landed failing on the five references above before they were fixed — a
+  guard nobody has seen fail is not evidence it works.
+
+  Scoped to the one unambiguous shape: a bare reference whose stem is shipped,
+  which is what a rename leaves behind. Flagging bare references that match
+  nothing was tried and produced four false positives and no real findings, since
+  in backticked prose that shape is usually a filesystem path, a host command, or
+  another tool's. The limit is recorded in the file rather than left to look like
+  coverage.
+
 ## [3.0.6] - 2026-08-13
 
 ### Added
