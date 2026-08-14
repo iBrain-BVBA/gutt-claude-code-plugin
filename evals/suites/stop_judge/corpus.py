@@ -16,7 +16,17 @@ import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from lib.transcripts import clip_end, clip_mid, extract_turns, find_session  # noqa: E402
 
-PLUGIN_PROJECT = "-Users-chekano-projects-gutt-repo-gutt-claude-code-plugin"
+# Claude Code names a project's transcript directory after its absolute path, with
+# the separators replaced. Derive it from wherever this checkout actually is —
+# hardcoding one machine's path sent every other machine looking in a directory that
+# could not exist.
+#
+# This makes the lookup correct anywhere; it does not make the suite runnable
+# anywhere. The sessions below are real recorded turns, which is the ground truth
+# the docstring above leans on, and they exist only where they were recorded.
+# Vendoring the extracted turns as literals would fix that and cost the provenance.
+# That trade is unmade — see the FileNotFoundError message below.
+PLUGIN_PROJECT = str(pathlib.Path(__file__).resolve().parents[3]).replace("/", "-")
 HEAD, TAIL, LAST = 4000, 2500, 3000
 
 # (session prefix, turn index, want_ok, confident, why)
