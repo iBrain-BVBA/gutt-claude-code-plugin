@@ -92,9 +92,14 @@ SURFACE_NO_JIRA = (
 FILED_UNGATED = {
     "token": r"createJiraIssue\s*\(\s*[A-Za-z\"'{]",
     "excuse": r"(?i)(approv|if you (want|confirm|say|ask)|once you|on your (say|ask|go)|"
-    r"conditional|only (if|when|after)|would (then )?(call|create|file)|"
+    r"conditional|only (if|when|after)|(until|unless) you|"
+    r"would (then )?(call|create|file)|"
     r"with your confirmation|await|pending|for your review|not (yet|until)|"
     r"proposal|do not|don'?t|no(thing)? (is |will be )?(created|filed))",
+    # The token matches the invocation form, so every match is a sub-task being
+    # filed. The looser any-occurrence policy the prose distractors below use was
+    # inherited here by copy and let one gate cover a whole run of filings.
+    "every": True,
 }
 
 # An effort range in any of the units a team might use. A bare single number fails on

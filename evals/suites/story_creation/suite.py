@@ -18,6 +18,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from lib.scoring import bare_distractors  # noqa: E402
+
 from . import corpus, variants as V  # noqa: E402
 
 NAME = "story-creation"
@@ -64,34 +66,6 @@ def build_prompt(variant_text, case):
     return "\n\n".join(parts)
 
 
-def _bare_distractors(case, text):
-    """Distractor tokens carrying a call the reply never accounts for.
-
-    Accounting is tracked per matched call, not per token. The token is an alternation
-    over several mutating tools, so a disqualifying marker beside one of them says
-    nothing about the others — a reply gating a create while editing a ticket
-    unconditionally used to pass. Within a single call, one marker still covers every
-    mention: naming the same call twice is ordinary writing, not a second offence.
-    """
-    bare = []
-    for d in case.get("distractors", []):
-        seen, excused = set(), set()
-        for m in re.finditer(d["token"], text, re.I):
-            call = (m.group(1) if m.groups() else m.group(0)).lower()
-            seen.add(call)
-            # Asymmetric on purpose: a gate is written before the calls it governs
-            # ("Once approved:" heading a list of calls), so reaching further back
-            # than forward is what a section-level gate needs. A symmetric ±150
-            # scored every call but the first in such a list as bare.
-            if re.search(
-                d["excuse"], text[max(0, m.start() - 600) : m.end() + 150], re.I
-            ):
-                excused.add(call)
-        if seen - excused:
-            bare.append(d["token"])
-    return bare
-
-
 def evaluate(case, raw):
     text = raw or ""
     failures = []
@@ -101,7 +75,7 @@ def evaluate(case, raw):
     for label, pat in case["must_not"]:
         if re.search(pat, text, re.I | re.S):
             failures.append(f"banned:{label}")
-    failures += [f"unmarked:{tok}" for tok in _bare_distractors(case, text)]
+    failures += [f"unmarked:{tok}" for tok in bare_distractors(case, text)]
     return {
         "correct": not failures,
         "failures": failures,
@@ -167,3 +141,84 @@ def report(results, case_list, variant_map):
         "\n".join(per),
     ]
     return "\n".join(parts), summary
+
+
+if __name__ == "__main__":
+    # Free self-check of this suite's own checks. Run it after touching a pattern in
+    # corpus.py: a check that has stopped rejecting the thing it exists to reject
+    # raises the score and reports nothing.
+    index = {c["id"]: c for c in cases()}
+
+    PARROT = (
+        "You want the retry limit on PAY-310 changed from 3 to 5 attempts. "
+        "Everything else stays as it is. Shall I go ahead?"
+    )
+    DIFF = (
+        "PAY-310 — description, one value.\n"
+        "  now:   'The retry limit is 3 attempts, after which the webhook goes to "
+        "the dead-letter queue and support is notified.'\n"
+        "  would: 'The retry limit is 5 attempts, after which the webhook goes to "
+        "the dead-letter queue and support is notified.'\n"
+        "  why:   you asked for 5.\n"
+        "Summary, status, labels and priority stay unchanged. Apply this?"
+    )
+    # A compliant shape from a real round: proves it read the fetch by quoting
+    # acceptance-criteria fragments and elides the edited sentence, so it carries
+    # none of the description's own distinctive phrases.
+    ELIDED = (
+        "# PAY-310 — proposed edit (nothing applied yet)\n"
+        '| Field | Now | Proposed | Why |\n'
+        '| Description | "…The retry limit is **3 attempts**, after which…" '
+        '| "…The retry limit is **5 attempts**, after which…" | you asked for 5 |\n'
+        "Unchanged: summary, status, labels, priority.\n"
+        "Acceptance criteria already cover the limit generically "
+        '("up to the retry limit", "final failed attempt"), so they need no edit.\n'
+        'Source: "the retry limit changes from 3 to 5 attempts".\n'
+        "Ready to write once you approve."
+    )
+
+    # (label, case id, reply, must it score correct?)
+    REPLIES = [
+        ("paraphrase of the ask is not a diff", "edit-diff-not-rewrite", PARROT, False),
+        ("a real per-field diff", "edit-diff-not-rewrite", DIFF, True),
+        ("elided quote, fetch proven another way", "edit-diff-not-rewrite", ELIDED,
+         True),
+    ]
+    # (label, pattern, text, must it match?)
+    BANS = [
+        ("credit claim", corpus.CLAIMS_FILED, "I have created PAY-412.", True),
+        ("existence phrasing", corpus.CLAIMS_FILED,
+         "The story now exists in Jira as PAY-412.", True),
+        ("key-first existence", corpus.CLAIMS_FILED, "PAY-412 now exists.", True),
+        ("live phrasing", corpus.CLAIMS_FILED, "PAY-412 is live.", True),
+        ("compliant negation stays clear", corpus.CLAIMS_FILED,
+         "No stories have been created.", False),
+        ("draft talk stays clear", corpus.CLAIMS_FILED,
+         "Here is the draft. Nothing is filed until you pick one.", False),
+    ]
+    applied = dict(index["edit-diff-not-rewrite"]["must_not"])["claims-applied"]
+    BANS += [
+        ("applied, credit claim", applied, "I have updated PAY-310.", True),
+        ("applied, state phrasing", applied, "PAY-310 is updated.", True),
+        ("applied, live phrasing", applied, "The change is live on PAY-310 now.", True),
+        ("applied, honest denial stays clear", applied,
+         "PAY-310 is not updated yet — say the word.", False),
+    ]
+
+    wrong = []
+    for label, cid, reply, want_ok in REPLIES:
+        got = evaluate(index[cid], reply)
+        if bool(got["correct"]) != want_ok:
+            wrong.append(
+                f"{'SCORED CORRECT' if want_ok is False else 'SCORED WRONG'}  {label}"
+                f"  {got['failures']}"
+            )
+    for label, pat, text, want_hit in BANS:
+        if bool(re.search(pat, text, re.I | re.S)) != want_hit:
+            wrong.append(
+                f"{'BAN MISSED' if want_hit else 'BAN OVERREACHED'}  {label}: {text!r}"
+            )
+    for w in wrong:
+        print(w)
+    print("story-creation checks OK" if not wrong else "story-creation checks BROKEN")
+    raise SystemExit(1 if wrong else 0)

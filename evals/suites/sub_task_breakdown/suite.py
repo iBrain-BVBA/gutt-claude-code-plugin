@@ -18,6 +18,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from lib.scoring import bare_distractors  # noqa: E402
+
 from . import corpus, variants as V  # noqa: E402
 
 NAME = "sub-task-breakdown"
@@ -63,35 +65,6 @@ def build_prompt(variant_text, case):
     return "\n\n".join(parts)
 
 
-def _bare_distractors(case, text):
-    """Distractor tokens that are never accounted for anywhere in the reply.
-
-    A token counts as handled if *any* one of its occurrences has a disqualifying marker
-    within reach — not every occurrence. That is deliberately weaker than the
-    every-occurrence rule the weekly-recap suite uses, and the reason is measured:
-    accounting for a token is a thing a reply does once, after which referring to it by
-    the same name is ordinary writing rather than a second offence. Requiring a marker
-    beside every mention scored replies that did exactly the right thing as total
-    failures, which left the suite unable to measure the behaviour at all.
-
-    The cost is a hole this cannot see: a reply that dismisses a finding once and then
-    treats it as real throughout still passes. The positive checks in `must_all` are what
-    cover that side.
-    """
-    bare = []
-    for d in case.get("distractors", []):
-        hits = list(re.finditer(d["token"], text, re.I))
-        if not hits:
-            continue
-        if not any(
-            re.search(
-                d["excuse"], text[max(0, m.start() - 150) : m.end() + 150], re.I
-            )
-            for m in hits
-        ):
-            bare.append(d["token"])
-    return bare
-
 
 def evaluate(case, raw):
     text = raw or ""
@@ -102,7 +75,7 @@ def evaluate(case, raw):
     for label, pat in case["must_not"]:
         if re.search(pat, text, re.I | re.S):
             failures.append(f"banned:{label}")
-    failures += [f"unmarked:{tok}" for tok in _bare_distractors(case, text)]
+    failures += [f"unmarked:{tok}" for tok in bare_distractors(case, text)]
     return {
         "correct": not failures,
         "failures": failures,

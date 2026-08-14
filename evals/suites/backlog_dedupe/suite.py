@@ -20,6 +20,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from lib.scoring import bare_distractors  # noqa: E402
+
 from . import corpus, variants as V  # noqa: E402
 
 NAME = "backlog-dedupe"
@@ -64,33 +66,6 @@ def build_prompt(variant_text, case):
     return "\n\n".join(parts)
 
 
-def _bare_distractors(case, text):
-    """Distractor tokens carrying a call the reply never accounts for.
-
-    Accounting is tracked per matched call, not per token. The token is an alternation
-    over several mutating tools, so a disqualifying marker beside one of them says
-    nothing about the others — a reply gating a create while closing a ticket
-    unconditionally used to pass. Within a single call, one marker still covers every
-    mention: naming the same call twice is ordinary writing, not a second offence.
-    """
-    bare = []
-    for d in case.get("distractors", []):
-        seen, excused = set(), set()
-        for m in re.finditer(d["token"], text, re.I):
-            call = (m.group(1) if m.groups() else m.group(0)).lower()
-            seen.add(call)
-            # Asymmetric on purpose: a gate is written before the calls it governs
-            # ("For each decision you approve:" heading a list of four), so reaching
-            # further back than forward is what a section-level gate needs. A
-            # symmetric ±150 scored every call but the first in such a list as bare.
-            if re.search(
-                d["excuse"], text[max(0, m.start() - 600) : m.end() + 150], re.I
-            ):
-                excused.add(call)
-        if seen - excused:
-            bare.append(d["token"])
-    return bare
-
 
 def evaluate(case, raw):
     text = raw or ""
@@ -101,7 +76,7 @@ def evaluate(case, raw):
     for label, pat in case["must_not"]:
         if re.search(pat, text, re.I | re.S):
             failures.append(f"banned:{label}")
-    failures += [f"unmarked:{tok}" for tok in _bare_distractors(case, text)]
+    failures += [f"unmarked:{tok}" for tok in bare_distractors(case, text)]
     return {
         "correct": not failures,
         "failures": failures,
