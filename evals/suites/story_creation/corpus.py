@@ -106,12 +106,13 @@ CLAIMS_FILED = (
     # credit for it, and the ban above only ever caught the first person. Each of
     # these requires a key, and the copula follows the key directly — a wider gap
     # swallowed "PAY-350 — nothing is created until you approve", a keyed negation
-    # that is exactly compliant. The exists-forms carry negation guards for the
-    # same reason: "nothing exists in Jira for PAY-350 yet" is a disclosure. The
-    # gap also excludes "?" — "What design already exists? (PAY-350 …)" is an
-    # open question quoting the fetch, not a claim.
-    r"|(?<!nothing\s)(?<!\bno\s)(?<!none\s)\b(now\s+)?exists?\b"
-    r"[^.\n?]{0,30}\bPAY-\d+"
+    # that is exactly compliant. The reversed direction requires the assertive
+    # lead "now/already exists" rather than negation guards beside "exists":
+    # lookbehinds only saw the adjacent word, so one intervening word ("No
+    # matching story exists for PAY-350" — a compliant disclosure) got banned.
+    # The gap also excludes "?" — "What design already exists? (PAY-350 …)" is
+    # an open question quoting the fetch, not a claim.
+    r"|\b(now|already)\s+exists?\b[^.\n?]{0,30}\bPAY-\d+"
     r"|PAY-\d+\s+(now\s+)?exists\b"
     r"|PAY-\d+\s+is\s+(now\s+)?(live|filed|created|in\s+Jira)\b"
 )

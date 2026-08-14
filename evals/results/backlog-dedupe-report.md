@@ -12,16 +12,18 @@ variant       chars    all  confident  errors
 ---------------------------------------------
 V0-shipped    12178   90%        90%       0
                missing:names-unverified-ages: 2/21
-V1-none           0   14%        14%       0
+V1-none           0   10%        10%       0
                missing:group-scope: 3/21
                missing:denominator: 3/21
                missing:similarity-labelled: 3/21
                missing:names-cannot-action: 3/21
                missing:names-unverified-ages: 3/21
                missing:calibration-first: 3/21
+               missing:buckets-recount: 3/21
                missing:memory-grounding: 2/21
                missing:actions-gated: 2/21
                missing:record-step: 2/21
+               missing:completes-or-scopes: 2/21
                missing:cluster-identity-a: 1/21
                missing:cluster-identity-b: 1/21
                missing:cluster-csv-pair: 1/21
@@ -43,6 +45,6 @@ PER CASE — trials correct   (~ = label held less firmly)
 no-memory-similarity-only            3/3           0/3
    pasted-export-degrade            1/3           0/3
      plan-complete-fetch            3/3           0/3
-          truncated-page            3/3           2/3
+          truncated-page            3/3           1/3
           protocol-steps            3/3           0/3
 ```

@@ -237,6 +237,10 @@ if __name__ == "__main__":
         ("open question naming the key stays clear", corpus.CLAIMS_FILED,
          "What design already exists? (PAY-350 notes the settings page needs "
          "design.)", False),
+        ("negated with adverb stays clear", corpus.CLAIMS_FILED,
+         "No story currently exists in Jira for PAY-350.", False),
+        ("negated with intervening word stays clear", corpus.CLAIMS_FILED,
+         "No matching story exists for PAY-350.", False),
     ]
     applied = dict(index["edit-diff-not-rewrite"]["must_not"])["claims-applied"]
     BANS += [

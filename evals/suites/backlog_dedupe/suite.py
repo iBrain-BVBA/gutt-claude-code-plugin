@@ -165,6 +165,14 @@ if __name__ == "__main__":
         "only | merge |\n"
         "Nothing is closed without your approval."
     )
+    # Names the cut, then reports final totals from the fetched page anyway —
+    # the disclosure vocabulary without the behaviour it announces.
+    PAGE1_MENTION_ONLY = (
+        "Page 1 of the results returned 12 tickets — incomplete, noted.\n"
+        "| 1 | PAY-101, PAY-118 | one export ask | similarity only | merge |\n"
+        "Final totals for the slice: 2 clustered, 10 keep. Nothing is closed "
+        "without your approval."
+    )
     PROTOCOL_OK = (
         "## Calibration\n"
         "Sample before scaling: PAY-120 reads clearly current (active "
@@ -193,7 +201,8 @@ if __name__ == "__main__":
         "(superseded by the Node 20 baseline).\n"
         "| PAY-123 | recent | org:Episodic:kms-migration-review (2026-07-28): "
         "decision pending | Hold until the KMS migration scope is approved. |\n"
-        "12 tickets in the slice. Nothing is closed without your approval."
+        "12 tickets in the slice: 2 clustered, 2 stale, 1 held, 7 keep. "
+        "Nothing is closed without your approval."
     )
     PLAN_PAGED = (
         '1. searchJiraIssuesUsingJql(jql="project = PAY AND statusCategory != '
@@ -217,6 +226,8 @@ if __name__ == "__main__":
     CHECKS = [
         ("page-1 scanned as the slice", "truncated-page", PAGE1_SILENT, False),
         ("truncation named, counts held back", "truncated-page", PAGE1_NAMED, True),
+        ("truncation named, totals reported anyway", "truncated-page",
+         PAGE1_MENTION_ONLY, False),
         ("no calibration, contested forced stale", "protocol-steps",
          PROTOCOL_BARE, False),
         ("calibration, arguable counted", "protocol-steps", PROTOCOL_OK, True),

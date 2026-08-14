@@ -205,24 +205,42 @@ def build():
             "ask": "Prioritize this backlog slice — what should we work on next?",
             "gathered": BOARD + "\n\n" + GATHERED_EVIDENCE,
             "must_all": [
+                # Each cited-check demands the seeded record's id fragment or its
+                # date near the key, not evidence vocabulary: "moves up because
+                # of the Acme commitment" is a paraphrase, and rules 4-5 say a
+                # claim enters with its source and date or not at all. The id
+                # fragments are hyphenated, so prose that merely names the
+                # subject ("the Acme SEPA commitment") does not match them.
                 (
                     "commitment-cited",
-                    r"(?i)(BILL-203[\s\S]{0,300}(acme|commitment|promised|renewal|"
-                    r"Q3)|(acme|promised|renewal)[\s\S]{0,200}BILL-203)",
+                    r"(?i)(BILL-203[\s\S]{0,300}(acme-sepa|2026-05-30)"
+                    r"|(acme-sepa|2026-05-30)[\s\S]{0,200}BILL-203)",
                 ),
                 (
                     "incident-cited",
-                    r"(?i)(BILL-202[\s\S]{0,300}(incident|outage|scraper|brought "
-                    r"down)|(incident|outage|scraper)[\s\S]{0,200}BILL-202)",
+                    r"(?i)(BILL-202[\s\S]{0,300}(billing-api-scrape|2026-06-14|"
+                    r"2026-04-30)|(billing-api-scrape|2026-06-14)"
+                    r"[\s\S]{0,200}BILL-202)",
                 ),
                 (
                     "dependency-cited",
-                    r"(?i)(BILL-204[\s\S]{0,300}(prerequisit|unblock|block|"
-                    r"before|first|precede|builds? on|depends)"
-                    r"|BILL-207[\s\S]{0,300}(after|depends|waits|blocked|"
-                    r"builds? on|data layer))",
+                    r"(?i)((BILL-204|BILL-207)[\s\S]{0,300}"
+                    r"(statement-v2-on-new-data-layer|2026-07-18)"
+                    r"|(statement-v2-on-new-data-layer|2026-07-18)"
+                    r"[\s\S]{0,200}(BILL-204|BILL-207))",
                 ),
-                ("no-evidence-labelled", r"(?i)no memory evidence"),
+                # Bound per item: one label anywhere said nothing about which of
+                # the two unevidenced items actually carried it.
+                (
+                    "no-evidence-201",
+                    r"(?i)(BILL-201[^\n]{0,100}no memory evidence"
+                    r"|no memory evidence[^\n]{0,60}BILL-201)",
+                ),
+                (
+                    "no-evidence-205",
+                    r"(?i)(BILL-205[^\n]{0,100}no memory evidence"
+                    r"|no memory evidence[^\n]{0,60}BILL-205)",
+                ),
                 (
                     "basis-stated",
                     r"(?i)(what this rests on|criteria used|"
@@ -265,6 +283,14 @@ def build():
                     "criteria-named",
                     r"(?i)(criteria|priority field|ranked on|client field|"
                     r"board order)",
+                ),
+                # The degradation rule reports the board's own order. Full order
+                # verification is beyond a regex over free prose; the honest
+                # reach is the head of the list — with no evidence, whatever is
+                # presented first is still the board's first item.
+                (
+                    "board-order-held",
+                    r"(?im)^[^\n]{0,12}\b1\b[.)\s|*]{1,6}[^\n]{0,8}BILL-201",
                 ),
             ],
             "must_not": [

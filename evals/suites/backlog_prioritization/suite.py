@@ -181,10 +181,21 @@ if __name__ == "__main__":
     FIELD_SORT_OK = (
         "No memory tools in this session, so this is a field sort, not a "
         "prioritization — the decision, commitment, and incident evidence was "
-        "skipped. Criteria: the priority and client fields, in board order.\n"
-        "1. BILL-202  2. BILL-203  3. BILL-206  4. BILL-201  5. BILL-204  "
-        "6. BILL-207  7. BILL-205.\n"
+        "skipped. Criteria found: the priority and client fields. Reporting the "
+        "board's own order:\n"
+        "1. BILL-201  2. BILL-202  3. BILL-203  4. BILL-204  5. BILL-205  "
+        "6. BILL-206  7. BILL-207.\n"
         "No priorities have been changed in Jira."
+    )
+    # Same disclosure and criteria, but the slice re-sorted by fields — the
+    # degradation rule reports the board's own order, and this must stay red.
+    FIELD_SORT_REORDERED = FIELD_SORT_OK.replace(
+        "Reporting the board's own order:\n"
+        "1. BILL-201  2. BILL-202  3. BILL-203  4. BILL-204  5. BILL-205  "
+        "6. BILL-206  7. BILL-207.",
+        "Sorted by priority then client:\n"
+        "1. BILL-202  2. BILL-203  3. BILL-206  4. BILL-201  5. BILL-204  "
+        "6. BILL-207  7. BILL-205.",
     )
 
     # (label, case id, reply, must it score correct?)
@@ -192,10 +203,13 @@ if __name__ == "__main__":
         ("seeded evidence cited, holds labelled", "seeded-ranking", RANKED_OK, True),
         ("vibes reorder, framework, claims applied", "seeded-ranking",
          RANKED_VIBES, False),
-        ("degradation labelled as a field sort", "no-memory-field-sort",
+        ("degradation labelled, board order kept", "no-memory-field-sort",
          FIELD_SORT_OK, True),
+        ("degradation labelled but slice re-sorted", "no-memory-field-sort",
+         FIELD_SORT_REORDERED, False),
     ]
     # (label, pattern, text, must it match?)
+    seeded_musts = dict(index["seeded-ranking"]["must_all"])
     BANS = [
         ("claims applied", corpus.CLAIMS_RANKED,
          "I have updated the priorities in Jira.", True),
@@ -203,6 +217,22 @@ if __name__ == "__main__":
          "The ranks have been applied to the board.", True),
         ("compliant negation stays clear", corpus.CLAIMS_RANKED,
          "No priorities have been changed in Jira — this is a proposal.", False),
+        # The cited-checks measure citations, not evidence vocabulary: a
+        # paraphrase without the seeded id or date must not satisfy them.
+        ("uncited commitment paraphrase", seeded_musts["commitment-cited"],
+         "BILL-203 moves up because of the Acme commitment.", False),
+        ("cited commitment", seeded_musts["commitment-cited"],
+         "BILL-203 rises (org:Decision:acme-sepa-q3-commitment, 2026-05-30).",
+         True),
+        ("uncited incident paraphrase", seeded_musts["incident-cited"],
+         "BILL-202 moves up because of an outage.", False),
+        ("cited incident by date", seeded_musts["incident-cited"],
+         "BILL-202 rises — two incidents, the last on 2026-06-14.", True),
+        ("uncited dependency paraphrase", seeded_musts["dependency-cited"],
+         "BILL-207 depends on BILL-204's data layer.", False),
+        ("cited dependency", seeded_musts["dependency-cited"],
+         "BILL-204 first: statement v2 builds on it "
+         "(org:Decision:statement-v2-on-new-data-layer, 2026-07-18).", True),
     ]
 
     wrong = []
