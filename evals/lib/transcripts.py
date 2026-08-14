@@ -146,7 +146,12 @@ def find_session(project_slug, session_prefix):
     """Locate one session log by directory slug and session-id prefix."""
     hits = sorted((PROJECTS / project_slug).glob(f"{session_prefix}*.jsonl"))
     if not hits:
-        raise FileNotFoundError(f"no session {session_prefix}* under {project_slug}")
+        raise FileNotFoundError(
+            f"no session {session_prefix}* under {project_slug}.\n"
+            "Cases built this way read session transcripts recorded on the machine that "
+            "ran them, so a suite using them only builds where its sessions were "
+            "recorded. This is a missing corpus, not a broken checkout."
+        )
     return hits[0]
 
 

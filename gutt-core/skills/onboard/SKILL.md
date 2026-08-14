@@ -128,17 +128,18 @@ state, whether recall is on, off or snoozed, and the group being written to.
 
 You are ready to use gutt memory integration. Here is what to try:
 
-1. **Search before tasks** -- Use `/memory-search` or just start working;
-   the hooks automatically search memory for relevant context.
+1. **Search before tasks** -- Use `/gutt-pro:memory-search` or just start
+   working; the hooks automatically search memory for relevant context.
 
-2. **Capture corrections and decisions** -- Use `/memory-capture` when you
-   learn something worth remembering, or say "remember that..." naturally.
+2. **Capture corrections and decisions** -- Use `/gutt-pro:memory-capture`
+   when you learn something worth remembering, or say "remember that..."
+   naturally.
 
-3. **Available agents** -- Check `agents/` for specialized agents like
-   `plugin-dev`, `plugin-qa`, `hook-expert`, and more.
+3. **Available agents** -- Your agent list shows what you can delegate to;
+   which agents are there depends on which gutt plugins you installed.
 
-4. **Skills** -- Run `/skills-discovery` to analyze what additional skills
-   could help your workflow.
+4. **Skills** -- Run `/gutt-pro:skills-discovery` to analyze what additional
+   skills could help your workflow.
 ```
 
 ## --check Mode

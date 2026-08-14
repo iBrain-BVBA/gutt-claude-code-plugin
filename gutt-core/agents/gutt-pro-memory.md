@@ -119,7 +119,7 @@ rather than describing it in prose.
 
 ```
 Task(
-    subagent_type="gutt-pro-memory",
+    subagent_type="gutt-pro:gutt-pro-memory",
     model="sonnet",
     prompt="What connects the shared-hook-libraries decision to the 3.0 repo restructure? Include the decision's rationale and anything that supersedes it."
 )

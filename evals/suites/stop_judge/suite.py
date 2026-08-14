@@ -35,7 +35,9 @@ def build_prompt(variant_text, case):
     payload = json.dumps({
         "session_id": "eval-" + case["id"],
         "transcript_path": "/tmp/eval.jsonl",
-        "cwd": "/Users/chekano/projects/gutt/repo/gutt-claude-code-plugin",
+        # A fixture, not anyone's real checkout. This string reaches the model inside
+        # the payload being scored, so a real path here measures one machine's layout.
+        "cwd": "/home/eval/gutt-claude-code-plugin",
         "hook_event_name": "Stop",
         "stop_hook_active": case["stop_hook_active"],
         "last_assistant_message": case["last_assistant_message"],
