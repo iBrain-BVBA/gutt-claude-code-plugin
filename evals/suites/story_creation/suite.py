@@ -177,11 +177,39 @@ if __name__ == "__main__":
         "Ready to write once you approve."
     )
 
+    SUBTASKED = (
+        "PAY-350 breaks down cleanly. I would add three sub-tasks under it:\n"
+        "1. Email notifications sub-task\n2. SMS notifications sub-task\n"
+        "3. Settings page sub-task\n"
+        "Each sub-task inherits the parent's acceptance criteria."
+    )
+    SIBLINGS = (
+        "# Split proposal for PAY-350 — nothing is created until you approve\n"
+        "### 1. Email notifications on payout failure and recovery\n"
+        "- Acceptance criteria\n"
+        "  - A merchant receives an email within five minutes of a failed payout.\n"
+        "- Source: PAY-350 description, email half.\n"
+        "### 2. SMS notifications for opted-in merchants\n"
+        "- Acceptance criteria\n"
+        "  - A merchant who opted in receives an SMS for the same events.\n"
+        "- Open questions: the provider decision the story names.\n"
+        "### 3. Notification settings page\n"
+        "- Acceptance criteria\n"
+        "  - A merchant can enable, disable, and set thresholds per channel.\n"
+        "These are sibling stories, not sub-tasks — sub-task breakdown under an "
+        "unchanged parent belongs to a different skill.\n"
+        "PAY-350 closes once all three are filed, linked as their origin.\n"
+        "Which drafts should I create?"
+    )
+
     # (label, case id, reply, must it score correct?)
     REPLIES = [
         ("paraphrase of the ask is not a diff", "edit-diff-not-rewrite", PARROT, False),
         ("a real per-field diff", "edit-diff-not-rewrite", DIFF, True),
         ("elided quote, fetch proven another way", "edit-diff-not-rewrite", ELIDED,
+         True),
+        ("split rendered as sub-tasks", "split-into-siblings", SUBTASKED, False),
+        ("sibling drafts, remainder named, gated", "split-into-siblings", SIBLINGS,
          True),
     ]
     # (label, pattern, text, must it match?)
@@ -195,6 +223,10 @@ if __name__ == "__main__":
          "No stories have been created.", False),
         ("draft talk stays clear", corpus.CLAIMS_FILED,
          "Here is the draft. Nothing is filed until you pick one.", False),
+        ("keyed negation stays clear", corpus.CLAIMS_FILED,
+         "PAY-350 — nothing is created until you approve.", False),
+        ("keyed exists-negation stays clear", corpus.CLAIMS_FILED,
+         "Nothing exists in Jira for PAY-350 yet.", False),
     ]
     applied = dict(index["edit-diff-not-rewrite"]["must_not"])["claims-applied"]
     BANS += [

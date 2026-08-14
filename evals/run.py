@@ -33,6 +33,7 @@ SUITES = {
     "pr-re-review": "suites.pr_re_review.suite",
     "story-creation": "suites.story_creation.suite",
     "backlog-dedupe": "suites.backlog_dedupe.suite",
+    "backlog-prioritization": "suites.backlog_prioritization.suite",
 }
 
 

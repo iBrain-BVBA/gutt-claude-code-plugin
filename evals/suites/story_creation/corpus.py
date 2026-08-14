@@ -104,11 +104,14 @@ CLAIMS_FILED = (
     r"|PAY-\d+[^.\n]{0,40}\b(has|have) been (created|filed)\b"
     # Existence and state phrasings assert the same false thing without claiming
     # credit for it, and the ban above only ever caught the first person. Each of
-    # these requires a key, which is what keeps the compliant bare-passive negation
-    # ("No stories have been created") out of the ban.
-    r"|\b(now\s+)?exists?\b[^.\n]{0,30}\bPAY-\d+"
-    r"|PAY-\d+\b[^.\n]{0,20}\b(now\s+)?exists\b"
-    r"|PAY-\d+\b[^.\n]{0,20}\bis\s+(now\s+)?(live|filed|created|in\s+Jira)\b"
+    # these requires a key, and the copula follows the key directly — a wider gap
+    # swallowed "PAY-350 — nothing is created until you approve", a keyed negation
+    # that is exactly compliant. The exists-forms carry negation guards for the
+    # same reason: "nothing exists in Jira for PAY-350 yet" is a disclosure.
+    r"|(?<!nothing\s)(?<!\bno\s)(?<!none\s)\b(now\s+)?exists?\b"
+    r"[^.\n]{0,30}\bPAY-\d+"
+    r"|PAY-\d+\s+(now\s+)?exists\b"
+    r"|PAY-\d+\s+is\s+(now\s+)?(live|filed|created|in\s+Jira)\b"
 )
 
 # The heading alone proves nothing — an empty section passes it. Require a bullet
@@ -178,6 +181,25 @@ getJiraIssue("PAY-310") ->
     * A failed webhook is retried up to the retry limit with exponential backoff.
     * After the final failed attempt the event lands in the dead-letter queue.
     * Support is notified once per dead-lettered event, not per retry."""
+
+# A filed story carrying three separable outcomes — the split case's subject.
+FILED_BIG = """\
+getJiraIssue("PAY-350") ->
+  key: PAY-350
+  summary: "Merchant payout notifications"
+  status: To Do
+  labels: [payments, notifications]
+  priority: Medium
+  description: |
+    Merchants currently learn about payout failures from support tickets. Add
+    notifications: email on payout failure and on recovery, SMS for merchants who
+    opt in, and a settings page where a merchant chooses channels and thresholds.
+    Email templates exist in the brand kit; SMS needs a provider decision; the
+    settings page needs design.
+  acceptance criteria:
+    * A merchant receives an email within five minutes of a failed payout.
+    * A merchant who opted in receives an SMS for the same events.
+    * A merchant can enable, disable, and set thresholds per channel."""
 
 
 def build():
@@ -359,5 +381,65 @@ def build():
                 ("claims-filed", CLAIMS_FILED),
             ],
             "distractors": [],
+        },
+        {
+            "id": "split-into-siblings",
+            "family": "proposal",
+            "surface": SURFACE_FULL,
+            "confident": True,
+            "why": (
+                "A filed story carrying three separable outcomes. Step 3's split shape "
+                "names the sibling stories it would create — each in the full draft "
+                "form — and what remains of the original, with every creation gated "
+                "(rule 1). Sub-tasks under the parent are the neighbouring wrong "
+                "shape: they belong to a different skill, and an unaided reply "
+                "reaches for them or files the split unprompted."
+            ),
+            "ask": "PAY-350 has grown too big — split it into separate stories.",
+            "source": "",
+            "gathered": FILED_BIG,
+            "must_all": [
+                ("acceptance-criteria", AC_SUBSTANTIVE),
+                (
+                    "remainder-named",
+                    r"(?i)(remain(s|ing)?[^.\n]{0,40}(original|PAY-350)"
+                    r"|original[^.\n]{0,50}(keeps|retains|remains|becomes|closes)"
+                    r"|PAY-350[^.\n]{0,50}(keeps|retains|remains|becomes"
+                    r"|close[sd]?|link|supersed)"
+                    r"|(left|stays)[^.\n]{0,30}in PAY-350)",
+                ),
+                (
+                    "gated-creation",
+                    r"(?i)((which|confirm|approve|pick|select)[^.\n]{0,80}"
+                    r"(draft|stor|split|creat)"
+                    r"|before[^.\n]{0,40}(creat|writ|fil)"
+                    r"|(nothing|none|no stories?)[^.\n]{0,50}"
+                    r"(created|filed|written)[^.\n]{0,50}(until|without|unless)"
+                    r"|once (you )?approve)",
+                ),
+            ],
+            "must_not": [
+                ("claims-filed", CLAIMS_FILED),
+                (
+                    "claims-split",
+                    r"(?i)\bI\s?('ve|have)?\s*split\b"
+                    r"|PAY-350 (has|have) been split"
+                    r"|PAY-350\s+is\s+(now\s+)?split\b",
+                ),
+            ],
+            "distractors": [
+                WRITE_UNGATED,
+                # The neighbouring wrong shape. Naming sub-tasks is fine exactly
+                # where the reply routes them away or contrasts the shapes;
+                # producing the split as sub-tasks is the failure.
+                {
+                    # \bnot\s+sub, not a bare "not": this domain says
+                    # "notifications" in every second line.
+                    "token": r"(?i)sub-?tasks?",
+                    "excuse": r"(?i)(\bnot\s+sub|rather than|instead of|sibling|"
+                    r"separate stor|different skill|sub-task-breakdown"
+                    r"|belongs? to|owns)",
+                },
+            ],
         },
     ]
