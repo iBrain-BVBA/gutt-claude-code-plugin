@@ -197,7 +197,7 @@ the gap as still open, rather than quoting facts that are about something else.
 they cannot hand the person a superseded relationship; the `graph-traversal`
 tools can, without warning, and they can fail outright on a hub — which is
 exactly what a person or team node is. Hand a genuine multi-hop question to the
-`gutt-pro-memory` agent instead of traversing inside this run.
+`gutt-pro:gutt-pro-memory` agent instead of traversing inside this run.
 
 Apply `memory-search`'s relevance gate ruthlessly. A weak hit dressed up as org
 guidance is worse than saying the org has nothing recorded here — the person

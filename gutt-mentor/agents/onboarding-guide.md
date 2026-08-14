@@ -223,8 +223,9 @@ convenience, the graph is authoritative.
 **Rung 2 is the ceiling for a briefing.** Centered fact searches return current
 facts only, so they cannot hand a joiner a superseded relationship; the
 `graph-traversal` tools can, without warning, and they can fail outright on a hub
-— which is exactly what a team or a busy person node is. Hand a genuine multi-hop
-question to the `gutt-pro-memory` agent instead of traversing inside this run.
+— which is exactly what a team or a busy person node is. Hand a genuine
+multi-hop question to the `gutt-pro:gutt-pro-memory` agent instead of traversing
+inside this run.
 
 And check a centered call actually honored its center: a result set that never
 mentions the center node means the parameter was ignored — discard it and treat

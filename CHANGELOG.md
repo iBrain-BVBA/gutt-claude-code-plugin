@@ -29,6 +29,17 @@
   did not exist, at the single step that writes. Added as rule 8, nothing
   renumbered. `gutt-developer` is 0.2.3.
 
+- **The memory agent's own example invoked it by a name that does not resolve.**
+  The `Task(...)` block shipped in `gutt-pro-memory` passed
+  `subagent_type="gutt-pro-memory"`, and two `gutt-mentor` agents told the reader
+  to hand multi-hop questions to "the `gutt-pro-memory` agent". A plugin agent is
+  reachable only as `<plugin>:<agent>`; called bare it fails with the same "agent
+  type not found" as a name nobody ships, so the reader cannot tell a wrong
+  instruction from a missing plugin. Being the core plugin buys no exemption —
+  bare resolution does not exist for plugin agents at all, which is what a probe
+  against a real install established. The four sibling agents already wrote the
+  namespaced form. `gutt-mentor` is 0.1.2.
+
 - **The stop-judge eval suite could only run on its author's machine.** Its corpus
   named a transcript directory under one developer's home; the directory is
   globbed, so the suite died at case construction everywhere else. It now derives
