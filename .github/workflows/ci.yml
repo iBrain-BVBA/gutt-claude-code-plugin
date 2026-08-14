@@ -41,6 +41,9 @@ jobs:
       - name: Check role-plugin gates (licensing, delivery context, identity, dedupe)
         run: npm run check:role-plugin
 
+      - name: Check doc pointers (slash references in prose resolve)
+        run: npm run check:doc-pointers
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
