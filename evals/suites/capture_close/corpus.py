@@ -75,7 +75,7 @@ def build():
                 "ordering and predates the audit write\n"
                 "Wrote 1 episode, type Insight, name "
                 "'Insight: fixture teardown closes pool before background audit write "
-                "drains', group gutt_pro_v2, last_n_episodes=0, previous_episodes=["
+                "drains', group org_main, last_n_episodes=0, previous_episodes=["
                 "'a41c…', 'd90b…'].\n"
                 "Response: queued. Extraction is asynchronous, so this is enqueued and not "
                 "yet confirmed present in the graph."
@@ -115,7 +115,7 @@ def build():
                 "  - Insight:Cache-key-includes-locale (2026-07-21) — records the key change "
                 "itself, says nothing about the lazy resolution\n"
                 "Wrote 1 episode, type Insight, name 'Insight: lazy locale resolution "
-                "yields undefined during cache key construction', group gutt_pro_v2, "
+                "yields undefined during cache key construction', group org_main, "
                 "last_n_episodes=0, previous_episodes=['7f22…'].\n"
                 "Response: queued, not yet verified in the graph."
             ),
@@ -152,7 +152,7 @@ def build():
             "capture_result": (
                 "Dedup pass ('nightly import duplicate rows upsert conflict target'): no "
                 "near-matches for either subject.\n"
-                "Wrote 2 episodes, group gutt_pro_v2, last_n_episodes=0 —\n"
+                "Wrote 2 episodes, group org_main, last_n_episodes=0 —\n"
                 "  - Incident: nightly import retry after 02:20 timeout wrote ~40k "
                 "duplicate rows\n"
                 "  - Insight: upsert conflict target (source_id, imported_at) cannot "
@@ -201,7 +201,7 @@ def build():
                 "routing, does not reach limiting\n"
                 "Wrote 1 episode, type Insight, name 'Insight: a gateway limiter cannot see "
                 "per-request cost and a service limiter cannot see the tenant total', group "
-                "gutt_pro_v2, last_n_episodes=0, previous_episodes=['c17e…'].\n"
+                "org_main, last_n_episodes=0, previous_episodes=['c17e…'].\n"
                 "Response: queued, not yet verified."
             ),
             "work": r"gateway|limiter|tenant|quota|per-request cost|coarse",

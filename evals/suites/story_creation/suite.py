@@ -211,6 +211,13 @@ if __name__ == "__main__":
         ("split rendered as sub-tasks", "split-into-siblings", SUBTASKED, False),
         ("sibling drafts, remainder named, gated", "split-into-siblings", SIBLINGS,
          True),
+        ("remainder offered as options", "split-into-siblings",
+         SIBLINGS.replace(
+             "PAY-350 closes once all three are filed, linked as their origin.",
+             "Two options for the original: (A) keep PAY-350 as the email "
+             "notifications story — retains its history; (B) close it after "
+             "filing and lose the original issue history. I recommend A.",
+         ), True),
     ]
     # (label, pattern, text, must it match?)
     BANS = [
@@ -227,6 +234,9 @@ if __name__ == "__main__":
          "PAY-350 — nothing is created until you approve.", False),
         ("keyed exists-negation stays clear", corpus.CLAIMS_FILED,
          "Nothing exists in Jira for PAY-350 yet.", False),
+        ("open question naming the key stays clear", corpus.CLAIMS_FILED,
+         "What design already exists? (PAY-350 notes the settings page needs "
+         "design.)", False),
     ]
     applied = dict(index["edit-diff-not-rewrite"]["must_not"])["claims-applied"]
     BANS += [

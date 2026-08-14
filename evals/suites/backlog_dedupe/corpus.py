@@ -454,11 +454,17 @@ def build():
                     r"|(sample|spot[- ]check)[^.\n]{0,70}(verdict|first|before|bar)"
                     r"|bar[^.\n]{0,45}(sample|handful|few items|before scaling))",
                 ),
+                # Not-forcing-a-verdict is phrased many ways — a fresh round's
+                # compliant reply wrote "recent but contestable", quoted
+                # "Decision pending" and proposed "Hold until the KMS scope is
+                # approved", and the first vocabulary missed all three.
                 (
                     "arguable-counted",
-                    r"(?i)(PAY-123[\s\S]{0,300}(arguabl|contested|genuinely open"
-                    r"|pending decision|neither|hand(ed)? (to|off)|single-ticket)"
-                    r"|(arguabl|contested)[\s\S]{0,200}PAY-123)",
+                    r"(?i)(PAY-123[\s\S]{0,300}(arguabl|contest|genuinely open"
+                    r"|pending decision|decision[^.\n]{0,20}pending"
+                    r"|hold (until|pending|for)|on hold|neither"
+                    r"|hand(ed)? (to|off)|single-ticket)"
+                    r"|(arguabl|contest)[\s\S]{0,200}PAY-123)",
                 ),
                 ("denominator", r"(?i)\b12\b[^\n]{0,30}(ticket|issue|item)"),
             ],

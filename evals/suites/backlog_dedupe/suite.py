@@ -187,6 +187,14 @@ if __name__ == "__main__":
         "PAY-102, PAY-107 and PAY-123 look stale — recommend closing all three. "
         "12 tickets reviewed. Nothing is closed without your approval."
     )
+    PROTOCOL_HOLD = (
+        "## Calibration\n"
+        "Sample first: PAY-120 reads clearly current; PAY-102 clearly stale "
+        "(superseded by the Node 20 baseline).\n"
+        "| PAY-123 | recent | org:Episodic:kms-migration-review (2026-07-28): "
+        "decision pending | Hold until the KMS migration scope is approved. |\n"
+        "12 tickets in the slice. Nothing is closed without your approval."
+    )
     PLAN_PAGED = (
         '1. searchJiraIssuesUsingJql(jql="project = PAY AND statusCategory != '
         'Done", maxResults=50) — follow nextPageToken until the result set is '
@@ -212,6 +220,8 @@ if __name__ == "__main__":
         ("no calibration, contested forced stale", "protocol-steps",
          PROTOCOL_BARE, False),
         ("calibration, arguable counted", "protocol-steps", PROTOCOL_OK, True),
+        ("contested held rather than bucketed", "protocol-steps", PROTOCOL_HOLD,
+         True),
         ("one page and no record step", "plan-complete-fetch", PLAN_ONE_PAGE,
          False),
         ("pages followed, record offered", "plan-complete-fetch", PLAN_PAGED,

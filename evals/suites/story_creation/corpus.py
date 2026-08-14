@@ -107,9 +107,11 @@ CLAIMS_FILED = (
     # these requires a key, and the copula follows the key directly — a wider gap
     # swallowed "PAY-350 — nothing is created until you approve", a keyed negation
     # that is exactly compliant. The exists-forms carry negation guards for the
-    # same reason: "nothing exists in Jira for PAY-350 yet" is a disclosure.
+    # same reason: "nothing exists in Jira for PAY-350 yet" is a disclosure. The
+    # gap also excludes "?" — "What design already exists? (PAY-350 …)" is an
+    # open question quoting the fetch, not a claim.
     r"|(?<!nothing\s)(?<!\bno\s)(?<!none\s)\b(now\s+)?exists?\b"
-    r"[^.\n]{0,30}\bPAY-\d+"
+    r"[^.\n?]{0,30}\bPAY-\d+"
     r"|PAY-\d+\s+(now\s+)?exists\b"
     r"|PAY-\d+\s+is\s+(now\s+)?(live|filed|created|in\s+Jira)\b"
 )
@@ -400,12 +402,19 @@ def build():
             "gathered": FILED_BIG,
             "must_all": [
                 ("acceptance-criteria", AC_SUBSTANTIVE),
+                # The fate of the original is stated many ways — a fresh round's
+                # compliant reply offered options ("keep PAY-350 as the email
+                # story" vs "lose the original issue history") and the first
+                # vocabulary missed both.
                 (
                     "remainder-named",
                     r"(?i)(remain(s|ing)?[^.\n]{0,40}(original|PAY-350)"
-                    r"|original[^.\n]{0,50}(keeps|retains|remains|becomes|closes)"
+                    r"|original[^.\n]{0,60}(keeps|retains|remains|becomes|closes"
+                    r"|histor|audit)"
                     r"|PAY-350[^.\n]{0,50}(keeps|retains|remains|becomes"
                     r"|close[sd]?|link|supersed)"
+                    r"|(keep|convert|turn|repurpose)[^.\n]{0,40}"
+                    r"(PAY-350|the original)"
                     r"|(left|stays)[^.\n]{0,30}in PAY-350)",
                 ),
                 (
