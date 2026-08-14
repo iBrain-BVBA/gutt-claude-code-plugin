@@ -10,23 +10,30 @@ which is the strongest ground truth available here.
 — a prompt that has to be shielded from them is not ready — but are reported separately
 so a variant is not marked down for a call the author is unsure of.
 """
+import re
 import sys
 import pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from lib.transcripts import clip_end, clip_mid, extract_turns, find_session  # noqa: E402
 
-# Claude Code names a project's transcript directory after its absolute path, with
-# the separators replaced. Derive it from wherever this checkout actually is —
-# hardcoding one machine's path sent every other machine looking in a directory that
-# could not exist.
+# Claude Code names a project's transcript directory after its absolute path with
+# `/`, `.` and `_` all flattened to `-`. Derive it from wherever this checkout
+# actually is — hardcoding one machine's path sent every other machine looking in a
+# directory that could not exist.
+#
+# All three characters, not just the separator: a checkout under a path containing a
+# dot or an underscore — a worktree beneath `.claude-worktrees`, a directory named
+# `my_repo` — otherwise derives a directory that does not exist, and the suite fails
+# with its transcripts sitting right there. `encodeProjectDir` in
+# gutt-core/hooks/lib/builtin-memory.cjs is the same encoding, pinned by a test.
 #
 # This makes the lookup correct anywhere; it does not make the suite runnable
 # anywhere. The sessions below are real recorded turns, which is the ground truth
 # the docstring above leans on, and they exist only where they were recorded.
 # Vendoring the extracted turns as literals would fix that and cost the provenance.
 # That trade is unmade — see the FileNotFoundError message below.
-PLUGIN_PROJECT = str(pathlib.Path(__file__).resolve().parents[3]).replace("/", "-")
+PLUGIN_PROJECT = re.sub(r"[/._]", "-", str(pathlib.Path(__file__).resolve().parents[3]))
 HEAD, TAIL, LAST = 4000, 2500, 3000
 
 # (session prefix, turn index, want_ok, confident, why)
