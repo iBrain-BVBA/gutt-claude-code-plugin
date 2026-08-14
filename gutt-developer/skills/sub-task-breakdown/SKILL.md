@@ -32,15 +32,16 @@ surfaces; find it in your tool list — names and prefixes vary per install.
    approval is the gate, and silence is not approval. The other permitted write
    is one comment, on the same exact-text terms.
 2. **Jira's vocabulary only — no other tracker's mechanics in the output.** A
-   dependency is a Jira issue link (`blocks` / `is blocked by`); a parent is
-   the parent field of a sub-task issue type; acceptance criteria are text in
-   the sub-task's own description. No `#123` references, no `Closes #…`
-   trailers, no checklist-as-linking — whatever tracker the session exposes,
-   this skill emits Jira. That includes foreign references quoted from the
-   parent's own text, which is where they usually get in: **translate** each to
-   the Jira key it means, or **name it as untranslatable** — "the parent cites
-   `#412`, which does not resolve to a Jira issue; ask the author which ticket
-   it means." Never pass one through unaccounted.
+   dependency is a Jira issue link, named the way that project names it
+   (rule 8); a parent is the parent field of a sub-task issue type; acceptance
+   criteria are text in the sub-task's own description. No `#123` references,
+   no `Closes #…` trailers, no checklist-as-linking — whatever tracker the
+   session exposes, this skill emits Jira. That includes foreign references
+   quoted from the parent's own text, which is where they usually get in:
+   **translate** each to the Jira key it means, or **name it as
+   untranslatable** — "the parent cites `#412`, which does not resolve to a
+   Jira issue; ask the author which ticket it means." Never pass one through
+   unaccounted.
 
 3. **Acceptance criteria are checkable or they are not criteria.** Each one
    states an observable outcome someone else could check without asking the
@@ -77,6 +78,13 @@ surfaces; find it in your tool list — names and prefixes vary per install.
    **Bare tool names**, probed with ToolSearch before concluding one is missing.
    **No memory writes** — a durable slicing lesson goes through `memory-capture`
    and its trust-tier gate.
+8. **Issue types and link names come from the organization, not from this
+   skill.** Read what the project actually exposes before proposing against it:
+   the type it uses for a sub-task, and the link types the instance carries.
+   Blocking links are commonly named `blocks` / `is blocked by`, but an
+   organization is free to rename them or not define them at all. Never hardcode
+   one; where a proposal needs a shape the project does not have, say so rather
+   than inventing it — an invented link name fails at the one step that writes.
 
 ## When to use
 
@@ -178,8 +186,8 @@ When that happens:
 - write effort into whatever estimate field the team actually uses, and only if
   the user said to — a range does not fit a single-number field, so ask which
   end goes in rather than silently picking one;
-- create dependencies as issue links of type `blocks` / `is blocked by`, after
-  the sub-tasks exist, and report the links created;
+- create dependencies as issue links of the blocking type the project carries
+  (rule 8), after the sub-tasks exist, and report the links created;
 - report what was created with keys, and what failed, item by item. A partial
   filing is the normal failure here and the user needs to know exactly where it
   stopped.
