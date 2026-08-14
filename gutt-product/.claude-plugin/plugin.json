@@ -1,15 +1,24 @@
 {
   "name": "gutt-product",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "dependencies": ["gutt-pro"],
   "defaultEnabled": true,
   "author": {
     "name": "iBRAIN BV",
     "email": "support@gutt.pro"
   },
-  "description": "Product leadership skills for Jira backlogs — memory-backed prioritization with an executive summary — backed by GUTT organizational memory",
+  "description": "Product leadership skills for Jira backlogs — story creation and management from meeting and document sources, slice-wide dedupe and consolidation, and memory-backed prioritization with an executive summary — backed by GUTT organizational memory",
   "homepage": "https://gutt.pro",
   "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
   "license": "MIT",
-  "keywords": ["product", "backlog", "prioritization", "jira", "organizational-memory", "gutt"]
+  "keywords": [
+    "product",
+    "backlog",
+    "prioritization",
+    "stories",
+    "dedupe",
+    "jira",
+    "organizational-memory",
+    "gutt"
+  ]
 }

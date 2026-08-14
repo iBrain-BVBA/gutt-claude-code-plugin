@@ -58,7 +58,11 @@ A ticket — or a not-yet-filed draft; pasted text is fine — that might repeat
 something already filed, done, or rejected. Not for the full background brief
 (`ticket-research`), not for sizing (`ticket-estimate`), and not for "has
 anyone worked on X" questions with no ticket or draft in play — that is
-`memory-search` directly.
+`memory-search` directly. Not for sweeping a whole backlog slice for duplicate
+clusters — that is `gutt-product:backlog-dedupe`, in a separate plugin this one
+does not depend on; it clusters the slice and hands borderline pairs back here
+for the verdict. Where it is not installed, run this check only on the specific
+tickets the user names rather than crawling a slice with it.
 
 ## Step 1 — characterize the target
 

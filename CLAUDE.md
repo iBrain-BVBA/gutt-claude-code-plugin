@@ -20,7 +20,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 │   └── rules/ mcp.json config.json.example
 ├── gutt-mentor/            # mentor plugin (depends on gutt-pro) — onboarding + mentor agents, personal-scope program design/tracking
 ├── gutt-developer/         # developer plugin (depends on gutt-pro) — ticket research/duplicates/estimate, bug-investigation, sub-task-breakdown, pr-re-review + pr-reviewer & bug-investigator agents; no hooks
-├── gutt-product/           # product plugin (depends on gutt-pro) — backlog prioritization for product leadership; no hooks
+├── gutt-product/           # product plugin (depends on gutt-pro) — story-creation, backlog-dedupe, backlog-prioritization for product leadership; no hooks
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── templates/              # role-plugin scaffold + its review gates — not shipped
 ├── tests/                  # Unit and E2E tests

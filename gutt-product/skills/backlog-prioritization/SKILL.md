@@ -52,8 +52,12 @@ vary per install.
 4. **Evidence is the differentiator, and it is specific.** Four kinds move an
    item: a decision or commitment that binds it, a dependency that makes it
    block or wait on other items, history in the area it touches (incidents,
-   repeated rework), and overlap with other items in the slice. Each one enters
-   the output with its source and date, or it does not enter.
+   repeated rework), and overlap with other items in the slice. Where a
+   `backlog-dedupe` run's clusters are in the session, they are the overlap
+   evidence, cited as such and carrying each cluster's own evidence label — a
+   `similarity only` cluster stays `similarity only` here; otherwise step 3's
+   own search covers it. Each one
+   enters the output with its source and date, or it does not enter.
 5. **Every claim is real and cited** — a Jira key, or a memory episode, lesson,
    decision, or incident with its id and date. No invented history, no
    commitment attributed to a client that no record shows, no dependency the
@@ -78,7 +82,9 @@ are the same thing (`gutt-developer:ticket-duplicates` — this skill notes
 overlap as a ranking signal and hands the verdict there). Those three live in a
 separate plugin this one does not depend on; where it is not installed, say
 which part of the question you are not the right skill for rather than
-attempting it.
+attempting it. Clustering the whole slice first is `backlog-dedupe` (this
+plugin) — run it before a prioritization whose slice smells of duplicates, and
+rank the consolidations rather than their fragments.
 
 ## Step 1 — the slice and the criteria
 
@@ -117,7 +123,8 @@ position turns on whether a fact still holds.
 
 Where the slice is large, search by subject cluster rather than per ticket — the
 evidence that moves items is usually about an area or a commitment, not about
-one key.
+one key. A `backlog-dedupe` output already in the session is the overlap
+evidence — cite its clusters rather than re-searching them.
 
 **Minimum outcome:** per item, either evidence with citations or an explicit
 `no memory evidence` mark. The second is a real result, not a failure.
@@ -148,7 +155,8 @@ the canonical form.
 
 ## Consolidation opportunities
 
-- <items that look like one piece of work, and what that would collapse>
+- <items that look like one piece of work, and what that would collapse —
+  backlog-dedupe's clusters when it ran, step 3's evidence otherwise>
 
 ## Risk flags
 
@@ -183,6 +191,9 @@ argued with, and an unarguable ranking is the one that gets ignored.
   `memory-capture`; identity if an agent runs this: `agent-memory-protocol`.
 - Reply shape for the summary — substance first, lists ranked and capped, one
   next action last: `output-style` (gutt-pro).
+- Siblings in this plugin: `backlog-dedupe` owns slice-wide duplicate clusters
+  and consolidation proposals; `story-creation` drafts and reshapes the stories
+  themselves.
 - Single-ticket work belongs to the developer plugin, which is separate from
   this one and may not be installed: `gutt-developer:ticket-duplicates` owns the
   same-or-different verdict this skill only flags,

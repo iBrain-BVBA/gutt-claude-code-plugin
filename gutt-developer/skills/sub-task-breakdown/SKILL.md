@@ -1,6 +1,6 @@
 ---
 name: sub-task-breakdown
-description: "Break one story into the sub-tasks it actually decomposes into — each with a title, checkable acceptance criteria, a grounded effort range, and its dependencies — in Jira's own vocabulary and nobody else's. Produces a proposal to argue with, never sub-tasks written into Jira unless explicitly asked for. Use when a story is too big to start, or before refinement. Triggers on: break this down, split this story, sub-tasks for, decompose, too big to start, slice this, what are the pieces, sequence the work, task breakdown, how do we split this."
+description: "Break one story into the sub-tasks it actually decomposes into — each with a title, checkable acceptance criteria, a grounded effort range, and its dependencies — in Jira's own vocabulary and nobody else's. Produces a proposal to argue with, never sub-tasks written into Jira unless explicitly asked for. Use when a story is too big to start, or before refinement. Triggers on: break this down, split this story into sub-tasks, sub-tasks for, decompose, too big to start, slice this, what are the pieces, sequence the work, task breakdown, how do we break this into tasks."
 ---
 
 # Sub-task Breakdown
@@ -84,7 +84,11 @@ A story nobody can start, or refinement prep for one. Not for sizing a story
 that needs no splitting (`ticket-estimate` on its own), not for the background
 of a story whose purpose is unclear (`ticket-research` first — a breakdown of a
 misunderstood story is worse than none), and not for designing the
-implementation.
+implementation. And not for splitting a story into sibling stories — this
+skill's output is always sub-task issues under an unchanged parent; a split
+that should produce stories is `gutt-product:story-creation`, in a separate
+plugin this one does not depend on. Where it is not installed, say the ask
+needs that shape rather than filing sub-tasks in its place.
 
 ## Step 1 — the parent, and whether it can be sliced yet
 

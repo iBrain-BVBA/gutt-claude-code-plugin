@@ -29,7 +29,7 @@
     {
       "name": "gutt-product",
       "source": "./gutt-product",
-      "description": "Product leadership skills for Jira backlogs — memory-backed prioritization with an executive summary — backed by GUTT organizational memory",
+      "description": "Product leadership skills for Jira backlogs — story creation and management from meeting and document sources, slice-wide dedupe and consolidation, and memory-backed prioritization with an executive summary — backed by GUTT organizational memory",
       "category": "productivity"
     }
   ]
