@@ -117,14 +117,26 @@ def parse_verdict(raw):
 
 
 def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
-               model=FAST_MODEL, allow_tools=False, out_path=None, system=JUDGE_SYS):
+               model=FAST_MODEL, allow_tools=False, out_path=None, system=JUDGE_SYS,
+               meta=None):
     """Run every (variant, case, trial) and return the scored records.
 
     `system` is a suite's choice, not a constant: JUDGE_SYS frames the model as a hook
     evaluator returning one JSON object, which is right for the Stop judge and wrong for
     any suite measuring what an *agent* does with injected context — there the framing
     would be the largest thing in the prompt and would decide the result.
+
+    `meta`, when given, is embedded in the raw file ({"meta": …, "records": […]})
+    so a round stays self-describing after the shell history is gone. Without it the
+    file is a bare list, the shape every round written before meta existed has.
     """
+
+    def dump(results):
+        path = out_path
+        if not path:
+            return
+        payload = {"meta": meta, "records": results} if meta else results
+        json.dump(payload, open(path, "w", encoding="utf-8"), indent=1)
     jobs = [(v, c, t) for v in variants for c in cases for t in range(trials)]
     print(f"{len(jobs)} calls — {len(variants)} variants x {len(cases)} cases x {trials} trials")
     results, lock = [], threading.Lock()
@@ -141,11 +153,12 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
         try:
             raw = ask(build_prompt(variants[vname], case), model=model,
                       system=system, allow_tools=allow_tools, cwd=run_dir)
-            # Stored for diagnosis only — scoring below sees the full reply. 3000 was too
-            # tight: a plan-shaped reply puts its last step past that mark, so a failure
-            # label pointing at the capture step had no evidence behind it in the raw file
-            # and read as "the call never happened". Raws are gitignored, so the cost is disk.
-            rec["raw"] = raw[:6000]
+            # Stored in full. Checker fixes are validated by re-scoring stored records
+            # offline, so a record whose reply is cut short is permanently unverifiable
+            # — scoring here always saw the full reply, only the record lied. A 6000-char
+            # cap did exactly that to every long reply in every round it touched. Raws
+            # are gitignored, so the cost is disk.
+            rec["raw"] = raw
             if raw.startswith("<blocked"):
                 halted.set()
                 rec.update({"error": raw, "blocked": True})
@@ -160,14 +173,14 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
             with lock:
                 results.append(rec)
                 if out_path and n % 20 == 0:
-                    json.dump(results, open(out_path, "w", encoding="utf-8"), indent=1)
+                    dump(results)
             print("." if rec.get("correct") else ("!" if rec.get("error") else "X"),
                   end="", flush=True)
             if n % 70 == 0:
                 print(f" {n}")
     print()
     if out_path:
-        json.dump(results, open(out_path, "w", encoding="utf-8"), indent=1)
+        dump(results)
         print(f"-> {out_path}")
     blocked = [r for r in results if r.get("blocked")]
     if blocked:

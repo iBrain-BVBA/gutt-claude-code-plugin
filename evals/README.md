@@ -26,7 +26,12 @@ Python 3 standard library only — no dependencies, no virtualenv. Each case is 
 Results land in `evals/results/<suite>-<trials>t-<variants>.json` (gitignored, they are
 large) alongside a committed `report.md`. The variant set is in the name because a run
 keyed on trial count alone overwrote an earlier round's raw records, and rounds are the
-unit of comparison here.
+unit of comparison here. A re-run of the same config gets an `-rN` suffix rather than
+replacing the earlier round. Raw files are `{"meta": …, "records": […]}` — the meta
+carries date, git SHA, model and a hash of each variant's text, so a round stays
+self-describing; rounds written before meta existed are bare lists. Replies are stored
+in full: records are re-scored offline when a checker changes, and a truncated `raw`
+(an earlier 6000-char cap) makes a record permanently unverifiable.
 
 ## Suites
 

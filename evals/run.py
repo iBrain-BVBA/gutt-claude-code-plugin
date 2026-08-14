@@ -5,13 +5,17 @@
     python3 evals/run.py stop-judge --trials 3
     python3 evals/run.py stop-judge --variants V0-shipped V6 V7
 
-Writes raw records to evals/results/<suite>-<trials>t.json and a rendered table to
+Writes raw records to evals/results/<suite>-<trials>t-<variants>.json (suffixed -rN
+rather than overwriting an existing round) and a rendered table to
 evals/results/<suite>-report.md.
 """
 import argparse
+import datetime
+import hashlib
 import importlib
 import json
 import pathlib
+import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -83,13 +87,41 @@ def main():
     # written second would otherwise be the only one left.
     slug = "" if args.model == FAST_MODEL else f"-{args.model.replace('.', '')}"
     raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}{slug}.json"
+    # Same config twice is two measurements, not one file: suffix instead of
+    # overwriting, or the round written second is the only one left.
+    n = 2
+    while raw_path.exists():
+        raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}{slug}-r{n}.json"
+        n += 1
+
+    # Identity travels with the round: what text was measured (variant hashes), on
+    # which model, from which tree, and when. A number whose provenance lives only
+    # in the shell history cannot support a comparison later.
+    def _git(*a):
+        try:
+            return subprocess.run(["git", *a], cwd=HERE, capture_output=True,
+                                  text=True, timeout=10).stdout.strip()
+        except Exception:
+            return ""
+
+    meta = {
+        "suite": args.suite,
+        "model": args.model,
+        "trials": args.trials,
+        "date": datetime.datetime.now(datetime.timezone.utc)
+                                  .isoformat(timespec="seconds"),
+        "git_sha": _git("rev-parse", "--short", "HEAD") or "unknown",
+        "git_dirty": bool(_git("status", "--porcelain")),
+        "variant_sha256": {k: hashlib.sha256(str(v).encode("utf-8")).hexdigest()[:12]
+                           for k, v in variant_map.items()},
+    }
 
     # A suite may declare its own system prompt; the Stop judge's framing is wrong for
     # any suite measuring what an agent does with injected context.
     kwargs = {"system": suite.SYSTEM} if hasattr(suite, "SYSTEM") else {}
     results = run_matrix(variant_map, case_list, suite.build_prompt, suite.evaluate,
                          trials=args.trials, workers=args.workers, model=args.model,
-                         out_path=str(raw_path), **kwargs)
+                         out_path=str(raw_path), meta=meta, **kwargs)
 
     text, summary = suite.report(results, case_list, variant_map)
     print("\n" + text)
@@ -101,7 +133,8 @@ def main():
         f"```\n{text}\n```\n",
         encoding="utf-8",
     )
-    (out_dir / f"{args.suite}-summary{slug}.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    (out_dir / f"{args.suite}-summary{slug}.json").write_text(
+        json.dumps({"meta": meta, **summary}, indent=1), encoding="utf-8")
     print(f"\n-> {report}")
     return 0
 
