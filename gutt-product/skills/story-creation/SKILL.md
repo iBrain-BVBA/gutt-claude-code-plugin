@@ -30,8 +30,9 @@ vary per install.
    before answering carries every draft and what happens to each — a count or a
    label standing for them is not that text. Creating and editing issues is
    outward-facing and not undone by an apology: approval is the gate, and
-   silence is not approval. The same
-   exact-text terms govern the one permitted comment. Write markdown and set the
+   silence is not approval. The
+   one other permitted write is a comment, drafted and posted only after the
+   user approves the exact text. Write markdown and set the
    tool's content-format parameter to markdown when it exposes one.
 2. **Every draft cites its source, and gaps stay visible — a dismissal is a
    claim too.** Each draft names where it came from — the transcript passage,

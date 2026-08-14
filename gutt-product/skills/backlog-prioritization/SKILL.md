@@ -54,7 +54,9 @@ vary per install.
    block or wait on other items, history in the area it touches (incidents,
    repeated rework), and overlap with other items in the slice. Where a
    `backlog-dedupe` run's clusters are in the session, they are the overlap
-   evidence, cited as such; otherwise step 3's own search covers it. Each one
+   evidence, cited as such and carrying each cluster's own evidence label — a
+   `similarity only` cluster stays `similarity only` here; otherwise step 3's
+   own search covers it. Each one
    enters the output with its source and date, or it does not enter.
 5. **Every claim is real and cited** — a Jira key, or a memory episode, lesson,
    decision, or incident with its id and date. No invented history, no

@@ -6,12 +6,13 @@ skill); round 4 added a third, V2-prior, derived from the shipped body.
 
 ## Headline
 
-| Round | V0-shipped | V1-none   |
-| ----- | ---------- | --------- |
-| 1     | 67% (8/12) | 8% (1/12) |
-| 2     | 67% (8/12) | 0% (0/12) |
-| 3     | 67% (8/12) | 0% (0/12) |
-| 5     | 75% (9/12) | 0% (0/12) |
+| Round | V0-shipped  | V1-none   |
+| ----- | ----------- | --------- |
+| 1     | 67% (8/12)  | 8% (1/12) |
+| 2     | 67% (8/12)  | 0% (0/12) |
+| 3     | 67% (8/12)  | 0% (0/12) |
+| 5     | 75% (9/12)  | 0% (0/12) |
+| 6     | 92% (11/12) | 8% (1/12) |
 
 Round 5 ran under the rewritten checks and scored 9/12 twice — once on this
 round's replies and once re-scoring the previous round's, which is the only
@@ -48,6 +49,20 @@ the three rounds, 35 failures were degradation disclosures and one was not —
 round 2's `plan-propose-only` trial 0 dropped the explicit org group scope,
 which is a substantive rule. Between rounds, one checker widening and one
 skill-text placement fix (below); round 3 is the certifying round.
+
+## Round 6 — the review edits, measured as no loss
+
+Round 6 ran the same checkers on a text with the review-round edits: the
+proposal template carries an explicit Arguable section (keys, what contests
+each, the hand-off) and its Untouched line states the recount to the slice
+total; rule 6 asks the group question before the first read, mirroring the
+sibling skill's clause. 11/12 against round 5's 9/12 is a two-cell move at
+the edge of the documented flutter, and both recovered cells are
+pasted-export-degrade disclosures — a case none of the edits target, so the
+recovery reads as run-to-run variation, not effect. The claim the round
+supports: every load-bearing label holds — seeded recall 3/3, the
+propose-only gate clean, `similarity only` labelled — and the edits lost
+nothing.
 
 ## Recall on the seeded fixture — the acceptance measurement
 

@@ -67,6 +67,11 @@ your tool list — names and prefixes vary per install.
 6. **Org scope is checked at the output, and engagements do not mix.** Pass
    explicit `group_ids` naming the org group on reads — take the name from
    session results or ask; never guess one — and treat scope as server-decided.
+   Where the session has surfaced no group yet, ask before the first read
+   rather than running one unscoped and repairing after — an omitted
+   `group_ids` does not mean the org group, it means an unspecified set that
+   includes personal scope, and the opening themed pass is where that goes
+   unnoticed.
    Nothing from another client's engagement enters any query, cluster, or
    proposal — check per line, not per run. The run summary, once decisions are
    made, goes through `memory-capture`'s gate into the engagement's own group,
@@ -164,9 +169,15 @@ whether anything confirmed it or it stands on your reading alone>
 | Ticket | Age / last activity | Why it looks dead — evidence, or `similarity only` | Proposal |
 | ------ | ------------------- | -------------------------------------------------- | -------- |
 
+## Arguable
+
+<keys still genuinely contested once the evidence is in — each with what
+contests it, handed to the single-ticket check per When to use>
+
 ## Untouched
 
-<count kept as filed — the remainder that shows the scan covered the slice>
+<count kept as filed — together with the clusters, stale candidates and
+arguable keys above, the buckets recount to the slice total>
 
 ## What this rests on
 

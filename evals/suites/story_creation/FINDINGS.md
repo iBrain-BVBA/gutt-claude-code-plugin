@@ -21,6 +21,7 @@ live from the working tree vs no skill) × 4 cases × 3 trials per round.
 | 2 (blind, re-run)  | 83% (10/12)  | 8% (1/12) |
 | 3 (live-run edits) | 100% (12/12) | 8% (1/12) |
 | 4 (strict checks)  | 58% (7/12)   | 8% (1/12) |
+| 5 (review edits)   | 50% (6/12)   | 0% (0/12) |
 
 ## Round 4 measured the bench's own variance, and it is larger than the effects
 
@@ -49,6 +50,20 @@ wordings, and a single-cell move sits inside this bench's documented flutter —
 the claim the round supports is that the three substantive cases have been at
 ceiling in every clean round and the degradation case no longer lags, not that
 the edits bought seventeen points.
+
+## Round 5 — the review edit, measured as flutter
+
+Round 5 ran the same checkers as round 4 on a text differing by one sentence:
+rule 1 now introduces the gated comment write in its own words instead of
+referring to a mechanism never established. 6/12 against round 4's 7/12 is a
+one-cell move — inside the spread round 4 measured on identical inputs — and
+the losses scatter again (transcript-drafts up a cell, the edit case and
+pasted-degrade down one each). The two load-bearing labels hold: one
+`source-cited` miss in twelve, no `asks-before-filing` miss. The round's
+claim is only that the reworded rule lost no behaviour the bench can see.
+(Note for cross-round reading: rounds 3 and 4 differed in text as well as
+instrument — the project-shapes rule landed between them — so 4→5 is this
+table's first same-instrument comparison.)
 
 ## What the skill buys, per case (round 2)
 
