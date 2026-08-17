@@ -173,6 +173,16 @@ def rescore(path, write_report=False):
                 pairs = " ".join(f"{k}:{v}"
                                  for k, v in meta["variant_sha256"].items())
                 head += f"Variant text measured: {pairs}.\n"
+        # The console line saying so scrolls; the table is what survives, and a
+        # length quoted as measured when it was read off today's file is the kind of
+        # claim this whole header exists to prevent.
+        if guessed:
+            head += (
+                f"The size shown for {', '.join(guessed)} is the skill text as it "
+                "stands now — this round predates recorded variant lengths, so the "
+                "length it actually measured is not known. The hashes above still "
+                "identify the text.\n"
+            )
         else:
             head += f"Round `{stem}` — written before rounds carried identity.\n"
         # Two trees, and the second is the one a reader needs. The round's own tree
