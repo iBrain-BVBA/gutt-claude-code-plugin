@@ -58,10 +58,23 @@ def git_state(prefix="git"):
             return None
         return r.stdout.strip() if r.returncode == 0 else None
 
-    dirty = _git("status", "--porcelain")
+    status = _git("status", "--porcelain")
+    if status is None:
+        dirty = "unknown"
+    else:
+        # Generated result artifacts do not make the tree dirty for this purpose.
+        # What the flag is asked to certify is whether the *code* — the skill text
+        # that produced the replies, or the checkers that scored them — is
+        # committed. Counting the report a re-score is about to write meant the
+        # first of four re-scores recorded a clean tree and the rest recorded a
+        # dirty one, purely because each had written the previous report.
+        dirty = bool([
+            ln for ln in status.splitlines()
+            if ln.strip() and not ln[3:].lstrip('"').startswith("evals/results/")
+        ])
     return {
         f"{prefix}_sha": _git("rev-parse", "--short", "HEAD") or "unknown",
-        f"{prefix}_dirty": "unknown" if dirty is None else bool(dirty),
+        f"{prefix}_dirty": dirty,
     }
 
 
