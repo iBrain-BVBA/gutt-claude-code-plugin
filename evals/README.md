@@ -26,16 +26,95 @@ Python 3 standard library only — no dependencies, no virtualenv. Each case is 
 Results land in `evals/results/<suite>-<trials>t-<variants>.json` (gitignored, they are
 large) alongside a committed `report.md`. The variant set is in the name because a run
 keyed on trial count alone overwrote an earlier round's raw records, and rounds are the
-unit of comparison here.
+unit of comparison here. A re-run of the same config gets an `-rN` suffix rather than
+replacing the earlier round, and the summary JSON carries the same suffix — it holds that
+round's identity, so the next round must not overwrite it. Raw files are
+`{"meta": …, "records": […]}` — the meta carries date, git SHA, model, a hash of each
+variant's text, and the job count the round was supposed to produce, so a round stays
+self-describing and a killed run is recognisable by holding fewer records than that;
+rounds written before meta existed are bare lists. Replies are stored in full: records
+are re-scored offline when a checker changes, and a truncated `raw` (an earlier
+6000-char cap) makes a record permanently unverifiable.
+
+Because replies are stored in full, a checker change is applied to rounds already
+measured rather than paid for again:
+
+```bash
+cd evals   # unlike run.py above, this is a module and needs evals/ on the path
+python3 -m lib.rescore results/<suite>-<n>t-<variants>.json [--write-report]
+```
+
+It reads either round shape and refuses to write a report for a round that cannot
+support one — a reply stored at a retired length cap, a record count short of the
+round's own job count, or a blocked record. Records whose call errored are kept
+unscored rather than dropped, so the denominator matches the original. With
+`--write-report` it regenerates the committed table, saying in the header that it was
+re-scored rather than re-run, and naming both the tree whose skill text produced the
+replies and the tree whose checkers scored them. That
+distinction is the point: a re-scored table is the same sample under a new instrument and
+may be compared against the table it replaces, while a fresh round is a new sample and
+may not.
+
+The committed `<suite>-report.md` keeps one stable name per suite, so its round archive
+is git history — which works only because its header names the round, the date, the tree
+and the variant hashes it measured. A round that hit a quota or availability wall writes
+no report or summary at all and exits non-zero: the console warning scrolls away, and a
+void all-zero table stamped with provenance is worse than no table.
+
+## Coverage — every shipped skill, mapped
+
+The bench measures prose-decided behaviour. Every shipped skill is either measured by a
+suite of its own, measured by a suite it shares, or carries a one-line reason it is not
+bench-measurable — a single `claude -p` call with no live tools cannot exercise a
+multi-turn tool loop, and a behaviour nobody can hand-label has no ground truth to score
+against. The hook prompts (not skills) have their own suites: `stop-judge`,
+`prompt-pointer`, `capture-close`, and the `migrate_offer` probe.
+
+| Skill (plugin)                          | Coverage                                                                                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| weekly-recap (gutt-pro)                 | own suite                                                                                                                                          |
+| bug-investigation (gutt-developer)      | own suite                                                                                                                                          |
+| sub-task-breakdown (gutt-developer)     | own suite                                                                                                                                          |
+| pr-re-review (gutt-developer)           | own suite                                                                                                                                          |
+| story-creation (gutt-product)           | own suite                                                                                                                                          |
+| backlog-dedupe (gutt-product)           | own suite                                                                                                                                          |
+| backlog-prioritization (gutt-product)   | own suite                                                                                                                                          |
+| memory-capture (gutt-pro)               | shared: `capture-close` scores the report-back and the close; the write path itself (dedup, tiers, gating) is a live tool loop                     |
+| output-style (gutt-pro)                 | shared: `capture-close` scores exactly its closing rules                                                                                           |
+| conflict-adjudication (gutt-pro)        | **gap** — a single-turn recommendation over a given pair of memories; the bench's proposal family fits it directly                                 |
+| ticket-duplicates (gutt-developer)      | **gap** — candidate-to-verdict resolution with evidence and confidence is prose-decided                                                            |
+| ticket-estimate (gutt-developer)        | **gap** — grounded ranges, cited comparables, and honest confidence labels are prose-decided                                                       |
+| memory-search (gutt-pro)                | **gap** — the rung and scope decisions and the honest-empty report are prose-decided; its tool results fake into the prompt like any proposal case |
+| ticket-research (gutt-developer)        | **gap**, lowest priority — a cited-brief shape; largely the behaviours `bug-investigation` already measures, on a different surface                |
+| agent-memory-protocol (gutt-pro)        | not bench-measurable: an identity convention consumed by other skills; no reply of its own to score                                                |
+| graph-traversal (gutt-pro)              | not bench-measurable: a live multi-hop tool loop, and bench calls run with no tools                                                                |
+| memory-retrieval (gutt-pro)             | not bench-measurable: deprecated alias; measuring it would measure memory-search                                                                   |
+| migrate-memory (gutt-pro)               | not bench-measurable: an interactive verify-then-delete flow against a live store                                                                  |
+| onboard (gutt-pro)                      | not bench-measurable: interactive first-run setup against a live install                                                                           |
+| skills-discovery (gutt-pro)             | not bench-measurable: open-ended gap analysis with no hand-labellable ground truth                                                                 |
+| individual-program-design (gutt-mentor) | not bench-measurable: the deliverable is a personal-scope memory write whose correctness is a later session reconstructing it                      |
+| progress-tracking (gutt-mentor)         | not bench-measurable: reads and chains personal-scope episodes; the continuity under test lives in tool calls                                      |
+
+The gap rows are the remaining suite backlog, in rough value order:
+conflict-adjudication, ticket-duplicates, and ticket-estimate are single-turn verdict
+shapes the bench already handles well; memory-search needs its tool results faked into
+the prompt, which the proposal family does; ticket-research last. backlog-prioritization
+was the largest gap and now has its suite.
 
 ## Suites
 
-| Suite            | What it measures                                                                                                              |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `stop-judge`     | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
-| `prompt-pointer` | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious          |
-| `capture-close`  | After a fired capture has been written: does the reply report it _and_ close on the work, or drop one of the two              |
-| `weekly-recap`   | The time-window recap skill: does "last week" become absolute dates and a mention walk, and does the report keep the window   |
+| Suite                    | What it measures                                                                                                              |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `stop-judge`             | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
+| `prompt-pointer`         | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious          |
+| `capture-close`          | After a fired capture has been written: does the reply report it _and_ close on the work, or drop one of the two              |
+| `weekly-recap`           | The time-window recap skill: does "last week" become absolute dates and a mention walk, and does the report keep the window   |
+| `bug-investigation`      | Bug triage: severity with a rubric, a refutable suspected area, cited history                                                 |
+| `sub-task-breakdown`     | Story breakdown: Jira-native grammar, testable criteria, nothing filed                                                        |
+| `pr-re-review`           | Memory-informed PR review: recall first, verify findings, cite standards                                                      |
+| `story-creation`         | Story drafting: sources cited, gaps visible, no ungated Jira writes                                                           |
+| `backlog-dedupe`         | Backlog dedupe: seeded clusters found, stale justified, nothing acted                                                         |
+| `backlog-prioritization` | Backlog ranking: moves cited, evidence-less items held, basis stated, no writes                                               |
 
 A suite is no longer confined to scoring verdicts. `run_matrix` takes a `system` argument
 and `run.py` passes a suite's own `SYSTEM` when it defines one, so a suite can frame the

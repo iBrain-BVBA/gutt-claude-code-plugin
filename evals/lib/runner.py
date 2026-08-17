@@ -8,6 +8,7 @@ completed calls, which is the whole reason for both.
 """
 import concurrent.futures as cf
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -69,6 +70,16 @@ BLOCKED = (
 )
 
 
+# Every way `ask` can fail to produce a reply. A marker is not a reply and must
+# never be scored as one — see `failed()` and its caller in `work`.
+MARKERS = ("<timeout>", "<empty ", "<failed ", "<blocked ")
+
+
+def failed(raw):
+    """Is this an `ask` failure marker rather than a model reply?"""
+    return bool(raw) and raw.startswith(MARKERS)
+
+
 def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=180, cwd=None):
     """One `claude -p` call. Returns stdout, or a `<marker>` string on failure."""
     cmd = ["claude", "-p", "--model", model, "--strict-mcp-config",
@@ -85,6 +96,11 @@ def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=1
     out = r.stdout.strip()
     if not out:
         return f"<empty exit={r.returncode} {r.stderr.strip()[:200]}>"
+    # A non-zero exit is a failure even when something reached stdout. The CLI
+    # exits 143 on SIGTERM and 1 when a spend cap aborts the turn, both of which
+    # can leave partial text behind; returning it as a reply scored the wreckage.
+    if r.returncode != 0:
+        return f"<failed exit={r.returncode} {out[:200]}>"
     if is_blocked(out):
         return f"<blocked {out[:200]}>"
     return out
@@ -117,14 +133,34 @@ def parse_verdict(raw):
 
 
 def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
-               model=FAST_MODEL, allow_tools=False, out_path=None, system=JUDGE_SYS):
+               model=FAST_MODEL, allow_tools=False, out_path=None, system=JUDGE_SYS,
+               meta=None):
     """Run every (variant, case, trial) and return the scored records.
 
     `system` is a suite's choice, not a constant: JUDGE_SYS frames the model as a hook
     evaluator returning one JSON object, which is right for the Stop judge and wrong for
     any suite measuring what an *agent* does with injected context — there the framing
     would be the largest thing in the prompt and would decide the result.
+
+    `meta`, when given, is embedded in the raw file ({"meta": …, "records": […]})
+    so a round stays self-describing after the shell history is gone. Without it the
+    file is a bare list, the shape every round written before meta existed has.
     """
+
+    def dump(results):
+        path = out_path
+        if not path:
+            return
+        payload = {"meta": meta, "records": results} if meta else results
+        # Written beside the target and moved into place. Opening the target with
+        # "w" truncates the last good snapshot before the new JSON is complete, so
+        # a run killed mid-dump left a file that no longer parsed — destroying the
+        # very records the periodic flush exists to preserve, and taking the round's
+        # metadata with them. os.replace is atomic within a filesystem.
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=1)
+        os.replace(tmp, path)
     jobs = [(v, c, t) for v in variants for c in cases for t in range(trials)]
     print(f"{len(jobs)} calls — {len(variants)} variants x {len(cases)} cases x {trials} trials")
     results, lock = [], threading.Lock()
@@ -141,14 +177,23 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
         try:
             raw = ask(build_prompt(variants[vname], case), model=model,
                       system=system, allow_tools=allow_tools, cwd=run_dir)
-            # Stored for diagnosis only — scoring below sees the full reply. 3000 was too
-            # tight: a plan-shaped reply puts its last step past that mark, so a failure
-            # label pointing at the capture step had no evidence behind it in the raw file
-            # and read as "the call never happened". Raws are gitignored, so the cost is disk.
-            rec["raw"] = raw[:6000]
-            if raw.startswith("<blocked"):
-                halted.set()
-                rec.update({"error": raw, "blocked": True})
+            # Stored in full. Checker fixes are validated by re-scoring stored records
+            # offline, so a record whose reply is cut short is permanently unverifiable
+            # — scoring here always saw the full reply, only the record lied. A 6000-char
+            # cap did exactly that to every long reply in every round it touched. Raws
+            # are gitignored, so the cost is disk.
+            rec["raw"] = raw
+            # Every failure marker is an unmeasured cell, not a wrong answer. Only
+            # `<blocked` was treated as one, so a timeout or an authentication
+            # failure was handed to `evaluate` and scored: the round came back 0%
+            # correct with the error count reading zero, and the report was written
+            # as an ordinary measurement. A quota wall additionally halts the run —
+            # the rest of the matrix would hit the same wall.
+            if failed(raw):
+                rec["error"] = raw
+                if raw.startswith("<blocked"):
+                    halted.set()
+                    rec["blocked"] = True
                 return rec
             rec.update(evaluate(case, raw))
         except Exception as exc:  # a bad reply must cost one cell, never the matrix
@@ -160,14 +205,14 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
             with lock:
                 results.append(rec)
                 if out_path and n % 20 == 0:
-                    json.dump(results, open(out_path, "w", encoding="utf-8"), indent=1)
+                    dump(results)
             print("." if rec.get("correct") else ("!" if rec.get("error") else "X"),
                   end="", flush=True)
             if n % 70 == 0:
                 print(f" {n}")
     print()
     if out_path:
-        json.dump(results, open(out_path, "w", encoding="utf-8"), indent=1)
+        dump(results)
         print(f"-> {out_path}")
     blocked = [r for r in results if r.get("blocked")]
     if blocked:
@@ -206,5 +251,22 @@ if __name__ == "__main__":
         print(f"MISSED WALL   {w}")
     for r in noise:
         print(f"FALSE POSITIVE {r}")
+
+    # Every marker `ask` can return must be recognised as an unmeasured cell. Only
+    # `<blocked` was, so a timeout or an auth failure reached `evaluate` and scored
+    # as a wrong answer — a round that never got a reply published a 0% table with
+    # its error count reading zero. A reply must not match, or a real measurement
+    # would be thrown away.
+    MARKED = ["<timeout>", "<empty exit=1 Invalid API key>",
+              "<failed exit=143 partial output>", "<blocked usage limit reached>"]
+    for m in MARKED:
+        if not failed(m):
+            bad.append(m)
+            print(f"MARKER NOT CAUGHT  {m}")
+    for r in REPLIES + ["<p>A reply that opens with a tag</p>", ""]:
+        if failed(r):
+            noise.append(r)
+            print(f"REPLY READ AS MARKER  {r[:60]}")
+
     print("BLOCKED patterns OK" if not bad and not noise else "BLOCKED patterns BROKEN")
     raise SystemExit(1 if bad or noise else 0)

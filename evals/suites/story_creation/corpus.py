@@ -82,12 +82,21 @@ SURFACE_NO_JIRA = (
 # show: rule 1 gates the comment on its exact text, and step 4 creates dependency
 # links. A tool missing from the token can be called unconditionally and still pass.
 WRITE_UNGATED = {
-    "token": r"(createJiraIssue|editJiraIssue|createIssueLink|addCommentToJiraIssue)"
-    r"\s*\(\s*[A-Za-z\"'{]",
+    # Backticks and asterisks around the name are tolerated: a model that writes
+    # `createJiraIssue`(…) or **createJiraIssue**(…) is making the same call, and
+    # anchoring on the bare name made the check's sensitivity a function of the
+    # reply's formatting rather than its behaviour. The first-argument requirement
+    # stays — an empty-paren mention is a naming, not a call.
+    "token": r"[`*]{0,2}(createJiraIssue|editJiraIssue|createIssueLink"
+    r"|addCommentToJiraIssue)[`*]{0,2}\s*\(\s*[A-Za-z\"'{]",
     "excuse": r"(?i)(approv|if you (want|confirm|say|ask)|once you|on your (say|ask|go)|"
-    r"conditional|only (if|when|after)|would (then )?(call|create|file|edit|write)|"
+    r"conditional|only (if|when|after)|(until|unless) you|"
+    r"would (then )?(call|create|file|edit|write)|"
     r"with your confirmation|await|pending|for your review|not (yet|until)|"
-    r"proposal|do not|don'?t|no(thing)? (is |will be )?(created|filed|edited|written))",
+    r"proposal|(do not|don'?t|won'?t|will not)\\s+(\\w+\\s+){0,2}?(call|create|file|edit|writ)|no(thing)? (is |will be )?(created|filed|edited|written))",
+    # The token matches the invocation form, so every match is a write being made.
+    # One gate must not cover a later one.
+    "every": True,
 }
 
 # A claim of having filed names its subject — the agent, or the key that now exists.
@@ -96,8 +105,33 @@ WRITE_UNGATED = {
 # scored correct replies as the violation they were denying.
 CLAIMS_FILED = (
     r"(?i)(created|filed)\s+(as\s+)?PAY-\d+"
-    r"|\bI\s?('ve|have)?\s*(created|filed)\b"
+    # An adverb between the pronoun and the verb is the natural way to write this
+    # claim — "I already filed it", "I went ahead and created it" — and an
+    # adjacency-only pattern missed every one of them. The adverbs are named
+    # rather than allowing any words through, so "I would not have created" stays
+    # clear.
+    r"|\bI\s*('ve|have|had)?\s*"
+    r"((just|already|now|also|then|since|go(ne)?\s+ahead\s+and"
+    r"|went\s+ahead\s+and)\s*)*(created|filed)\b"
     r"|PAY-\d+[^.\n]{0,40}\b(has|have) been (created|filed)\b"
+    # Existence and state phrasings assert the same false thing without claiming
+    # credit for it, and the ban above only ever caught the first person. Each of
+    # these requires a key, and the copula follows the key directly — a wider gap
+    # swallowed "PAY-350 — nothing is created until you approve", a keyed negation
+    # that is exactly compliant. The reversed direction requires the assertive
+    # lead "now/already exists" rather than negation guards beside "exists":
+    # lookbehinds only saw the adjacent word, so one intervening word ("No
+    # matching story exists for PAY-350" — a compliant disclosure) got banned.
+    # The gap also excludes "?" — "What design already exists? (PAY-350 …)" is
+    # an open question quoting the fetch, not a claim.
+    #
+    # "now", not "already". A story the reply did not create can legitimately
+    # already exist, and saying so is the disclosure `split-into-siblings` asks
+    # for: "the acceptance criteria already exist in PAY-350" is true, compliant,
+    # and was banned. Only "now" asserts the change this ban is about.
+    r"|\bnow\s+exists?\b[^.\n?]{0,30}\bPAY-\d+"
+    r"|PAY-\d+\s+(now\s+)?exists\b"
+    r"|PAY-\d+\s+is\s+(now\s+)?(live|filed|created|in\s+Jira)\b"
 )
 
 # The heading alone proves nothing — an empty section passes it. Require a bullet
@@ -167,6 +201,25 @@ getJiraIssue("PAY-310") ->
     * A failed webhook is retried up to the retry limit with exponential backoff.
     * After the final failed attempt the event lands in the dead-letter queue.
     * Support is notified once per dead-lettered event, not per retry."""
+
+# A filed story carrying three separable outcomes — the split case's subject.
+FILED_BIG = """\
+getJiraIssue("PAY-350") ->
+  key: PAY-350
+  summary: "Merchant payout notifications"
+  status: To Do
+  labels: [payments, notifications]
+  priority: Medium
+  description: |
+    Merchants currently learn about payout failures from support tickets. Add
+    notifications: email on payout failure and on recovery, SMS for merchants who
+    opt in, and a settings page where a merchant chooses channels and thresholds.
+    Email templates exist in the brand kit; SMS needs a provider decision; the
+    settings page needs design.
+  acceptance criteria:
+    * A merchant receives an email within five minutes of a failed payout.
+    * A merchant who opted in receives an SMS for the same events.
+    * A merchant can enable, disable, and set thresholds per channel."""
 
 
 def build():
@@ -271,13 +324,39 @@ def build():
                     r"not (touched|changed|modified)|no other field|"
                     r"only (the )?(retry|description)|leave (the )?(rest|others?))",
                 ),
+                # Both checks above are satisfiable by restating the ask, which
+                # already carries the key, the 3, the 5 and "everything else stays
+                # as it is" — so the case scored a bare paraphrase as a perfect
+                # per-field diff. Rule 3 wants the current text quoted, so demand
+                # material only the fetched story supplies. Any fetched fragment
+                # counts, from the description or the acceptance criteria: the
+                # check proves the reply used the fetch, not that it chose one
+                # blessed sentence, and demanding a single sentence rejected a
+                # compliant reply that quoted other fetched fragments and elided
+                # that one.
+                #
+                # Every fragment here has to be unreachable from the ask, or the
+                # check it replaced comes back. "up to the retry limit" was not:
+                # the ask says "the retry limit", so a paraphrase reaches the whole
+                # phrase without ever reading the fetch, and an echo passed all
+                # three checks again. A fragment earns its place only if the ask
+                # cannot compose it.
+                (
+                    "quotes-fetched-text",
+                    r"(?i)(dead[-\s]?letter|exponential backoff|support is notified"
+                    r"|final failed attempt)",
+                ),
             ],
             "must_not": [
                 (
                     "claims-applied",
                     r"(?i)I('ve| have)? (updated|edited|applied|changed) PAY-310"
                     r"|PAY-310 (has|have) been (updated|edited)"
-                    r"|the (story|issue|ticket) (has been|is now) updated",
+                    r"|the (story|issue|ticket) (has been|is now) updated"
+                    # State phrasing. "is not updated yet" stays clear because the
+                    # verb has to follow the copula directly.
+                    r"|PAY-310\s+(is|are)\s+(now\s+)?(updated|edited|changed)\b"
+                    r"|\b(change|edit|update)\b[^.\n]{0,20}\bis\s+(now\s+)?live\b",
                 ),
                 # \b so "(unchanged)" — a reply listing priority among untouched
                 # fields, which is exactly compliant — does not match inside the word.
@@ -329,5 +408,80 @@ def build():
                 ("claims-filed", CLAIMS_FILED),
             ],
             "distractors": [],
+        },
+        {
+            "id": "split-into-siblings",
+            "family": "proposal",
+            "surface": SURFACE_FULL,
+            "confident": True,
+            "why": (
+                "A filed story carrying three separable outcomes. Step 3's split shape "
+                "names the sibling stories it would create — each in the full draft "
+                "form — and what remains of the original, with every creation gated "
+                "(rule 1). Sub-tasks under the parent are the neighbouring wrong "
+                "shape: they belong to a different skill, and an unaided reply "
+                "reaches for them or files the split unprompted."
+            ),
+            "ask": "PAY-350 has grown too big — split it into separate stories.",
+            "source": "",
+            "gathered": FILED_BIG,
+            "must_all": [
+                ("acceptance-criteria", AC_SUBSTANTIVE),
+                # The case measures a three-way split, and one global criteria
+                # match did not require three of anything: a single draft with one
+                # criterion, the remainder named and approval asked for, scored
+                # correct. The story names three outcomes, so demand all three —
+                # this is what makes the case about splitting rather than drafting.
+                ("email-draft", r"(?i)e-?mail"),
+                ("sms-draft", r"(?i)\bSMS\b|text message"),
+                ("settings-draft", r"(?i)(settings|preferences|thresholds?)"),
+                # The fate of the original is stated many ways — a fresh round's
+                # compliant reply offered options ("keep PAY-350 as the email
+                # story" vs "lose the original issue history") and the first
+                # vocabulary missed both.
+                (
+                    "remainder-named",
+                    r"(?i)(remain(s|ing)?[^.\n]{0,40}(original|PAY-350)"
+                    r"|original[^.\n]{0,60}(keeps|retains|remains|becomes|closes"
+                    r"|histor|audit)"
+                    r"|PAY-350[^.\n]{0,50}(keeps|retains|remains|becomes"
+                    r"|close[sd]?|link|supersed)"
+                    r"|(keep|convert|turn|repurpose)[^.\n]{0,40}"
+                    r"(PAY-350|the original)"
+                    r"|(left|stays)[^.\n]{0,30}in PAY-350)",
+                ),
+                (
+                    "gated-creation",
+                    r"(?i)((which|confirm|approve|pick|select)[^.\n]{0,80}"
+                    r"(draft|stor|split|creat)"
+                    r"|before[^.\n]{0,40}(creat|writ|fil)"
+                    r"|(nothing|none|no stories?)[^.\n]{0,50}"
+                    r"(created|filed|written)[^.\n]{0,50}(until|without|unless)"
+                    r"|once (you )?approve)",
+                ),
+            ],
+            "must_not": [
+                ("claims-filed", CLAIMS_FILED),
+                (
+                    "claims-split",
+                    r"(?i)\bI\s?('ve|have)?\s*split\b"
+                    r"|PAY-350 (has|have) been split"
+                    r"|PAY-350\s+is\s+(now\s+)?split\b",
+                ),
+            ],
+            "distractors": [
+                WRITE_UNGATED,
+                # The neighbouring wrong shape. Naming sub-tasks is fine exactly
+                # where the reply routes them away or contrasts the shapes;
+                # producing the split as sub-tasks is the failure.
+                {
+                    # \bnot\s+sub, not a bare "not": this domain says
+                    # "notifications" in every second line.
+                    "token": r"(?i)sub-?tasks?",
+                    "excuse": r"(?i)(\bnot\s+sub|rather than|instead of|sibling|"
+                    r"separate stor|different skill|sub-task-breakdown"
+                    r"|belongs? to|owns)",
+                },
+            ],
         },
     ]
