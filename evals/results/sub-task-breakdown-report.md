@@ -7,7 +7,7 @@ Judge model: `claude-haiku-4-5-20251001`.
 Round `sub-task-breakdown-3t-V0-shipped-V1-none-r3` — replies measured 2026-08-17T07:48:54+00:00, tree `dc5ec4e` (dirty tree).
 Variant text measured: V0-shipped:fa8e54c8ca3d V1-none:e3b0c44298fc.
 The size shown for V0-shipped, V1-none is the skill text as it stands now — this round predates recorded variant lengths, so the length it actually measured is not known. The hashes above still identify the text.
-Scored by the checkers in tree `e4420a0` — re-scored offline, not re-run: same replies, new instrument. Comparable with the table it replaces; not comparable with a fresh round, which is a new sample.
+Scored by the checkers in tree `42f0c27` — re-scored offline, not re-run: same replies, new instrument. Comparable with the table it replaces; not comparable with a fresh round, which is a new sample.
 
 ```
 STORY BREAKDOWN — skill text vs no skill
