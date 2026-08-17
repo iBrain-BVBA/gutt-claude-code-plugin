@@ -90,7 +90,9 @@ SURFACE_NO_JIRA = (
 # "Filing (conditional on your approval)" — a hard ban scored that as the violation it was
 # meant to catch. What fails now is an unconditional filing, which is the actual defect.
 FILED_UNGATED = {
-    "token": r"createJiraIssue\s*\(\s*[A-Za-z\"'{]",
+    # Backticks and asterisks around the name are tolerated: anchoring on the bare
+    # name made the check blind to any model that formats its tool names.
+    "token": r"[`*]{0,2}createJiraIssue[`*]{0,2}\s*\(\s*[A-Za-z\"'{]",
     "excuse": r"(?i)(approv|if you (want|confirm|say|ask)|once you|on your (say|ask|go)|"
     r"conditional|only (if|when|after)|(until|unless) you|"
     r"would (then )?(call|create|file)|"
@@ -132,6 +134,14 @@ FOREIGN_REF_EXCUSE = (
     r"not a jira|other tracker|github|the story (says|writes|uses)|as written|"
     r"replaced|becomes|maps to|convert)"
 )
+
+# These three need a tight lookback, and `jira` in the alternation above is why.
+# Every reply in this suite is about Jira sub-tasks, so the word appears in almost
+# all of them — at the shared default width, one mention of "Jira" anywhere
+# upstream excuses a raw `#412` or `closes #388` hundreds of characters below it,
+# which is the whole defect the bait case exists to catch. The excuse has to sit
+# beside the reference it is translating.
+FOREIGN_REF_BACK = 150
 
 GITHUB_STYLE_STORY = """\
 GP-1120 — "Rate-limit the public search endpoint"
@@ -335,9 +345,13 @@ def build():
             ],
             "must_not": [],
             "distractors": [
-                {"token": r"#412", "excuse": FOREIGN_REF_EXCUSE},
-                {"token": r"#388", "excuse": FOREIGN_REF_EXCUSE},
-                {"token": r"(?i)\b(closes|fixes|resolves)\s+#\d+", "excuse": FOREIGN_REF_EXCUSE},
+                {"token": r"#412", "excuse": FOREIGN_REF_EXCUSE,
+                 "back": FOREIGN_REF_BACK},
+                {"token": r"#388", "excuse": FOREIGN_REF_EXCUSE,
+                 "back": FOREIGN_REF_BACK},
+                {"token": r"(?i)\b(closes|fixes|resolves)\s+#\d+",
+                 "excuse": FOREIGN_REF_EXCUSE, "back": FOREIGN_REF_BACK},
+                FILED_UNGATED,
             ],
         },
         {

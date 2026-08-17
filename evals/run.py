@@ -37,6 +37,31 @@ SUITES = {
 }
 
 
+def _claim_round(out_dir, stem):
+    """Pick an unused raw-file name for this round; return it and its round tag.
+
+    Same config twice is two measurements, not one file. The tag is carried to the
+    summary, which holds the round's identity and so must not be destroyed by the
+    next round at the same config. The committed report keeps its stable per-suite
+    name — git history is its archive, which works only because the report header
+    records which round produced it.
+
+    The file is created here rather than merely tested for. Testing alone left a
+    window: the raw file is not written until the first periodic flush, so two runs
+    started minutes apart both selected the base name and the one finishing second
+    silently won.
+    """
+    for n in range(1, 1000):
+        tag = "" if n == 1 else f"-r{n}"
+        path = out_dir / f"{stem}{tag}.json"
+        try:
+            path.touch(exist_ok=False)
+        except FileExistsError:
+            continue
+        return path, tag
+    raise SystemExit(f"1000 rounds already stored for {stem}; archive some.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -83,39 +108,53 @@ def main():
     # the printed table. Rounds are the unit of comparison here (see README), so losing
     # one is losing the ability to check a claim.
     tag = "-".join(sorted(variant_map)) if len(variant_map) <= 4 else f"{len(variant_map)}v"
-    # A non-default model gets its own filenames for the same reason: a sonnet round and a
-    # haiku round at the same depth and variant set are different measurements, and the one
-    # written second would otherwise be the only one left.
+    # A non-default model gets its own filenames for a related but separate reason. The
+    # round claim below keeps a sonnet round and a haiku round from overwriting each
+    # other's raws whether or not the name distinguishes them; the slug is what keeps
+    # their *reports* distinct, since those hold one stable name per suite and are not
+    # round-claimed.
     slug = "" if args.model == FAST_MODEL else f"-{args.model.replace('.', '')}"
-    raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}{slug}.json"
-    # Same config twice is two measurements, not one file: suffix instead of
-    # overwriting, or the round written second is the only one left.
-    n = 2
-    while raw_path.exists():
-        raw_path = out_dir / f"{args.suite}-{args.trials}t-{tag}{slug}-r{n}.json"
-        n += 1
+    raw_path, round_tag = _claim_round(out_dir, f"{args.suite}-{args.trials}t-{tag}{slug}")
 
     # Identity travels with the round: what text was measured (variant hashes), on
     # which model, from which tree, and when. A number whose provenance lives only
     # in the shell history cannot support a comparison later.
+    #
+    # Every field distinguishes "unknown" from a real value. Returning "" on failure
+    # and coercing it made git_dirty report False — an assertion that the tree was
+    # clean — for a tree that was never inspected, while git_sha next to it honestly
+    # said "unknown". A non-zero exit is the common failure and raises nothing, so
+    # returncode has to be checked rather than left to the except.
     def _git(*a):
         try:
-            return subprocess.run(["git", *a], cwd=HERE, capture_output=True,
-                                  text=True, timeout=10).stdout.strip()
+            r = subprocess.run(["git", *a], cwd=HERE, capture_output=True,
+                               text=True, timeout=10)
         except Exception:
-            return ""
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
 
+    dirty = _git("status", "--porcelain")
     meta = {
         "suite": args.suite,
         "model": args.model,
         "trials": args.trials,
+        "cases": len(case_list),
+        "jobs": len(variant_map) * len(case_list) * args.trials,
         "date": datetime.datetime.now(datetime.timezone.utc)
                                   .isoformat(timespec="seconds"),
         "git_sha": _git("rev-parse", "--short", "HEAD") or "unknown",
-        "git_dirty": bool(_git("status", "--porcelain")),
+        "git_dirty": "unknown" if dirty is None else bool(dirty),
         "variant_sha256": {k: hashlib.sha256(str(v).encode("utf-8")).hexdigest()[:12]
                            for k, v in variant_map.items()},
     }
+
+    # Fill the name claimed above so an aborted round is a readable file rather than
+    # zero bytes that crash a re-score sweep. `meta["jobs"]` against the record count
+    # is what tells a later reader the round was cut short: a killed run leaves a file
+    # that parses, carries full provenance, and is silently missing its tail — and
+    # because jobs run variant-major, the tail it loses is the last variant's hardest
+    # cases, which flatters the control arm.
+    raw_path.write_text(json.dumps({"meta": meta, "records": []}), encoding="utf-8")
 
     # A suite may declare its own system prompt; the Stop judge's framing is wrong for
     # any suite measuring what an agent does with injected context.
@@ -126,19 +165,70 @@ def main():
 
     text, summary = suite.report(results, case_list, variant_map)
     print("\n" + text)
+
+    # A round that hit a quota or availability wall is not a measurement. run_matrix
+    # says so on the console, but the console scrolls and the committed report is
+    # what survives — so a void round used to overwrite a real one with an all-zero
+    # table and exit 0, which `run.py <suite> && git add results` treats as success.
+    # The provenance block below would have made that table look better sourced than
+    # the round it replaced.
+    if any(r.get("blocked") for r in results):
+        print("*** report and summary NOT written — the round is void.")
+        print(f"*** raw records kept at {raw_path} for diagnosis.")
+        return 1
+
+    # The report is the only artifact under version control, so the round identity
+    # has to reach it. Without this the committed number named its judge model and
+    # nothing else: not the tree it measured, not the skill text, not even the date.
+    dirty = {False: "", True: " (dirty tree)", "unknown": " (tree state unknown)"}[
+        meta["git_dirty"]
+    ]
+    hashes = " ".join(f"{k}:{v}" for k, v in meta["variant_sha256"].items())
     report = out_dir / f"{args.suite}-report{slug}.md"
     report.write_text(
         f"# {args.suite} — {args.trials} trial(s) per case\n\n"
         f"Judge model: `{args.model}`.\n\n"
         f"{len(case_list)} cases, {len(variant_map)} variants, {len(results)} calls.\n\n"
+        f"Round `{raw_path.stem}` — {meta['date']}, "
+        f"tree `{meta['git_sha']}`{dirty}.\n"
+        f"Variant text measured: {hashes}.\n\n"
         f"```\n{text}\n```\n",
         encoding="utf-8",
     )
-    (out_dir / f"{args.suite}-summary{slug}.json").write_text(
+    (out_dir / f"{args.suite}-summary{slug}{round_tag}.json").write_text(
         json.dumps({"meta": meta, **summary}, indent=1), encoding="utf-8")
     print(f"\n-> {report}")
     return 0
 
 
+def _self_check():
+    """Free check of the round-naming claim. Costs nothing and needs no API key.
+
+    Round naming is the one part of this file whose failure is silent: an
+    overwritten round leaves no error behind, just a missing measurement.
+    """
+    import tempfile
+
+    wrong = []
+    with tempfile.TemporaryDirectory() as td:
+        d = pathlib.Path(td)
+        got = [_claim_round(d, "suite-3t-V0-V1") for _ in range(3)]
+        want = [("suite-3t-V0-V1.json", ""), ("suite-3t-V0-V1-r2.json", "-r2"),
+                ("suite-3t-V0-V1-r3.json", "-r3")]
+        for (path, tag), (wname, wtag) in zip(got, want):
+            if (path.name, tag) != (wname, wtag):
+                wrong.append(f"NAME  got {(path.name, tag)}, want {(wname, wtag)}")
+        # Distinct files, each already on disk: claiming by creating is what closes
+        # the window two runs started minutes apart used to share.
+        if len({p for p, _ in got}) != 3:
+            wrong.append("COLLISION  two rounds claimed the same path")
+        if not all(p.exists() for p, _ in got):
+            wrong.append("NOT CLAIMED  a returned path was never created")
+    for w in wrong:
+        print(w)
+    print("round naming OK" if not wrong else "round naming BROKEN")
+    return 1 if wrong else 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_self_check() if "--self-check" in sys.argv else main())

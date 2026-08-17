@@ -27,11 +27,34 @@ Results land in `evals/results/<suite>-<trials>t-<variants>.json` (gitignored, t
 large) alongside a committed `report.md`. The variant set is in the name because a run
 keyed on trial count alone overwrote an earlier round's raw records, and rounds are the
 unit of comparison here. A re-run of the same config gets an `-rN` suffix rather than
-replacing the earlier round. Raw files are `{"meta": …, "records": […]}` — the meta
-carries date, git SHA, model and a hash of each variant's text, so a round stays
-self-describing; rounds written before meta existed are bare lists. Replies are stored
-in full: records are re-scored offline when a checker changes, and a truncated `raw`
-(an earlier 6000-char cap) makes a record permanently unverifiable.
+replacing the earlier round, and the summary JSON carries the same suffix — it holds that
+round's identity, so the next round must not overwrite it. Raw files are
+`{"meta": …, "records": […]}` — the meta carries date, git SHA, model, a hash of each
+variant's text, and the job count the round was supposed to produce, so a round stays
+self-describing and a killed run is recognisable by holding fewer records than that;
+rounds written before meta existed are bare lists. Replies are stored in full: records
+are re-scored offline when a checker changes, and a truncated `raw` (an earlier
+6000-char cap) makes a record permanently unverifiable.
+
+Because replies are stored in full, a checker change is applied to rounds already
+measured rather than paid for again:
+
+```
+python3 -m lib.rescore results/<suite>-<n>t-<variants>.json [--write-report]
+```
+
+It reads either round shape, reports any record still holding a reply at a retired
+length cap (a prefix cannot be re-scored soundly), and with `--write-report` regenerates
+the committed table, saying in the header that it was re-scored rather than re-run. That
+distinction is the point: a re-scored table is the same sample under a new instrument and
+may be compared against the table it replaces, while a fresh round is a new sample and
+may not.
+
+The committed `<suite>-report.md` keeps one stable name per suite, so its round archive
+is git history — which works only because its header names the round, the date, the tree
+and the variant hashes it measured. A round that hit a quota or availability wall writes
+no report or summary at all and exits non-zero: the console warning scrolls away, and a
+void all-zero table stamped with provenance is worse than no table.
 
 ## Coverage — every shipped skill, mapped
 

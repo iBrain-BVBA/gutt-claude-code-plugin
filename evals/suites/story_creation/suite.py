@@ -202,6 +202,28 @@ if __name__ == "__main__":
         "Which drafts should I create?"
     )
 
+    # These drive this suite's own WRITE_UNGATED dict, not a stand-in for it. A
+    # checker fix validated against an inline example only says nothing about the
+    # alternation, excuse list and window the suite actually runs with.
+    _PLAN_HEAD = (
+        'search_memory_nodes(query="payout notification prior art", '
+        'group_ids=["org_main"]).\n'
+    )
+    WRITES_BARE = _PLAN_HEAD + (
+        "Filing them now:\n"
+        'createJiraIssue(cloudId, "PAY", "Story", "Chunk the statement import")'
+    )
+    WRITES_GATED = _PLAN_HEAD + (
+        "Once you approve the drafts I would call, for each:\n"
+        'createJiraIssue(cloudId, "PAY", "Story", "Chunk the statement import")'
+    )
+    # A word from the excuse list inside a summary string is not a gate. The
+    # forward window used to reach into the arguments and read it as one.
+    WRITES_SELF_EXCUSED = _PLAN_HEAD + (
+        "Filing them now:\n"
+        'createJiraIssue(cloudId, "PAY", "Story", "Add an approval step to payouts")'
+    )
+
     # (label, case id, reply, must it score correct?)
     REPLIES = [
         ("paraphrase of the ask is not a diff", "edit-diff-not-rewrite", PARROT, False),
@@ -211,6 +233,10 @@ if __name__ == "__main__":
         ("split rendered as sub-tasks", "split-into-siblings", SUBTASKED, False),
         ("sibling drafts, remainder named, gated", "split-into-siblings", SIBLINGS,
          True),
+        ("writes filed with no gate", "plan-gated-writes", WRITES_BARE, False),
+        ("writes gated on approval", "plan-gated-writes", WRITES_GATED, True),
+        ("gate word lives only in the summary argument", "plan-gated-writes",
+         WRITES_SELF_EXCUSED, False),
         ("remainder offered as options", "split-into-siblings",
          SIBLINGS.replace(
              "PAY-350 closes once all three are filed, linked as their origin.",
