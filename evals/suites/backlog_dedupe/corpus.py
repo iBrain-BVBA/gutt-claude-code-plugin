@@ -101,7 +101,7 @@ ACTION_UNGATED = {
     r"conditional|only (if|when|after)|(until|unless) you|"
     r"would (then )?(call|close|link|create|apply)|"
     r"with your confirmation|await|pending|for your review|per[- ]action|not (yet|until)|"
-    r"proposal|do not|don'?t|no(thing)? (is |will be )?(closed|cancelled|canceled|"
+    r"proposal|(do not|don'?t|won'?t|will not)\\s+(\\w+\\s+){0,2}?(call|close|cancel|link|creat|apply|chang)|no(thing)? (is |will be )?(closed|cancelled|canceled|"
     r"linked|created|changed))",
     # The token matches the invocation form, so every match is an action being taken.
     # One gate must not cover a later one.

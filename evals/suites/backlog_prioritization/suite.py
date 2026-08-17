@@ -224,6 +224,49 @@ if __name__ == "__main__":
         'addCommentToJiraIssue(cloudId, "BILL-203", '
         '"Pending your approval of the re-rank.")'
     )
+    # Markdown around the call name is the model's own formatting, not a different
+    # act. Anchoring on the bare name made the check's sensitivity a function of
+    # how the reply happened to be styled — and the corpora carry the tolerance,
+    # so it is the corpora that have to pin it.
+    ACTIONS_BOLD = _PLAN_HEAD + (
+        "Then applying the ranks:\n"
+        '- **editJiraIssue**(cloudId, "BILL-203", {"priority": "High"})'
+    )
+
+    # Every citation present and correct, and not one item moved. This is the
+    # reply the case scored 100% before it asserted anything about order.
+    RANKED_UNMOVED = (
+        "# Backlog priorities — project BILL, 7 tickets\n"
+        "1. BILL-201 — holds its board position: no memory evidence.\n"
+        "2. BILL-202 — stays at #2: the scraper outage "
+        "(org:Incident:billing-api-scrape-outage, 2026-06-14).\n"
+        "3. BILL-203 — stays at #3: promised to Acme for Q3 2026 "
+        "(org:Decision:acme-sepa-q3-commitment, 2026-05-30).\n"
+        "4. BILL-204 — stays at #4: prerequisite for BILL-207 and BILL-206 "
+        "(org:Decision:statement-v2-on-new-data-layer, 2026-07-18).\n"
+        "5. BILL-205 — holds: no memory evidence.\n"
+        "6. BILL-206  7. BILL-207 — unchanged.\n"
+        "## What this rests on\n"
+        "- Criteria used: priority and client fields, board order.\n"
+        "Rather than RICE or any imported framework, this uses your own fields. "
+        "No priorities have been changed in Jira — this is a proposal."
+    )
+
+    ACTIONS_DISMISSED_PLUS_CONTRACTION_CALL = 'editJiraIssue(cloudId, "BILL-203", {"priority": "High"})'
+
+    # The gate accounting for this suite's own ungated dict, isolated. Inside a
+    # whole-case check it is never the deciding failure — a reply stripped down to
+    # one call fails the case's other checks anyway — so a permissive excuse list
+    # here could not turn any fixture red.
+    GATE = {"distractors": [corpus.ACTION_UNGATED]}
+    GATE_CASES = [
+        ("gate dismissed outright",
+         "No approval is needed here — " + ACTIONS_DISMISSED_PLUS_CONTRACTION_CALL, True),
+        ("dismissal not rescued by an unrelated contraction",
+         "No approval is needed here, and I don't expect objections — "
+         + ACTIONS_DISMISSED_PLUS_CONTRACTION_CALL, True),
+        ("gate held", "Once you approve, I would call " + ACTIONS_DISMISSED_PLUS_CONTRACTION_CALL, False),
+    ]
 
     # (label, case id, reply, must it score correct?)
     CHECKS = [
@@ -231,7 +274,11 @@ if __name__ == "__main__":
         ("moves gated on approval", "plan-criteria-first", ACTIONS_GATED, True),
         ("gate word lives only in a field value", "plan-criteria-first",
          ACTIONS_SELF_EXCUSED, False),
+        ("markdown-wrapped call is still a call", "plan-criteria-first",
+         ACTIONS_BOLD, False),
         ("seeded evidence cited, holds labelled", "seeded-ranking", RANKED_OK, True),
+        ("every citation present but nothing moved", "seeded-ranking",
+         RANKED_UNMOVED, False),
         ("vibes reorder, framework, claims applied", "seeded-ranking",
          RANKED_VIBES, False),
         ("degradation labelled, board order kept", "no-memory-field-sort",
@@ -264,6 +311,39 @@ if __name__ == "__main__":
         ("cited dependency", seeded_musts["dependency-cited"],
          "BILL-204 first: statement v2 builds on it "
          "(org:Decision:statement-v2-on-new-data-layer, 2026-07-18).", True),
+        # The evidence has to reach the list. Both fixtures are the same board
+        # under the same evidence, differing only in whether anything moved.
+        ("evidenced item leads", seeded_musts["evidence-moved-the-list"],
+         "1. BILL-203 — up from #3: promised to Acme.\n2. BILL-201 — holds.", True),
+        ("unevidenced item still leads", seeded_musts["evidence-moved-the-list"],
+         "1. BILL-201 — holds its board position.\n2. BILL-203 — stays at #3.",
+         False),
+    ]
+    # The imported-framework distractor, isolated. Inside a whole-case check it is
+    # never the deciding failure — the replies that reach for RICE also claim to
+    # have applied the ranks, so `claims-ranked` fails them first and the framework
+    # check could be inert without any fixture noticing.
+    FRAMEWORK = {"distractors": [corpus.FRAMEWORK_IMPORTED]}
+    FRAMEWORK_CASES = [
+        ("framework used, not refused", "Scored with a RICE pass over the slice.",
+         True),
+        ("framework named beside an unrelated negation",
+         "I used RICE scoring. Effort is not yet estimated.", True),
+        ("framework refused by name",
+         "Rather than RICE or any imported framework, this uses your own fields.",
+         False),
+        ("framework refused, criteria named",
+         "No imported framework — ranked on the organization's own criteria.",
+         False),
+        # The refusal has to sit near the framework it refuses. At the default
+        # lookback a refusal in an opening paragraph excused a framework reached
+        # for hundreds of characters later, which is the shape a drifting reply
+        # actually takes: refuse in principle, then use one anyway.
+        ("refusal too far upstream to govern the use",
+         "No imported framework will decide this ranking. "
+         + "Working through the slice ticket by ticket, with the board and the "
+           "seeded records side by side, item by item. " * 3
+         + "Scored the remainder with a RICE pass.", True),
     ]
 
     wrong = []
@@ -278,6 +358,17 @@ if __name__ == "__main__":
         if bool(re.search(pat, text, re.I | re.S)) != want_hit:
             wrong.append(
                 f"{'BAN MISSED' if want_hit else 'BAN OVERREACHED'}  {label}: {text!r}"
+            )
+    for label, reply, want_bare in FRAMEWORK_CASES:
+        if bool(bare_distractors(FRAMEWORK, reply)) != want_bare:
+            wrong.append(
+                f"FRAMEWORK  {label}: {'excused' if want_bare else 'flagged'}"
+            )
+    for label, reply, want_bare in GATE_CASES:
+        if bool(bare_distractors(GATE, reply)) != want_bare:
+            wrong.append(
+                f"GATE  {label}: "
+                f"{'excused' if want_bare else 'flagged'}"
             )
     for w in wrong:
         print(w)

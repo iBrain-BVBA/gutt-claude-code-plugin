@@ -65,6 +65,45 @@ def truncated(records):
     return [r for r in records if len(r.get("raw") or "") in (3000, 6000)]
 
 
+def round_identity(stem, meta, guessed):
+    """The provenance lines of a re-scored report: which round, which tree, which text.
+
+    The "written before rounds carried identity" line binds to the absence of meta,
+    because that absence is what having no identity means. Hung off the length caveat
+    instead, it printed on exactly the rounds that *did* carry identity — directly
+    under the date, tree and hash lines proving otherwise — and never on the bare-list
+    rounds it describes.
+
+    `guessed` names the variants whose length had to be read off today's skill text.
+    Its caveat points at the hashes only when there are hashes to point at.
+    """
+    import run
+
+    if meta:
+        out = (f"Round `{stem}` — replies measured {meta['date']}, "
+               f"tree {run.describe_tree(meta['git_sha'], meta['git_dirty'])}.\n")
+        # The variant hashes carry over, and on a re-scored table they matter more
+        # than on a fresh one: where the round's own tree was dirty they are the only
+        # thing pinning the text the replies were generated from.
+        if meta.get("variant_sha256"):
+            pairs = " ".join(f"{k}:{v}" for k, v in meta["variant_sha256"].items())
+            out += f"Variant text measured: {pairs}.\n"
+    else:
+        out = f"Round `{stem}` — written before rounds carried identity.\n"
+    # The console line saying so scrolls; the table is what survives, and a length
+    # quoted as measured when it was read off today's file is the kind of claim this
+    # whole header exists to prevent.
+    if guessed:
+        out += (
+            f"The size shown for {', '.join(guessed)} is the skill text as it "
+            "stands now — this round predates recorded variant lengths, so the "
+            "length it actually measured is not known."
+            + (" The hashes above still identify the text.\n"
+               if (meta or {}).get("variant_sha256") else "\n")
+        )
+    return out
+
+
 def rescore(path, write_report=False):
     meta, records = load_round(path)
     stem = pathlib.Path(path).stem
@@ -87,16 +126,20 @@ def rescore(path, write_report=False):
     for r in records:
         if r.get("skipped"):
             continue
+        # Resolve the case before anything else. An errored record kept for its
+        # denominator still reaches `report()`, which indexes cases by id — so a
+        # record naming a case the suite has since renamed crashed the re-score
+        # rather than being counted as missing.
+        case = all_cases.get(r.get("case"))
+        if case is None:
+            missing += 1
+            continue
         # A record with no reply is a job error, not a record to drop. Skipping it
         # shrank the denominator and took its failed verdict with it, so a round
         # whose calls errored re-scored higher than it originally measured.
         if not r.get("raw"):
             errored += 1
             scored.append(r)
-            continue
-        case = all_cases.get(r.get("case"))
-        if case is None:
-            missing += 1
             continue
         scored.append({**r, **suite.evaluate(case, r["raw"])})
 
@@ -135,8 +178,10 @@ def rescore(path, write_report=False):
     # scroll; the committed report is what survives, which is the same reasoning that
     # stops a void round writing one. Three conditions make a round unfit to publish:
     # a reply stored as a prefix cannot be re-scored, a record count short of the
-    # round's own job count means the run was cut off, and a blocked record means a
-    # quota or availability wall voided it.
+    # round's own job count means the run was cut off, a blocked record means a
+    # quota or availability wall voided it, and a record naming a case this suite no
+    # longer defines means the re-score covered a different case mix than the round
+    # measured — which is the one claim the header makes that would then be false.
     if write_report:
         jobs = (meta or {}).get("jobs")
         short = bool(jobs) and len(records) < jobs
@@ -146,6 +191,8 @@ def rescore(path, write_report=False):
               if short else []),
             *(["a record is marked blocked — the round hit a wall"]
               if any(r.get("blocked") for r in records) else []),
+            *([f"{missing} record(s) name a case this suite no longer defines"]
+              if missing else []),
         ]
         if unfit:
             print("\n*** report NOT written — this round cannot support an aggregate:")
@@ -163,28 +210,8 @@ def rescore(path, write_report=False):
                 f"Judge model: `{meta['model']}`.\n\n"
                 f"{len(case_list)} cases, {len(variants)} variants, "
                 f"{len(scored)} calls.\n\n"
-                f"Round `{stem}` — replies measured {meta['date']}, "
-                f"tree {run.describe_tree(meta['git_sha'], meta['git_dirty'])}.\n"
             )
-            # The variant hashes carry over, and on a re-scored table they matter
-            # more than on a fresh one: where the round's own tree was dirty they
-            # are the only thing pinning the text the replies were generated from.
-            if meta.get("variant_sha256"):
-                pairs = " ".join(f"{k}:{v}"
-                                 for k, v in meta["variant_sha256"].items())
-                head += f"Variant text measured: {pairs}.\n"
-        # The console line saying so scrolls; the table is what survives, and a
-        # length quoted as measured when it was read off today's file is the kind of
-        # claim this whole header exists to prevent.
-        if guessed:
-            head += (
-                f"The size shown for {', '.join(guessed)} is the skill text as it "
-                "stands now — this round predates recorded variant lengths, so the "
-                "length it actually measured is not known. The hashes above still "
-                "identify the text.\n"
-            )
-        else:
-            head += f"Round `{stem}` — written before rounds carried identity.\n"
+        head += round_identity(stem, meta, guessed)
         # Two trees, and the second is the one a reader needs. The round's own tree
         # produced the replies; this one holds the checkers that turned them into
         # numbers. They coincide only when a round is scored by the code that ran it,
@@ -227,6 +254,30 @@ if __name__ == "__main__":
                 wrong.append("SHAPES DISAGREE  one reader returned two record lists")
         if len(truncated(recs)) != 1:
             wrong.append(f"CAP DETECTION  found {len(truncated(recs))}, want 1")
+
+        # The provenance block must say a round has no identity only when it has
+        # none. The line used to hang off the length caveat, so it appeared on every
+        # round that recorded its variant lengths and on no round that did not —
+        # inverted, and inverted on the artifact whose whole job is provenance.
+        NO_ID = "written before rounds carried identity"
+        full = {"date": "2026-08-01", "git_sha": "abc1234", "git_dirty": False,
+                "variant_sha256": {"V0": "deadbeef"}}
+        for label, stem, meta, guessed, want in [
+            ("round carrying identity", "r-new", full, [], False),
+            ("bare-list round", "r-old", None, ["V0"], True),
+            ("meta but no recorded lengths", "r-mid", full, ["V0"], False),
+        ]:
+            got = round_identity(stem, meta, guessed)
+            if (NO_ID in got) != want:
+                wrong.append(f"IDENTITY LINE  {label}: "
+                             f"{'present' if NO_ID in got else 'absent'}, want "
+                             f"{'present' if want else 'absent'}")
+            if stem not in got:
+                wrong.append(f"IDENTITY LINE  {label}: does not name the round")
+        # The caveat may point at hashes only when the header printed some.
+        if "hashes above" in round_identity("r", None, ["V0"]):
+            wrong.append("IDENTITY LINE  bare round cites hashes it never printed")
+
         for w in wrong:
             print(w)
         print("rescore reader OK" if not wrong else "rescore reader BROKEN")

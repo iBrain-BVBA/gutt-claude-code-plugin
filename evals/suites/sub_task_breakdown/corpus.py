@@ -97,7 +97,7 @@ FILED_UNGATED = {
     r"conditional|only (if|when|after)|(until|unless) you|"
     r"would (then )?(call|create|file)|"
     r"with your confirmation|await|pending|for your review|not (yet|until)|"
-    r"proposal|do not|don'?t|no(thing)? (is |will be )?(created|filed))",
+    r"proposal|(do not|don'?t|won'?t|will not)\\s+(\\w+\\s+){0,2}?(call|creat|file)|no(thing)? (is |will be )?(created|filed))",
     # The token matches the invocation form, so every match is a sub-task being
     # filed. The looser any-occurrence policy the prose distractors below use was
     # inherited here by copy and let one gate cover a whole run of filings.

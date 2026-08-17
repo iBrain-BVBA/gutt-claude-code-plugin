@@ -21,7 +21,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from lib.runner import FAST_MODEL, run_matrix  # noqa: E402
+from lib.runner import FAST_MODEL, failed, run_matrix  # noqa: E402
 
 SUITES = {
     "stop-judge": "suites.stop_judge.suite",
@@ -35,6 +35,34 @@ SUITES = {
     "backlog-dedupe": "suites.backlog_dedupe.suite",
     "backlog-prioritization": "suites.backlog_prioritization.suite",
 }
+
+
+def _code_dirty(status):
+    """Does this `git status --porcelain` output show uncommitted *code*?
+
+    Generated result artifacts do not make the tree dirty for this purpose. What the
+    flag is asked to certify is whether the code — the skill text that produced the
+    replies, or the checkers that scored them — is committed. Counting the report a
+    re-score is about to write meant the first of four re-scores recorded a clean
+    tree and the rest recorded a dirty one, purely because each had written the
+    previous report.
+
+    Splits on the status field rather than slicing fixed columns. The caller strips
+    git's output, which removes the leading space of an unstaged first line only — so
+    a column slice read that one path three characters in and never matched the
+    exclusion, while every later line matched. One report modified therefore read as
+    a dirty tree.
+
+    Module-level so the self-check can exercise the shipped predicate. Restated
+    inside the check instead, it pinned a copy: reverting this one to the column
+    slice left every self-check green, which is the same fixture-tests-the-wrong-
+    thing failure the column slice itself got through on.
+    """
+    return bool([
+        ln for ln in status.splitlines() if ln.strip()
+        and not ln.strip().split(maxsplit=1)[-1].strip('"')
+        .startswith("evals/results/")
+    ])
 
 
 def git_state(prefix="git"):
@@ -62,22 +90,7 @@ def git_state(prefix="git"):
     if status is None:
         dirty = "unknown"
     else:
-        # Generated result artifacts do not make the tree dirty for this purpose.
-        # What the flag is asked to certify is whether the *code* — the skill text
-        # that produced the replies, or the checkers that scored them — is
-        # committed. Counting the report a re-score is about to write meant the
-        # first of four re-scores recorded a clean tree and the rest recorded a
-        # dirty one, purely because each had written the previous report.
-        # Split on the status field rather than slicing fixed columns. `_git`
-        # strips its output, which removes the leading space of an unstaged
-        # first line only — so a column slice read that one path three
-        # characters in and never matched the exclusion, while every later
-        # line matched. One report modified therefore read as a dirty tree.
-        dirty = bool([
-            ln for ln in status.splitlines() if ln.strip()
-            and not ln.strip().split(maxsplit=1)[-1].strip('"')
-            .startswith("evals/results/")
-        ])
+        dirty = _code_dirty(status)
     return {
         f"{prefix}_sha": _git("rev-parse", "--short", "HEAD") or "unknown",
         f"{prefix}_dirty": dirty,
@@ -152,6 +165,13 @@ def main():
             return 2
     if args.cases:
         case_list = [c for c in case_list if c["id"] in args.cases]
+        # Validated like --variants above, and for the same reason. Filtering
+        # silently meant one mistyped id selected nothing, and the empty round it
+        # produced still overwrote the committed report with an empty table.
+        unknown = set(args.cases) - {c["id"] for c in case_list}
+        if unknown:
+            print(f"no such case(s): {sorted(unknown)}", file=sys.stderr)
+            return 2
 
     out_dir = HERE / "results"
     out_dir.mkdir(exist_ok=True)
@@ -207,14 +227,22 @@ def main():
     text, summary = suite.report(results, case_list, variant_map)
     print("\n" + text)
 
-    # A round that hit a quota or availability wall is not a measurement. run_matrix
+    # A round whose calls never produced a reply is not a measurement. run_matrix
     # says so on the console, but the console scrolls and the committed report is
     # what survives — so a void round used to overwrite a real one with an all-zero
     # table and exit 0, which `run.py <suite> && git add results` treats as success.
     # The provenance block below would have made that table look better sourced than
     # the round it replaced.
-    if any(r.get("blocked") for r in results):
-        print("*** report and summary NOT written — the round is void.")
+    #
+    # Keyed on every failure marker, not on the quota wall alone. A wall was the
+    # failure this guard was written for, so an expired token or a timed-out call
+    # walked straight past it: those cells scored as wrong answers, and the round
+    # published a full table reading 0% with no errors reported.
+    void = [r for r in results if failed(r.get("raw") or "")]
+    if void:
+        kinds = sorted({r["raw"].split()[0].rstrip(">") + ">" for r in void})
+        print(f"*** report and summary NOT written — {len(void)} of {len(results)} "
+              f"call(s) produced no reply: {', '.join(kinds)}")
         print(f"*** raw records kept at {raw_path} for diagnosis.")
         return 1
 
@@ -272,12 +300,9 @@ def _self_check():
     # returns it* — stripped. Feeding it hand-written lines with their leading
     # space intact is what let a column-slicing bug pass: the first line is the
     # only one that loses a character, so the fixture has to include one.
-    def _dirty(status):
-        return bool([
-            ln for ln in status.splitlines() if ln.strip()
-            and not ln.strip().split(maxsplit=1)[-1].strip('"')
-            .startswith("evals/results/")
-        ])
+    # Calls the shipped `_code_dirty`, not a restatement of it — a fixture that
+    # exercises its own copy of the logic passes whatever the shipped one does.
+    _dirty = _code_dirty
 
     for label, raw, want in [
         ("only generated reports, first line stripped",

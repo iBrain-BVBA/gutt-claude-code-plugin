@@ -70,6 +70,16 @@ BLOCKED = (
 )
 
 
+# Every way `ask` can fail to produce a reply. A marker is not a reply and must
+# never be scored as one — see `failed()` and its caller in `work`.
+MARKERS = ("<timeout>", "<empty ", "<failed ", "<blocked ")
+
+
+def failed(raw):
+    """Is this an `ask` failure marker rather than a model reply?"""
+    return bool(raw) and raw.startswith(MARKERS)
+
+
 def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=180, cwd=None):
     """One `claude -p` call. Returns stdout, or a `<marker>` string on failure."""
     cmd = ["claude", "-p", "--model", model, "--strict-mcp-config",
@@ -86,6 +96,11 @@ def ask(prompt, model=FAST_MODEL, system=JUDGE_SYS, allow_tools=False, timeout=1
     out = r.stdout.strip()
     if not out:
         return f"<empty exit={r.returncode} {r.stderr.strip()[:200]}>"
+    # A non-zero exit is a failure even when something reached stdout. The CLI
+    # exits 143 on SIGTERM and 1 when a spend cap aborts the turn, both of which
+    # can leave partial text behind; returning it as a reply scored the wreckage.
+    if r.returncode != 0:
+        return f"<failed exit={r.returncode} {out[:200]}>"
     if is_blocked(out):
         return f"<blocked {out[:200]}>"
     return out
@@ -168,9 +183,17 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
             # cap did exactly that to every long reply in every round it touched. Raws
             # are gitignored, so the cost is disk.
             rec["raw"] = raw
-            if raw.startswith("<blocked"):
-                halted.set()
-                rec.update({"error": raw, "blocked": True})
+            # Every failure marker is an unmeasured cell, not a wrong answer. Only
+            # `<blocked` was treated as one, so a timeout or an authentication
+            # failure was handed to `evaluate` and scored: the round came back 0%
+            # correct with the error count reading zero, and the report was written
+            # as an ordinary measurement. A quota wall additionally halts the run —
+            # the rest of the matrix would hit the same wall.
+            if failed(raw):
+                rec["error"] = raw
+                if raw.startswith("<blocked"):
+                    halted.set()
+                    rec["blocked"] = True
                 return rec
             rec.update(evaluate(case, raw))
         except Exception as exc:  # a bad reply must cost one cell, never the matrix
@@ -228,5 +251,22 @@ if __name__ == "__main__":
         print(f"MISSED WALL   {w}")
     for r in noise:
         print(f"FALSE POSITIVE {r}")
+
+    # Every marker `ask` can return must be recognised as an unmeasured cell. Only
+    # `<blocked` was, so a timeout or an auth failure reached `evaluate` and scored
+    # as a wrong answer — a round that never got a reply published a 0% table with
+    # its error count reading zero. A reply must not match, or a real measurement
+    # would be thrown away.
+    MARKED = ["<timeout>", "<empty exit=1 Invalid API key>",
+              "<failed exit=143 partial output>", "<blocked usage limit reached>"]
+    for m in MARKED:
+        if not failed(m):
+            bad.append(m)
+            print(f"MARKER NOT CAUGHT  {m}")
+    for r in REPLIES + ["<p>A reply that opens with a tag</p>", ""]:
+        if failed(r):
+            noise.append(r)
+            print(f"REPLY READ AS MARKER  {r[:60]}")
+
     print("BLOCKED patterns OK" if not bad and not noise else "BLOCKED patterns BROKEN")
     raise SystemExit(1 if bad or noise else 0)
