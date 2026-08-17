@@ -92,21 +92,26 @@ def rescore(path, write_report=False):
         out = HERE / "results" / f"{suite_id}-report{slug}.md"
         head = f"# {suite_id} — re-scored from a stored round\n\n"
         if meta:
-            dirty = {False: "", True: " (dirty tree)",
-                     "unknown": " (tree state unknown)"}[meta.get("git_dirty")]
             head += (
                 f"Judge model: `{meta['model']}`.\n\n"
                 f"{meta.get('cases', len(cases))} cases, {len(variants)} variants, "
                 f"{len(scored)} calls.\n\n"
-                f"Round `{stem}` — measured {meta['date']}, "
-                f"tree `{meta['git_sha']}`{dirty}.\n"
+                f"Round `{stem}` — replies measured {meta['date']}, "
+                f"tree {run.describe_tree(meta['git_sha'], meta['git_dirty'])}.\n"
             )
         else:
             head += f"Round `{stem}` — written before rounds carried identity.\n"
+        # Two trees, and the second is the one a reader needs. The round's own tree
+        # produced the replies; this one holds the checkers that turned them into
+        # numbers. They coincide only when a round is scored by the code that ran it,
+        # and the whole reason to re-score is that they do not.
+        scored_at = run.git_state("scored")
         head += (
-            "\nRe-scored offline with the checkers in the tree at the time of writing, "
-            "not re-run: same replies, new instrument. Comparable with the table it "
-            "replaces; not comparable with a fresh round, which is a new sample.\n\n"
+            f"Scored by the checkers in tree "
+            f"{run.describe_tree(scored_at['scored_sha'], scored_at['scored_dirty'])}"
+            " — re-scored offline, not re-run: same replies, new instrument."
+            " Comparable with the table it replaces; not comparable with a fresh"
+            " round, which is a new sample.\n\n"
         )
         out.write_text(head + f"```\n{text}\n```\n", encoding="utf-8")
         print(f"\n-> {out}")

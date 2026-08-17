@@ -37,6 +37,40 @@ SUITES = {
 }
 
 
+def git_state(prefix="git"):
+    """`{"<prefix>_sha": …, "<prefix>_dirty": …}` for the tree this file lives in.
+
+    Every field distinguishes "unknown" from a real value. Returning "" on failure
+    and coercing it made the dirty flag report False — an assertion that the tree was
+    clean — for a tree that was never inspected, while the SHA beside it honestly said
+    "unknown". A non-zero exit is the common failure and raises nothing, so returncode
+    has to be checked rather than left to the except.
+
+    `prefix` exists because a re-scored table has two trees worth naming: the one whose
+    skill text produced the replies, and the one whose checkers scored them. Those are
+    the same tree only when a round is scored by the code that ran it.
+    """
+    def _git(*a):
+        try:
+            r = subprocess.run(["git", *a], cwd=HERE, capture_output=True,
+                               text=True, timeout=10)
+        except Exception:
+            return None
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    dirty = _git("status", "--porcelain")
+    return {
+        f"{prefix}_sha": _git("rev-parse", "--short", "HEAD") or "unknown",
+        f"{prefix}_dirty": "unknown" if dirty is None else bool(dirty),
+    }
+
+
+def describe_tree(sha, dirty):
+    """"`abc1234` (dirty tree)" — one phrase for a tree and its cleanliness."""
+    return f"`{sha}`" + {False: "", True: " (dirty tree)",
+                         "unknown": " (tree state unknown)"}[dirty]
+
+
 def _claim_round(out_dir, stem):
     """Pick an unused raw-file name for this round; return it and its round tag.
 
@@ -119,21 +153,6 @@ def main():
     # Identity travels with the round: what text was measured (variant hashes), on
     # which model, from which tree, and when. A number whose provenance lives only
     # in the shell history cannot support a comparison later.
-    #
-    # Every field distinguishes "unknown" from a real value. Returning "" on failure
-    # and coercing it made git_dirty report False — an assertion that the tree was
-    # clean — for a tree that was never inspected, while git_sha next to it honestly
-    # said "unknown". A non-zero exit is the common failure and raises nothing, so
-    # returncode has to be checked rather than left to the except.
-    def _git(*a):
-        try:
-            r = subprocess.run(["git", *a], cwd=HERE, capture_output=True,
-                               text=True, timeout=10)
-        except Exception:
-            return None
-        return r.stdout.strip() if r.returncode == 0 else None
-
-    dirty = _git("status", "--porcelain")
     meta = {
         "suite": args.suite,
         "model": args.model,
@@ -142,8 +161,7 @@ def main():
         "jobs": len(variant_map) * len(case_list) * args.trials,
         "date": datetime.datetime.now(datetime.timezone.utc)
                                   .isoformat(timespec="seconds"),
-        "git_sha": _git("rev-parse", "--short", "HEAD") or "unknown",
-        "git_dirty": "unknown" if dirty is None else bool(dirty),
+        **git_state(),
         "variant_sha256": {k: hashlib.sha256(str(v).encode("utf-8")).hexdigest()[:12]
                            for k, v in variant_map.items()},
     }
@@ -180,17 +198,14 @@ def main():
     # The report is the only artifact under version control, so the round identity
     # has to reach it. Without this the committed number named its judge model and
     # nothing else: not the tree it measured, not the skill text, not even the date.
-    dirty = {False: "", True: " (dirty tree)", "unknown": " (tree state unknown)"}[
-        meta["git_dirty"]
-    ]
+    tree = describe_tree(meta["git_sha"], meta["git_dirty"])
     hashes = " ".join(f"{k}:{v}" for k, v in meta["variant_sha256"].items())
     report = out_dir / f"{args.suite}-report{slug}.md"
     report.write_text(
         f"# {args.suite} — {args.trials} trial(s) per case\n\n"
         f"Judge model: `{args.model}`.\n\n"
         f"{len(case_list)} cases, {len(variant_map)} variants, {len(results)} calls.\n\n"
-        f"Round `{raw_path.stem}` — {meta['date']}, "
-        f"tree `{meta['git_sha']}`{dirty}.\n"
+        f"Round `{raw_path.stem}` — {meta['date']}, tree {tree}.\n"
         f"Variant text measured: {hashes}.\n\n"
         f"```\n{text}\n```\n",
         encoding="utf-8",
