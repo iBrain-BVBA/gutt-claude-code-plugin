@@ -68,9 +68,15 @@ def git_state(prefix="git"):
         # committed. Counting the report a re-score is about to write meant the
         # first of four re-scores recorded a clean tree and the rest recorded a
         # dirty one, purely because each had written the previous report.
+        # Split on the status field rather than slicing fixed columns. `_git`
+        # strips its output, which removes the leading space of an unstaged
+        # first line only — so a column slice read that one path three
+        # characters in and never matched the exclusion, while every later
+        # line matched. One report modified therefore read as a dirty tree.
         dirty = bool([
-            ln for ln in status.splitlines()
-            if ln.strip() and not ln[3:].lstrip('"').startswith("evals/results/")
+            ln for ln in status.splitlines() if ln.strip()
+            and not ln.strip().split(maxsplit=1)[-1].strip('"')
+            .startswith("evals/results/")
         ])
     return {
         f"{prefix}_sha": _git("rev-parse", "--short", "HEAD") or "unknown",
@@ -261,6 +267,31 @@ def _self_check():
             wrong.append("COLLISION  two rounds claimed the same path")
         if not all(p.exists() for p, _ in got):
             wrong.append("NOT CLAIMED  a returned path was never created")
+
+    # The dirty filter, against real `git status --porcelain` output *as _git
+    # returns it* — stripped. Feeding it hand-written lines with their leading
+    # space intact is what let a column-slicing bug pass: the first line is the
+    # only one that loses a character, so the fixture has to include one.
+    def _dirty(status):
+        return bool([
+            ln for ln in status.splitlines() if ln.strip()
+            and not ln.strip().split(maxsplit=1)[-1].strip('"')
+            .startswith("evals/results/")
+        ])
+
+    for label, raw, want in [
+        ("only generated reports, first line stripped",
+         " M evals/results/a-report.md\n M evals/results/b-report.md".strip(), False),
+        ("a source file alongside them",
+         " M evals/results/a-report.md\n M evals/run.py".strip(), True),
+        ("clean tree", "", False),
+        ("staged source", "M  evals/lib/scoring.py".strip(), True),
+        ("untracked source", "?? evals/lib/new.py".strip(), True),
+        ("renamed result file",
+         "R  evals/results/a.md -> evals/results/b.md".strip(), False),
+    ]:
+        if _dirty(raw) != want:
+            wrong.append(f"DIRTY FILTER  {label}: got {_dirty(raw)}, want {want}")
     for w in wrong:
         print(w)
     print("round naming OK" if not wrong else "round naming BROKEN")
