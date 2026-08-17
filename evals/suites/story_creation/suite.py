@@ -231,6 +231,19 @@ if __name__ == "__main__":
         ("elided quote, fetch proven another way", "edit-diff-not-rewrite", ELIDED,
          True),
         ("split rendered as sub-tasks", "split-into-siblings", SUBTASKED, False),
+        # One draft is not a split. This shape carried a criterion, named the
+        # remainder and asked for approval, and passed a case whose whole subject
+        # is dividing the story into the three outcomes it names.
+        ("one draft offered as the whole split", "split-into-siblings",
+         "# Split proposal for PAY-350 — nothing is created until you approve\n"
+         "### 1. Email notifications on payout failure and recovery\n"
+         "- Acceptance criteria\n"
+         "  - A merchant receives an email within five minutes of a failed "
+         "payout.\n"
+         "- Source: PAY-350 description.\n"
+         "These are sibling stories, not sub-tasks.\n"
+         "PAY-350 closes once all three are filed, linked as their origin.\n"
+         "Which drafts should I create?", False),
         ("sibling drafts, remainder named, gated", "split-into-siblings", SIBLINGS,
          True),
         ("writes filed with no gate", "plan-gated-writes", WRITES_BARE, False),

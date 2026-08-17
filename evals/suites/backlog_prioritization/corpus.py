@@ -252,7 +252,11 @@ def build():
             ],
             "must_not": [
                 ("claims-ranked", CLAIMS_RANKED),
-                ("fabricated-key", r"BILL-(2[1-9]\d|[3-9]\d\d|\d{4,})"),
+                # Any BILL key outside the seeded 201-207 is invented. Banning a
+                # numeric range above the set let BILL-208 and BILL-209 through —
+                # and the next number after the last real key is the likeliest
+                # hallucination there is. Match the complement of the set instead.
+                ("fabricated-key", r"BILL-(?!20[1-7]\b)\d+"),
             ],
             "distractors": [ACTION_UNGATED, FRAMEWORK_IMPORTED],
         },

@@ -256,6 +256,19 @@ if __name__ == "__main__":
         ("truncation named, counts held back", "truncated-page", PAGE1_NAMED, True),
         ("truncation named, totals reported anyway", "truncated-page",
          PAGE1_MENTION_ONLY, False),
+        # The fraction stated, then final totals anyway. Naming the count is not
+        # scoping the verdicts to it, and accepting "12 of 23" on its own let this
+        # shape pass the check that exists to reject it.
+        ("fraction stated, totals reported anyway", "truncated-page",
+         "Fetched 12 of 23.\n"
+         "| 1 | PAY-101, PAY-118 | one export ask | similarity only | merge |\n"
+         "Final totals for the slice: 2 clustered, 10 keep. Nothing is closed "
+         "without your approval.", False),
+        ("fraction bound to the verdicts it covers", "truncated-page",
+         "Fetched 12 of 23 — these verdicts cover the fetched 12 only, and are "
+         "not final until I pull the remaining 11.\n"
+         "| 1 | PAY-101, PAY-118 | both ask for the payout export | similarity "
+         "only | merge |\nNothing is closed without your approval.", True),
         ("no calibration, contested forced stale", "protocol-steps",
          PROTOCOL_BARE, False),
         ("calibration, arguable counted", "protocol-steps", PROTOCOL_OK, True),

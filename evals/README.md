@@ -39,13 +39,18 @@ are re-scored offline when a checker changes, and a truncated `raw` (an earlier
 Because replies are stored in full, a checker change is applied to rounds already
 measured rather than paid for again:
 
-```
+```bash
+cd evals   # unlike run.py above, this is a module and needs evals/ on the path
 python3 -m lib.rescore results/<suite>-<n>t-<variants>.json [--write-report]
 ```
 
-It reads either round shape, reports any record still holding a reply at a retired
-length cap (a prefix cannot be re-scored soundly), and with `--write-report` regenerates
-the committed table, saying in the header that it was re-scored rather than re-run. That
+It reads either round shape and refuses to write a report for a round that cannot
+support one — a reply stored at a retired length cap, a record count short of the
+round's own job count, or a blocked record. Records whose call errored are kept
+unscored rather than dropped, so the denominator matches the original. With
+`--write-report` it regenerates the committed table, saying in the header that it was
+re-scored rather than re-run, and naming both the tree whose skill text produced the
+replies and the tree whose checkers scored them. That
 distinction is the point: a re-scored table is the same sample under a new instrument and
 may be compared against the table it replaces, while a fresh round is a new sample and
 may not.

@@ -37,6 +37,24 @@ def load_round(path):
     return data.get("meta"), data.get("records", [])
 
 
+class _MeasuredText:
+    """Stands in for a variant's text, reporting the length the round measured.
+
+    A suite's `report()` wants the variant map only for its keys and for
+    `len(text)`, which it prints as the variant's size. Passing today's skill text
+    to a re-score quoted today's size beside replies generated from an older one.
+    Rounds now record the lengths alongside the hashes; where a round predates that,
+    `known` is False and the caller says so rather than printing a current length as
+    though it were the measured one.
+    """
+
+    def __init__(self, chars, known=True):
+        self.chars, self.known = chars, known
+
+    def __len__(self):
+        return self.chars
+
+
 def truncated(records):
     """Records whose stored reply was cut short by the retired 6000-char cap.
 
@@ -63,21 +81,49 @@ def rescore(path, write_report=False):
         suite_id = max(cands, key=len)
     suite = importlib.import_module(run.SUITES[suite_id])
 
-    cases = {c["id"]: c for c in suite.cases()}
-    variants = suite.variants()
+    all_cases = {c["id"]: c for c in suite.cases()}
     cut = truncated(records)
-    scored, missing = [], 0
+    scored, missing, errored = [], 0, 0
     for r in records:
-        if r.get("skipped") or not r.get("raw"):
+        if r.get("skipped"):
             continue
-        case = cases.get(r.get("case"))
+        # A record with no reply is a job error, not a record to drop. Skipping it
+        # shrank the denominator and took its failed verdict with it, so a round
+        # whose calls errored re-scored higher than it originally measured.
+        if not r.get("raw"):
+            errored += 1
+            scored.append(r)
+            continue
+        case = all_cases.get(r.get("case"))
         if case is None:
             missing += 1
             continue
         scored.append({**r, **suite.evaluate(case, r["raw"])})
 
-    text, _ = suite.report(scored, list(cases.values()), variants)
-    print(f"re-scored {len(scored)} of {len(records)} records in {stem}")
+    # Shape the table from what the round actually holds, not from today's suite.
+    # Taking cases and variants from the current definitions gave an older or
+    # partial round rows it never measured, and `report()` reads variant_chars from
+    # the skill text on disk now — so a re-scored table quoted today's length beside
+    # yesterday's replies. Lengths come from the round's own hashes instead.
+    measured_cases = {r.get("case") for r in scored}
+    case_list = [c for c in suite.cases() if c["id"] in measured_cases]
+    order = [v for v in suite.variants() if v in {r.get("variant") for r in scored}]
+    stored_chars = (meta or {}).get("variant_chars") or {}
+    live = suite.variants()
+    variants = {
+        v: _MeasuredText(stored_chars[v]) if v in stored_chars
+        else _MeasuredText(len(str(live.get(v, ""))), known=False)
+        for v in order
+    }
+
+    text, _ = suite.report(scored, case_list, variants)
+    print(f"re-scored {len(scored) - errored} of {len(records)} records in {stem}")
+    if errored:
+        print(f"  {errored} record(s) carry a job error and were kept unscored")
+    guessed = [v for v, t in variants.items() if not t.known]
+    if guessed:
+        print(f"  round predates recorded variant lengths; the size shown for "
+              f"{', '.join(guessed)} is today's text, not what was measured")
     if missing:
         print(f"  {missing} record(s) name a case this suite no longer defines")
     if cut:
@@ -85,7 +131,28 @@ def rescore(path, write_report=False):
         print("  their stored text is a prefix, so these verdicts are not sound")
     print("\n" + text)
 
+    # An unsound round must not become the stable aggregate. The console lines above
+    # scroll; the committed report is what survives, which is the same reasoning that
+    # stops a void round writing one. Three conditions make a round unfit to publish:
+    # a reply stored as a prefix cannot be re-scored, a record count short of the
+    # round's own job count means the run was cut off, and a blocked record means a
+    # quota or availability wall voided it.
     if write_report:
+        jobs = (meta or {}).get("jobs")
+        short = bool(jobs) and len(records) < jobs
+        unfit = [
+            *([f"{len(cut)} reply(s) stored at a retired length cap"] if cut else []),
+            *([f"{len(records)} records for {jobs} jobs — run cut off"]
+              if short else []),
+            *(["a record is marked blocked — the round hit a wall"]
+              if any(r.get("blocked") for r in records) else []),
+        ]
+        if unfit:
+            print("\n*** report NOT written — this round cannot support an aggregate:")
+            for u in unfit:
+                print(f"***   {u}")
+            return 1
+
         model = (meta or {}).get("model")
         slug = "" if model in (None, run.FAST_MODEL) \
             else f"-{model.replace('.', '')}"
@@ -94,7 +161,7 @@ def rescore(path, write_report=False):
         if meta:
             head += (
                 f"Judge model: `{meta['model']}`.\n\n"
-                f"{meta.get('cases', len(cases))} cases, {len(variants)} variants, "
+                f"{len(case_list)} cases, {len(variants)} variants, "
                 f"{len(scored)} calls.\n\n"
                 f"Round `{stem}` — replies measured {meta['date']}, "
                 f"tree {run.describe_tree(meta['git_sha'], meta['git_dirty'])}.\n"

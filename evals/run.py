@@ -148,7 +148,7 @@ def main():
     # their *reports* distinct, since those hold one stable name per suite and are not
     # round-claimed.
     slug = "" if args.model == FAST_MODEL else f"-{args.model.replace('.', '')}"
-    raw_path, round_tag = _claim_round(out_dir, f"{args.suite}-{args.trials}t-{tag}{slug}")
+    raw_path, _ = _claim_round(out_dir, f"{args.suite}-{args.trials}t-{tag}{slug}")
 
     # Identity travels with the round: what text was measured (variant hashes), on
     # which model, from which tree, and when. A number whose provenance lives only
@@ -164,6 +164,10 @@ def main():
         **git_state(),
         "variant_sha256": {k: hashlib.sha256(str(v).encode("utf-8")).hexdigest()[:12]
                            for k, v in variant_map.items()},
+        # Lengths as well as hashes: a hash proves two rounds measured the same text
+        # but cannot reconstruct the size a report quotes, so a re-score had no way to
+        # state the measured length and fell back to whatever the skill file says now.
+        "variant_chars": {k: len(str(v)) for k, v in variant_map.items()},
     }
 
     # Fill the name claimed above so an aborted round is a readable file rather than
@@ -210,7 +214,12 @@ def main():
         f"```\n{text}\n```\n",
         encoding="utf-8",
     )
-    (out_dir / f"{args.suite}-summary{slug}{round_tag}.json").write_text(
+    # Keyed off the raw file's stem, not rebuilt from the suite and round tag. The
+    # summary is this round's aggregate and has to be as uniquely named as the round:
+    # a name carrying only suite, model and round tag collapsed every configuration's
+    # first run onto one file, so a 3-trial V0-V1 summary and a 5-trial V0-V2 summary
+    # overwrote each other, and `-r2` collided across configurations too.
+    (out_dir / f"{raw_path.stem}-summary.json").write_text(
         json.dumps({"meta": meta, **summary}, indent=1), encoding="utf-8")
     print(f"\n-> {report}")
     return 0

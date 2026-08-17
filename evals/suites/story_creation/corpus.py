@@ -415,6 +415,14 @@ def build():
             "gathered": FILED_BIG,
             "must_all": [
                 ("acceptance-criteria", AC_SUBSTANTIVE),
+                # The case measures a three-way split, and one global criteria
+                # match did not require three of anything: a single draft with one
+                # criterion, the remainder named and approval asked for, scored
+                # correct. The story names three outcomes, so demand all three —
+                # this is what makes the case about splitting rather than drafting.
+                ("email-draft", r"(?i)e-?mail"),
+                ("sms-draft", r"(?i)\bSMS\b|text message"),
+                ("settings-draft", r"(?i)(settings|preferences|thresholds?)"),
                 # The fate of the original is stated many ways — a fresh round's
                 # compliant reply offered options ("keep PAY-350 as the email
                 # story" vs "lose the original issue history") and the first

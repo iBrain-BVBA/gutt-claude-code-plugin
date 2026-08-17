@@ -8,6 +8,7 @@ completed calls, which is the whole reason for both.
 """
 import concurrent.futures as cf
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -136,7 +137,15 @@ def run_matrix(variants, cases, build_prompt, evaluate, trials=1, workers=8,
         if not path:
             return
         payload = {"meta": meta, "records": results} if meta else results
-        json.dump(payload, open(path, "w", encoding="utf-8"), indent=1)
+        # Written beside the target and moved into place. Opening the target with
+        # "w" truncates the last good snapshot before the new JSON is complete, so
+        # a run killed mid-dump left a file that no longer parsed — destroying the
+        # very records the periodic flush exists to preserve, and taking the round's
+        # metadata with them. os.replace is atomic within a filesystem.
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=1)
+        os.replace(tmp, path)
     jobs = [(v, c, t) for v in variants for c in cases for t in range(trials)]
     print(f"{len(jobs)} calls — {len(variants)} variants x {len(cases)} cases x {trials} trials")
     results, lock = [], threading.Lock()
