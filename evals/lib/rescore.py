@@ -99,6 +99,13 @@ def rescore(path, write_report=False):
                 f"Round `{stem}` — replies measured {meta['date']}, "
                 f"tree {run.describe_tree(meta['git_sha'], meta['git_dirty'])}.\n"
             )
+            # The variant hashes carry over, and on a re-scored table they matter
+            # more than on a fresh one: where the round's own tree was dirty they
+            # are the only thing pinning the text the replies were generated from.
+            if meta.get("variant_sha256"):
+                pairs = " ".join(f"{k}:{v}"
+                                 for k, v in meta["variant_sha256"].items())
+                head += f"Variant text measured: {pairs}.\n"
         else:
             head += f"Round `{stem}` — written before rounds carried identity.\n"
         # Two trees, and the second is the one a reader needs. The round's own tree
