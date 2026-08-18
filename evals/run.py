@@ -138,9 +138,10 @@ def main():
     ap.add_argument("--cases", nargs="*", help="limit to these case ids")
     ap.add_argument("--workers", type=int, default=8)
     # The judge model is part of the result, not a detail of how it was produced: the
-    # shipped Stop hook pins `model` in hooks.json, so a table measured on a different
-    # model does not describe what ships. Default stays FAST_MODEL for continuity with
-    # every round already in results/.
+    # shipped Stop hook pins its own model — `JUDGE_MODEL` in `hooks/lib/stop-judge.cjs`,
+    # passed to the child on the command line — so a table measured on a different model
+    # does not describe what ships. Default stays FAST_MODEL for continuity with every
+    # round already in results/.
     ap.add_argument("--model", default=FAST_MODEL,
                     help=f"judge model (default {FAST_MODEL}); pass the full id, not an alias")
     ap.add_argument("--list", action="store_true", help="list suites and exit")

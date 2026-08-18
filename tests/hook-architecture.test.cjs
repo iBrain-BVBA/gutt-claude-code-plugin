@@ -318,16 +318,18 @@ describe("hook architecture guards", () => {
         .map((e) => e.name)
     );
 
-    // Everything a hook can say to the model: the router sources and the prompt
-    // text in hooks.json.
+    // Everywhere a skill can be named: the router sources, the libs they call, and
+    // the manifest that registers them.
     //
     // Comments are stripped from the .cjs sources first. This file's own house
     // style explains the wrong forms alongside the right ones — a comment reading
     // "not `memory-search`" is documentation, not a pointer, and scanning it flagged
-    // correct code. hooks.json is scanned whole: any prose it carries reaches
-    // the model. The Stop judge's own condition is no longer among it — that
-    // moved into `hooks/lib/stop-judge.cjs` when the handler became a command
-    // hook, and is covered by the lib scan described below.
+    // correct code. hooks.json is scanned whole instead, because JSON has no comment
+    // syntax to strip and a command path can be shaped like a skill pointer. Nothing
+    // in it reaches the model today: only a `type: "prompt"` entry's `prompt` field
+    // ever did, and no entry is one — the Stop judge's condition was the last, and it
+    // moved into `hooks/lib/stop-judge.cjs` when that handler became a command hook,
+    // where the lib scan described below covers it.
     // `hooks/lib/` is scanned alongside the hooks themselves because GP-922 moved
     // pointer prose into a lib for the first time: the SessionStart migration offer
     // is policy, so the thin-router cap above pushed it out of the hook and into

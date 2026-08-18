@@ -5,9 +5,10 @@
     "trials": 1,
     "cases": 2,
     "jobs": 4,
-    "variant_chars": { "V0-shipped": 2082, "V5": 468 },
-    "variant_lines": { "V0-shipped": 9, "V5": 1 },
+    "variant_chars": { "V0-shipped": 1904, "V5": 431 },
+    "variant_lines": { "V0-shipped": 7, "V5": 3 },
     "why": "A hand-built round, committed so the re-score path can be exercised where the recorded sessions this suite's real corpus needs are absent — which is everywhere except the machine that recorded them. It carries its own cases for the same reason. Not a measurement: no verdict here came from a model, and nothing may be read off it as a result.",
+    "dimensions": "The four sizes above deliberately match no variant as it stands today, and must stay that way. This round stands in for an older one, and the defect worth catching is a re-score that keeps a recorded number while deriving the one it lacks. Sizes equal to today's text cannot tell that apart from a re-score that read the round correctly — both print the same row.",
     "covers": "One cell whose checker raised and one whose reply was simply wrong, so a table that renders them alike fails here rather than in a published report."
   },
   "cases": [

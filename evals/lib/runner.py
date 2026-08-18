@@ -15,7 +15,7 @@ import tempfile
 import threading
 
 FAST_MODEL = "claude-haiku-4-5-20251001"
-# A prompt hook is a single-turn JSON call, so the harness keeps the system prompt to
+# The judge is a single-turn JSON call, so the harness keeps the system prompt to
 # that and nothing more. Note that --system-prompt replaces the default but does not
 # suppress CLAUDE.md auto-discovery — which is what `judge_cwd` below is for.
 JUDGE_SYS = "You evaluate a hook condition for Claude Code and reply with a single JSON object."

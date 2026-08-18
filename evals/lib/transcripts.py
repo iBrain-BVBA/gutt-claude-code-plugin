@@ -3,8 +3,9 @@
 
 A turn is one real user prompt plus everything the assistant did before the next one,
 rendered compactly: user text, assistant prose, and a line per tool call with a
-truncated result. Prompt hooks can see all of that (verified by probe), so a case
-built this way is close to what the judge really receives.
+truncated result. That is more than the shipped Stop judge is handed — it reads the
+turn's closing assistant message on its own — so a case built this way is an upper
+bound on the judge's context rather than a reproduction of it.
 
 Session logs live in ~/.claude/projects/<slugified-cwd>/<session-id>.jsonl.
 """

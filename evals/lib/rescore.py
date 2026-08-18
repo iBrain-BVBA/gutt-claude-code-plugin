@@ -42,8 +42,9 @@ def load_round(path):
 class _MeasuredText:
     """Stands in for a variant's text, reporting the length the round measured.
 
-    A suite's `report()` wants the variant map only for its keys and for
-    `len(text)`, which it prints as the variant's size. Passing today's skill text
+    A suite's `report()` wants the variant map for its keys and for two sizes — the
+    character count through `len(text)`, and the non-blank line count, which the table
+    reads off `.lines` where the object carries one. Passing today's skill text
     to a re-score quoted today's size beside replies generated from an older one.
     Rounds now record the lengths alongside the hashes; where a round predates that,
     `known` is False and the caller says so rather than printing a current length as

@@ -32,13 +32,21 @@ wrong answer rather than as a crash. It also promotes the misplaced-flag warning
 an error, so an interpreter that merely warns gives the same answer as one that
 refuses.
 
-Patterns are reached three ways, because no one of them is complete. Named case
-fields are compiled directly, which reaches patterns a single probe reply never
-triggers — a distractor's excuse is only searched once its token matches. The calls
-`evaluate()` makes are watched, which reaches fields no list of names knows about.
-And suites are imported with the same warning fatal, which reaches the patterns a
-suite keeps as module-level constants, compiled before any case exists. A suite whose corpus was recorded on another machine is skipped by name and
-counted, and a run that exercised nothing exits non-zero.
+The misplaced-flag rule is installed once, for the whole process, before anything is
+imported. That covers three kinds of pattern with one mechanism: named case fields,
+which are compiled directly so a probe reply that triggers nothing still checks them
+— a distractor's excuse is only searched once its token matches; whatever a checker
+compiles inside `evaluate()`, including patterns kept in fields no list knows about
+and ones written inline; and the module-level constants a suite or a shared lib
+compiles when it is first imported.
+
+Installing it once rather than at each call site is what makes it work. `re` caches
+compiled patterns, and a cache hit returns before the parser that raises ever runs, so
+whichever call reaches a pattern first would silence every later check of it. For the
+same reason nothing is recompiled afterwards to verify it.
+
+A suite whose corpus was recorded on another machine is skipped by name and counted,
+and a run that exercised nothing exits non-zero.
 
 Python 3 standard library only — no dependencies, no virtualenv. Each case is one
 `claude -p` call against a fast model, run eight at a time; a 8-variant × 14-case ×
@@ -235,9 +243,12 @@ The harness reproduces the judge's inputs closely but not exactly, and the gaps 
 run in the same direction for every variant, so comparisons hold even where absolute
 accuracy does not.
 
-- **Conversation shape.** The real judge receives the turn as message history;
-  the harness passes it inside a single user message. Verified by probe: a prompt hook
-  can see the user's prompt, the assistant's prose, tool calls, _and_ tool output.
+- **Conversation shape.** The real judge is given one message — the turn's closing
+  assistant message, quoted into a single prompt below the condition. It does not see
+  the user's prompt, the tool calls, or the tool output. A case here renders the whole
+  turn instead, so this gap runs the opposite way to the others: the bench hands a
+  variant more context than the shipped judge has, and a wording that leans on that
+  context will read better here than it behaves in a session.
 - **Turn length.** Long turns are elided in the middle. Cuts land on line boundaries
   on purpose — a cut mid-sentence reads to the judge as work left unfinished, which
   every candidate prompt treats as a reason to stay quiet, so sloppy clipping
@@ -282,9 +293,13 @@ So finish with a live probe, not a green table: run the candidate through
 `claude -p --plugin-dir <repo>/gutt-core --debug-file <log>` and read the verdicts out of
 the log. Note that `--debug` prints nothing at all in `-p` mode — only `--debug-file`
 works — and that a clean reply proves nothing unless the log also shows the judge ran.
-Grep `Processing prompt hook` for invocations and `condition was (not )?met` for
-verdicts; the count of `Read hooks.json for plugin` lines is **not** a proxy for either
-(two reads of the same path still registered and fired once).
+Read the verdicts out of the hook's own log rather than the CLI's. The Stop handler
+runs a command, so it emits none of the debug lines a prompt hook did — grepping for
+those returns nothing however well the judge ran, which reads as proof it never did.
+What it does instead is write one `Stop: …` line per turn into `hook-invocations.log`
+in the plugin's data directory, naming the outcome: a judge verdict, or the reason
+there was none. That survives the CLI changing its logging, and it tells a judge that
+answered apart from one that could not.
 
 ## Reading the report
 
