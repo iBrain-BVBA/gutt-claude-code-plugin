@@ -105,8 +105,11 @@ except Exception as _exc:  # noqa: BLE001 — anything here is a broken bench, n
 
 # The sentence `find_session` puts in its own error. Keying on it separates a
 # corpus that was never recorded here — expected, and a skip — from a suite that
-# has genuinely broken, which happens to raise the same exception type.
-MISSING_CORPUS = "This is a missing corpus, not a broken checkout."
+# has genuinely broken, which happens to raise the same exception type. Imported
+# rather than copied: a second copy could be improved on its own, and rewording
+# the original would turn every missing corpus into a failure with nothing in the
+# diff pointing at why.
+from lib.transcripts import MISSING_CORPUS  # noqa: E402
 
 # A hand-built round, committed so the re-score path can be exercised anywhere. It
 # carries its own cases because the suite that reaches that path builds its real ones
@@ -147,11 +150,32 @@ SELF_CHECKS = [
 # Case fields that hold a bare pattern rather than a labelled pair. Named rather
 # than inferred: a case also holds prose — an ask, a pasted diff — and some of that
 # prose is not valid regex, so compiling every string field reports failures that
-# are not defects. A field missing from this list is not left uncovered: whatever
-# `evaluate()` searches with is compiled inside the call, under the process-wide
-# rule above, so the list decides what gets named in a failure rather than what
-# gets checked.
+# are not defects.
+#
+# This list is what gets checked, not merely what gets named. Calling the checker
+# reaches a pattern the list does not, but only the ones the single `PROBE` reply
+# drives it to compile — and a checker branches on what it is reading. A pattern
+# behind a branch that reply does not take is compiled by nothing here: not by the
+# harvest, which does not know the field, and not by the call, which does not reach
+# it. The two mechanisms overlap; neither is a superset. `case_patterns` below says
+# the same thing about distractor excuses, which is the instance of it that exists
+# today. So a suite adding a pattern to a field no list names gets no warning, and
+# the list is the thing to extend.
 PATTERN_FIELDS = ("work", "bookkeeping")
+
+# Suites whose cases legitimately carry no patterns of their own, because the suite
+# keeps them as module-level `re.compile` constants instead. Those are covered — they
+# compile at import, under the process-wide rule — but they are invisible to the
+# harvest, so the suite reports zero. Named here so that every *other* zero can be
+# treated as a corpus that has been emptied rather than one that was checked.
+PATTERNLESS_SUITES = {"prompt-pointer"}
+
+# What a full run reaches. Asserted rather than inferred from `SUITES`, because
+# inferring it from the same dict that got shortened is not a check: trimming the
+# registry to one entry leaves "every registered suite passed" true and the run green.
+# A number here has to be edited deliberately when a suite is added or removed, which
+# is the point — that edit is the moment somebody decides the change was intended.
+EXPECTED_SUITES = 10
 
 
 def case_patterns(case):
@@ -205,7 +229,18 @@ def check_suite(module_path):
     module = importlib.import_module(module_path)
     notes = []
 
-    variants = module.variants()
+    # `BaseException`, not `Exception`, here and at every other call into a suite.
+    # A drift guard in this bench raises `SystemExit`, which is a `BaseException` —
+    # so `except Exception` lets it past every handler, out of `main()`, and the gate
+    # answers a defect in a suite by dying, with the suites after it unrun and no
+    # summary. `KeyboardInterrupt` is re-raised because that one really is a request
+    # to stop rather than a suite reporting itself broken.
+    try:
+        variants = module.variants()
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # noqa: BLE001 — a suite's SystemExit is a suite defect
+        return "BROKEN", [f"variants() raised {type(exc).__name__}: {exc}"], 0, 0
     if not variants:
         return "BROKEN", ["variants() returned nothing"], 0, 0
 
@@ -240,13 +275,25 @@ def check_suite(module_path):
         # still matches the text the hook ships. An assertion only a paid run reaches
         # is one nobody meets until the bill arrives.
         try:
-            module.build_prompt(next(iter(variants.values())), case)
-        except Exception as exc:
+            prompt = module.build_prompt(next(iter(variants.values())), case)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:  # noqa: BLE001 — a suite's SystemExit is a suite defect
             notes.append(f"{case['id']}: build_prompt() raised {type(exc).__name__}: {exc}")
+        else:
+            # What it returned, not only that it returned. An empty prompt raises
+            # nothing and reaches the model as nothing, so every trial in a paid round
+            # scores a reply to no question — the same plausible-number failure as a
+            # checker that cannot run, arriving one step earlier.
+            if not isinstance(prompt, str) or not prompt.strip():
+                notes.append(f"{case['id']}: build_prompt() returned {prompt!r}, "
+                             "which is not a prompt")
 
         try:
             verdict = module.evaluate(case, PROBE)
-        except Exception as exc:
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:  # noqa: BLE001 — a suite's SystemExit is a suite defect
             notes.append(f"{case['id']}: evaluate() raised {type(exc).__name__}: {exc}")
             continue
 
@@ -258,6 +305,15 @@ def check_suite(module_path):
         if not isinstance(verdict, dict) or "correct" not in verdict:
             notes.append(f"{case['id']}: evaluate() returned {verdict!r}, "
                          "which carries no `correct` verdict")
+        # The type, not only the key. Scoring counts a cell with `bool(r["correct"])`,
+        # so a checker answering `"yes"` scores every trial it touches as correct and
+        # the arm publishes at 100%. That is the worse half of this failure: a wrong
+        # answer everywhere reads as a skill scoring badly and gets investigated, while
+        # a right answer everywhere reads as a skill working and does not.
+        elif not isinstance(verdict["correct"], bool):
+            notes.append(f"{case['id']}: evaluate() returned `correct` as "
+                         f"{verdict['correct']!r}, which scoring reads through bool() — "
+                         "a non-bool here scores the cell without measuring it")
 
     return ("BROKEN" if notes else "OK"), notes, len(cases), patterns
 
@@ -385,6 +441,33 @@ def check_rescore():
     return notes
 
 
+def _runs_check_evals(lines):
+    """True when some workflow step runs `check:evals` and nothing gates it.
+
+    Split out so the wiring check reads as one question. A step is the block from a
+    `- ` opener to the next one at the same indent; a `run:` inside it counts only if
+    neither it nor any line of that block is commented out or an `if:`.
+    """
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            continue
+        if not re.match(r"\s*(-\s*)?run:\s*npm run check:evals\s*$", line):
+            continue
+        # Back up to the `- ` that opens this step, collecting what guards it.
+        guarded = False
+        for prev in reversed(lines[:i]):
+            stripped = prev.strip()
+            if stripped.startswith("#") or not stripped:
+                continue
+            if re.match(r"\s*if:\s", prev):
+                guarded = True
+            if stripped.startswith("- "):
+                break
+        if not guarded:
+            return True
+    return False
+
+
 def check_wiring():
     """This gate has to stay reachable from both places that run it.
 
@@ -404,12 +487,17 @@ def check_wiring():
         return [f"cannot read scripts from {PACKAGE_JSON}: {type(exc).__name__}: {exc}"]
     if "check:evals" not in scripts:
         return ["package.json declares no `check:evals` script"]
-    # The script still has to invoke this file. Asserting only that the name appears
-    # somewhere lets it be stubbed out — during a Python-less CI incident, say — and
-    # never restored, with every check below still green.
-    if "self_check.py" not in scripts["check:evals"]:
-        notes.append("`check:evals` no longer runs `evals/self_check.py`: "
-                     f"{scripts['check:evals']!r}")
+    # The whole script, matched, not the filename found somewhere inside it. Asserting
+    # only that the name appears lets the script be stubbed out during a Python-less CI
+    # incident and never restored — and, worse, lets its exit code be discarded. A
+    # trailing `|| true` keeps the filename, keeps this check green, and makes the gate
+    # incapable of ever failing `test:all` or CI: the run still prints which suites are
+    # broken, and still exits 0. Disabling a gate has to read differently from running
+    # one, and only an anchored match tells them apart.
+    if not re.fullmatch(r"python3? evals/self_check\.py", scripts["check:evals"].strip()):
+        notes.append("`check:evals` no longer runs `evals/self_check.py` and nothing "
+                     "else — a wrapper can discard its exit code, which leaves the gate "
+                     f"reporting defects it can never fail on: {scripts['check:evals']!r}")
     if "check:evals" not in scripts.get("test:all", ""):
         notes.append("`test:all` no longer runs `check:evals` — the aggregate a "
                      "developer runs by hand no longer reaches this gate, and CI's "
@@ -419,9 +507,18 @@ def check_wiring():
     except OSError as exc:
         notes.append(f"cannot read {CI_WORKFLOW}: {type(exc).__name__}: {exc}")
     else:
-        if "check:evals" not in workflow:
-            notes.append("no CI job runs `check:evals` — this gate is off every pull "
-                         "request, and `test:all` passing locally would not report it")
+        # A step that runs, not the string anywhere in the file. Deleting a step is the
+        # rare way one stops running; commenting it out, or hanging a condition on it,
+        # is the common way — and both leave `check:evals` in the text for a substring
+        # test to find. So: an uncommented `run:` line, in a step carrying no `if:`.
+        # Walking back to the step's `- ` opener costs no YAML parser, which this
+        # repository has no dependency for, and separates a step being present from it
+        # executing. It reads only this file, whose shape is ours to keep.
+        if not _runs_check_evals(workflow.splitlines()):
+            notes.append("no CI job runs `check:evals` on an unconditional step — this "
+                         "gate is off every pull request, and `test:all` passing "
+                         "locally would not report it. A commented-out step, or one "
+                         "guarded by `if:`, still carries the name and does not run.")
     return notes
 
 
@@ -472,8 +569,20 @@ def main():
     for name, module_path in SUITES.items():
         try:
             status, notes, ncases, found = check_suite(module_path)
-        except Exception as exc:
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:  # noqa: BLE001 — a suite's SystemExit is a suite defect
             status, notes, ncases, found = "BROKEN", [f"{type(exc).__name__}: {exc}"], 0, 0
+        # A suite that hands over cases carrying no patterns at all has been emptied,
+        # not checked — and the count reads the same as a suite that legitimately keeps
+        # its patterns as module-level constants, so a zero is not visually suspicious.
+        # Naming the one suite that is allowed to report zero is what makes the rest of
+        # the zeros mean something.
+        if status == "OK" and found == 0 and name not in PATTERNLESS_SUITES:
+            status = "BROKEN"
+            notes = [f"{ncases} cases carrying no patterns at all — either the corpus "
+                     "was emptied, or this suite keeps its patterns somewhere the "
+                     "harvest does not look and belongs in PATTERNLESS_SUITES"]
         patterns += found
         if status == "SKIP":
             skipped.append(name)
@@ -489,7 +598,9 @@ def main():
 
     try:
         rescore_notes = check_rescore()
-    except Exception as exc:
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:  # noqa: BLE001 — a suite's SystemExit is a suite defect
         rescore_notes = [f"{type(exc).__name__}: {exc}"]
     if rescore_notes:
         broken.append("rescore round")
@@ -508,6 +619,16 @@ def main():
     # on it is the failure mode this whole file exists to prevent, one level up.
     if not exercised:
         print("no suite was exercised — refusing to report a pass on nothing")
+        return 1
+    # And a run that reached most of them has not established what it claims to. The
+    # floor above only catches the registry being emptied; a registry shortened to one
+    # entry passes it, having checked a tenth of the bench and said so in a summary line
+    # nobody diffs. `SUITES` is a dict literal in `run.py` — the most likely thing in
+    # that file for a merge to mangle.
+    if len(SUITES) != EXPECTED_SUITES:
+        print(f"the registry holds {len(SUITES)} suites, not the {EXPECTED_SUITES} this "
+              "gate expects — if a suite was added or removed on purpose, update "
+              "EXPECTED_SUITES in the same change")
         return 1
     if broken:
         print(f"broken: {', '.join(broken)}")

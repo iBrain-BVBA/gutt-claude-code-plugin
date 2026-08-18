@@ -50,15 +50,29 @@ def shipped():
     # shipped text, at a length that is not its length — or raises for a reason that
     # reads as the hook being unreadable. This arm exists to be byte-for-byte what
     # ships; a silent transcoding is the one failure it must not have.
-    read = subprocess.run(
-        ["node", "-e", "process.stdout.write(require(process.argv[1]).JUDGE_CONDITION)",
-         str(HOOK_LIB)],
-        capture_output=True, text=True, encoding="utf-8",
-    )
+    # `timeout` because this read sits inside the offline gate, which runs in CI. The
+    # hook lib is a pure module today, but a `require` that ever keeps the loop alive
+    # would hang here with no output rather than fail — and a hung job is re-run, not
+    # read, so the cause would never be seen.
+    try:
+        read = subprocess.run(
+            ["node", "-e", "process.stdout.write(require(process.argv[1]).JUDGE_CONDITION)",
+             str(HOOK_LIB)],
+            capture_output=True, text=True, encoding="utf-8", timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"reading JUDGE_CONDITION from {HOOK_LIB} did not finish in 30s. "
+            "Requiring the hook lib should be a pure module load; if it now starts "
+            "something that keeps node alive, this arm cannot read the shipped text."
+        ) from exc
     if read.returncode != 0 or not read.stdout:
         raise RuntimeError(
             f"could not read JUDGE_CONDITION from {HOOK_LIB}.\n"
-            f"{read.stderr.strip()[-400:]}\n"
+            # The head of stderr, not the tail: node prints the offending line and the
+            # error class first and the stack after it, so a tail slice keeps the frames
+            # and drops the sentence naming what went wrong.
+            f"{read.stderr.strip()[:400]}\n"
             "The baseline is the prompt that ships, so it is read from the hook rather "
             "than kept as a copy. If the constant was renamed or is no longer exported, "
             "this needs updating with it — do not substitute a hand-written baseline."

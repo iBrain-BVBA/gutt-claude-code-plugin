@@ -143,6 +143,14 @@ def extract_turns(path):
     return turns
 
 
+# The sentence that separates an expected state — a corpus recorded on another machine —
+# from a suite that has genuinely broken, which raises the same exception type. Callers
+# key on it, so it lives here, beside the only `raise` that produces it, and is imported
+# rather than copied. A copy would let this wording be improved on its own, which reads
+# as ordinary prose editing and silently reclassifies every missing corpus as a failure.
+MISSING_CORPUS = "This is a missing corpus, not a broken checkout."
+
+
 def find_session(project_slug, session_prefix):
     """Locate one session log by directory slug and session-id prefix."""
     hits = sorted((PROJECTS / project_slug).glob(f"{session_prefix}*.jsonl"))
@@ -151,7 +159,7 @@ def find_session(project_slug, session_prefix):
             f"no session {session_prefix}* under {project_slug}.\n"
             "Cases built this way read session transcripts recorded on the machine that "
             "ran them, so a suite using them only builds where its sessions were "
-            "recorded. This is a missing corpus, not a broken checkout."
+            f"recorded. {MISSING_CORPUS}"
         )
     return hits[0]
 
