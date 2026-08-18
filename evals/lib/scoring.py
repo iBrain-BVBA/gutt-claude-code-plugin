@@ -354,8 +354,9 @@ def per_case_table(results, cases, variants, order=None):
         rows.append(f"{c['id']:>11} {want:>6}{'~' if not c['confident'] else ' '}{cells}")
     if errored:
         rows.append("")
-        rows.append("! at least one trial in this cell errored — its checker never ran, "
-                    "so the score beside it is not a measurement of the reply")
+        rows.append("! at least one trial in this cell errored — the call failed, or the "
+                    "checker raised — so the score beside it is not a measurement of the "
+                    "reply")
     return "\n".join(rows)
 
 

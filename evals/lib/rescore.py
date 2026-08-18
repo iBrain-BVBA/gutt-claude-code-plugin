@@ -110,7 +110,10 @@ def round_identity(stem, meta, guessed):
 def measured_for(meta, live, variant):
     """The size to print for one variant: what the round recorded, or today's.
 
-    Both numbers or neither. Rounds exist that recorded `variant_chars` before
+    Both numbers or neither. `run.py` records `variant_chars` from one release and
+    `variant_lines` from the next, so a round written between the two carries chars and
+    not lines — no such file is on disk today, and this is the rule for when one is.
+    Taking the measured character count before
     `variant_lines` was written beside it, and taking the measured character count
     while deriving the line count from the text on disk today would put two numbers
     describing two different texts on one row — the confusion this stand-in exists to

@@ -17,7 +17,7 @@ Six things, in this order:
    interpreter;
 5. every suite's `build_prompt()` and `evaluate()` run once per case, and the
    checker has to come back with a verdict;
-6. the re-score path runs over a committed fixture round.
+6. the parts of the re-score path a fixture can reach run over a committed round.
 
 Steps 4 and 5 are why this file exists. A pattern is held as a plain string and is
 not compiled until a checker searches with it, so a suite builds clean while
@@ -74,9 +74,9 @@ import warnings
 # `re.compile` constants, which run once when the module is first imported — and
 # `import_module` hands back a cached module without re-executing it, so a filter
 # installed after that first import never sees those compiles and never will.
-# `lib.runner` and `lib.scoring` arrive through `run` on the line below, ahead of
-# every suite that shares them, and `lib.scoring` holds the distractor patterns most
-# suites score through.
+# `lib.runner` and `lib.scoring` arrive through the `run` import further down, ahead of
+# every suite that shares them, and `lib.scoring` holds compiled constants the suites
+# that share its distractor checker score through.
 FLAG_TEXT = "Flags not at the start"      # literal, for `PYTHONWARNINGS`
 FLAG_WARNING = "[Ff]lags not at the start"  # regex, for `filterwarnings`
 warnings.filterwarnings("error", message=FLAG_WARNING)
@@ -132,7 +132,7 @@ PROBE = "Checked the sources and reported the finding, with nothing written back
 # The self-checks already living inside the bench's modules. Each is a real entry
 # point rather than a function this file could import, so each runs as its own
 # process: that is how a person runs them, and it keeps a module that calls
-# `sys.exit` from taking this script down with it. The four suite checks import
+# `sys.exit` from taking this script down with it. The suite checks below import
 # their package relatively and so need `-m` rather than a bare path.
 SELF_CHECKS = [
     ("round naming", [sys.executable, "run.py", "--self-check"]),
@@ -270,7 +270,7 @@ def check_suite(module_path):
         # is — so a second pass would re-raise what was already reported here.
         #
         # Both entry points a case reaches, not just the checker. `build_prompt` runs
-        # nowhere else until a round is already spending money, and some suites hang
+        # nowhere else until a round is already spending money, and a suite can hang
         # their baseline-drift guard off it — the check that a hand-copied V0-shipped
         # still matches the text the hook ships. An assertion only a paid run reaches
         # is one nobody meets until the bill arrives.
@@ -319,7 +319,13 @@ def check_suite(module_path):
 
 
 def check_rescore():
-    """Drive the re-score path over the committed fixture round.
+    """Drive what a fixture can reach of the re-score path.
+
+    Not `rescore()` itself: that calls `suite.cases()`, which for the one suite whose
+    report reads these tables needs session transcripts recorded on a machine that no
+    longer has them. What runs here is `measured_for` and the suite's `report()` over a
+    committed round — the stand-in, the tables, and the marking. The column ordering
+    `rescore()` builds is outside that reach and is covered by nothing.
 
     The stand-in a re-score hands the tables in place of variant text is built only
     by a re-score, and only one suite's report reaches the table that reads it — so
@@ -329,7 +335,7 @@ def check_rescore():
     recorded their sessions. A defect there is invisible until someone re-scores a
     round that does not exist. Hence a fixture rather than a stored round.
 
-    Three things are asserted, because three defects hid here. A round that recorded
+    Three of those are asserted directly, because three defects hid there. A round that recorded
     only some of the dimensions has to report its size as not measured, rather than
     pair a number it has with one derived from today's text. The measured size has to
     reach the table, which is what the stand-in exists for. And a cell whose checker
@@ -441,29 +447,44 @@ def check_rescore():
     return notes
 
 
+def _step_bounds(lines, i):
+    """The half-open range of the workflow step containing line `i`.
+
+    A step opens at a `- ` item and runs until the next line indented no further than
+    that opener — the next item, or the end of the block. Both directions matter:
+    a mapping's keys are unordered in YAML, so a guard may sit on either side of the
+    key it guards, and a scan that only looks one way reads a disabled step as live.
+    """
+    start = i
+    while start > 0 and not lines[start].strip().startswith("- "):
+        start -= 1
+    opener_indent = len(lines[start]) - len(lines[start].lstrip())
+    end = start + 1
+    while end < len(lines):
+        stripped = lines[end].strip()
+        if stripped and not stripped.startswith("#"):
+            if len(lines[end]) - len(lines[end].lstrip()) <= opener_indent:
+                break
+        end += 1
+    return start, end
+
+
 def _runs_check_evals(lines):
     """True when some workflow step runs `check:evals` and nothing gates it.
 
-    Split out so the wiring check reads as one question. A step is the block from a
-    `- ` opener to the next one at the same indent; a `run:` inside it counts only if
-    neither it nor any line of that block is commented out or an `if:`.
+    Split out so the wiring check reads as one question. Scanning by shape rather than
+    with a YAML parser, since this repository ships no dependencies and the file's
+    shape is ours to keep — but scanning the *whole* step, because `if:` is as valid
+    below `run:` as above it.
     """
     for i, line in enumerate(lines):
         if line.lstrip().startswith("#"):
             continue
         if not re.match(r"\s*(-\s*)?run:\s*npm run check:evals\s*$", line):
             continue
-        # Back up to the `- ` that opens this step, collecting what guards it.
-        guarded = False
-        for prev in reversed(lines[:i]):
-            stripped = prev.strip()
-            if stripped.startswith("#") or not stripped:
-                continue
-            if re.match(r"\s*if:\s", prev):
-                guarded = True
-            if stripped.startswith("- "):
-                break
-        if not guarded:
+        start, end = _step_bounds(lines, i)
+        block = [l for l in lines[start:end] if not l.lstrip().startswith("#")]
+        if not any(re.match(r"\s*(-\s*)?if:\s", l) for l in block):
             return True
     return False
 
@@ -498,10 +519,15 @@ def check_wiring():
         notes.append("`check:evals` no longer runs `evals/self_check.py` and nothing "
                      "else — a wrapper can discard its exit code, which leaves the gate "
                      f"reporting defects it can never fail on: {scripts['check:evals']!r}")
-    if "check:evals" not in scripts.get("test:all", ""):
-        notes.append("`test:all` no longer runs `check:evals` — the aggregate a "
-                     "developer runs by hand no longer reaches this gate, and CI's "
-                     "own step would not report that")
+    # Last in the chain, not merely present in it. `test:all` is a shell `&&` sequence,
+    # so anything appended after the gate can discard what it returns — `… && npm run
+    # check:evals || true` reaches the gate, prints every broken suite, and exits 0.
+    # Being reached is not the property worth asserting; deciding the exit code is.
+    if not re.search(r"&&\s*npm run check:evals\s*$", scripts.get("test:all", "").strip()):
+        notes.append("`test:all` does not end with `&& npm run check:evals` — either "
+                     "the aggregate no longer reaches this gate, or something after it "
+                     "can swallow the exit code, which leaves the gate reporting "
+                     "defects it cannot fail on")
     try:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     except OSError as exc:

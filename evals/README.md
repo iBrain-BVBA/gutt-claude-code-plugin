@@ -24,20 +24,23 @@ python3 evals/self_check.py                        # free, offline, no model cal
 ```
 
 `self_check.py` is the gated half. It runs each module's own self-check, then drives
-every registered suite through `variants()`, `cases()` and one `evaluate()` per case,
-and compiles every pattern those cases carry. Calling through is the point: a pattern
+every registered suite through `variants()`, `cases()`, `build_prompt()` and one
+`evaluate()` per case, compiles every pattern those cases carry, and checks that what
+`evaluate()` returns is a verdict — a `correct` key holding a bool, since scoring reads
+that field through `bool()` and a string there scores every cell without measuring it. Calling through is the point: a pattern
 is a plain string until a checker searches with it, so a suite builds clean while
 holding one no interpreter accepts, and the failure surfaces during scoring as a
 wrong answer rather than as a crash. It also promotes the misplaced-flag warning to
 an error, so an interpreter that merely warns gives the same answer as one that
 refuses.
 
-The misplaced-flag rule is installed once, for the whole process, before anything is
-imported. That covers three kinds of pattern with one mechanism: named case fields,
+The misplaced-flag rule is installed once, for the whole process, ahead of the first
+bench module. That covers three kinds of pattern with one mechanism: named case fields,
 which are compiled directly so a probe reply that triggers nothing still checks them
 — a distractor's excuse is only searched once its token matches; whatever a checker
-compiles inside `evaluate()`, including patterns kept in fields no list knows about
-and ones written inline; and the module-level constants a suite or a shared lib
+compiles inside `evaluate()` **on the branch the probe reply takes**, which reaches
+fields no list knows about and patterns written inline, but not a pattern behind a
+branch that reply does not reach; and the module-level constants a suite or a shared lib
 compiles when it is first imported.
 
 Installing it once rather than at each call site is what makes it work. `re` caches
@@ -50,7 +53,10 @@ raised was never cached to begin with.
 A suite whose corpus was recorded on another machine is skipped by name and counted,
 and a run that exercised nothing exits non-zero.
 
-Python 3 standard library only — no dependencies, no virtualenv. Each case is one
+Python 3 standard library only — no packages to install, no virtualenv. The one thing
+outside the interpreter is `node`, which the `stop-judge` arm shells out to so its
+baseline is read from the shipped hook rather than copied; every path that runs the
+bench goes through npm, so it is already there. Each case is one
 `claude -p` call against a fast model, run eight at a time; a 8-variant × 14-case ×
 3-trial matrix is roughly 340 calls and about ten minutes.
 
@@ -292,12 +298,13 @@ in a real conversation:
   in front of the user as the assistant's answer, 4 times out of 4.
 
 So finish with a live probe, not a green table: run the candidate through
-`claude -p --plugin-dir <repo>/gutt-core --debug-file <log>` and read the verdicts out of
-the log. Note that `--debug` prints nothing at all in `-p` mode — only `--debug-file`
-works — and that a clean reply proves nothing unless the log also shows the judge ran.
-Read the verdicts out of the hook's own log rather than the CLI's. The Stop handler
-runs a command, so it emits none of the debug lines a prompt hook did — grepping for
-those returns nothing however well the judge ran, which reads as proof it never did.
+`claude -p --plugin-dir <repo>/gutt-core --debug-file <log>`, and read the verdicts out
+of the hook's own log rather than the CLI's. A clean reply proves nothing unless a log
+also shows the judge ran, and the CLI's log is not the one that shows it: the Stop
+handler runs a command, so it emits none of the debug lines a prompt hook did —
+grepping for those returns nothing however well the judge ran, which reads as proof it
+never did. Keep `--debug-file` anyway for everything else the run does, and note that
+`--debug` prints nothing at all in `-p` mode.
 What it does instead is write one `Stop: …` line per turn into `hook-invocations.log`
 in the plugin's data directory, naming the outcome: a judge verdict, or the reason
 there was none. That survives the CLI changing its logging, and it tells a judge that

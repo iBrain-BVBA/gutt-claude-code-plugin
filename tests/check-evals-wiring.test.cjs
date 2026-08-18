@@ -46,18 +46,25 @@ describe("eval bench gate wiring", () => {
     );
   });
 
-  it("`test:all` chains through `check:evals`", () => {
+  // Last in the chain, not merely present in it. `test:all` is a shell `&&` sequence,
+  // so anything appended after the gate can discard what it returns: appending
+  // `|| true` reaches the gate, prints every broken suite, and still exits 0. Being
+  // reached is not the property worth asserting; deciding the exit code is.
+  it("`test:all` ends with `check:evals`, so the gate decides its exit code", () => {
     assert.match(
-      pkg.scripts?.["test:all"] ?? "",
-      /npm run check:evals/,
-      "the aggregate a developer runs by hand no longer reaches the gate"
+      (pkg.scripts?.["test:all"] ?? "").trim(),
+      /&&\s*npm run check:evals$/,
+      "the aggregate either no longer reaches the gate, or something after it can " +
+        "swallow the exit code"
     );
   });
 
   // A step that runs, not the string being present. Commenting a step out or hanging a
   // condition on it is the ordinary way one stops running, and both leave the name in
   // the file. Parsed by shape rather than with a YAML library because this repository
-  // ships no dependencies, and the file's shape is ours to keep.
+  // ships no dependencies, and the file's shape is ours to keep — but the whole step is
+  // read, on both sides of `run:`, because a mapping's keys are unordered in YAML and
+  // `if:` is as valid below the key it guards as above it.
   it("CI runs `check:evals` on a step nothing disables", () => {
     const lines = workflow.split("\n");
     const live = lines.some((line, i) => {
@@ -67,20 +74,23 @@ describe("eval bench gate wiring", () => {
       if (!/^\s*(-\s*)?run:\s*npm run check:evals\s*$/.test(line)) {
         return false;
       }
-      for (let j = i - 1; j >= 0; j--) {
-        const prev = lines[j];
-        const stripped = prev.trim();
-        if (!stripped || stripped.startsWith("#")) {
-          continue;
-        }
-        if (/^\s*if:\s/.test(prev)) {
-          return false;
-        }
-        if (stripped.startsWith("- ")) {
+      let start = i;
+      while (start > 0 && !lines[start].trim().startsWith("- ")) {
+        start--;
+      }
+      const openerIndent = lines[start].length - lines[start].trimStart().length;
+      let end = start + 1;
+      while (end < lines.length) {
+        const stripped = lines[end].trim();
+        const indent = lines[end].length - lines[end].trimStart().length;
+        if (stripped && !stripped.startsWith("#") && indent <= openerIndent) {
           break;
         }
+        end++;
       }
-      return true;
+      return !lines
+        .slice(start, end)
+        .some((l) => !l.trimStart().startsWith("#") && /^\s*(-\s*)?if:\s/.test(l));
     });
     assert.ok(
       live,
