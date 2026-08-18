@@ -44,6 +44,13 @@ jobs:
       - name: Check doc pointers (slash references in prose resolve)
         run: npm run check:doc-pointers
 
+      # Deliberately runs on whatever python3 the runner provides rather than a
+      # pinned one. The defect this gate exists to catch was a pattern that only
+      # the maintainer's interpreter accepted, so a second version in the mix is
+      # the coverage that was missing — pinning here would rebuild the monoculture.
+      - name: Check eval bench (offline self-checks, no model calls)
+        run: npm run check:evals
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest

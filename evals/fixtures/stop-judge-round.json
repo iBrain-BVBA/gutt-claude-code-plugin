@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "suite": "stop-judge",
+    "model": "fixture — no model was called to produce this",
+    "trials": 1,
+    "cases": 2,
+    "jobs": 4,
+    "variant_chars": { "V0-shipped": 2082, "V5": 468 },
+    "variant_lines": { "V0-shipped": 9, "V5": 1 },
+    "why": "A hand-built round, committed so the re-score path can be exercised where the recorded sessions this suite's real corpus needs are absent — which is everywhere except the machine that recorded them. It carries its own cases for the same reason. Not a measurement: no verdict here came from a model, and nothing may be read off it as a result.",
+    "covers": "One cell whose checker raised and one whose reply was simply wrong, so a table that renders them alike fails here rather than in a published report."
+  },
+  "cases": [
+    { "id": "f01-durable", "confident": true, "want_ok": false, "stop_hook_active": false },
+    { "id": "f02-trivial", "confident": true, "want_ok": true, "stop_hook_active": false }
+  ],
+  "records": [
+    {
+      "variant": "V0-shipped",
+      "case": "f01-durable",
+      "correct": true,
+      "got_ok": false,
+      "parsed": true,
+      "shape": {
+        "chars": 96,
+        "names_skill": true,
+        "all_typed": true,
+        "over_10w": false,
+        "gated_type": false,
+        "json_echo": false
+      }
+    },
+    {
+      "variant": "V0-shipped",
+      "case": "f02-trivial",
+      "correct": true,
+      "got_ok": true,
+      "parsed": true
+    },
+    {
+      "variant": "V5",
+      "case": "f01-durable",
+      "correct": false,
+      "got_ok": true,
+      "parsed": true
+    },
+    {
+      "variant": "V5",
+      "case": "f02-trivial",
+      "correct": false,
+      "parsed": true,
+      "error": "error: global flags not at the start of the expression at position 24"
+    }
+  ]
+}

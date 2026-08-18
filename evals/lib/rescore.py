@@ -23,6 +23,8 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
+from lib.scoring import _lines  # noqa: E402
+
 
 def load_round(path):
     """Return `(meta, records)` for a round file of either shape.
@@ -48,8 +50,8 @@ class _MeasuredText:
     though it were the measured one.
     """
 
-    def __init__(self, chars, known=True):
-        self.chars, self.known = chars, known
+    def __init__(self, chars, lines, known=True):
+        self.chars, self.lines, self.known = chars, lines, known
 
     def __len__(self):
         return self.chars
@@ -152,12 +154,22 @@ def rescore(path, write_report=False):
     case_list = [c for c in suite.cases() if c["id"] in measured_cases]
     order = [v for v in suite.variants() if v in {r.get("variant") for r in scored}]
     stored_chars = (meta or {}).get("variant_chars") or {}
+    stored_lines = (meta or {}).get("variant_lines") or {}
     live = suite.variants()
-    variants = {
-        v: _MeasuredText(stored_chars[v]) if v in stored_chars
-        else _MeasuredText(len(str(live.get(v, ""))), known=False)
-        for v in order
-    }
+
+    def measured(v):
+        """The size to print for one variant: what the round recorded, or today's.
+
+        A round that recorded neither length falls back to the text on disk now and
+        says so — `known` is what the caller reports. Line count follows chars
+        rather than being derived here, so both numbers describe the same text.
+        """
+        if v in stored_chars:
+            return _MeasuredText(stored_chars[v], stored_lines.get(v))
+        today = str(live.get(v, ""))
+        return _MeasuredText(len(today), _lines(today), known=False)
+
+    variants = {v: measured(v) for v in order}
 
     text, _ = suite.report(scored, case_list, variants)
     print(f"re-scored {len(scored) - errored} of {len(records)} records in {stem}")

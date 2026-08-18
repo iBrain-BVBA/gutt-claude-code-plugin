@@ -12,7 +12,7 @@ from lib.scoring import accuracy_table, per_case_table, shape_table  # noqa: E40
 from . import corpus, variants as V  # noqa: E402
 
 NAME = "stop-judge"
-DESCRIPTION = "Does the Stop prompt hook fire on durable findings and stay quiet otherwise"
+DESCRIPTION = "Does the Stop hook's judge fire on durable findings and stay quiet otherwise"
 
 GATED = re.compile(r"\b(Lesson|Decision|WorkingAgreement)\b")
 

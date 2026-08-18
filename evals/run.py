@@ -22,6 +22,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from lib.runner import FAST_MODEL, failed, run_matrix  # noqa: E402
+from lib.scoring import _lines  # noqa: E402
 
 SUITES = {
     "stop-judge": "suites.stop_judge.suite",
@@ -207,6 +208,10 @@ def main():
         # but cannot reconstruct the size a report quotes, so a re-score had no way to
         # state the measured length and fell back to whatever the skill file says now.
         "variant_chars": {k: len(str(v)) for k, v in variant_map.items()},
+        # Lines as well, and counted by the same helper the table prints with, so a
+        # re-score reports the shape the round measured rather than deriving one
+        # number from the round and the other from whatever is on disk later.
+        "variant_lines": {k: _lines(str(v)) for k, v in variant_map.items()},
     }
 
     # Fill the name claimed above so an aborted round is a readable file rather than

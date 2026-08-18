@@ -13,10 +13,11 @@ behaviour that has already failed live:
 
 V0 is read from the shipped hook so the baseline can never drift from what is running.
 """
-import json
 import pathlib
+import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+HOOK_LIB = ROOT / "gutt-core" / "hooks" / "lib" / "stop-judge.cjs"
 SKILL = "gutt-pro:memory-capture"
 EXAMPLE = (
     f"Run the `{SKILL}` skill.\n"
@@ -26,8 +27,39 @@ EXAMPLE = (
 
 
 def shipped():
-    hooks = json.loads((ROOT / "gutt-core" / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    return hooks["hooks"]["Stop"][0]["hooks"][0]["prompt"]
+    """The judge condition the Stop handler actually ships, read from the hook itself.
+
+    The hook exports the constant, so the baseline is asked for rather than copied.
+    This used to read the text out of `hooks.json`, which carried it while the
+    handler was a `type: "prompt"` hook; the handler runs a command now and the
+    manifest holds only a command line, so that read raised for weeks with nothing
+    to notice — the suite is outside the test gate, and its cases only build where
+    their sessions were recorded, so "cannot run here" covered "cannot run at all".
+    Reading the export follows the prompt wherever it moves next and fails loudly
+    the moment it stops being exported.
+
+    Two substitutions put the shipped text in the terms this harness presents a case
+    in; neither changes what is measured. The hook fills its own `__PAYLOAD__` while
+    `build_prompt` fills `$ARGUMENTS`, and the hook quotes the turn after the
+    condition while the harness puts the conversation before it — so the sentence
+    naming where the turn sits has to agree with where this harness actually puts it.
+    """
+    read = subprocess.run(
+        ["node", "-e", "process.stdout.write(require(process.argv[1]).JUDGE_CONDITION)",
+         str(HOOK_LIB)],
+        capture_output=True, text=True,
+    )
+    if read.returncode != 0 or not read.stdout:
+        raise RuntimeError(
+            f"could not read JUDGE_CONDITION from {HOOK_LIB}.\n"
+            f"{read.stderr.strip()[-400:]}\n"
+            "The baseline is the prompt that ships, so it is read from the hook rather "
+            "than kept as a copy. If the constant was renamed or is no longer exported, "
+            "this needs updating with it — do not substitute a hand-written baseline."
+        )
+    return (read.stdout
+            .replace("__PAYLOAD__", "$ARGUMENTS")
+            .replace("on the turn quoted below", "on the conversation above"))
 
 
 V1 = f"""Nothing from this finished turn needs to be written to the team's long-term memory.
@@ -280,9 +312,18 @@ assert V16 != V14, "V16 patch failed to apply — V14's reason spec was reworded
 
 
 def all_variants():
-    return {"V0-shipped": shipped(), "V1": V1, "V2": V2, "V3": V3, "V4": V4,
+    text = shipped()
+    arms = {"V0-shipped": text, "V1": V1, "V2": V2, "V3": V3, "V4": V4,
             "V5": V5, "V6": V6, "V7": V7, "V8": V8, "V9": V9, "V10": V10,
-            "V12": V12, "V13": V13, "V14": V14, "V15": V15, "V16": V16}
+            "V12": V12, "V13": V13, "V15": V15, "V16": V16}
+    # V14's wording is what ships, so scoring it under its own name as well would buy
+    # the same measurement twice. Conditional rather than deleted, and V14 stays
+    # defined because V16 is patched from it: the day the shipped prompt moves on,
+    # V14 becomes a distinct candidate again and returns to the set on its own,
+    # without anyone having to remember to put it back.
+    if text != V14:
+        arms["V14"] = V14
+    return arms
 
 
 if __name__ == "__main__":
