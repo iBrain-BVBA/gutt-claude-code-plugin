@@ -85,12 +85,20 @@ SELF_CHECKS = [
 ]
 
 
+# Case fields that hold a bare pattern rather than a labelled pair. Named rather
+# than inferred: a case also holds prose — an ask, a pasted diff — and some of that
+# prose is not valid regex, so compiling every string field reports failures that
+# are not defects. `watched_patterns` is what keeps this list from silently going
+# out of date.
+PATTERN_FIELDS = ("work", "bookkeeping")
+
+
 def case_patterns(case):
     """Every regex a case carries, labelled well enough to name in a failure.
 
-    Compiling these directly rather than relying on `evaluate()` to reach them:
-    a checker only searches a distractor's excuse once its token has matched, so
-    a probe reply that mentions no distractor leaves those patterns untouched.
+    Compiled directly rather than left to `evaluate()` to reach: a checker searches
+    a distractor's excuse only once its token has matched, so a probe reply that
+    mentions no distractor leaves those patterns untouched.
     """
     for key in ("must_all", "must_not"):
         for label, pattern in case.get(key, []):
@@ -100,12 +108,54 @@ def case_patterns(case):
         for field in ("token", "excuse"):
             if field in distractor:
                 yield f"distractor {token} {field}", distractor[field]
+    for field in PATTERN_FIELDS:
+        if isinstance(case.get(field), str):
+            yield field, case[field]
 
 
-def compile_failures(case):
-    """Compile every pattern in a case, with the flag warning made fatal."""
+def watched_patterns(call):
+    """Run `call`, returning every pattern it handed to `re`.
+
+    The static harvest above knows field names; this knows none, and that is the
+    point. A suite that starts keeping its patterns in a field nobody added to
+    `PATTERN_FIELDS` is otherwise covered by neither — the harvest cannot see the
+    field, and a checker that compiles it on a probe reply raises nothing on the
+    interpreter that merely warns. Watching the calls closes that gap without
+    having to guess which fields are patterns, so the two together are complete
+    where either alone is not.
+    """
+    seen, originals = [], {}
+    watched = ("compile", "search", "match", "fullmatch", "finditer", "findall",
+               "split", "sub", "subn")
+
+    def wrap(fn):
+        def spy(pattern, *args, **kwargs):
+            if isinstance(pattern, str):
+                seen.append(pattern)
+            return fn(pattern, *args, **kwargs)
+        return spy
+
+    try:
+        for name in watched:
+            originals[name] = getattr(re, name)
+            setattr(re, name, wrap(originals[name]))
+        call()
+    finally:
+        for name, fn in originals.items():
+            setattr(re, name, fn)
+    return seen
+
+
+def compile_failures_for(pairs):
+    """Compile labelled patterns, with the flag warning made fatal.
+
+    Fatal on purpose. A global flag placed mid-expression is a `DeprecationWarning`
+    on older interpreters and an error on newer ones, so a gate that only compiled
+    would pass on the machine most likely to be running it and fail in CI — which
+    inverts the signal, because then the gate is what looks broken.
+    """
     failures = []
-    for label, pattern in case_patterns(case):
+    for label, pattern in pairs:
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
             try:
@@ -115,13 +165,41 @@ def compile_failures(case):
     return failures
 
 
+def compile_failures(case):
+    """Compile every pattern the case itself carries."""
+    return compile_failures_for(case_patterns(case))
+
+
+# The warning older interpreters give for a global flag placed mid-expression, and
+# newer ones refuse outright. Matched by message rather than by category at import
+# time: turning every DeprecationWarning into an error there would break the gate on
+# an unrelated deprecation from a dependency or the standard library, which is a gate
+# failing for a reason that is not the code's fault.
+FLAG_WARNING = "[Ff]lags not at the start"
+
+
+def import_suite(module_path):
+    """Import a suite with the misplaced-flag warning made fatal.
+
+    Some suites hold their patterns as module-level `re.compile` constants rather
+    than in their cases. Those compile at import, where the interpreter that has
+    this defect merely warns — so the import succeeds, the pattern is never in a
+    case for the harvest to find, and the checker searches with an already-compiled
+    object that never passes back through `re`. Neither of the other two passes can
+    see them. Raising here is what covers them, and it needs no list of field names.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message=FLAG_WARNING)
+        return importlib.import_module(module_path)
+
+
 def check_suite(module_path):
     """Drive one suite far enough to use what it builds.
 
     Returns `(status, notes, case_count, pattern_count)`; status is OK, SKIP or
     BROKEN.
     """
-    module = importlib.import_module(module_path)
+    module = import_suite(module_path)
     notes = []
 
     variants = module.variants()
@@ -139,12 +217,23 @@ def check_suite(module_path):
 
     patterns = 0
     for case in cases:
-        patterns += sum(1 for _ in case_patterns(case))
+        harvested = dict((pat, label) for label, pat in case_patterns(case))
+        patterns += len(harvested)
         notes += [f"{case['id']}: {f}" for f in compile_failures(case)]
+
         try:
-            module.evaluate(case, PROBE)
+            used = watched_patterns(lambda: module.evaluate(case, PROBE))
         except Exception as exc:
             notes.append(f"{case['id']}: evaluate() raised {type(exc).__name__}: {exc}")
+            continue
+
+        # Anything the checker searched with that the harvest did not know about.
+        # Compiled here under the same fatal-warning rule, so a pattern living in an
+        # unrecognised field is covered rather than merely counted.
+        for pattern in dict.fromkeys(p for p in used if p not in harvested):
+            patterns += 1
+            for failure in compile_failures_for([(f"used by evaluate()", pattern)]):
+                notes.append(f"{case['id']}: {failure}")
 
     return ("BROKEN" if notes else "OK"), notes, len(cases), patterns
 
@@ -165,16 +254,33 @@ def check_rescore():
     raised has to read differently from a cell whose reply was wrong, since scoring
     them alike is what let a broken checker publish as a poor result.
     """
+    from lib import rescore as _rescore
     from lib.rescore import _MeasuredText
     from suites.stop_judge import suite as stop_judge
 
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     meta, cases, records = fixture["meta"], fixture["cases"], fixture["records"]
+    notes = []
+
+    # Both shapes of round, because the interesting one is the round that recorded
+    # only some of what a report wants. Rounds exist that carry `variant_chars` and
+    # not `variant_lines`, and a re-score that took the measured number it had and
+    # derived the one it lacked would hand the table a stand-in that answers for its
+    # length and not its shape — which is the original defect, narrowed to the rounds
+    # nobody thought to try. Driving the fixture with the field removed is what makes
+    # that reachable here rather than the first time someone re-scores such a round.
+    for label, dropped in (("both dimensions", None), ("chars only", "variant_lines")):
+        trimmed = {k: v for k, v in meta.items() if k != dropped}
+        try:
+            variants = {v: _rescore.measured_for(trimmed, stop_judge.variants(), v)
+                        for v in meta["variant_chars"]}
+            stop_judge.report(records, cases, variants)
+        except Exception as exc:
+            notes.append(f"re-score with {label} raised {type(exc).__name__}: {exc}")
+
     variants = {v: _MeasuredText(meta["variant_chars"][v], meta["variant_lines"][v])
                 for v in meta["variant_chars"]}
-
     text, _ = stop_judge.report(records, cases, variants)
-    notes = []
 
     row = next((l for l in text.split("\n") if l.startswith("V0-shipped")), "")
     for label, value in (("lines", meta["variant_lines"]["V0-shipped"]),
@@ -228,7 +334,7 @@ def main():
                 print(f"    {note}")
         else:
             exercised.append(name)
-            print(f"{name} OK — {ncases} cases, {found} patterns")
+            print(f"{name} OK — {ncases} cases, {found} case patterns")
 
     try:
         rescore_notes = check_rescore()
@@ -245,7 +351,7 @@ def main():
     print()
     print(f"suites: {len(exercised)} exercised, {len(skipped)} skipped, "
           f"{len(SUITES) - len(exercised) - len(skipped)} broken; "
-          f"{patterns} patterns compiled")
+          f"{patterns} case patterns compiled")
 
     # A run that exercised nothing has not established anything. Reporting a pass
     # on it is the failure mode this whole file exists to prevent, one level up.

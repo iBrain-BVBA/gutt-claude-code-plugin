@@ -30,7 +30,14 @@ is a plain string until a checker searches with it, so a suite builds clean whil
 holding one no interpreter accepts, and the failure surfaces during scoring as a
 wrong answer rather than as a crash. It also promotes the misplaced-flag warning to
 an error, so an interpreter that merely warns gives the same answer as one that
-refuses. A suite whose corpus was recorded on another machine is skipped by name and
+refuses.
+
+Patterns are reached three ways, because no one of them is complete. Named case
+fields are compiled directly, which reaches patterns a single probe reply never
+triggers — a distractor's excuse is only searched once its token matches. The calls
+`evaluate()` makes are watched, which reaches fields no list of names knows about.
+And suites are imported with the same warning fatal, which reaches the patterns a
+suite keeps as module-level constants, compiled before any case exists. A suite whose corpus was recorded on another machine is skipped by name and
 counted, and a run that exercised nothing exits non-zero.
 
 Python 3 standard library only — no dependencies, no virtualenv. Each case is one

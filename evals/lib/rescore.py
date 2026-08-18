@@ -106,6 +106,32 @@ def round_identity(stem, meta, guessed):
     return out
 
 
+def measured_for(meta, live, variant):
+    """The size to print for one variant: what the round recorded, or today's.
+
+    Both numbers or neither. Rounds exist that recorded `variant_chars` before
+    `variant_lines` was written beside it, and taking the measured character count
+    while deriving the line count from the text on disk today would put two numbers
+    describing two different texts on one row — the confusion this stand-in exists to
+    prevent, narrowed to the rounds nobody thought to try. So a round missing either
+    falls back to today's text for both and reports `known` false, which the caller
+    turns into a line saying the size shown is not what was measured. Discarding a
+    recorded character count for those rounds is the cheaper mistake, and unlike the
+    alternative it is visible.
+
+    Module level rather than a closure so the offline gate can drive this decision
+    directly. A full re-score cannot run where the suite's corpus was never recorded,
+    which is everywhere but one machine — so a closure here is a decision nothing
+    reachable ever checks.
+    """
+    stored_chars = (meta or {}).get("variant_chars") or {}
+    stored_lines = (meta or {}).get("variant_lines") or {}
+    if variant in stored_chars and variant in stored_lines:
+        return _MeasuredText(stored_chars[variant], stored_lines[variant])
+    today = str(live.get(variant, ""))
+    return _MeasuredText(len(today), _lines(today), known=False)
+
+
 def rescore(path, write_report=False):
     meta, records = load_round(path)
     stem = pathlib.Path(path).stem
@@ -152,24 +178,18 @@ def rescore(path, write_report=False):
     # yesterday's replies. Lengths come from the round's own hashes instead.
     measured_cases = {r.get("case") for r in scored}
     case_list = [c for c in suite.cases() if c["id"] in measured_cases]
-    order = [v for v in suite.variants() if v in {r.get("variant") for r in scored}]
-    stored_chars = (meta or {}).get("variant_chars") or {}
-    stored_lines = (meta or {}).get("variant_lines") or {}
+    # Variant order follows the round, not today's arm list. Filtering today's
+    # variants by what the round measured drops any name the suite has since stopped
+    # offering — silently, and out of the one table whose job is to describe that
+    # round. A measured arm that no longer ships is exactly what a re-score is for.
+    # Today's order is kept where it applies so columns stay comparable, and
+    # round-only names are appended rather than placed where today's list cannot say.
+    measured_variants = {r.get("variant") for r in scored}
+    order = [v for v in suite.variants() if v in measured_variants]
+    order += [v for v in dict.fromkeys(r.get("variant") for r in scored)
+              if v is not None and v not in order]
     live = suite.variants()
-
-    def measured(v):
-        """The size to print for one variant: what the round recorded, or today's.
-
-        A round that recorded neither length falls back to the text on disk now and
-        says so — `known` is what the caller reports. Line count follows chars
-        rather than being derived here, so both numbers describe the same text.
-        """
-        if v in stored_chars:
-            return _MeasuredText(stored_chars[v], stored_lines.get(v))
-        today = str(live.get(v, ""))
-        return _MeasuredText(len(today), _lines(today), known=False)
-
-    variants = {v: measured(v) for v in order}
+    variants = {v: measured_for(meta, live, v) for v in order}
 
     text, _ = suite.report(scored, case_list, variants)
     print(f"re-scored {len(scored) - errored} of {len(records)} records in {stem}")
