@@ -3,21 +3,23 @@
 
 The bench has two halves that cost very differently. A round spends real money and
 takes minutes; everything here is free and deterministic. That is why this half can
-be gated on every commit while the other half cannot, and why the two were worth
-separating rather than excluding together.
+be gated at all while the other half cannot, and why the two were worth separating
+rather than excluding together.
 
-Five things, in this order:
+Six things, in this order:
 
-1. the self-checks the modules already carry, run the way each expects to be run,
+1. this gate is still wired into both places that run it — the local aggregate and
+   CI — since neither would report the other missing;
+2. the self-checks the modules already carry, run the way each expects to be run,
    each required to say so rather than merely exit zero;
-2. every registered suite still hands over its variants and its cases;
-3. every pattern a case carries compiles, and compiles the same way on every
+3. every registered suite still hands over its variants and its cases;
+4. every pattern a case carries compiles, and compiles the same way on every
    interpreter;
-4. every suite's `evaluate()` runs once per case, and has to come back with a
-   verdict;
-5. the re-score path runs over a committed fixture round.
+5. every suite's `build_prompt()` and `evaluate()` run once per case, and the
+   checker has to come back with a verdict;
+6. the re-score path runs over a committed fixture round.
 
-Steps 3 and 4 are why this file exists. A pattern is held as a plain string and is
+Steps 4 and 5 are why this file exists. A pattern is held as a plain string and is
 not compiled until a checker searches with it, so a suite builds clean while
 carrying a pattern no interpreter will accept. The failure then lands during
 scoring, where the runner catches it per cell and records a wrong answer — so a
@@ -26,20 +28,20 @@ a crash would. Nobody mistakes a traceback for a measurement; a plausible wrong
 number is what gets believed. Importing the modules sees none of this, and building
 the cases sees none of it either. Only calling through does.
 
-The same reasoning runs one step further in step 4: calling a checker is not the
+The same reasoning runs one step further in step 5: calling a checker is not the
 same as checking it. A checker that comes back with the wrong shape raises nothing,
 and every cell it scores reads as an honest zero, so the verdict is inspected rather
 than discarded.
 
-Step 3 promotes the misplaced-flag warning to an error deliberately. A regex whose
+Step 4 promotes the misplaced-flag warning to an error deliberately. A regex whose
 global flag sits mid-expression is accepted with a warning by older interpreters and
 rejected outright by newer ones, so a check that merely compiled would pass on the
 machine that happened to run it and fail in CI — or the reverse, which is worse,
 because then the gate is the thing that looks broken. Making the warning fatal
 gives one answer everywhere.
 
-That promotion is installed once, for the whole process, before anything else is
-imported — see `FLAG_WARNING` below. Doing it per call site does not work: `re`
+That promotion is installed once, for the whole process, ahead of the first bench
+module — see `FLAG_WARNING` below. Doing it per call site does not work: `re`
 caches compiled patterns, and a cache hit returns before the parser that emits the
 warning ever runs, so whichever call compiles a pattern first silences every check
 that would compile it again. Installing the rule ahead of every import and every
@@ -54,6 +56,7 @@ exit code.
 """
 import importlib
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -74,8 +77,17 @@ import warnings
 # `lib.runner` and `lib.scoring` arrive through `run` on the line below, ahead of
 # every suite that shares them, and `lib.scoring` holds the distractor patterns most
 # suites score through.
-FLAG_WARNING = "[Ff]lags not at the start"
+FLAG_TEXT = "Flags not at the start"      # literal, for `PYTHONWARNINGS`
+FLAG_WARNING = "[Ff]lags not at the start"  # regex, for `filterwarnings`
 warnings.filterwarnings("error", message=FLAG_WARNING)
+
+# The same rule for the children, which a filter installed here cannot reach: a
+# warning filter is per-process state and `subprocess` does not carry it across. Each
+# child compiles patterns of its own, and on an interpreter that only warns it would
+# exit zero having written the warning to stderr — so the defect passed locally and
+# failed in CI, which is the split this whole file exists to close. `PYTHONWARNINGS`
+# takes a literal message prefix rather than a regex, hence the two spellings above.
+CHILD_ENV = {**os.environ, "PYTHONWARNINGS": f"error:{FLAG_TEXT}"}
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -99,12 +111,15 @@ MISSING_CORPUS = "This is a missing corpus, not a broken checkout."
 # A hand-built round, committed so the re-score path can be exercised anywhere. It
 # carries its own cases because the suite that reaches that path builds its real ones
 # from recorded sessions, which exist on one machine. Deliberately not under
-# `results/`: everything there is generated and git-ignored, and a committed file in
-# among it reads as output rather than as a fixture the gate depends on.
+# `results/`: the round files there are git-ignored and the reports beside them are
+# committed output, so a fixture the gate depends on would read as one more result
+# rather than as an input.
 FIXTURE = HERE / "fixtures" / "stop-judge-round.json"
 
 # The manifest that decides whether this gate runs at all.
 PACKAGE_JSON = HERE.parent / "package.json"
+
+CI_WORKFLOW = HERE.parent / ".github" / "workflows" / "ci.yml"
 
 # One short reply, handed to every checker. It is not meant to score well; it is
 # meant to make the checker run. What it must not do is decide the result, which
@@ -213,9 +228,22 @@ def check_suite(module_path):
         # name — one kept in an unlisted field, or written inline in the checker
         # itself. Those compile inside this call, where the process-wide rule makes
         # a misplaced flag raise on every interpreter rather than only on the strict
-        # ones. Nothing is recompiled afterwards to check them: a second compile of
-        # the same pattern is served from `re`'s cache without being parsed, so it
-        # would report clean however broken the pattern is.
+        # ones. Nothing is recompiled afterwards to check them, and nothing needs to
+        # be: the rule is already in force when the checker compiles, so the first
+        # compile is the one that raises and the `except` below is what catches it. A
+        # pattern that failed to compile is never cached — only a successful compile
+        # is — so a second pass would re-raise what was already reported here.
+        #
+        # Both entry points a case reaches, not just the checker. `build_prompt` runs
+        # nowhere else until a round is already spending money, and some suites hang
+        # their baseline-drift guard off it — the check that a hand-copied V0-shipped
+        # still matches the text the hook ships. An assertion only a paid run reaches
+        # is one nobody meets until the bill arrives.
+        try:
+            module.build_prompt(next(iter(variants.values())), case)
+        except Exception as exc:
+            notes.append(f"{case['id']}: build_prompt() raised {type(exc).__name__}: {exc}")
+
         try:
             verdict = module.evaluate(case, PROBE)
         except Exception as exc:
@@ -257,11 +285,30 @@ def check_rescore():
     """
     from lib import rescore as _rescore
     from lib.rescore import _MeasuredText
+    from lib.scoring import _lines
     from suites.stop_judge import suite as stop_judge
 
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     meta, cases, records = fixture["meta"], fixture["cases"], fixture["records"]
     notes = []
+
+    # The fixture's numbers have to differ from today's, or the assertion further down
+    # stops discriminating without saying so. That check reads the size off the table
+    # and compares it with what the round recorded; if the two are equal, a report that
+    # ignored the round and re-derived from today's text prints the same figure and
+    # passes. Measured: the identical planted defect goes red on the fixture as
+    # committed and green once its four numbers are refreshed to today's. The fixture
+    # says it must stay that way, which is prose — this is the part that enforces it.
+    live_arms = stop_judge.variants()
+    for dimension, measure in (("variant_chars", len), ("variant_lines", _lines)):
+        for arm, recorded in meta[dimension].items():
+            if arm in live_arms and recorded == measure(str(live_arms[arm])):
+                notes.append(
+                    f"fixture {dimension}[{arm}] is {recorded}, which is what today's "
+                    "text measures — a derived size is no longer distinguishable from "
+                    "a recorded one, so the size assertion below tests nothing. Change "
+                    "the fixture to a number today's text cannot produce."
+                )
 
     # Both shapes of round, because the interesting one is the round that recorded
     # only some of what a report wants. Rounds exist that carry `variant_chars` and
@@ -339,23 +386,43 @@ def check_rescore():
 
 
 def check_wiring():
-    """This gate has to stay in the chain that runs before a commit.
+    """This gate has to stay reachable from both places that run it.
 
-    Nothing else would report it missing. CI invokes the script by its own name, so
-    taking the step out of `test:all` leaves every CI job green while removing the
-    only place a developer meets the bench before pushing — a gate that stops running
-    is indistinguishable from one that keeps passing.
+    They are not the same place and neither reports the other missing. `test:all` is
+    the aggregate a developer runs by hand — nothing invokes it automatically, since
+    the pre-commit hook runs only lint-staged and the symlink guard. CI never runs
+    `test:all` either; it invokes `check:evals` as a step of its own. So dropping the
+    step from `test:all` leaves every CI job green while removing the local run, and
+    deleting the CI step leaves the gate off every pull request while `test:all` still
+    passes. A gate that stops running is indistinguishable from one that keeps passing,
+    so both legs are asserted here.
     """
+    notes = []
     try:
         scripts = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["scripts"]
     except (OSError, ValueError, KeyError) as exc:
         return [f"cannot read scripts from {PACKAGE_JSON}: {type(exc).__name__}: {exc}"]
     if "check:evals" not in scripts:
         return ["package.json declares no `check:evals` script"]
+    # The script still has to invoke this file. Asserting only that the name appears
+    # somewhere lets it be stubbed out — during a Python-less CI incident, say — and
+    # never restored, with every check below still green.
+    if "self_check.py" not in scripts["check:evals"]:
+        notes.append("`check:evals` no longer runs `evals/self_check.py`: "
+                     f"{scripts['check:evals']!r}")
     if "check:evals" not in scripts.get("test:all", ""):
-        return ["`test:all` no longer runs `check:evals` — this gate is off the chain "
-                "that runs before a commit, and CI would not report it"]
-    return []
+        notes.append("`test:all` no longer runs `check:evals` — the aggregate a "
+                     "developer runs by hand no longer reaches this gate, and CI's "
+                     "own step would not report that")
+    try:
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    except OSError as exc:
+        notes.append(f"cannot read {CI_WORKFLOW}: {type(exc).__name__}: {exc}")
+    else:
+        if "check:evals" not in workflow:
+            notes.append("no CI job runs `check:evals` — this gate is off every pull "
+                         "request, and `test:all` passing locally would not report it")
+    return notes
 
 
 def main():
@@ -371,7 +438,8 @@ def main():
         print("gate wiring OK")
 
     for label, argv in SELF_CHECKS:
-        done = subprocess.run(argv, cwd=HERE, capture_output=True, text=True)
+        done = subprocess.run(argv, cwd=HERE, capture_output=True, text=True,
+                              encoding="utf-8", env=CHILD_ENV)
         # Exit zero is not proof a child checked anything, so the child has to say it
         # passed rather than merely decline to fail. That catches one that exits zero
         # without reaching its own report — an early return, or an exception on a path
@@ -384,6 +452,13 @@ def main():
         said_ok = f"{label} OK".lower() in done.stdout.lower()
         if done.returncode == 0 and said_ok:
             print(f"{label} OK")
+            # A child that passed can still have said something. Warnings go to stderr,
+            # which is where the misplaced-flag warning lands on the interpreters that
+            # only warn — so discarding a passing child's stderr throws away the one
+            # signal this gate is built around, on exactly the interpreter where it is
+            # the only signal there is.
+            for line in done.stderr.strip().splitlines()[-12:]:
+                print(f"    {line}")
             continue
         broken.append(label)
         print(f"{label} BROKEN")

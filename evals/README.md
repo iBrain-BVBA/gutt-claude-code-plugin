@@ -42,8 +42,10 @@ compiles when it is first imported.
 
 Installing it once rather than at each call site is what makes it work. `re` caches
 compiled patterns, and a cache hit returns before the parser that raises ever runs, so
-whichever call reaches a pattern first would silence every later check of it. For the
-same reason nothing is recompiled afterwards to verify it.
+whichever call reaches a pattern first would silence every later check of it. Nothing
+is recompiled afterwards to verify a pattern, and nothing needs to be: with the rule
+in force from the start, the first compile is the one that raises, and a compile that
+raised was never cached to begin with.
 
 A suite whose corpus was recorded on another machine is skipped by name and counted,
 and a run that exercised nothing exits non-zero.

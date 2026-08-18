@@ -114,7 +114,7 @@ List all hooks that are active and what they do:
 | session-end          | SessionEnd           | Finalizes the session record and clears session snooze |
 | user-prompt-submit   | UserPromptSubmit     | Injects relevant memory context before each prompt     |
 | post-memory-search   | PostToolUse (gutt)   | Records that memory was searched, for the recency gate |
-| _(prompt hook)_      | Stop                 | Judges whether the turn is worth capturing to memory   |
+| stop-capture         | Stop                 | Judges whether the turn is worth capturing to memory   |
 ```
 
 The status bar HUD is not a hook and is not on by default — a plugin cannot install

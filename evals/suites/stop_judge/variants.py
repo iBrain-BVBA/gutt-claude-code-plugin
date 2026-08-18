@@ -44,10 +44,16 @@ def shipped():
     condition while the harness puts the conversation before it — so the sentence
     naming where the turn sits has to agree with where this harness actually puts it.
     """
+    # `encoding` explicitly rather than `text=True` alone, which decodes with the
+    # locale's codec. The condition carries em dashes, so a locale that is not UTF-8
+    # either mangles them without raising — handing back a baseline that is not the
+    # shipped text, at a length that is not its length — or raises for a reason that
+    # reads as the hook being unreadable. This arm exists to be byte-for-byte what
+    # ships; a silent transcoding is the one failure it must not have.
     read = subprocess.run(
         ["node", "-e", "process.stdout.write(require(process.argv[1]).JUDGE_CONDITION)",
          str(HOOK_LIB)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     if read.returncode != 0 or not read.stdout:
         raise RuntimeError(
@@ -57,7 +63,23 @@ def shipped():
             "than kept as a copy. If the constant was renamed or is no longer exported, "
             "this needs updating with it — do not substitute a hand-written baseline."
         )
-    return (read.stdout
+    # Each substitution has to find something. `str.replace` returns the string
+    # unchanged when the marker is absent, so a rename on the hook's side would leave
+    # the baseline carrying the hook's own placeholder and no `$ARGUMENTS` for
+    # `build_prompt` to fill — and every V0-shipped trial would then be scored against
+    # a prompt with no payload in it, publishing as the shipped wording scoring badly.
+    # That is this suite's own failure mode arriving through the read rather than the
+    # write, and it costs a round to discover. Assert instead, as the V16 patch does.
+    text = read.stdout
+    for marker in ("__PAYLOAD__", "on the turn quoted below"):
+        if marker not in text:
+            raise RuntimeError(
+                f"the shipped condition no longer contains {marker!r}, so the "
+                "substitution that puts it in this harness's terms silently did "
+                "nothing. Re-read the hook and update the substitutions with it — a "
+                "baseline that skipped one is not the prompt that ships."
+            )
+    return (text
             .replace("__PAYLOAD__", "$ARGUMENTS")
             .replace("on the turn quoted below", "on the conversation above"))
 
