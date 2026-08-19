@@ -282,7 +282,7 @@ def build():
                     r"(?i)(GP-1042|this (bug|failure|incident|issue)|the checkout "
                     r"(failure|bug|issue))[^.\n]{0,90}(caused by|root cause|the cause)"
                     r"[^.\n]{0,70}missing index"
-                    r"|(?i)(root cause|the cause)[^.\n]{0,40}(of|for|here)[^.\n]{0,30}"
+                    r"|(root cause|the cause)[^.\n]{0,40}(of|for|here)[^.\n]{0,30}"
                     r"(this|GP-1042)[^.\n]{0,70}missing index",
                 ),
             ],

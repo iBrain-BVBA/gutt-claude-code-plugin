@@ -22,6 +22,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from lib.runner import FAST_MODEL, failed, run_matrix  # noqa: E402
+from lib.scoring import _lines  # noqa: E402
 
 SUITES = {
     "stop-judge": "suites.stop_judge.suite",
@@ -137,9 +138,10 @@ def main():
     ap.add_argument("--cases", nargs="*", help="limit to these case ids")
     ap.add_argument("--workers", type=int, default=8)
     # The judge model is part of the result, not a detail of how it was produced: the
-    # shipped Stop hook pins `model` in hooks.json, so a table measured on a different
-    # model does not describe what ships. Default stays FAST_MODEL for continuity with
-    # every round already in results/.
+    # shipped Stop hook pins its own model — `JUDGE_MODEL` in `hooks/lib/stop-judge.cjs`,
+    # passed to the child on the command line — so a table measured on a different model
+    # does not describe what ships. Default stays FAST_MODEL for continuity with every
+    # round already in results/.
     ap.add_argument("--model", default=FAST_MODEL,
                     help=f"judge model (default {FAST_MODEL}); pass the full id, not an alias")
     ap.add_argument("--list", action="store_true", help="list suites and exit")
@@ -207,6 +209,10 @@ def main():
         # but cannot reconstruct the size a report quotes, so a re-score had no way to
         # state the measured length and fell back to whatever the skill file says now.
         "variant_chars": {k: len(str(v)) for k, v in variant_map.items()},
+        # Lines as well, and counted by the same helper the table prints with, so a
+        # re-score reports the shape the round measured rather than deriving one
+        # number from the round and the other from whatever is on disk later.
+        "variant_lines": {k: _lines(str(v)) for k, v in variant_map.items()},
     }
 
     # Fill the name claimed above so an aborted round is a readable file rather than

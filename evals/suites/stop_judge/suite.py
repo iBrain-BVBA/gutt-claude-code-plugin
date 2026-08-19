@@ -12,7 +12,7 @@ from lib.scoring import accuracy_table, per_case_table, shape_table  # noqa: E40
 from . import corpus, variants as V  # noqa: E402
 
 NAME = "stop-judge"
-DESCRIPTION = "Does the Stop prompt hook fire on durable findings and stay quiet otherwise"
+DESCRIPTION = "Does the Stop hook's judge fire on durable findings and stay quiet otherwise"
 
 GATED = re.compile(r"\b(Lesson|Decision|WorkingAgreement)\b")
 
@@ -28,9 +28,11 @@ def cases():
 def build_prompt(variant_text, case):
     """What the model receives: the turn, then the prompt with $ARGUMENTS filled in.
 
-    The real judge gets the turn as message history and Claude Code prepends its own
-    'Based on the conversation transcript above'; the harness folds both into one user
-    message. The gap is identical for every variant, so comparisons hold.
+    The shipped judge is given the turn's closing assistant message alone, quoted below
+    its condition; this folds a whole rendered turn and the prompt into one user
+    message. The gap is identical for every variant, so comparisons hold — but it runs
+    in the bench's favour rather than against it, which is worth knowing before reading
+    an absolute number off a round.
     """
     payload = json.dumps({
         "session_id": "eval-" + case["id"],

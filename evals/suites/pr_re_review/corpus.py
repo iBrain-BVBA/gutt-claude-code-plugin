@@ -332,10 +332,10 @@ def build():
                 (
                     "read-back",
                     r"get_episodes_for_entity"
-                    r"|(?i)verif\w+[^.\n]{0,30}(write|episode|capture|group)"
-                    r"|(?i)read[^.\n]{0,30}(episode|write|capture)[^.\n]{0,20}back"
-                    r"|(?i)read back"
-                    r"|(?i)confirm\w*[^.\n]{0,30}(write|episode|capture)[^.\n]{0,20}"
+                    r"|verif\w+[^.\n]{0,30}(write|episode|capture|group)"
+                    r"|read[^.\n]{0,30}(episode|write|capture)[^.\n]{0,20}back"
+                    r"|read back"
+                    r"|confirm\w*[^.\n]{0,30}(write|episode|capture)[^.\n]{0,20}"
                     r"(landed|stored|group)",
                 ),
                 (

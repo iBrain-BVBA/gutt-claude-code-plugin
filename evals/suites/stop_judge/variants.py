@@ -13,10 +13,11 @@ behaviour that has already failed live:
 
 V0 is read from the shipped hook so the baseline can never drift from what is running.
 """
-import json
 import pathlib
+import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+HOOK_LIB = ROOT / "gutt-core" / "hooks" / "lib" / "stop-judge.cjs"
 SKILL = "gutt-pro:memory-capture"
 EXAMPLE = (
     f"Run the `{SKILL}` skill.\n"
@@ -26,8 +27,75 @@ EXAMPLE = (
 
 
 def shipped():
-    hooks = json.loads((ROOT / "gutt-core" / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    return hooks["hooks"]["Stop"][0]["hooks"][0]["prompt"]
+    """The judge condition the Stop handler actually ships, read from the hook itself.
+
+    The hook exports the constant, so the baseline is asked for rather than copied.
+    This used to read the text out of `hooks.json`, which carried it while the
+    handler was a `type: "prompt"` hook; the handler runs a command now and the
+    manifest holds only a command line, so that read raised for weeks with nothing
+    to notice — the suite is outside the test gate, and its cases only build where
+    their sessions were recorded, so "cannot run here" covered "cannot run at all".
+    Reading the export follows the prompt wherever it moves next and fails loudly
+    the moment it stops being exported.
+
+    Two substitutions put the shipped text in the terms this harness presents a case
+    in; neither changes what is measured. The hook fills its own `__PAYLOAD__` while
+    `build_prompt` fills `$ARGUMENTS`, and the hook quotes the turn after the
+    condition while the harness puts the conversation before it — so the sentence
+    naming where the turn sits has to agree with where this harness actually puts it.
+    """
+    # `encoding` explicitly rather than `text=True` alone, which decodes with the
+    # locale's codec. The condition carries em dashes, so a locale that is not UTF-8
+    # either mangles them without raising — handing back a baseline that is not the
+    # shipped text, at a length that is not its length — or raises for a reason that
+    # reads as the hook being unreadable. This arm exists to be byte-for-byte what
+    # ships; a silent transcoding is the one failure it must not have.
+    # `timeout` because this read sits inside the offline gate, which runs in CI. The
+    # hook lib is a pure module today, but a `require` that ever keeps the loop alive
+    # would hang here with no output rather than fail — and a hung job is re-run, not
+    # read, so the cause would never be seen.
+    try:
+        read = subprocess.run(
+            ["node", "-e", "process.stdout.write(require(process.argv[1]).JUDGE_CONDITION)",
+             str(HOOK_LIB)],
+            capture_output=True, text=True, encoding="utf-8", timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"reading JUDGE_CONDITION from {HOOK_LIB} did not finish in 30s. "
+            "Requiring the hook lib should be a pure module load; if it now starts "
+            "something that keeps node alive, this arm cannot read the shipped text."
+        ) from exc
+    if read.returncode != 0 or not read.stdout:
+        raise RuntimeError(
+            f"could not read JUDGE_CONDITION from {HOOK_LIB}.\n"
+            # The head of stderr, not the tail: node prints the offending line and the
+            # error class first and the stack after it, so a tail slice keeps the frames
+            # and drops the sentence naming what went wrong.
+            f"{read.stderr.strip()[:400]}\n"
+            "The baseline is the prompt that ships, so it is read from the hook rather "
+            "than kept as a copy. If the constant was renamed or is no longer exported, "
+            "this needs updating with it — do not substitute a hand-written baseline."
+        )
+    # Each substitution has to find something. `str.replace` returns the string
+    # unchanged when the marker is absent, so a rename on the hook's side would leave
+    # the baseline carrying the hook's own placeholder and no `$ARGUMENTS` for
+    # `build_prompt` to fill — and every V0-shipped trial would then be scored against
+    # a prompt with no payload in it, publishing as the shipped wording scoring badly.
+    # That is this suite's own failure mode arriving through the read rather than the
+    # write, and it costs a round to discover. Assert instead, as the V16 patch does.
+    text = read.stdout
+    for marker in ("__PAYLOAD__", "on the turn quoted below"):
+        if marker not in text:
+            raise RuntimeError(
+                f"the shipped condition no longer contains {marker!r}, so the "
+                "substitution that puts it in this harness's terms silently did "
+                "nothing. Re-read the hook and update the substitutions with it — a "
+                "baseline that skipped one is not the prompt that ships."
+            )
+    return (text
+            .replace("__PAYLOAD__", "$ARGUMENTS")
+            .replace("on the turn quoted below", "on the conversation above"))
 
 
 V1 = f"""Nothing from this finished turn needs to be written to the team's long-term memory.
@@ -280,9 +348,18 @@ assert V16 != V14, "V16 patch failed to apply — V14's reason spec was reworded
 
 
 def all_variants():
-    return {"V0-shipped": shipped(), "V1": V1, "V2": V2, "V3": V3, "V4": V4,
+    text = shipped()
+    arms = {"V0-shipped": text, "V1": V1, "V2": V2, "V3": V3, "V4": V4,
             "V5": V5, "V6": V6, "V7": V7, "V8": V8, "V9": V9, "V10": V10,
-            "V12": V12, "V13": V13, "V14": V14, "V15": V15, "V16": V16}
+            "V12": V12, "V13": V13, "V15": V15, "V16": V16}
+    # V14's wording is what ships, so scoring it under its own name as well would buy
+    # the same measurement twice. Conditional rather than deleted, and V14 stays
+    # defined because V16 is patched from it: the day the shipped prompt moves on,
+    # V14 becomes a distinct candidate again and returns to the set on its own,
+    # without anyone having to remember to put it back.
+    if text != V14:
+        arms["V14"] = V14
+    return arms
 
 
 if __name__ == "__main__":

@@ -269,6 +269,16 @@ def bare_distractors(case, text, back=600, fwd=150, chain=None):
 
 
 def _lines(text):
+    """Non-blank line count, taken from the object when it carries its own.
+
+    A re-score hands this a stand-in for the variant text rather than the text
+    itself, because the length worth printing is the one the round measured, not
+    the one on disk today. The stand-in reports its own count; anything else is
+    a real string and gets counted here.
+    """
+    carried = getattr(text, "lines", None)
+    if carried is not None:
+        return carried
     return len([l for l in text.split("\n") if l.strip()])
 
 
@@ -321,13 +331,32 @@ def per_case_table(results, cases, variants, order=None):
         by[(r["variant"], r["case"])].append(r)
     rows = [f"{'case':>11} {'want':>6}" + "".join(f"{v:>11}" for v in order)]
     rows.append("-" * len(rows[0]))
+    errored = False
     for c in cases:
         cells = ""
         for v in order:
             rs = by.get((v, c["id"])) or []
-            cells += (f"{sum(bool(r.get('correct')) for r in rs)}/{len(rs)}" if rs else "—").rjust(11)
+            if not rs:
+                cells += "—".rjust(11)
+                continue
+            # A cell whose checker raised is marked, never left to read as a wrong
+            # answer. The runner records an error per cell so a bad reply costs one
+            # cell rather than the matrix, but a table that prints only correct-of-
+            # trials renders "the checker could not run" and "the model got it
+            # wrong" identically — and the second is what a reader believes, because
+            # a plausible number is more convincing than a traceback.
+            cell = f"{sum(bool(r.get('correct')) for r in rs)}/{len(rs)}"
+            if any(r.get("error") for r in rs):
+                cell += "!"
+                errored = True
+            cells += cell.rjust(11)
         want = "FIRE" if not c["want_ok"] else "quiet"
         rows.append(f"{c['id']:>11} {want:>6}{'~' if not c['confident'] else ' '}{cells}")
+    if errored:
+        rows.append("")
+        rows.append("! at least one trial in this cell errored — the call failed, or the "
+                    "checker raised — so the score beside it is not a measurement of the "
+                    "reply")
     return "\n".join(rows)
 
 
