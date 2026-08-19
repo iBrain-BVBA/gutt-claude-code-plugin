@@ -6,11 +6,20 @@ want**. Adding a marketplace installs nothing by itself, which is the step peopl
 Already on 2.x? Read [`migration-3.0.md`](./migration-3.0.md) instead — the plugin was
 renamed, so you have work to do that a fresh install does not.
 
+**Where to run these.** Two surfaces, and the difference matters:
+
+- **`claude …`** is a terminal command. Plugin and marketplace management is shown this way
+  throughout, because that is where `--keep-data` and `--scope` work, and it does not open a
+  panel you then have to dismiss.
+- **`/…`** is typed inside a Claude Code session. Everything beginning `/gutt-pro:` is a gutt
+  command and exists only there — there is no terminal equivalent. `/reload-plugins` is
+  session-only too.
+
 ## Step 1 — Add the marketplace
 
 ```
-/plugin marketplace list                                    # already there? skip ahead
-/plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
+claude plugin marketplace list                                    # already there? skip ahead
+claude plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
 ```
 
 That `owner/repo` shorthand is the GitHub repository. It keeps its original name even though
@@ -19,14 +28,14 @@ the plugin is now `gutt-pro`, so the shorthand looks mismatched and is correct.
 If it is already listed you need nothing further — installing with the full
 `name@marketplace` spelling in step 2 refreshes the catalogue before looking the plugin
 up. Ours is a third-party marketplace, so background auto-update is off by default; if an
-install reports the plugin is missing, run `/plugin marketplace update gutt-plugins` once
+install reports the plugin is missing, run `claude plugin marketplace update gutt-plugins` once
 and retry.
 
 ⚠ **Do not add it by linking straight to `marketplace.json`.** A
 `https://raw.githubusercontent.com/.../marketplace.json` URL looks equivalent and is not:
 Claude Code downloads only that one file, while our catalogue points at each plugin by a path
 inside the repository — so installs fail with `path not found`. If you already added the URL
-form, run `/plugin marketplace remove gutt-plugins` and add it again as above.
+form, run `claude plugin marketplace remove gutt-plugins` and add it again as above.
 
 ## Step 2 — Install what fits your work
 
@@ -70,8 +79,10 @@ Then restart and authenticate: `/mcp` → `gutt-mcp-remote` → Authenticate.
 ```
 
 **It is opt-in.** Nothing writes your settings unless you ask, so there is no bar until you
-run this. It shows the connection, whether gutt is on or snoozed, the group you write to,
-context usage, and turns since your last recall.
+run this. It shows the connection, whether gutt is on or snoozed, the capture mode when it is
+not the default, and context usage. It shows a group name only if one is set locally through
+`GUTT_GROUP_ID` or a `config.json` — the normal setup resolves it from your login and leaves
+it empty.
 
 ## Step 5 — Learn the four commands that matter
 
@@ -109,7 +120,7 @@ Cursor has no `claude mcp add` CLI; the setup wizard registers the server by wri
   with the `owner/repo` form in step 1.
 - **`Marketplace "gutt-plugins" not found`** — step 1 was skipped.
 - **Install says the plugin is not in the marketplace** — stale catalogue. Run
-  `/plugin marketplace update gutt-plugins` and retry.
+  `claude plugin marketplace update gutt-plugins` and retry.
 - **Commands missing right after installing** — run `/reload-plugins`, or restart.
 - **"MCP server not found"** — restart the IDE after installing.
 - **Authentication fails** — the endpoint URL must start with `https://` and end with `/mcp`.
@@ -118,7 +129,8 @@ Cursor has no `claude mcp add` CLI; the setup wizard registers the server by wri
 - **No status bar** — it is opt-in; run `/gutt-pro:statusline`.
 - **Nothing is recalled or captured** — `/gutt-pro:config` reports the state and its scope;
   `/gutt-pro:on` clears both a snooze and a durable off.
-- **Two of everything** — two recall injections, two status bars: the 2.x plugin is still
-  installed alongside 3.0. Uninstall `gutt-claude-code-plugin`.
+- **Two of everything** — duplicate recall injections, and two capture judges making two
+  model calls per turn: the 2.x plugin is still installed alongside 3.0. Uninstall
+  `gutt-claude-code-plugin`. The status bar will not double — there is only one slot for it.
 - **Hook errors** — see `${CLAUDE_PLUGIN_DATA}/hook-errors.log`, per
   [`runtime-state-convention.md`](./runtime-state-convention.md).

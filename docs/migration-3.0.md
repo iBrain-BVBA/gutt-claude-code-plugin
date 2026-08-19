@@ -28,13 +28,22 @@ same. Everything between them is migration-only.
 
 Then read **Using gutt day to day**, because one command reversed meaning.
 
+**Where to run these.** Two surfaces, and the difference matters:
+
+- **`claude …`** is a terminal command. Plugin and marketplace management is shown this way
+  throughout, because that is where `--keep-data` and `--scope` work, and it does not open a
+  panel you then have to dismiss.
+- **`/…`** is typed inside a Claude Code session. Everything beginning `/gutt-pro:` is a gutt
+  command and exists only there — there is no terminal equivalent. `/reload-plugins` is
+  session-only too.
+
 ## Step 1 — Get the marketplace
 
 **Most people need nothing here.** `gutt-plugins` is the same marketplace 2.x came from, so
 if you installed the old plugin from it, it is still added.
 
 ```
-/plugin marketplace list
+claude plugin marketplace list
 ```
 
 **If `gutt-plugins` is listed, this step is done.** Installing with the full
@@ -51,7 +60,7 @@ Two cases where that automatic refresh does not happen, both with the same fix:
 If an install reports the plugin is not in the marketplace, refresh once and retry:
 
 ```
-/plugin marketplace update gutt-plugins
+claude plugin marketplace update gutt-plugins
 ```
 
 Worth knowing regardless: third-party marketplaces like ours have background auto-update
@@ -61,7 +70,7 @@ into a `name@marketplace` install is what normally covers that.
 **If it is not listed**, add it:
 
 ```
-/plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
+claude plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
 ```
 
 That `owner/repo` shorthand is a GitHub repository, not a typo — **the repository kept its
@@ -70,7 +79,7 @@ still works.
 
 ### Only if yours points at a `marketplace.json` URL
 
-Skip this unless `/plugin marketplace list` shows `gutt-plugins` sourced from a
+Skip this unless `claude plugin marketplace list` shows `gutt-plugins` sourced from a
 `…/marketplace.json` URL rather than from a repository.
 
 That form looks equivalent to the shorthand and is not: Claude Code downloads only the one
@@ -80,8 +89,8 @@ will not fix it, because what is wrong is where the marketplace came from, not h
 is. Re-add it from the repository instead:
 
 ```
-/plugin marketplace remove gutt-plugins
-/plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
+claude plugin marketplace remove gutt-plugins
+claude plugin marketplace add iBrain-BVBA/gutt-claude-code-plugin
 ```
 
 Removing a marketplace uninstalls the plugins you installed from it, which on this path is
@@ -103,9 +112,24 @@ remaining copy is a backup inside the plugin's own data directory — and step 3
 
 ## Step 3 — Remove the old plugin
 
+**Check which scope it is installed at first.** The uninstall below removes a user-scope
+install, which is the usual case — but a plugin installed at project or local scope survives
+it, and then installing 3.0 puts you in exactly the double-registration state warned about
+below.
+
+```
+claude plugin list
+```
+
+That output is grouped by scope. Then remove it:
+
 ```
 claude plugin uninstall gutt-claude-code-plugin@gutt-plugins --keep-data
 ```
+
+If the list showed it under project or local scope, add `--scope project` or `--scope local`
+and repeat for every scope it appears in. A managed install cannot be removed this way at all
+and needs whoever administers your settings.
 
 **Use `--keep-data`.** Uninstalling from your last remaining scope otherwise deletes
 `~/.claude/plugins/data/gutt-claude-code-plugin-gutt-plugins/` outright, and if you ever ran
@@ -113,14 +137,11 @@ claude plugin uninstall gutt-claude-code-plugin@gutt-plugins --keep-data
 Keeping it costs nothing and is the difference between a recoverable mistake and a permanent
 one.
 
-The in-session `/plugin uninstall gutt-claude-code-plugin@gutt-plugins` works too, but it
-opens the plugin panel to confirm — press **Esc** to close it afterwards. The shell form
-above takes the flag and does not interrupt you.
-
 ⚠ **Never run both plugins at once.** If the old one is still installed when the new one
 loads, both register their hooks, and the symptoms are duplicates rather than errors: two
-recall injections per prompt, two capture judges spawning two model calls per turn, two
-status bars. Uninstall before you install.
+recall injections per prompt, and two capture judges spawning two model calls per turn.
+Uninstall before you install. The status bar is the one thing that will not double — Claude
+Code has a single slot for it, so both plugins compete for the same one.
 
 ## Step 4 — Install the pieces you want
 
@@ -151,8 +172,7 @@ Two things worth knowing:
   them pulls in `gutt-pro` and enables it, so you cannot end up with a role plugin that has
   no memory underneath it. Installing the core alone is still the right first move.
 - **A shell install does not affect the session you are in.** It loads next time you start
-  Claude Code, or immediately if you run `/reload-plugins`. Installing from inside a session
-  with `/plugin install <name>@gutt-plugins` tells you which of the two happened.
+  Claude Code, or immediately if you run `/reload-plugins` inside a session.
 
 Then connect to your organization's memory endpoint:
 
@@ -178,8 +198,10 @@ refuses outright if it finds a status bar it did not write, so it will not overw
 custom one.
 
 The bar shows the connection, whether gutt is on or snoozed and until when, the capture mode
-when it is not the default, the group you are writing to, context-window usage, and turns
-since your last recall. Segments drop from the right as the terminal narrows.
+when it is not the default, and context-window usage. It shows a group name only
+when you have set one locally — through `GUTT_GROUP_ID` or a `config.json` — because the
+normal setup resolves your group from your login and leaves the value empty. Context usage
+and the group are the two segments that drop as the terminal narrows; the rest never do.
 
 ## Step 6 — Re-apply your settings
 
@@ -193,6 +215,13 @@ was renamed. The old one is now orphaned at
 | gutt switched off for good            | `/gutt-pro:disable`       |
 | a capture mode other than the default | `/gutt-pro:mode hitl`     |
 | an active snooze                      | `/gutt-pro:off [minutes]` |
+| a hand-set `gutt.group_id`            | see the note — label only |
+
+**`gutt.group_id` is a label, not a setting.** If you set it by hand it will not survive, and
+`--keep-data` does not cover it: it is read from a `config.json` at the plugin root, which is
+version-scoped and moves on every update, rename or not. Nothing breaks. The only effect is
+that the status bar stops showing a group name — where your memory is actually written is
+resolved from your login, not from this value. Set it again only if you want the label back.
 
 Everything else regenerates or is simply gone: per-session state, the one-time 2.x cleanup
 marker, and your per-project answers about migrating built-in memory — so a project where
@@ -334,12 +363,12 @@ tree was never published and has no successor.
 
 ### Settings in `config.json`
 
-| 2.x key                              | 3.0                                                                                                                               |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `gutt.group_id`                      | unchanged                                                                                                                         |
-| `gutt.statusline.passthroughCommand` | **Removed.** The bar no longer chains to a command of yours. Register that command directly in `~/.claude/settings.json` instead. |
-| `gutt.statusline.multiLine`          | **Removed.** The bar is one line and drops segments as the terminal narrows.                                                      |
-| `gutt.statusline.showTicker`         | **Removed** with the counters.                                                                                                    |
+| 2.x key                              | 3.0                                                                                                                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gutt.group_id`                      | still read, same shape — but it fills a status-bar segment and does nothing else. A copy at the plugin root survives neither the rename nor an update. See step 6. |
+| `gutt.statusline.passthroughCommand` | **Removed.** The bar no longer chains to a command of yours. Register that command directly in `~/.claude/settings.json` instead.                                  |
+| `gutt.statusline.multiLine`          | **Removed.** The bar is one line and drops segments as the terminal narrows.                                                                                       |
+| `gutt.statusline.showTicker`         | **Removed** with the counters.                                                                                                                                     |
 
 Of these, `passthroughCommand` is the only one whose removal costs you a working setup
 rather than a preference: a custom status bar chained through the plugin stops appearing.
@@ -351,7 +380,7 @@ rather than a preference: a custom status bar chained through the plugin stops a
   it with the `owner/repo` form in step 1.
 - **`Marketplace "gutt-plugins" not found`** — step 1.
 - **Install says the plugin is not in the marketplace** — your cached catalogue predates
-  `gutt-pro`. Run `/plugin marketplace update gutt-plugins` and retry.
+  `gutt-pro`. Run `claude plugin marketplace update gutt-plugins` and retry.
 - **Nothing is recalled or captured** — `/gutt-pro:config` reports the state and its scope;
   `/gutt-pro:on` clears both a snooze and a disable.
 - **Two of everything** — the 2.x plugin is still installed. Uninstall it.
