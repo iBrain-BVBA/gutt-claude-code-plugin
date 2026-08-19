@@ -24,7 +24,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── templates/              # role-plugin scaffold + its review gates — not shipped
 ├── tests/                  # Unit and E2E tests
-├── evals/                  # prompt/skill bench — not shipped, not in test:all (see below)
+├── evals/                  # prompt/skill bench — not shipped; free half gated (see below)
 ├── docs/                   # Documentation and assets
 └── package.json
 ```
@@ -45,8 +45,21 @@ assert a prompt contains a clause; only an eval tells you whether the clause cha
 what the model does. Candidate wordings are run against turns lifted from real session
 transcripts and scored against hand-labelled verdicts: `python3 evals/run.py --list`.
 
-Python 3 stdlib, no dependencies. Outside `gutt-core/`, referenced by no hook, and
-deliberately out of `npm run test:all` — the calls cost money and take minutes.
+Python 3 stdlib, no packages to install. Outside `gutt-core/` and referenced by no hook.
+
+**The two halves are gated differently, because they cost differently.** A round makes
+real `claude -p` calls, takes minutes, and stays out of `npm run test:all`. The offline
+self-checks make no model calls and finish in under a second, so they run there and in
+CI as `npm run check:evals` — they drive every registered suite through `variants()`,
+`cases()`, `build_prompt()` and one `evaluate()` per case, then compile every pattern
+those cases carry and check that the verdict coming back is a verdict. `build_prompt()`
+is in that list because it is where a suite's baseline-drift guard hangs, and it runs
+nowhere else until a round is already spending money.
+
+A suite whose corpus was recorded on another machine is skipped by name and counted; a
+run that exercised nothing, or that reached fewer suites than the registry should hold,
+exits non-zero. The gate's own wiring is asserted from `tests/` as well as from inside
+itself, because a gate only checks its wiring while that wiring still runs it.
 
 ## Platform Reference Docs — read before designing against the platform
 

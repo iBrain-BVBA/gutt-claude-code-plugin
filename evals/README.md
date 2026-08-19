@@ -7,8 +7,10 @@ whether the clause makes the model do the right thing. This directory answers th
 question by running candidate wordings against turns pulled out of real Claude Code
 session transcripts and scoring the verdicts against hand-assigned labels.
 
-Nothing in here ships. It is outside `gutt-core/`, is not referenced by any hook, and
-is excluded from `npm run test:all`.
+Nothing in here ships. It is outside `gutt-core/` and is referenced by no hook. The
+two halves are gated differently, because they cost differently: a round makes real
+`claude -p` calls and stays out of `npm run test:all`, while the offline self-checks
+make no calls at all and run there and in CI as `npm run check:evals`.
 
 ## Running
 
@@ -17,9 +19,44 @@ python3 evals/run.py stop-judge                    # 1 trial per case
 python3 evals/run.py stop-judge --trials 3         # 3 trials, to see variance
 python3 evals/run.py stop-judge --variants V0 V6   # only these
 python3 evals/run.py --list                        # available suites
+
+python3 evals/self_check.py                        # free, offline, no model calls
 ```
 
-Python 3 standard library only — no dependencies, no virtualenv. Each case is one
+`self_check.py` is the gated half. It runs each module's own self-check, then drives
+every registered suite through `variants()`, `cases()`, `build_prompt()` and one
+`evaluate()` per case, compiles every pattern those cases carry, and checks that what
+`evaluate()` returns is a verdict — a `correct` key holding a bool, since scoring reads
+that field through `bool()` and a string there scores every cell without measuring it. Calling through is the point: a pattern
+is a plain string until a checker searches with it, so a suite builds clean while
+holding one no interpreter accepts, and the failure surfaces during scoring as a
+wrong answer rather than as a crash. It also promotes the misplaced-flag warning to
+an error, so an interpreter that merely warns gives the same answer as one that
+refuses.
+
+The misplaced-flag rule is installed once, for the whole process, ahead of the first
+bench module. That covers three kinds of pattern with one mechanism: named case fields,
+which are compiled directly so a probe reply that triggers nothing still checks them
+— a distractor's excuse is only searched once its token matches; whatever a checker
+compiles inside `evaluate()` **on the branch the probe reply takes**, which reaches
+fields no list knows about and patterns written inline, but not a pattern behind a
+branch that reply does not reach; and the module-level constants a suite or a shared lib
+compiles when it is first imported.
+
+Installing it once rather than at each call site is what makes it work. `re` caches
+compiled patterns, and a cache hit returns before the parser that raises ever runs, so
+whichever call reaches a pattern first would silence every later check of it. Nothing
+is recompiled afterwards to verify a pattern, and nothing needs to be: with the rule
+in force from the start, the first compile is the one that raises, and a compile that
+raised was never cached to begin with.
+
+A suite whose corpus was recorded on another machine is skipped by name and counted,
+and a run that exercised nothing exits non-zero.
+
+Python 3 standard library only — no packages to install, no virtualenv. The one thing
+outside the interpreter is `node`, which the `stop-judge` arm shells out to so its
+baseline is read from the shipped hook rather than copied; every path that runs the
+bench goes through npm, so it is already there. Each case is one
 `claude -p` call against a fast model, run eight at a time; a 8-variant × 14-case ×
 3-trial matrix is roughly 340 calls and about ten minutes.
 
@@ -30,7 +67,8 @@ unit of comparison here. A re-run of the same config gets an `-rN` suffix rather
 replacing the earlier round, and the summary JSON carries the same suffix — it holds that
 round's identity, so the next round must not overwrite it. Raw files are
 `{"meta": …, "records": […]}` — the meta carries date, git SHA, model, a hash of each
-variant's text, and the job count the round was supposed to produce, so a round stays
+variant's text, its length in characters and non-blank lines, and the job count the
+round was supposed to produce, so a round stays
 self-describing and a killed run is recognisable by holding fewer records than that;
 rounds written before meta existed are bare lists. Replies are stored in full: records
 are re-scored offline when a checker changes, and a truncated `raw` (an earlier
@@ -103,18 +141,18 @@ was the largest gap and now has its suite.
 
 ## Suites
 
-| Suite                    | What it measures                                                                                                              |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `stop-judge`             | The `Stop` prompt hook's verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
-| `prompt-pointer`         | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious          |
-| `capture-close`          | After a fired capture has been written: does the reply report it _and_ close on the work, or drop one of the two              |
-| `weekly-recap`           | The time-window recap skill: does "last week" become absolute dates and a mention walk, and does the report keep the window   |
-| `bug-investigation`      | Bug triage: severity with a rubric, a refutable suspected area, cited history                                                 |
-| `sub-task-breakdown`     | Story breakdown: Jira-native grammar, testable criteria, nothing filed                                                        |
-| `pr-re-review`           | Memory-informed PR review: recall first, verify findings, cite standards                                                      |
-| `story-creation`         | Story drafting: sources cited, gaps visible, no ungated Jira writes                                                           |
-| `backlog-dedupe`         | Backlog dedupe: seeded clusters found, stale justified, nothing acted                                                         |
-| `backlog-prioritization` | Backlog ranking: moves cited, evidence-less items held, basis stated, no writes                                               |
+| Suite                    | What it measures                                                                                                             |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `stop-judge`             | The `Stop` hook's judge verdict: does it fire on turns that produced a durable Insight or Incident, and stay quiet otherwise |
+| `prompt-pointer`         | The `UserPromptSubmit` recall pointer: does the agent consume it, ignore it, or surface it to the user as suspicious         |
+| `capture-close`          | After a fired capture has been written: does the reply report it _and_ close on the work, or drop one of the two             |
+| `weekly-recap`           | The time-window recap skill: does "last week" become absolute dates and a mention walk, and does the report keep the window  |
+| `bug-investigation`      | Bug triage: severity with a rubric, a refutable suspected area, cited history                                                |
+| `sub-task-breakdown`     | Story breakdown: Jira-native grammar, testable criteria, nothing filed                                                       |
+| `pr-re-review`           | Memory-informed PR review: recall first, verify findings, cite standards                                                     |
+| `story-creation`         | Story drafting: sources cited, gaps visible, no ungated Jira writes                                                          |
+| `backlog-dedupe`         | Backlog dedupe: seeded clusters found, stale justified, nothing acted                                                        |
+| `backlog-prioritization` | Backlog ranking: moves cited, evidence-less items held, basis stated, no writes                                              |
 
 A suite is no longer confined to scoring verdicts. `run_matrix` takes a `system` argument
 and `run.py` passes a suite's own `SYSTEM` when it defines one, so a suite can frame the
@@ -213,9 +251,12 @@ The harness reproduces the judge's inputs closely but not exactly, and the gaps 
 run in the same direction for every variant, so comparisons hold even where absolute
 accuracy does not.
 
-- **Conversation shape.** The real judge receives the turn as message history;
-  the harness passes it inside a single user message. Verified by probe: a prompt hook
-  can see the user's prompt, the assistant's prose, tool calls, _and_ tool output.
+- **Conversation shape.** The real judge is given one message — the turn's closing
+  assistant message, quoted into a single prompt below the condition. It does not see
+  the user's prompt, the tool calls, or the tool output. A case here renders the whole
+  turn instead, so this gap runs the opposite way to the others: the bench hands a
+  variant more context than the shipped judge has, and a wording that leans on that
+  context will read better here than it behaves in a session.
 - **Turn length.** Long turns are elided in the middle. Cuts land on line boundaries
   on purpose — a cut mid-sentence reads to the judge as work left unfinished, which
   every candidate prompt treats as a reason to stay quiet, so sloppy clipping
@@ -257,12 +298,17 @@ in a real conversation:
   in front of the user as the assistant's answer, 4 times out of 4.
 
 So finish with a live probe, not a green table: run the candidate through
-`claude -p --plugin-dir <repo>/gutt-core --debug-file <log>` and read the verdicts out of
-the log. Note that `--debug` prints nothing at all in `-p` mode — only `--debug-file`
-works — and that a clean reply proves nothing unless the log also shows the judge ran.
-Grep `Processing prompt hook` for invocations and `condition was (not )?met` for
-verdicts; the count of `Read hooks.json for plugin` lines is **not** a proxy for either
-(two reads of the same path still registered and fired once).
+`claude -p --plugin-dir <repo>/gutt-core --debug-file <log>`, and read the verdicts out
+of the hook's own log rather than the CLI's. A clean reply proves nothing unless a log
+also shows the judge ran, and the CLI's log is not the one that shows it: the Stop
+handler runs a command, so it emits none of the debug lines a prompt hook did —
+grepping for those returns nothing however well the judge ran, which reads as proof it
+never did. Keep `--debug-file` anyway for everything else the run does, and note that
+`--debug` prints nothing at all in `-p` mode.
+What it does instead is write one `Stop: …` line per turn into `hook-invocations.log`
+in the plugin's data directory, naming the outcome: a judge verdict, or the reason
+there was none. That survives the CLI changing its logging, and it tells a judge that
+answered apart from one that could not.
 
 ## Reading the report
 

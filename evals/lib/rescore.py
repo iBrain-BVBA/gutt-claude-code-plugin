@@ -23,6 +23,8 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
+from lib.scoring import _lines  # noqa: E402
+
 
 def load_round(path):
     """Return `(meta, records)` for a round file of either shape.
@@ -40,16 +42,17 @@ def load_round(path):
 class _MeasuredText:
     """Stands in for a variant's text, reporting the length the round measured.
 
-    A suite's `report()` wants the variant map only for its keys and for
-    `len(text)`, which it prints as the variant's size. Passing today's skill text
+    A suite's `report()` wants the variant map for its keys and for two sizes — the
+    character count through `len(text)`, and the non-blank line count, which the table
+    reads off `.lines` where the object carries one. Passing today's skill text
     to a re-score quoted today's size beside replies generated from an older one.
     Rounds now record the lengths alongside the hashes; where a round predates that,
     `known` is False and the caller says so rather than printing a current length as
     though it were the measured one.
     """
 
-    def __init__(self, chars, known=True):
-        self.chars, self.known = chars, known
+    def __init__(self, chars, lines, known=True):
+        self.chars, self.lines, self.known = chars, lines, known
 
     def __len__(self):
         return self.chars
@@ -104,6 +107,35 @@ def round_identity(stem, meta, guessed):
     return out
 
 
+def measured_for(meta, live, variant):
+    """The size to print for one variant: what the round recorded, or today's.
+
+    Both numbers or neither. `run.py` records `variant_chars` from one release and
+    `variant_lines` from the next, so a round written between the two carries chars and
+    not lines — no such file is on disk today, and this is the rule for when one is.
+    Taking the measured character count before
+    `variant_lines` was written beside it, and taking the measured character count
+    while deriving the line count from the text on disk today would put two numbers
+    describing two different texts on one row — the confusion this stand-in exists to
+    prevent, narrowed to the rounds nobody thought to try. So a round missing either
+    falls back to today's text for both and reports `known` false, which the caller
+    turns into a line saying the size shown is not what was measured. Discarding a
+    recorded character count for those rounds is the cheaper mistake, and unlike the
+    alternative it is visible.
+
+    Module level rather than a closure so the offline gate can drive this decision
+    directly. A full re-score cannot run where the suite's corpus was never recorded,
+    which is everywhere but one machine — so a closure here is a decision nothing
+    reachable ever checks.
+    """
+    stored_chars = (meta or {}).get("variant_chars") or {}
+    stored_lines = (meta or {}).get("variant_lines") or {}
+    if variant in stored_chars and variant in stored_lines:
+        return _MeasuredText(stored_chars[variant], stored_lines[variant])
+    today = str(live.get(variant, ""))
+    return _MeasuredText(len(today), _lines(today), known=False)
+
+
 def rescore(path, write_report=False):
     meta, records = load_round(path)
     stem = pathlib.Path(path).stem
@@ -150,14 +182,18 @@ def rescore(path, write_report=False):
     # yesterday's replies. Lengths come from the round's own hashes instead.
     measured_cases = {r.get("case") for r in scored}
     case_list = [c for c in suite.cases() if c["id"] in measured_cases]
-    order = [v for v in suite.variants() if v in {r.get("variant") for r in scored}]
-    stored_chars = (meta or {}).get("variant_chars") or {}
+    # Variant order follows the round, not today's arm list. Filtering today's
+    # variants by what the round measured drops any name the suite has since stopped
+    # offering — silently, and out of the one table whose job is to describe that
+    # round. A measured arm that no longer ships is exactly what a re-score is for.
+    # Today's order is kept where it applies so columns stay comparable, and
+    # round-only names are appended rather than placed where today's list cannot say.
+    measured_variants = {r.get("variant") for r in scored}
+    order = [v for v in suite.variants() if v in measured_variants]
+    order += [v for v in dict.fromkeys(r.get("variant") for r in scored)
+              if v is not None and v not in order]
     live = suite.variants()
-    variants = {
-        v: _MeasuredText(stored_chars[v]) if v in stored_chars
-        else _MeasuredText(len(str(live.get(v, ""))), known=False)
-        for v in order
-    }
+    variants = {v: measured_for(meta, live, v) for v in order}
 
     text, _ = suite.report(scored, case_list, variants)
     print(f"re-scored {len(scored) - errored} of {len(records)} records in {stem}")

@@ -15,7 +15,7 @@ import tempfile
 import threading
 
 FAST_MODEL = "claude-haiku-4-5-20251001"
-# A prompt hook is a single-turn JSON call, so the harness keeps the system prompt to
+# The judge is a single-turn JSON call, so the harness keeps the system prompt to
 # that and nothing more. Note that --system-prompt replaces the default but does not
 # suppress CLAUDE.md auto-discovery — which is what `judge_cwd` below is for.
 JUDGE_SYS = "You evaluate a hook condition for Claude Code and reply with a single JSON object."
@@ -39,8 +39,10 @@ def judge_cwd():
     version wrote a `settings.json` into this directory, which did nothing twice over:
     nothing referenced the path, and a bare `./settings.json` is not a file Claude Code
     loads (project settings live at `.claude/settings.json`). The inline form does work —
-    measured, `--settings '{"disableAllHooks": true}'` gives zero hook completions and
-    zero prompt-hook dispatches where an unflagged run gives one of each.
+    measured, `--settings '{"disableAllHooks": true}'` gives zero hook completions where
+    an unflagged run gives them. Measured while Stop was still a prompt hook, so the
+    figure also counted a prompt-hook dispatch; no hook in this plugin is one now, and
+    the flag's effect on command hooks is what the sentence is about.
     """
     return tempfile.mkdtemp(prefix="gutt-eval-")
 
