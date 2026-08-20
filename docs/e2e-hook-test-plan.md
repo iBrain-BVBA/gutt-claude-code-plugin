@@ -40,8 +40,11 @@ in-process. **This plan adds only what the unit tier structurally cannot reach.*
    surfaces. And a command Stop hook's blocking decision is not ignored there — it is
    honoured, continuing the turn exactly as on the CLI, with the hook re-invoked carrying
    `stop_hook_active` when that turn ends (`hook-platform-capabilities.md` §9.1).
-   R23's exit-2 clause is equally untested against a real Cowork run, and moot in
-   practice: no hook in this repository exits 2.
+   R23 also names exit-code 2 as a second blocking channel, though the one-line statement
+   above carries only the blocking-decision half — a divergence between the constraint as
+   recorded in the 3.0 program and as written down here, worth closing when someone
+   rewrites this list. That clause is equally untested against a real Cowork run, and moot
+   in practice: no hook in this repository exits 2, every exit point is 0.
 
    The constraint nonetheless **survives, on a different reason than the one it was
    written for.** A blocking decision in a session shared with another plugin re-enters

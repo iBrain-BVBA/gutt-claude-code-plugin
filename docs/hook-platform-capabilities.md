@@ -2,9 +2,12 @@
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
 **Read:** 2026-07-31 (§8.1) · 2026-07-30 (§5; §1–§4 read 2026-07-29) ·
-**Measured:** 2026-08-20 (§9, both Cowork surfaces) · 2026-07-30 (§5 argv, §6, §7) ·
+**Measured:** 2026-08-20 (§9.1–§9.4 both Cowork surfaces; **§9.5 on the CLI only**) ·
+2026-07-30 (§5 argv, §6, §7) ·
 **Reported:** 2026-07-30 (§8, by the maintainer — not yet re-read from source) ·
-**Method:** `WebFetch` passes plus live CLI runs for §5–§7 (see [Provenance](#provenance))
+**Method:** `WebFetch` passes plus live CLI runs for §5–§7; §9 from a live session of each
+Cowork surface, plus a host reproduction with a synthetic token for the descriptor
+mechanics (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
 docs, tests and recorded memory assume, and one of our recorded findings is now false.
 

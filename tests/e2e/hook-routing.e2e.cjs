@@ -598,8 +598,9 @@ describe(
       // measured on both Cowork surfaces, a command Stop hook's blocking decision is
       // honoured there exactly as on the CLI (`docs/hook-platform-capabilities.md` §9.1).
       // The assertion still earns its place, for the surviving half of the reason: a
-      // blocking decision in a session shared with another plugin ends that plugin's
-      // turn too, which is a coexistence problem whether or not the platform honours it.
+      // blocking decision in a session shared with another plugin re-enters that plugin's
+      // turn as well. It prevents the turn from stopping rather than ending it — which is
+      // a coexistence problem whether or not the platform honours the block.
       //
       // Scope worth stating, because the assertion reads stronger than it is: this passes
       // because the judge finds nothing to capture in this scenario, not because the hook
