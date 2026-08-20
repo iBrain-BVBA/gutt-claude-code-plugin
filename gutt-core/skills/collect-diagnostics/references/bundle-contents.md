@@ -7,6 +7,23 @@ describes the shapes, the manifest describes the run.
 Read `summary.txt` first. This file is for after that, when a symptom points at
 one artifact and you need to know what you are looking at.
 
+## Three tiers, by who owns the file
+
+What a bundle contains is decided by ownership, not by usefulness — a file can be
+useful and still not be collectable.
+
+| Tier                       | What happens                                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **The plugin's own state** | Copied. Known schema, no credential fields, and it is what is under investigation.                                                                           |
+| **Files nobody here owns** | Never copied. Reduced to a `*-shape.json`: key names, structure, booleans, numbers, counts. String values withheld unless the value is itself the diagnosis. |
+| **Conversation content**   | Off unless a flag turned it on. Prompt wording needs `--prompts` / `-Prompts`; transcript bodies need `--transcripts` / `-Transcripts`.                      |
+
+The middle tier is the important one, and its rule runs the opposite way round from
+a redactor's. A redactor copies the file and removes what it recognises, so a
+credential under a key name nobody anticipated survives. A shape keeps only what it
+recognises, so that same credential is withheld — not because it was spotted, but
+because nothing was kept unless it had a reason to be.
+
 ## Bundle layout
 
 ```
@@ -22,20 +39,20 @@ one artifact and you need to know what you are looking at.
 │   ├── sessions/<session-id>.json    the newest N records
 │   └── migrations-index.txt          names and sizes only — never contents
 ├── host/
-│   ├── settings.json                 user-scope settings
-│   ├── settings.local.json           user-scope local overrides
-│   ├── environment.txt               versions, resolved paths, allowlisted environment
+│   ├── settings-shape.json           user-scope settings — shape only
+│   ├── settings-local-shape.json     user-scope local overrides — shape only
+│   ├── environment.txt               versions, resolved paths, which variables are set
 │   └── plugins/
-│       ├── installed_plugins.json    what the host records as installed
-│       ├── config.json               plugin host config
+│       ├── installed-plugins-shape.json  what the host records as installed — shape only
+│       ├── config-shape.json         plugin host config — shape only
 │       ├── cache-index.txt           one entry per installed plugin version
 │       ├── marketplaces-index.txt
 │       ├── repos-index.txt
 │       └── data-index.txt
 ├── project/
-│   ├── claude-settings.json          project-scope settings
-│   ├── claude-settings.local.json
-│   └── mcp.json                      project MCP server config
+│   ├── claude-settings-shape.json    project-scope settings — shape only
+│   ├── claude-settings-local-shape.json
+│   └── mcp-shape.json                MCP server names and transports — never URLs or headers
 ├── installed/
 │   ├── hooks-N.json                  the hook manifest that is actually installed
 │   └── plugin-N.json                 the plugin manifest beside it, carrying the version
@@ -70,10 +87,10 @@ of: not installed, installed but never started, or hooks never ran.
   is installed and sessions have happened is a strong signal — the hooks are
   registered and not executing.
 
-  Prompt wording is present unless the bundle was collected with prompts omitted,
-  in which case each line keeps its timestamp and kind and loses its text. The
-  timeline survives either way, so a bundle with prompts omitted answers "did it
-  fire" just as well.
+  Prompt wording is absent unless the bundle was collected with prompts explicitly
+  included; by default each line keeps its timestamp and kind and loses its text.
+  That is the right default rather than a limitation — the timeline is what answers
+  "did it fire", and it survives either way.
 
 - **`config.json`** — runtime configuration: whether the plugin is on, which mode
   it is in, whether it is snoozed and until when, and the per-project space
@@ -105,26 +122,41 @@ of: not installed, installed but never started, or hooks never ran.
 
 ### `host/`
 
-- **`settings.json`, `settings.local.json`** — user-scope settings. The status
-  line lives here and nowhere else: the host accepts one only from the user's own
-  settings, so a plugin cannot install it and a missing key here is the whole
-  fault. This is also where hook and plugin enablement can be overridden.
+- **`settings-shape.json`, `settings-local-shape.json`** — the shape of user-scope
+  settings, not the settings. The status line lives here and nowhere else: the host
+  accepts one only from the user's own settings, so a plugin cannot install it and a
+  missing key here is the whole fault. `statusLine`'s `command` is one of the few
+  string values kept, because a status line that points somewhere that has moved
+  cannot be diagnosed without the path. Hook `command` strings are kept for the same
+  reason.
+
+  Everything else is a key name and a length. That still answers most questions
+  asked of this file: whether `env` is set and which variables are in it, whether
+  `permissions` has rules and how many, which plugins are enabled, whether
+  `apiKeyHelper` is configured.
 
   The host rewrites this file mid-session and drops keys it is not serialising at
   the time, so a key the user is sure they set and that is not here is a known
   shape of fault rather than a contradiction.
 
+  A shape whose `_parseError` is set means the file exists and is not valid JSON —
+  a fault that explains a great deal, and the one case where no shape could be
+  produced. The message is reported; the text never is.
+
 - **`environment.txt`** — versions of the host CLI, the runtime, and the tools
   around them; the resolved configuration and project directories; the encoded
-  project name the collector derived; and the plugin-related environment
-  variables, values redacted. `node NOT ON PATH` here explains every hook failing
-  simultaneously, because the host spawns hooks with the runtime it finds rather
-  than a bundled one.
+  project name the collector derived; and **which** plugin-related environment
+  variables are set. Values appear only for the handful that are paths, labels or
+  modes a fault is read from directly; every other variable is reported as `(set)`,
+  because which ones exist is the diagnostic and what they hold is not.
+  `node NOT ON PATH` here explains every hook failing simultaneously, because the
+  host spawns hooks with the runtime it finds rather than a bundled one.
 
-- **`plugins/installed_plugins.json`** — what the host records as installed, with
-  the path each install resolves to. Compare against `cache-index.txt`: a
-  recorded install path that no cache entry matches is a stale record, and the
-  version that is actually running is the one under the cache.
+- **`plugins/installed-plugins-shape.json`** — what the host records as installed,
+  with the version and the path each install resolves to; those are kept verbatim,
+  and a `source` URL is kept with any embedded credentials scrubbed. Compare against
+  `cache-index.txt`: a recorded install path that no cache entry matches is a stale
+  record, and the version that is actually running is the one under the cache.
 
 - **`plugins/cache-index.txt`** — one directory per installed plugin version.
   Several is normal; the host keeps a previous version on disk for a while after an
@@ -136,10 +168,16 @@ of: not installed, installed but never started, or hooks never ran.
 
 ### `project/`
 
-Project-scope settings and MCP configuration, from the directory the collector
-ran in. The most common surprise in a bundle: a project-scope file overriding
-something the user changed at user scope. Always compare the two rather than
-assuming which one is in play.
+Project-scope settings and MCP configuration from the directory the collector ran
+in, both as shapes. The most common surprise in a bundle: a project-scope file
+overriding something the user changed at user scope. Comparing which keys each scope
+defines is usually enough to find it, and needs no values.
+
+`mcp-shape.json` is the narrowest artifact in the bundle by design. An MCP
+configuration is server names, transports, URLs and headers, and the last two are
+where a token lives — so the names and transports are kept and nothing else is. That
+answers what is actually asked of it: whether a server is configured at all, and
+whether one of them is this plugin's.
 
 ### `installed/`
 
@@ -170,10 +208,11 @@ pair means more than one installed version was found; read the versions in the
   files that were read during it. Treat a bundle carrying these as far more
   sensitive than one without.
 
-## What redaction does and does not cover
+## Redaction — the second line, not the first
 
-Applied to **every text artifact**, on both platforms, with no way to switch it
-off:
+Shaping is what keeps credentials out of the files nobody here owns. Redaction is
+what covers the files that _are_ copied, and it applies to every text artifact on
+both platforms with no way to switch it off:
 
 - values of any JSON key, environment assignment or header whose name carries a
   credential-shaped word — token, secret, password, auth, credential, cookie,
@@ -189,11 +228,12 @@ group names, version numbers.
 
 Redaction is deliberately over-broad. A redacted value that was not a secret costs
 one question; a leaked one costs a rotation. When a value you needed reads
-`<redacted>`, ask for it directly rather than asking for a bundle with redaction
-relaxed — there is no such bundle.
+`<redacted>` or `<string:44>`, ask the user for that one value directly. There is no
+bundle with the rule relaxed, and asking for the raw file instead defeats the whole
+arrangement.
 
-**None of this is a substitute for the user reading their own bundle.** It catches
-shapes. It cannot catch a credential someone typed into a prompt as prose, or a
-secret pasted into a settings field under a name nothing recognises. That is why
-the collectors print a review line at the end and why rule 4 leaves sending it to
-the user.
+**Neither line is a substitute for the user reading their own bundle.** Between them
+they cover files nobody here owns and credential shapes in the ones we do. They
+cannot cover a credential someone typed into a prompt as prose — which is the other
+reason prompt wording is off by default. That is why the collectors print a review
+line at the end, and why rule 4 leaves sending it to the user.

@@ -14,9 +14,15 @@
  *   - A flag documented on one platform only sends the user to a script that
  *     rejects the option the docs told them to pass.
  *
- * So this asserts the three surfaces that must match — redaction word list,
- * bundle artifact set, option set — plus that each script parses, and that the
- * skill and the doc point at both by name.
+ * So this asserts the surfaces that must match — redaction word list, environment
+ * value allowlist, bundle artifact set, option set — plus that each script parses,
+ * and that the skill and the doc point at both by name.
+ *
+ * The highest-consequence rule is deliberately NOT duplicated: files the plugin
+ * does not own are reduced to their shape by `summarize-json.cjs`, which both
+ * collectors call. Two assertions guard that arrangement — that neither collector
+ * copies one of those files raw, and that a bundle built from fixtures seeded with
+ * planted credentials contains none of them.
  *
  * Run: node --test tests/diagnostics-scripts.test.cjs
  */
@@ -25,6 +31,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
@@ -32,9 +39,32 @@ const SKILL_DIR = path.join(ROOT, "gutt-core", "skills", "collect-diagnostics");
 const SCRIPTS = path.join(SKILL_DIR, "scripts");
 const SH = path.join(SCRIPTS, "collect-diagnostics.sh");
 const PS1 = path.join(SCRIPTS, "collect-diagnostics.ps1");
+const SUMMARIZER = path.join(SCRIPTS, "summarize-json.cjs");
 
 const shText = fs.readFileSync(SH, "utf8");
 const psText = fs.readFileSync(PS1, "utf8");
+const summarizerText = fs.readFileSync(SUMMARIZER, "utf8");
+
+const { shapeOf, KEEP_STRING_VALUES } = require(SUMMARIZER);
+
+/**
+ * Credential-shaped strings planted in the fixtures below. Each is distinctive
+ * enough that finding it anywhere in a bundle is unambiguous, and each sits in a
+ * different place a real one does: an `env` block, an `apiKeyHelper`, a hook
+ * command, an MCP header, a URL query parameter, a marketplace URL's userinfo —
+ * and one under a key name nothing would think to match, which is the case a
+ * pattern-matching redactor cannot cover.
+ */
+const PLANTED = [
+  "PLANTEDenvAPIKEY0001",
+  "PLANTEDhelperCMD0002",
+  "PLANTEDinnocentKEY03",
+  "PLANTEDhookBEARER004",
+  "PLANTEDmcpHEADER0005",
+  "PLANTEDmcpQUERY0006",
+  "PLANTEDgitUSERINFO7",
+  "PLANTEDprojectENV008",
+];
 
 /** First PowerShell on PATH, or null. `powershell` is Windows-only, `pwsh` is both. */
 function powershell() {
@@ -122,6 +152,11 @@ describe("diagnostics collectors", () => {
       if (!psText.includes(shape.ps)) {
         missing.push(`PowerShell: ${shape.what}`);
       }
+      // The summarizer scrubs the strings it does keep — a path or a marketplace
+      // source URL can carry a credential — so it needs the same shapes.
+      if (!summarizerText.includes(shape.ps)) {
+        missing.push(`summarize-json: ${shape.what}`);
+      }
     }
     assert.deepEqual(missing, [], `redaction shapes missing: ${missing.join("; ")}`);
   });
@@ -173,6 +208,48 @@ describe("diagnostics collectors", () => {
     );
   });
 
+  // The parity assertions above all compare two duplicated lists. This one asserts
+  // the arrangement that makes duplication unnecessary for the rule that matters
+  // most: a file the plugin does not own must never reach the raw copier.
+  it("never copy a file they do not own", () => {
+    const notOurs = ["settings.json", "settings.local.json", ".mcp.json", "installed_plugins.json"];
+    const rawCopier = { sh: "copy_text ", ps: "Copy-TextArtifact " };
+    const defects = [];
+    for (const [dialect, text] of [
+      ["sh", shText],
+      ["ps", psText],
+    ]) {
+      for (const line of text.split("\n")) {
+        if (!line.includes(rawCopier[dialect])) {
+          continue;
+        }
+        for (const name of notOurs) {
+          if (line.includes(name)) {
+            defects.push(`${dialect}: raw copy of ${name} — ${line.trim()}`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(defects, [], defects.join("; "));
+  });
+
+  it("read the same environment variables by value", () => {
+    const shList = shText.match(/^ENV_VALUE_NAMES="([^"]+)"/m);
+    assert.ok(shList, "bash collector has no ENV_VALUE_NAMES assignment");
+    const psList = psText.match(/\$EnvValueNames = @\(([\s\S]*?)\n\)/);
+    assert.ok(psList, "PowerShell collector has no $EnvValueNames array");
+    const psNames = psList[1]
+      .split(",")
+      .map((entry) => entry.replace(/[\s'"]/g, ""))
+      .filter(Boolean)
+      .sort();
+    assert.deepEqual(
+      psNames,
+      shList[1].trim().split(/\s+/).sort(),
+      "the collectors read different environment variables by value"
+    );
+  });
+
   it("are both reachable from the skill and the doc", () => {
     const readers = {
       "SKILL.md": fs.readFileSync(path.join(SKILL_DIR, "SKILL.md"), "utf8"),
@@ -187,6 +264,172 @@ describe("diagnostics collectors", () => {
       }
     }
     assert.deepEqual(defects, [], defects.join("; "));
+  });
+});
+
+describe("summarize-json: withheld by default", () => {
+  it("withholds a string under a key nobody allowlisted", () => {
+    const shaped = shapeOf({ somethingNobodyThoughtOf: "a-credential-goes-here" }, null, 0);
+    assert.equal(shaped.somethingNobodyThoughtOf, "<string:22>");
+  });
+
+  it("keeps key names, which are the diagnostic", () => {
+    const shaped = shapeOf({ env: { ANTHROPIC_API_KEY: "secret" } }, null, 0);
+    assert.deepEqual(Object.keys(shaped.env), ["ANTHROPIC_API_KEY"]);
+    assert.equal(shaped.env.ANTHROPIC_API_KEY, "<string:6>");
+  });
+
+  it("keeps booleans and numbers, which cannot be credentials", () => {
+    const shaped = shapeOf({ enabled: true, count: 41, missing: null }, null, 0);
+    assert.deepEqual(shaped, { enabled: true, count: 41, missing: null });
+  });
+
+  it("keeps an allowlisted value, scrubbed", () => {
+    assert.ok(KEEP_STRING_VALUES.has("command"), "command must stay allowlisted");
+    const shaped = shapeOf({ command: "curl -H 'Authorization: Bearer abcdefghijkl'" }, null, 0);
+    assert.match(shaped.command, /Bearer <redacted>/);
+    assert.doesNotMatch(shaped.command, /abcdefghijkl/);
+  });
+
+  it("collapses an array of primitives to its length", () => {
+    // A permissions list is an array of strings naming paths and commands. Its
+    // length is the diagnostic; its entries are the user's filesystem.
+    const shaped = shapeOf({ allow: ["Read(/home/me/private/*)", "Bash(*)"] }, null, 0);
+    assert.equal(shaped.allow, "<array:2>");
+  });
+
+  it("does not allowlist url", () => {
+    // An endpoint is not worth a token in a query string.
+    assert.equal(KEEP_STRING_VALUES.has("url"), false);
+  });
+});
+
+describe("diagnostics bundle: planted credentials do not survive", () => {
+  /** A host + project tree seeded with PLANTED strings everywhere one really lands. */
+  function seedFixture() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-diag-leak-"));
+    const claude = path.join(root, "claude");
+    const project = path.join(root, "project");
+    const data = path.join(claude, "plugins", "data", "gutt-plugins-gutt-pro");
+    fs.mkdirSync(path.join(data, "sessions"), { recursive: true });
+    fs.mkdirSync(path.join(project, ".claude"), { recursive: true });
+
+    const write = (file, value) => fs.writeFileSync(file, value);
+
+    write(
+      path.join(claude, "settings.json"),
+      JSON.stringify({
+        env: { ANTHROPIC_API_KEY: PLANTED[0], MY_OWN_NAME: PLANTED[2] },
+        apiKeyHelper: `echo ${PLANTED[1]}`,
+        statusLine: { type: "command", command: "node /x/statusline.cjs" },
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                { type: "command", command: `curl -H 'Authorization: Bearer ${PLANTED[3]}' x` },
+              ],
+            },
+          ],
+        },
+      })
+    );
+    write(
+      path.join(claude, "plugins", "installed_plugins.json"),
+      JSON.stringify({
+        plugins: [
+          {
+            name: "gutt-pro",
+            version: "9.9.9",
+            source: `https://x-access-token:${PLANTED[6]}@github.com/o/r`,
+          },
+        ],
+      })
+    );
+    write(
+      path.join(project, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "gutt-pro-memory": {
+            type: "http",
+            url: `https://org.example.com/mcp?token=${PLANTED[5]}`,
+            headers: { Authorization: `Bearer ${PLANTED[4]}` },
+          },
+        },
+      })
+    );
+    write(
+      path.join(project, ".claude", "settings.json"),
+      JSON.stringify({ env: { INNOCENT_LOOKING: PLANTED[7] } })
+    );
+    // The plugin's own state IS copied, so its logs are seeded too: prompt text is
+    // off by default, and a user who types a credential into a prompt must not have
+    // it collected by a run nobody asked for content in.
+    write(
+      path.join(data, "hook-invocations.log"),
+      `[2026-01-01 00:00:00] Prompt: my key is ${PLANTED[0]}\n`
+    );
+    write(
+      path.join(data, "hook-errors.log"),
+      "2026-01-01T00:00:00.000Z [Stop] judge: spawn ENOENT\n"
+    );
+    return { root, claude, project };
+  }
+
+  /** Every planted string still findable anywhere under `dir`. */
+  function leaksIn(dir) {
+    const found = new Set();
+    const walk = (current) => {
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        const text = fs.readFileSync(full, "utf8");
+        for (const secret of PLANTED) {
+          if (text.includes(secret)) {
+            found.add(`${secret} in ${path.relative(dir, full)}`);
+          }
+        }
+      }
+    };
+    walk(dir);
+    return [...found].sort();
+  }
+
+  it("the bash collector leaks none of them", (t) => {
+    const probe = spawnSync("bash", ["-n", SH], { encoding: "utf8" });
+    if (probe.error) {
+      t.skip("bash not available");
+      return;
+    }
+    const { root, claude, project } = seedFixture();
+    const out = path.join(root, "bundle");
+    const run = spawnSync("bash", [SH, "--out", out, "--no-archive"], {
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_CONFIG_DIR: claude, CLAUDE_PROJECT_DIR: project },
+    });
+    assert.equal(run.status, 0, `collector failed: ${run.stderr}`);
+    assert.deepEqual(leaksIn(out), []);
+    // And the guard is not vacuous: the fixture really does hold them.
+    assert.ok(leaksIn(claude).length > 0, "fixture planted nothing — the assertion above is empty");
+  });
+
+  it("the PowerShell collector leaks none of them", (t) => {
+    const exe = powershell();
+    if (!exe) {
+      t.skip("no PowerShell on PATH");
+      return;
+    }
+    const { root, claude, project } = seedFixture();
+    const out = path.join(root, "bundle");
+    const run = spawnSync(exe, ["-NoProfile", "-File", PS1, "-OutputPath", out, "-NoArchive"], {
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_CONFIG_DIR: claude, CLAUDE_PROJECT_DIR: project },
+    });
+    assert.equal(run.status, 0, `collector failed: ${run.stderr}`);
+    assert.deepEqual(leaksIn(out), []);
+    assert.ok(leaksIn(claude).length > 0, "fixture planted nothing — the assertion above is empty");
   });
 });
 

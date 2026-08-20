@@ -17,13 +17,17 @@ platform-independent once the right one has run.
 
 1. **Run the script; never gather by hand.** No `cat` of a settings file into the
    conversation, no reading a log and quoting it back, no `cp` of a plugin data
-   directory. The scripts redact credential-shaped values on the way out; a file
-   you read yourself arrives unredacted, in a transcript, and cannot be unsent.
-2. **Ask before including conversation content.** Prompt text is in the bundle by
-   default and transcript bodies are not. Both are the user's conversation, so use
-   **AskUserQuestion** and let them choose before the first run — offer the
-   default, offer prompt text omitted, offer full transcripts included. Never turn
-   transcripts on because it would make your own diagnosis easier.
+   directory. The collectors reduce every file the plugin does not own to its key
+   names and counts, and redact credential-shaped values from the rest; a file you
+   read yourself arrives whole, in a transcript, and cannot be unsent. This holds
+   even when the shape file does not answer your question — a settings file that
+   the shape says has an `env` block is not an invitation to go and read it.
+2. **Run with the defaults, and do not widen speculatively.** Prompt wording and
+   transcript bodies are both off. Do not turn either on to make your own
+   diagnosis easier, and do not offer them at the start as though the choice were
+   routine. If a default bundle genuinely cannot answer the question, use
+   **AskUserQuestion** then, naming the one flag you need and the one fault it
+   would settle.
 3. **Never paste the bundle into the conversation.** Report the path, and report
    your findings in your own words. A bundle quoted back into a transcript
    defeats the point of writing it to a file.
@@ -32,11 +36,17 @@ platform-independent once the right one has run.
 5. **Read `summary.txt` before any other file.** It carries the counts and the
    states most faults show up in. Only then open the specific artifact the
    symptom points at.
-6. **An absent artifact is a finding, not a gap.** Every file is recorded in
+6. **A withheld value is not a gap to route around.** The shape files carry key
+   names, structure, booleans and counts, and withhold string values except where
+   the value is the diagnosis. When the one you wanted reads `<string:44>`, ask the
+   user for that single value directly. Never ask them to send the raw file, and
+   never offer to relax the rule — there is no flag for it and adding one would be
+   the wrong fix.
+7. **An absent artifact is a finding, not a gap.** Every file is recorded in
    `manifest.json` as `ok`, `empty`, `missing`, `skipped` or `error` with a
    reason. "The hook manifest is missing" and "the log is empty" are diagnoses.
    Report them as such rather than re-running to try to fill them in.
-7. **Report what the bundle shows, including nothing.** If it is healthy, say so
+8. **Report what the bundle shows, including nothing.** If it is healthy, say so
    and say which fault classes that rules out. Do not assemble a likely story out
    of an empty log.
 
@@ -71,30 +81,32 @@ Choose by the platform the session is on, not by which shell you prefer. Pass
 `--help` / `-Help` if you need the current option list rather than trusting the
 table below.
 
-| Intent                                   | bash            | PowerShell          |
-| ---------------------------------------- | --------------- | ------------------- |
-| Default bundle, zipped                   | _(no options)_  | _(no options)_      |
-| Omit all prompt and Stop breadcrumb text | `--no-prompts`  | `-NoPrompts`        |
-| Include full transcript bodies           | `--transcripts` | `-Transcripts`      |
-| More or fewer session records            | `--sessions 20` | `-Sessions 20`      |
-| Write somewhere specific                 | `--out <dir>`   | `-OutputPath <dir>` |
-| Skip the archive                         | `--no-archive`  | `-NoArchive`        |
+| Intent                                  | bash            | PowerShell          |
+| --------------------------------------- | --------------- | ------------------- |
+| Default bundle, zipped — start here     | _(no options)_  | _(no options)_      |
+| Include prompt and Stop breadcrumb text | `--prompts`     | `-Prompts`          |
+| Include full transcript bodies          | `--transcripts` | `-Transcripts`      |
+| More or fewer session records           | `--sessions 20` | `-Sessions 20`      |
+| Write somewhere specific                | `--out <dir>`   | `-OutputPath <dir>` |
+| Skip the archive                        | `--no-archive`  | `-NoArchive`        |
+
+The last four are routine. The first two are the ones rule 2 governs: they add the
+user's conversation to a file they are about to send someone.
 
 Both print the bundle directory and the archive path on the last two lines. Read
 those from the output rather than reconstructing them.
 
 ## The flow
 
-1. **Ask.** One **AskUserQuestion** covering content scope (rule 2). Say plainly
-   that credential-shaped values are always redacted and that prompt wording is
-   the thing being decided.
-2. **Run.** One invocation, with the flags their answer implies. A non-zero exit
-   with no bundle directory printed means the collector could not create its
-   output directory — report that and stop; there is nothing to read.
-3. **Read `summary.txt`.** Whole, once. It is a few dozen lines.
-4. **Triage.** Take the user's symptom to the table below and open the one or two
+1. **Run.** One invocation, no flags. A non-zero exit with no bundle directory
+   printed means the collector could not create its output directory — report that
+   and stop; there is nothing to read.
+2. **Read `summary.txt`.** Whole, once. It is a few dozen lines.
+3. **Triage.** Take the user's symptom to the table below and open the one or two
    artifacts it names. `references/bundle-contents.md` describes every artifact,
-   what it means when it is missing, and what was redacted out of it.
+   what it means when it is missing, and which tier it was collected under.
+4. **Widen only if you must.** If the default bundle cannot settle it, rule 2's
+   **AskUserQuestion** goes here — one flag, one named fault — not at the start.
 5. **Report.** The archive path, the fault you can name, and the evidence line
    that names it. Then what to do: a fix if the bundle shows one, otherwise the
    path to attach to a support request.
@@ -118,6 +130,24 @@ those from the output rather than reconstructing them.
 when the user wants an answer rather than an attachment, and use this skill when
 the fault needs evidence someone else can read.
 
+## What the bundle withholds, and what to do about it
+
+Three tiers, by who owns the file:
+
+- **This plugin's own state is copied.** Its schema is known, it carries no
+  credential fields, and it is the subject of the investigation.
+- **Files the plugin does not own are reduced to a shape** — the user's settings at
+  either scope, the host's plugin inventory, a project's MCP configuration. Key
+  names, structure, booleans and counts survive; string values do not, except the
+  few where the value is the diagnosis (a `command`, a version, an install path).
+  So a `*-shape.json` tells you an `env` block exists and which variables are in
+  it, never what they hold; that an MCP server is configured and under what name,
+  never its URL or headers.
+- **Conversation content is off** unless a flag turned it on.
+
+Read a shape file for what it does say. "The project scope defines `permissions`
+and the user scope does not" is a complete finding, and it needed no values.
+
 ## Reporting
 
 Give them, in this order:
@@ -126,9 +156,10 @@ Give them, in this order:
 2. **One sentence naming the fault**, or naming its absence.
 3. **The evidence** — the artifact and the line, not a paraphrase of the whole
    bundle.
-4. **What is in it**: which content decision they made, and that credential-shaped
-   values are redacted regardless. Tell them to skim `summary.txt` before
-   attaching it anywhere; it is their data and the review is theirs.
+4. **What is in it**: that files the plugin does not own were reduced to key names
+   and counts rather than copied, and whether any content flag was used. Tell them
+   to skim `summary.txt` before attaching it anywhere; it is their data and the
+   review is theirs.
 
 If the bundle is healthy and the symptom persists, say that plainly, name what it
 rules out, and hand them the archive for support. A clean bundle with the symptom

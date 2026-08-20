@@ -12,12 +12,20 @@
 #      absent file reports nothing about the twenty that were there, and "absent"
 #      is itself a finding — every artifact is recorded as ok / missing / empty /
 #      skipped with a reason, so the bundle says what it does not contain.
-#   2. Content is opt-in, secrets are never in. Credential-shaped values are
-#      redacted unconditionally and cannot be switched back on. Conversation
-#      content (prompt text, transcript bodies) is a separate decision the person
-#      running this makes with a flag: prompt text is included by default because
-#      it is usually what identifies the failing turn, transcript bodies are not
-#      because they are the whole conversation.
+#   2. Collect the minimum that answers a diagnostic question, and nothing on the
+#      chance it might help. Three tiers, by who owns the file:
+#        - This plugin's own state is copied. We know its schema, it holds no
+#          credential fields, and it is the subject of the investigation.
+#        - Files we do not own — the user's settings at either scope, the host's
+#          plugin inventory, a project's MCP configuration — are never copied.
+#          They are reduced to their shape by summarize-json.cjs: key names,
+#          structure, booleans and numbers, and string values only where the value
+#          is itself the diagnosis. A credential under a key nobody thought of is
+#          withheld because everything is withheld by default.
+#        - Conversation content is opt-in and off: prompt wording needs --prompts,
+#          transcript bodies need --transcripts.
+#      Credential-shaped values are additionally redacted from everything that is
+#      copied. That is a second line, not the first one.
 #
 # Keep this bash 3.2 compatible — that is what macOS ships. No associative
 # arrays, no `mapfile`, no `${var,,}`, no globstar.
@@ -33,9 +41,14 @@ BUNDLE_SCHEMA="gutt-diagnostics/1"
 
 OUT_DIR=""
 SESSIONS="5"
-INCLUDE_PROMPTS="1"
+INCLUDE_PROMPTS="0"
 INCLUDE_TRANSCRIPTS="0"
 MAKE_ARCHIVE="1"
+
+# summarize-json.cjs sits beside this file. Resolved from $0 rather than assumed,
+# because the plugin directory this ships in is version-scoped and moves.
+SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+SUMMARIZER="$SCRIPT_DIR/summarize-json.cjs"
 
 usage() {
   cat <<'USAGE'
@@ -50,17 +63,19 @@ Options
   --sessions <n>     How many of the newest session records to include, and how
                      many transcripts when --transcripts is given.
                      Use 0 for none, all for every one. Default 5.
-  --no-prompts       Replace the text of every prompt and Stop breadcrumb with a
-                     placeholder, keeping the timestamps. The invocation
-                     timeline survives; the wording does not.
+  --prompts          Include the text of prompts and Stop breadcrumbs. Off by
+                     default: the timestamps alone show whether a hook fired,
+                     which is what most faults turn on.
   --transcripts      Include the bodies of Claude Code session transcripts for
                      this project. Off by default — a transcript is the entire
                      conversation, including file contents you opened.
   --no-archive       Leave the directory as-is instead of zipping it.
   -h, --help         Show this help.
 
-Credential-shaped values (tokens, keys, passwords, authorization headers, URL
-userinfo) are always redacted. That is not optional and there is no flag for it.
+Files this plugin does not own are never copied — the user's settings, the host's
+plugin inventory and a project's MCP configuration are reduced to key names,
+structure and counts. Credential-shaped values are additionally redacted from
+everything that is copied. Neither is optional and there is no flag for either.
 USAGE
 }
 
@@ -92,8 +107,8 @@ while [ $# -gt 0 ]; do
       SESSIONS="${1#*=}"
       shift
       ;;
-    --no-prompts)
-      INCLUDE_PROMPTS="0"
+    --prompts)
+      INCLUDE_PROMPTS="1"
       shift
       ;;
     --transcripts)
@@ -178,6 +193,12 @@ SED_ARGS+=(
 
 # Blank the body of every prompt/Stop breadcrumb, keeping its timestamp and kind.
 PROMPT_SED='s/^(\[[0-9-]{10} [0-9:]{8}\] (Prompt|Stop): ).*/\1<content omitted>/'
+
+# Environment variables whose value is collected rather than just their name. Each
+# is a path, a label, or a mode that a fault is diagnosed from directly; nothing
+# here is a credential, and everything not named here is reported as set and no
+# more. The same list is in the PowerShell collector.
+ENV_VALUE_NAMES="CLAUDE_CONFIG_DIR CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_VERSION CURSOR_PROJECT_DIR CURSOR_VERSION GUTT_GROUP_ID"
 
 redact() {
   if [ "$INCLUDE_PROMPTS" = "0" ]; then
@@ -304,6 +325,36 @@ list_dir() {
   record "$dest" "ok" "$(file_size "$target")" "${note:+$note; }$count entr$([ "$count" = "1" ] && printf 'y' || printf 'ies')"
 }
 
+# Reduce a JSON file we do not own to its shape, via summarize-json.cjs. The raw
+# file is never copied and there is no fallback that copies it: when Node is
+# missing the artifact is skipped, which is the safe direction and is also, in this
+# plugin, a diagnosis of its own — the host spawns every hook with `node`.
+summarize_json() {
+  local src="$1" dest="$2" note="${3:-}"
+  local target="$OUT_DIR/$dest" status
+  if [ ! -e "$src" ]; then
+    record "$dest" "missing" "0" "${note:+$note; }not present at $src"
+    return
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    record "$dest" "skipped" "0" "node not on PATH; the raw file is deliberately not collected"
+    return
+  fi
+  if [ ! -f "$SUMMARIZER" ]; then
+    record "$dest" "skipped" "0" "summarize-json.cjs not found beside this script"
+    return
+  fi
+  mkdir -p "$(dirname "$target")" 2>/dev/null
+  node "$SUMMARIZER" "$src" >"$target" 2>/dev/null
+  status=$?
+  if [ "$status" = "0" ]; then
+    record "$dest" "ok" "$(file_size "$target")" "${note:+$note; }shape only — key names, structure and counts"
+  else
+    rm -f "$target"
+    record "$dest" "error" "0" "summarize-json.cjs exited $status for $src"
+  fi
+}
+
 # The newest `limit` entries of a directory matching a glob, newest first.
 newest_in() {
   local dir="$1" pattern="$2" limit="$3"
@@ -351,18 +402,23 @@ fi
 # Collect: host settings and plugin inventory
 # ---------------------------------------------------------------------------
 
-copy_text "$CLAUDE_DIR/settings.json" "host/settings.json"
-copy_text "$CLAUDE_DIR/settings.local.json" "host/settings.local.json"
-copy_text "$PLUGINS_DIR/installed_plugins.json" "host/plugins/installed_plugins.json"
-copy_text "$PLUGINS_DIR/config.json" "host/plugins/config.json"
+# Not ours, and the likeliest place on the machine to hold a credential: an `env`
+# block, an apiKeyHelper, an MCP server with an authorization header. Shape only.
+summarize_json "$CLAUDE_DIR/settings.json" "host/settings-shape.json"
+summarize_json "$CLAUDE_DIR/settings.local.json" "host/settings-local-shape.json"
+summarize_json "$PLUGINS_DIR/installed_plugins.json" "host/plugins/installed-plugins-shape.json"
+summarize_json "$PLUGINS_DIR/config.json" "host/plugins/config-shape.json"
 list_dir "$PLUGINS_DIR/cache" "host/plugins/cache-index.txt" "one directory per installed plugin version"
 list_dir "$PLUGINS_DIR/marketplaces" "host/plugins/marketplaces-index.txt"
 list_dir "$PLUGINS_DIR/repos" "host/plugins/repos-index.txt"
 list_dir "$PLUGINS_DIR/data" "host/plugins/data-index.txt"
 
-copy_text "$PROJECT_DIR/.claude/settings.json" "project/claude-settings.json"
-copy_text "$PROJECT_DIR/.claude/settings.local.json" "project/claude-settings.local.json"
-copy_text "$PROJECT_DIR/.mcp.json" "project/mcp.json"
+summarize_json "$PROJECT_DIR/.claude/settings.json" "project/claude-settings-shape.json"
+summarize_json "$PROJECT_DIR/.claude/settings.local.json" "project/claude-settings-local-shape.json"
+# An MCP configuration is server names, transports, URLs and headers, and the last
+# two are where a token lives. The names answer "is a server configured, and is it
+# ours", which is the whole diagnostic value; nothing else here is collected.
+summarize_json "$PROJECT_DIR/.mcp.json" "project/mcp-shape.json"
 
 # The hook manifest that is actually installed, which is the one that fires —
 # not the one in a checkout. Found by name under the version cache.
@@ -427,8 +483,19 @@ mkdir -p "$(dirname "$ENV_FILE")"
   printf 'claude config dir    %s\n' "$CLAUDE_DIR"
   printf 'project dir          %s\n' "$PROJECT_DIR"
   printf 'encoded project      %s\n' "$ENCODED_PROJECT"
-  printf '\n# CLAUDE_* / GUTT_* environment, values redacted by the same rules as every file\n'
-  env 2>/dev/null | grep -E '^(CLAUDE|GUTT|ANTHROPIC)_' | sort | redact || printf '(none set)\n'
+  printf '\n# Plugin-related environment. Which variables are set is the diagnostic;\n'
+  printf '# a value appears only for the few whose content is itself the answer.\n'
+  env_names=$(env 2>/dev/null | sed -n 's/^\(\(CLAUDE\|GUTT\|ANTHROPIC\)_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u)
+  if [ -z "$env_names" ]; then
+    printf '(none set)\n'
+  else
+    printf '%s\n' "$env_names" | while IFS= read -r name; do
+      case " $ENV_VALUE_NAMES " in
+        *" $name "*) printf '%s=%s\n' "$name" "$(printenv "$name" 2>/dev/null)" ;;
+        *) printf '%s=(set)\n' "$name" ;;
+      esac
+    done | redact
+  fi
 } >"$ENV_FILE" 2>/dev/null
 record "$ENV_REL" "ok" "$(file_size "$ENV_FILE")" "versions and allowlisted environment"
 
@@ -461,6 +528,7 @@ SUMMARY="$OUT_DIR/$SUMMARY_REL"
   printf 'flags          sessions=%s prompts=%s transcripts=%s\n' \
     "$SESSIONS" "$([ "$INCLUDE_PROMPTS" = 1 ] && printf 'included' || printf 'omitted')" \
     "$([ "$INCLUDE_TRANSCRIPTS" = 1 ] && printf 'included' || printf 'index only')"
+  printf 'not copied     settings, plugin inventory and MCP config — shape only (see *-shape.json)\n'
   printf '\nPlugin data directories (%s found)\n' "$DATA_DIR_COUNT"
   if [ -z "$DATA_DIRS" ]; then
     printf '  none under %s/data — the plugin has never written state on this machine,\n' "$PLUGINS_DIR"
@@ -570,6 +638,7 @@ if [ -n "$ARCHIVE" ]; then
 elif [ "$MAKE_ARCHIVE" = "1" ]; then
   printf 'Archive:          not created (neither zip nor tar found)\n'
 fi
-printf '\nRead summary.txt first. Credential-shaped values are redacted; %s\n' \
-  "$([ "$INCLUDE_PROMPTS" = 1 ] && printf 'prompt text is INCLUDED (re-run with --no-prompts to omit it).' || printf 'prompt text was omitted.')"
+printf '\nRead summary.txt first. Settings, the plugin inventory and MCP config were not\n'
+printf 'copied — only their key names and counts. %s\n' \
+  "$([ "$INCLUDE_PROMPTS" = 1 ] && printf 'Prompt text IS included (--prompts was given).' || printf 'Prompt text was omitted.')"
 printf 'Review the bundle before sending it anywhere.\n'

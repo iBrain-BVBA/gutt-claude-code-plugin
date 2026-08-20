@@ -426,8 +426,15 @@ This plugin works on:
 
 Run `/gutt-pro:collect-diagnostics` in a session, or the collector script directly.
 It gathers the hook logs, the plugin's runtime state, the hook manifest that is
-actually installed, both settings scopes, and a transcript inventory into one
-archive, with credential-shaped values redacted and conversation content opt-in.
+actually installed, and a transcript inventory into one archive.
+
+What it collects is decided by who owns the file. The plugin's own state is copied.
+Files it does not own — your settings at either scope, the host's plugin inventory,
+a project's MCP configuration — are **never copied**: they are reduced to key names,
+structure and counts, so a shape shows that an `env` block exists and which
+variables are in it, never what they hold, and MCP server names without their URLs
+or headers. Conversation content is off unless you ask for it, and credential-shaped
+values are redacted from everything that is copied.
 
 - **macOS / Linux / Git Bash:** `collect-diagnostics.sh`
 - **Windows:** `collect-diagnostics.ps1`
