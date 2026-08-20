@@ -665,7 +665,18 @@ const VERDICT_SHAPE = /"ok"\s*:\s*(?:true|false)/;
  */
 const MAX_REASON_CHARS = 800;
 
-/** Last of stderr, for the log. Auth failures and quota walls announce themselves here. */
+/**
+ * Last of stderr, for the log.
+ *
+ * **This misses the failure it was written for.** The comment here used to claim auth
+ * failures announce themselves on stderr. They do not: an unauthenticated child prints
+ * `Not logged in · Please run /login` on **stdout** and exits 1, so this returns nothing
+ * and the log records a bare `exit 1` — the exit code without the reason sitting beside
+ * it. That is why a dead judge read as a healthy quiet turn for three weeks. Falling back
+ * to a stdout tail on a non-zero exit is the fix; it is not applied here because the
+ * measurement that found it was a spike, and the change belongs to its own ticket with a
+ * test. Quota walls do use stderr, so the existing path is not wrong, only incomplete.
+ */
 function stderrTail(result) {
   const text = String(result?.stderr || "")
     .trim()

@@ -35,6 +35,24 @@ in-process. **This plan adds only what the unit tier structurally cannot reach.*
 3. **Coexistence (R23).** Hooks must share a session with other plugins without
    `{{decision:block}}`.
 
+   **Restated 2026-08-20 against what was measured.** R23 rested on two claims about
+   Cowork, and both are false. Hooks are not unsupported there — they fire on both Cowork
+   surfaces. And a command Stop hook's blocking decision is not ignored there — it is
+   honoured, continuing the turn exactly as on the CLI, with the hook re-invoked carrying
+   `stop_hook_active` when that turn ends (`hook-platform-capabilities.md` §9.1).
+   R23 also names exit-code 2 as a second blocking channel, though the one-line statement
+   above carries only the blocking-decision half — a divergence between the constraint as
+   recorded in the 3.0 program and as written down here, worth closing when someone
+   rewrites this list. That clause is equally untested against a real Cowork run, and moot
+   in practice: no hook in this repository exits 2, every exit point is 0.
+
+   The constraint nonetheless **survives, on a different reason than the one it was
+   written for.** A blocking decision in a session shared with another plugin re-enters
+   that plugin's turn as well, which is a coexistence problem whether or not the platform
+   honours the block. What changes is the scope of the claim: this is a
+   multi-plugin-etiquette rule, not a platform limitation, and it should stop being cited
+   as evidence that Cowork cannot do something.
+
 ## Environment facts, verified not assumed
 
 Every fact below was established by probe runs against `claude 2.1.220` before
