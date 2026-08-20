@@ -2,7 +2,7 @@
 
 **Source:** <https://code.claude.com/docs/en/hooks.md>
 **Read:** 2026-07-31 (§8.1) · 2026-07-30 (§5; §1–§4 read 2026-07-29) ·
-**Measured:** 2026-07-30 (§5 argv, §6, §7) ·
+**Measured:** 2026-08-20 (§9, both Cowork surfaces) · 2026-07-30 (§5 argv, §6, §7) ·
 **Reported:** 2026-07-30 (§8, by the maintainer — not yet re-read from source) ·
 **Method:** `WebFetch` passes plus live CLI runs for §5–§7 (see [Provenance](#provenance))
 **Why this file exists:** the upstream hook surface grew well past what this plugin's
@@ -333,6 +333,110 @@ outcomes that mean "nothing here", which is how the bug survived unnoticed.
 **What would make this Measured rather than Read:** one line logging `Object.keys(payload)` on
 a real fire. That also settles §8's `background_tasks` shape, which is still the
 weakest-provenance claim in this file, so the two should be probed together.
+
+## 9. Measured: the Cowork surfaces, and the credential handoff that differs between them
+
+**Measured 2026-08-20** against `gutt-pro` 3.0.7, on Cowork local agent mode and Cowork
+cloud, from a live session of each. Appended as §9 rather than slotted beside §3 because
+this file's sections are cited by number elsewhere.
+
+Cowork is two surfaces, not one, and they differ in the one respect that decides whether a
+hook can invoke the model. Treating them as a single platform is how a defect on one gets
+attributed to both, or missed on both.
+
+### 9.1 Hooks fire, and the blocking channel is honoured
+
+On both surfaces. `decision: "block"` from a command Stop hook continues the turn with the
+reason delivered to the model, exactly as on the CLI, and when that continued turn ends the
+hook is re-invoked with `stop_hook_active` true.
+
+The complete signature, from a local-mode session log:
+
+```
+Stop: fired
+Stop: skipped, already active
+```
+
+The second line is the proof, and it is worth insisting on: a `fired` line alone shows only
+that _we_ emitted a blocking decision. Only the re-invocation shows the platform acted on
+it. `additionalContext` on `UserPromptSubmit` is delivered on both surfaces too.
+
+**This falsifies a constraint the program carried for months** — that the hook set must not
+rely on `decision: "block"` because Cowork does not support it. It does.
+
+### 9.2 The credential handoff differs by surface, and only one shape survives a spawn
+
+A hook that invokes the model spawns `claude -p`, making that child a **grandchild** of the
+process holding the session's credential. How the credential is handed over decides whether
+the grandchild can authenticate at all:
+
+|                                        | local agent mode                                                | cloud                                        |
+| -------------------------------------- | --------------------------------------------------------------- | -------------------------------------------- |
+| `CLAUDE_CONFIG_DIR`                    | synthetic per-session root                                      | absent                                       |
+| Token handoff                          | `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR` — a descriptor number | `CLAUDE_SESSION_INGRESS_TOKEN_FILE` — a path |
+| `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` | set                                                             | set                                          |
+| Reaches a grandchild?                  | **no**                                                          | **yes**                                      |
+
+A file descriptor is inherited only by a direct child spawned with that descriptor passed
+through, and `spawnSync` does not pass fd 3 and up. So on local agent mode the grandchild
+inherits a variable naming a descriptor absent from its own process, fails to authenticate,
+and exits non-zero. A token referenced by path has no such problem.
+
+Reproduced in isolation with a synthetic token and no Cowork involved:
+
+```
+parent holds the token on fd 11
+default stdio, variable forwarded unchanged  → EBADF
+fd passed through, variable NOT rewritten    → EISDIR   (reads an unrelated descriptor)
+fd passed through, variable rewritten to 3   → reads the token
+```
+
+The middle row is the hazard for anyone implementing a pass-through: forwarding the
+descriptor without rewriting the variable to its new number does not fail, it reads
+something else.
+
+**Two consequences for design.** Any hook that spawns the model cannot assume the session's
+own credential reaches it. And a remedy that strips the handoff must be conditional on the
+handoff being the unreachable kind — `PROVIDER_MANAGED_BY_HOST` is set on both surfaces, so
+stripping it unconditionally would disturb the surface that works. Test for the descriptor,
+not for the product: a surface test encodes today's topology and fails silently when it
+changes.
+
+### 9.3 Identifying the surface
+
+The platform states it, so no heuristic is needed. Local agent mode carries
+`CLAUDE_CODE_IS_COWORK=1` and `CLAUDE_CODE_ENTRYPOINT=local-agent`; cloud carries
+`CLAUDE_CODE_ENTRYPOINT=remote_cowork`, `CLAUDE_CODE_REMOTE=true`,
+`CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE=cloud_default` and a container id. Prefer these to any
+path-shape guess.
+
+### 9.4 Where code and state live, per surface
+
+- **Local agent mode** executes the plugin from a per-project directory under the desktop
+  application's support tree, as ordinary files owned by the user, above the session level,
+  surviving session close. `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` resolve under
+  _different_ temp-root hashes: executing code and written state are separate trees.
+- **Cloud syncs plugins rather than mounting them** (`CLAUDE_CODE_SYNC_PLUGINS=1`), into a
+  root-owned home inside the container. A host-side edit cannot reach a cloud session, so
+  cloud behaviour is only exercisable against a published build.
+- **Runtime state is per-session on both surfaces** and discarded at the session boundary.
+  Anything documented as surviving a restart does not, there.
+
+`${CLAUDE_PLUGIN_DATA}` expands and is writable on both. Session state persisted across
+four separate hook processes within one session, which is what shows the hook wrote _and_
+read it — separate prompts are separate processes sharing nothing but disk.
+
+### 9.5 Exit code 2 on a Stop hook — a gap in §3
+
+**Measured 2026-08-20 on the CLI.** §3 tabulates the two JSON channels and is silent on exit
+codes. A Stop hook exiting 2 **blocks and re-enters the turn, with stderr delivered to the
+model**: a sentinel word present only in the hook's stderr appeared in the model's reply,
+and the hook was re-invoked with `stop_hook_active` true. Functionally the same routing as
+`decision: "block"`, over a different channel.
+
+Not measured on Cowork. No hook in this repository exits 2 — every exit point is 0 — so the
+distinction currently constrains nothing shipped, and a probe for an unused channel was
+judged not worth building.
 
 ## Implications for this plugin
 

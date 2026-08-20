@@ -593,8 +593,17 @@ describe(
     });
 
     it("blocks nothing — no hook ends the session for another plugin (R23)", () => {
-      // R23 is specifically that the hook set must not rely on `decision: block`,
-      // which Cowork does not support and which would end a shared session.
+      // R23 is specifically that the hook set must not rely on `decision: block`.
+      // Its original justification — that Cowork does not support it — is false:
+      // measured on both Cowork surfaces, a command Stop hook's blocking decision is
+      // honoured there exactly as on the CLI (`docs/hook-platform-capabilities.md` §9.1).
+      // The assertion still earns its place, for the surviving half of the reason: a
+      // blocking decision in a session shared with another plugin ends that plugin's
+      // turn too, which is a coexistence problem whether or not the platform honours it.
+      //
+      // Scope worth stating, because the assertion reads stronger than it is: this passes
+      // because the judge finds nothing to capture in this scenario, not because the hook
+      // set never blocks. `stop-capture.cjs` emits `decision: "block"` on every fire.
       assert.equal(run.result.is_error, false);
       assert.match(String(run.result.result), /pong/i);
       assert.doesNotMatch(
