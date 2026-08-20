@@ -255,6 +255,7 @@ describe("stop-judge: deciding what to feed back", () => {
       spawn: stub({ status: 1, stdout: "", stderr: "quota exceeded: limit reached" }),
     });
     assert.match(out.detail, /quota exceeded/);
+    assert.match(out.detail, /stderr:/, "the log must name which stream answered");
   });
 
   it("falls back to stdout, where a child that cannot authenticate announces itself", () => {

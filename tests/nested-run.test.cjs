@@ -86,6 +86,7 @@ describe("nested-run: the predicate", () => {
         CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH: "1",
         CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH: "1",
         CLAUDE_CONFIG_DIR: "/tmp/per-session-root",
+        CLAUDE_CODE_ENTRYPOINT: "cli",
         HOME: "/home/x",
         PATH: "/usr/bin",
         ANTHROPIC_API_KEY: "sk-test",
@@ -101,10 +102,15 @@ describe("nested-run: the predicate", () => {
       assert.equal(env[key], undefined, `${key} must not reach the child`);
     }
     // Removing the handover is only useful because the child can then authenticate on its
-    // own, which these are what it needs to do that.
+    // own, and these are what it needs to do that.
     assert.equal(env.HOME, "/home/x", "HOME is how the child finds its own credentials");
     assert.equal(env.PATH, "/usr/bin");
     assert.equal(env.ANTHROPIC_API_KEY, "sk-test", "R36's exception still applies");
+    assert.equal(
+      env.CLAUDE_CODE_ENTRYPOINT,
+      "cli",
+      "the strip is five named variables, not a CLAUDE_ prefix"
+    );
     assert.equal(env[NESTED_ENV_VAR], "1", "the recursion guard must survive the strip");
   });
 
@@ -113,6 +119,8 @@ describe("nested-run: the predicate", () => {
     // handover *does* survive a spawn still sets CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST, and
     // automatic capture works there — so an unconditional strip would break the one place
     // that needs no fixing. Keying on the descriptor is what keeps this change away from it.
+    // The fixture blends the two protected populations on purpose: that surface, and an
+    // ordinary install whose real configuration root must pass through untouched.
     const base = {
       CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
       CLAUDE_CONFIG_DIR: "/somewhere/real",

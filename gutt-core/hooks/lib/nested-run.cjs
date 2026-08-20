@@ -41,8 +41,10 @@
  * false one hop further down: `spawnSync` does not pass fd 3 and up, so the judge inherits
  * a variable naming a descriptor absent from its own process, is told not to authenticate,
  * and exits without doing any work — every turn, with nothing in the conversation to show
- * it. `childEnv` therefore removes that handover, and only it, and only where the
- * descriptor variable is there to identify it. See `HOST_AUTH_HANDOFF`.
+ * it. `childEnv` therefore removes that handover — the descriptor pointer, the
+ * do-not-log-in flags, and the per-session configuration root that travels with
+ * them — and only it, and only where a non-empty descriptor variable identifies it.
+ * See `HOST_AUTH_HANDOFF`.
  */
 
 /**
@@ -61,7 +63,7 @@ function isNestedRun(env = process.env) {
 }
 
 /**
- * The variable whose presence means the credential was handed over in the form a
+ * The variable whose non-empty value means the credential was handed over in the form a
  * grandchild cannot reach. The condition is deliberately this and not a test for which
  * product is hosting us: `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` is also set where the
  * handover *does* survive a spawn and capture works, so an unconditional strip would
@@ -71,14 +73,15 @@ function isNestedRun(env = process.env) {
 const HANDOFF_DESCRIPTOR = "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR";
 
 /**
- * The handover, removed as a unit because it is one instruction rather than four
- * settings: leave any of the first four behind and the child still waits for a token that
- * is not coming.
+ * The handover, removed as a unit. The first four are one instruction — do not log in,
+ * the token is on this descriptor — and were only ever measured together; nothing says
+ * which of them individually does what. Both measured partial removals failed: stripping
+ * the four while keeping `CLAUDE_CONFIG_DIR` changed nothing, and dropping
+ * `CLAUDE_CONFIG_DIR` while leaving the four in place failed the same way.
  *
- * `CLAUDE_CONFIG_DIR` is in the list for a different reason, and it is the one that does
- * the work: it points at a per-session configuration root holding identity but no token,
- * so a child that keeps it looks for credentials there and stops. Removing the other four
- * without it changes nothing at all.
+ * `CLAUDE_CONFIG_DIR` is in the list for a different reason: it points at a per-session
+ * configuration root holding identity but no token, so a child that keeps it looks for
+ * credentials there and stops.
  *
  * The consequence is worth stating rather than discovering: with it gone the child reads
  * the host's own configuration directory, which is both why this works and why it only
@@ -105,10 +108,11 @@ const HOST_AUTH_HANDOFF = [
 function childEnv(extra = {}, env = process.env) {
   const child = { ...env, ...extra, [NESTED_ENV_VAR]: "1" };
   // This does not contradict the section above. That rule exists to keep the child *able*
-  // to authenticate, and none of these are credentials: they are a pointer at a descriptor
-  // that does not exist in this process, and flags telling the child not to log in.
-  // Removing them is what lets it fall back to its own login instead of waiting for a
-  // token that will never arrive.
+  // to authenticate, and none of these are credentials: a pointer at a descriptor that
+  // does not exist in this process, flags telling the child not to log in, and a path to
+  // a per-session configuration root holding identity but no token. Removing them is
+  // what lets it fall back to its own login instead of waiting for a token that will
+  // never arrive.
   //
   // Truthy rather than a presence check: a variable that is set but empty names no
   // descriptor, and acting on it would strip a configuration root on the strength of

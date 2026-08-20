@@ -405,14 +405,20 @@ stripping it unconditionally would disturb the surface that works. Test for the 
 not for the product: a surface test encodes today's topology and fails silently when it
 changes.
 
-**The remedy, measured.** Two runs in one live local-mode session, everything but the
-patch held fixed. Removing the handover from the child's environment lets it fall back to a
-login of its own:
+**The remedy, measured.** Two runs in one live local-mode session — 3.0.7 plus the patch
+under test, everything else held fixed. The handover means four variables:
+`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`, `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`,
+`CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH` and `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH`. Removing
+it from the child's environment lets the child fall back to a login of its own:
 
 | Removed from the child's environment | Judge                               |
 | ------------------------------------ | ----------------------------------- |
-| the four handover variables above    | unchanged — `Not logged in`, exit 1 |
+| the four handover variables          | unchanged — `Not logged in`, exit 1 |
 | those four plus `CLAUDE_CONFIG_DIR`  | authenticated, verdict returned     |
+
+A third run, measured separately in an earlier session the same day: removing
+`CLAUDE_CONFIG_DIR` alone, the four left in place, fails the same way — neither half
+suffices on its own.
 
 So `CLAUDE_CONFIG_DIR` is not incidental to this failure, it is the load-bearing half: it
 names a per-session configuration root that holds identity and no token, so a child which
