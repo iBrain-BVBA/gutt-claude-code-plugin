@@ -69,6 +69,68 @@ describe("nested-run: the predicate", () => {
     assert.equal(env.ANTHROPIC_BASE_URL, "https://x");
   });
 
+  it("strips the host authentication handover when the descriptor is present", () => {
+    // A host holding the session credential tells its direct child to read the token from
+    // a descriptor and not to log in. One hop down, neither is true: the descriptor is not
+    // in this process, and the instruction not to log in is all that is left — so the child
+    // waits for a token that cannot arrive and exits without judging anything.
+    //
+    // The names are written out here rather than imported from the module on purpose. They
+    // are a contract with the platform, and a test that imported the list would pass just
+    // as happily if the wrong variable were added to it.
+    const env = childEnv(
+      {},
+      {
+        CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3",
+        CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
+        CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH: "1",
+        CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH: "1",
+        CLAUDE_CONFIG_DIR: "/tmp/per-session-root",
+        HOME: "/home/x",
+        PATH: "/usr/bin",
+        ANTHROPIC_API_KEY: "sk-test",
+      }
+    );
+    for (const key of [
+      "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+      "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+      "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
+      "CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH",
+      "CLAUDE_CONFIG_DIR",
+    ]) {
+      assert.equal(env[key], undefined, `${key} must not reach the child`);
+    }
+    // Removing the handover is only useful because the child can then authenticate on its
+    // own, which these are what it needs to do that.
+    assert.equal(env.HOME, "/home/x", "HOME is how the child finds its own credentials");
+    assert.equal(env.PATH, "/usr/bin");
+    assert.equal(env.ANTHROPIC_API_KEY, "sk-test", "R36's exception still applies");
+    assert.equal(env[NESTED_ENV_VAR], "1", "the recursion guard must survive the strip");
+  });
+
+  it("removes nothing when the descriptor variable is absent", () => {
+    // This is the case that protects the surface where nothing is broken. A host whose
+    // handover *does* survive a spawn still sets CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST, and
+    // automatic capture works there — so an unconditional strip would break the one place
+    // that needs no fixing. Keying on the descriptor is what keeps this change away from it.
+    const base = {
+      CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
+      CLAUDE_CONFIG_DIR: "/somewhere/real",
+      PATH: "/usr/bin",
+    };
+    assert.deepEqual(childEnv({}, base), { ...base, [NESTED_ENV_VAR]: "1" });
+  });
+
+  it("reads an empty descriptor value as no handover at all", () => {
+    // A variable that is set but empty names no descriptor. Stripping a configuration root
+    // on the strength of that would be acting on noise.
+    const env = childEnv(
+      {},
+      { CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "", CLAUDE_CONFIG_DIR: "/somewhere/real" }
+    );
+    assert.equal(env.CLAUDE_CONFIG_DIR, "/somewhere/real");
+  });
+
   it("cannot be overridden to off by the extra argument", () => {
     // The guard is the one thing a caller must not be able to unset by accident.
     const env = childEnv({ [NESTED_ENV_VAR]: "0" }, {});

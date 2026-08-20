@@ -666,22 +666,27 @@ const VERDICT_SHAPE = /"ok"\s*:\s*(?:true|false)/;
 const MAX_REASON_CHARS = 800;
 
 /**
- * Last of stderr, for the log.
+ * Last of stderr, or of stdout when stderr is empty.
  *
- * **This misses the failure it was written for.** The comment here used to claim auth
- * failures announce themselves on stderr. They do not: an unauthenticated child prints
- * `Not logged in · Please run /login` on **stdout** and exits 1, so this returns nothing
- * and the log records a bare `exit 1` — the exit code without the reason sitting beside
- * it. That is why a dead judge read as a healthy quiet turn for three weeks. Falling back
- * to a stdout tail on a non-zero exit is the fix; it is not applied here because the
- * measurement that found it was a spike, and the change belongs to its own ticket with a
- * test. Quota walls do use stderr, so the existing path is not wrong, only incomplete.
+ * Both streams carry failures worth logging and neither carries all of them. A quota wall
+ * announces itself on stderr; an unauthenticated child prints `Not logged in · Please run
+ * /login` on **stdout** and exits 1. Tailing stderr alone recorded a bare `exit 1` for that
+ * second case — the exit code with the reason discarded beside it — which is how a judge
+ * that died on every turn read as a healthy quiet one for three weeks.
+ *
+ * stderr wins where both are non-empty: something that wrote to an error stream is more
+ * likely to be the error than whatever the run happened to print. The label names the
+ * stream so a reader of the log can tell which one answered. The no-output branch is
+ * unaffected by the fallback, being reached only when stdout is empty.
  */
-function stderrTail(result) {
-  const text = String(result?.stderr || "")
-    .trim()
-    .replace(/\s+/g, " ");
-  return text ? `stderr: ${text.slice(-300)}` : "";
+function outputTail(result) {
+  const pick = (stream, label) => {
+    const text = String(stream || "")
+      .trim()
+      .replace(/\s+/g, " ");
+    return text ? `${label}: ${text.slice(-300)}` : "";
+  };
+  return pick(result?.stderr, "stderr") || pick(result?.stdout, "stdout");
 }
 
 /**
@@ -758,11 +763,11 @@ function judgeTurn(payload, mode, deps = {}) {
   if (result.status !== 0) {
     return quiet(
       OUTCOMES.EXIT_NONZERO,
-      [`exit ${result.status}`, stderrTail(result)].filter(Boolean).join("; ")
+      [`exit ${result.status}`, outputTail(result)].filter(Boolean).join("; ")
     );
   }
   if (!result.stdout) {
-    return quiet(OUTCOMES.NO_OUTPUT, stderrTail(result) || null);
+    return quiet(OUTCOMES.NO_OUTPUT, outputTail(result) || null);
   }
 
   const verdict = parseVerdict(result.stdout);

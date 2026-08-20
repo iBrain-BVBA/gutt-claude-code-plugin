@@ -55,6 +55,12 @@ Two further reasons the guard must cover more than Stop: a non-bare child fires
 `SessionStart`/`UserPromptSubmit` too, writing session records and polluting
 `${CLAUDE_PLUGIN_DATA}`; and on SIGTERM (§5) the child runs `SessionEnd` hooks on the way out.
 
+**Measured 2026-08-20 — how a child that cannot authenticate reports it.** It prints
+`Not logged in · Please run /login` on **stdout** and exits 1. Nothing reaches stderr. So a
+diagnostic that tails only stderr records the exit code and discards the reason beside it,
+which is what let a judge that could never authenticate read as a judge with nothing to say.
+Quota walls do use stderr, so a log line wants both: stderr first, stdout as the fallback.
+
 ## 3. Structured output — `--json-schema` beats parsing prose
 
 `--output-format` takes `text` (default), `json` (single result), `stream-json`.

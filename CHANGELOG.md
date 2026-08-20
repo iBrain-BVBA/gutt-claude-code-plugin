@@ -1,5 +1,38 @@
 # Changelog
 
+## [3.0.8] - 2026-08-20
+
+### Fixed
+
+- **Automatic end-of-turn capture never ran on Cowork local agent mode.** The Stop
+  hook fired on every turn and the judge it spawns died at startup every time, with
+  nothing in the conversation to show it. Recall still worked and running the capture
+  skill by hand still worked, so the only symptom was a memory graph that quietly
+  stopped filling up. Cowork cloud and the CLI were never affected.
+
+  The cause is one process hop. That surface hands the session token to its direct
+  child over an inherited file descriptor, and a hook that spawns `claude -p` puts the
+  judge one step further down — where the descriptor does not exist but the
+  instruction not to log in still does, so it waited for a token that could never
+  arrive. The judge child now has that handover removed from its environment and falls
+  back to the login it can reach on the machine it is running on. The removal is
+  conditional on the handover being the unreachable kind, so the surface where it
+  already works is left alone.
+
+  Worth knowing where this stops: it helps someone who has a working `claude` login on
+  the same machine. Using only the desktop application leaves nothing for the fallback
+  to find, and that case still fails the same silent way.
+
+- **A judge that failed could not say why.** The single log line written to explain it
+  tailed only stderr, and a child that cannot authenticate prints its reason on
+  stdout — so the log kept the exit code and discarded the explanation beside it. That
+  is why the failure above went three weeks unread in a file written specifically to
+  catch it. The line now carries whichever stream spoke, says which one it was, and
+  still prefers stderr, where quota limits report themselves.
+
+- **The onboarding skill's hook table described the Stop hook as a prompt hook**, which
+  it has not been since it became a command hook that spawns the judge.
+
 ## [3.0.7] - 2026-08-14
 
 ### Fixed
