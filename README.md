@@ -216,11 +216,12 @@ whole session.
 
 ### Skills
 
-| Skill            | Command                      | Purpose                                    |
-| ---------------- | ---------------------------- | ------------------------------------------ |
-| memory-search    | `/gutt-pro:memory-search`    | Shallow-first, summary-first memory search |
-| memory-capture   | `/gutt-pro:memory-capture`   | Structured lesson capture with 4 patterns  |
-| memory-retrieval | `/gutt-pro:memory-retrieval` | Deprecated alias → use memory-search       |
+| Skill               | Command                         | Purpose                                                    |
+| ------------------- | ------------------------------- | ---------------------------------------------------------- |
+| memory-search       | `/gutt-pro:memory-search`       | Shallow-first, summary-first memory search                 |
+| memory-capture      | `/gutt-pro:memory-capture`      | Structured lesson capture with 4 patterns                  |
+| memory-retrieval    | `/gutt-pro:memory-retrieval`    | Deprecated alias → use memory-search                       |
+| collect-diagnostics | `/gutt-pro:collect-diagnostics` | Redacted support bundle, then reads it and names the fault |
 
 ### Agents
 
@@ -361,7 +362,8 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── gutt-core/                      # core plugin — name/displayName: gutt-pro (dir keeps its name)
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
-│   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery
+│   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery,
+│   │                               # collect-diagnostics (+ its bash/PowerShell collectors)
 │   ├── agents/                     # gutt-pro-memory, agent-creator
 │   ├── commands/                   # setup, start, health
 │   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow
@@ -376,7 +378,7 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │                                   # bug-investigation, sub-task-breakdown, pr-re-review
 ├── gutt-product/                   # product plugin — story creation, backlog dedupe + prioritization over org memory (no hooks)
 │   └── skills/                     # story-creation, backlog-dedupe, backlog-prioritization
-├── docs/                           # banner, HUD screenshot, team-onboarding guide
+├── docs/                           # banner, HUD screenshot, team-onboarding + diagnostics guides
 ├── tests/
 ├── package.json
 └── README.md
@@ -419,6 +421,20 @@ This plugin works on:
 1. Verify OAuth authentication completed successfully
 2. Try broader search terms
 3. Check if memory has been populated for your organization
+
+### None of the above — collect diagnostics
+
+Run `/gutt-pro:collect-diagnostics` in a session, or the collector script directly.
+It gathers the hook logs, the plugin's runtime state, the hook manifest that is
+actually installed, both settings scopes, and a transcript inventory into one
+archive, with credential-shaped values redacted and conversation content opt-in.
+
+- **macOS / Linux / Git Bash:** `collect-diagnostics.sh`
+- **Windows:** `collect-diagnostics.ps1`
+
+[docs/diagnostics.md](docs/diagnostics.md) has the per-platform instructions,
+including how to find the script inside a version-scoped plugin install, what
+ends up in the bundle, and exactly what redaction does and does not cover.
 
 ## Contributing
 

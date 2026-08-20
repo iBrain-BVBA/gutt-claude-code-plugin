@@ -8,3 +8,12 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# Shell scripts must keep LF even on a Windows checkout: `text=auto` above would
+# hand them CRLF there, and bash reads the carriage return as part of the command —
+# starting with the interpreter on the shebang line, so the script dies before its
+# first statement. Git Bash users run the .sh collector, so this is not theoretical.
+# PowerShell reads either ending, and gets LF here for consistency with everything
+# else in this file rather than out of necessity.
+*.sh text eol=lf
+*.ps1 text eol=lf
