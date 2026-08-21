@@ -405,6 +405,37 @@ stripping it unconditionally would disturb the surface that works. Test for the 
 not for the product: a surface test encodes today's topology and fails silently when it
 changes.
 
+**The remedy, measured.** Two runs in one live local-mode session — 3.0.7 plus the patch
+under test, everything else held fixed. The handover means four variables:
+`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`, `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`,
+`CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH` and `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH`. Removing
+it from the child's environment lets the child fall back to a login of its own:
+
+| Removed from the child's environment | Judge                               |
+| ------------------------------------ | ----------------------------------- |
+| the four handover variables          | unchanged — `Not logged in`, exit 1 |
+| those four plus `CLAUDE_CONFIG_DIR`  | authenticated, verdict returned     |
+
+A third run, measured separately in an earlier session the same day: removing
+`CLAUDE_CONFIG_DIR` alone, the four left in place, fails the same way — neither half
+suffices on its own.
+
+So `CLAUDE_CONFIG_DIR` is not incidental to this failure, it is the load-bearing half: it
+names a per-session configuration root that holds identity and no token, so a child which
+keeps it looks there and stops. The consequence belongs next to any implementation of this —
+with that variable gone the child reads the **host's** real configuration directory, which is
+both why the remedy works and the limit of who it helps. Someone using only the desktop
+application, who has never authenticated a CLI on that host, has nothing for the fallback to
+find and fails at a different point with the same silence.
+
+**Forwarding the descriptor is not the general alternative it looks like.** In the hook's own
+process the descriptor the handover names is a **pipe, size 0** — not a file. Either it is
+the token's pipe, whose contents are consumed once and cannot be replayed for a grandchild,
+or it is an unrelated descriptor that happens to carry the same number; nothing in the
+environment distinguishes the two. Both readings rule out a pass-through. The isolation table
+above stands — the mechanism does work — but it works on a regular file, and what is actually
+there is not one.
+
 ### 9.3 Identifying the surface
 
 The platform states it, so no heuristic is needed. Local agent mode carries

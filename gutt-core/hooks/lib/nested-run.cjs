@@ -33,6 +33,18 @@
  * unauthenticated judge fails silently — no verdict, no user-visible sign. Paying for
  * the judge the same way you pay for the session is correct; breaking the judge to
  * avoid the charge is not.
+ *
+ * ## The one handover it does remove
+ *
+ * A host that holds the session credential itself hands its direct child a descriptor to
+ * read the token from, plus flags saying not to log in. Both are true for that child and
+ * false one hop further down: `spawnSync` does not pass fd 3 and up, so the judge inherits
+ * a variable naming a descriptor absent from its own process, is told not to authenticate,
+ * and exits without doing any work — every turn, with nothing in the conversation to show
+ * it. `childEnv` therefore removes that handover — the descriptor pointer, the
+ * do-not-log-in flags, and the per-session configuration root that travels with
+ * them — and only it, and only where a non-empty descriptor variable identifies it.
+ * See `HOST_AUTH_HANDOFF`.
  */
 
 /**
@@ -51,16 +63,66 @@ function isNestedRun(env = process.env) {
 }
 
 /**
+ * The variable whose non-empty value means the credential was handed over in the form a
+ * grandchild cannot reach. The condition is deliberately this and not a test for which
+ * product is hosting us: `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` is also set where the
+ * handover *does* survive a spawn and capture works, so an unconditional strip would
+ * disturb a healthy surface — and a test for the surface encodes today's topology and
+ * fails silently when it changes.
+ */
+const HANDOFF_DESCRIPTOR = "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR";
+
+/**
+ * The handover, removed as a unit. The first four are one instruction — do not log in,
+ * the token is on this descriptor — and were only ever measured together; nothing says
+ * which of them individually does what. Both measured partial removals failed: stripping
+ * the four while keeping `CLAUDE_CONFIG_DIR` changed nothing, and dropping
+ * `CLAUDE_CONFIG_DIR` while leaving the four in place failed the same way.
+ *
+ * `CLAUDE_CONFIG_DIR` is in the list for a different reason: it points at a per-session
+ * configuration root holding identity but no token, so a child that keeps it looks for
+ * credentials there and stops.
+ *
+ * The consequence is worth stating rather than discovering: with it gone the child reads
+ * the host's own configuration directory, which is both why this works and why it only
+ * helps someone who has a working login there.
+ */
+const HOST_AUTH_HANDOFF = [
+  HANDOFF_DESCRIPTOR,
+  "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+  "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
+  "CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH",
+  "CLAUDE_CONFIG_DIR",
+];
+
+/**
  * The environment for a `claude -p` child: everything this process has, plus the
- * guard. Inherited rather than filtered — see the note above on why the harness's
- * scrubbing does not belong in production.
+ * guard, minus the handover above where it is present. Otherwise inherited rather than
+ * filtered — see the note above on why the harness's scrubbing does not belong in
+ * production.
  *
  * @param {Object} [extra] - variables to add or override
  * @param {Object} [env] - base environment, defaults to this process's
  * @returns {Object}
  */
 function childEnv(extra = {}, env = process.env) {
-  return { ...env, ...extra, [NESTED_ENV_VAR]: "1" };
+  const child = { ...env, ...extra, [NESTED_ENV_VAR]: "1" };
+  // This does not contradict the section above. That rule exists to keep the child *able*
+  // to authenticate, and none of these are credentials: a pointer at a descriptor that
+  // does not exist in this process, flags telling the child not to log in, and a path to
+  // a per-session configuration root holding identity but no token. Removing them is
+  // what lets it fall back to its own login instead of waiting for a token that will
+  // never arrive.
+  //
+  // Truthy rather than a presence check: a variable that is set but empty names no
+  // descriptor, and acting on it would strip a configuration root on the strength of
+  // noise.
+  if (child[HANDOFF_DESCRIPTOR]) {
+    for (const key of HOST_AUTH_HANDOFF) {
+      delete child[key];
+    }
+  }
+  return child;
 }
 
 module.exports = { NESTED_ENV_VAR, isNestedRun, childEnv };

@@ -250,11 +250,35 @@ describe("stop-judge: deciding what to feed back", () => {
     assert.match(out.detail, /bad argv/, "a developer bug must leave a trace");
   });
 
-  it("carries stderr into the detail, where auth and quota failures announce themselves", () => {
+  it("carries stderr into the detail, where a quota wall announces itself", () => {
     const out = judge.judgeTurn({ transcript_path: file }, "auto", {
-      spawn: stub({ status: 1, stdout: "", stderr: "authentication_failed: token expired" }),
+      spawn: stub({ status: 1, stdout: "", stderr: "quota exceeded: limit reached" }),
     });
-    assert.match(out.detail, /authentication_failed/);
+    assert.match(out.detail, /quota exceeded/);
+    assert.match(out.detail, /stderr:/, "the log must name which stream answered");
+  });
+
+  it("falls back to stdout, where a child that cannot authenticate announces itself", () => {
+    // The reason a judge died is not always on stderr. An unauthenticated child prints its
+    // login prompt on stdout and exits 1, so tailing stderr alone logged the exit code and
+    // threw away the message sitting beside it — which is how this failure stayed unread.
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", {
+      spawn: stub({ status: 1, stdout: "Not logged in \u00b7 Please run /login", stderr: "" }),
+    });
+    assert.equal(out.outcome, judge.OUTCOMES.EXIT_NONZERO);
+    assert.equal(out.reason, null, "a dead judge must still not block the turn");
+    assert.match(out.detail, /Not logged in/);
+    assert.match(out.detail, /stdout:/, "the log must name which stream answered");
+  });
+
+  it("prefers stderr when both streams carry something", () => {
+    // Whatever wrote to an error stream is likelier to be the error than whatever the run
+    // happened to print, and a detail carrying both would be mostly noise.
+    const out = judge.judgeTurn({ transcript_path: file }, "auto", {
+      spawn: stub({ status: 1, stdout: "usage: claude [options]", stderr: "quota exceeded" }),
+    });
+    assert.match(out.detail, /quota exceeded/);
+    assert.doesNotMatch(out.detail, /usage/);
   });
 
   it("drops a reason that restates the verdict format", () => {
