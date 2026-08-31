@@ -950,7 +950,10 @@ function firedMessage(reason = "Run the `gutt-pro:memory-capture` skill.\n- Insi
  * types that also carry `hookName: "Stop"`. The previous fixture omitted it, which is
  * why no test in this file could see that quiet outcomes were being scored as fires.
  */
-function firedAttachment(reason = "Run the `gutt-pro:memory-capture` skill.") {
+function firedAttachment(
+  reason = "Run the `gutt-pro:memory-capture` skill.",
+  command = 'node "stop-capture.cjs"'
+) {
   return {
     type: "attachment",
     attachment: {
@@ -958,7 +961,7 @@ function firedAttachment(reason = "Run the `gutt-pro:memory-capture` skill.") {
       hookName: "Stop",
       hookEvent: "Stop",
       toolUseID: "8518c32f-67ed-47c2-a91f-dab7c0ab468c",
-      blockingError: { blockingError: reason, command: 'node "stop-capture.cjs"' },
+      blockingError: { blockingError: reason, command },
     },
   };
 }
@@ -1096,6 +1099,18 @@ describe("stop-capture: the e2e capture observer (GP-924)", () => {
     ]);
     assert.equal(outcomes.length, 1, "expected exactly the one real fire");
     assert.equal(outcomes[0].acted.length, 1);
+  });
+
+  it("does not claim a near-name foreign hook as ours", () => {
+    // The command is the discriminator, so it must match as a path component: a
+    // foreign `custom-stop-capture.cjs` whose reason happens to name memory capture
+    // is somebody else's hook, and claiming its fire makes our observer report an
+    // ignored fire the moment the agent answers ours instead.
+    const outcomes = captureOutcomes([
+      firedAttachment("Run the `gutt-pro:memory-capture` skill.", 'node "custom-stop-capture.cjs"'),
+      assistantSays("Done."),
+    ]);
+    assert.deepEqual(outcomes, [], "a near-name foreign Stop hook was scored as ours");
   });
 
   it("closes a fire's window at the next user prompt, not only at the next fire", () => {

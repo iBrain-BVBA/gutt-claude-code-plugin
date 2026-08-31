@@ -533,6 +533,10 @@ function runClaude(options) {
           logOffset: stateFile
             ? logSizesAtStart.get(realDir(path.dirname(path.dirname(stateFile)))) || 0
             : 0,
+          // The end watermark, sampled the moment the child exits: everything a later
+          // retry or run appends falls outside [logOffset, logOffsetEnd) and cannot be
+          // attributed to this one.
+          logOffsetEnd: stateFile ? logSizeNow(path.dirname(path.dirname(stateFile))) : null,
           transcriptFile,
           transcript: transcriptFile ? readTranscript(transcriptFile) : [],
           // Strictly this run's session. `!sessionId || …` used to widen this to
@@ -701,6 +705,10 @@ function runClaudeStream(options) {
           logOffset: stateFile
             ? logSizesAtStart.get(realDir(path.dirname(path.dirname(stateFile)))) || 0
             : 0,
+          // The end watermark, sampled the moment the child exits: everything a later
+          // retry or run appends falls outside [logOffset, logOffsetEnd) and cannot be
+          // attributed to this one.
+          logOffsetEnd: stateFile ? logSizeNow(path.dirname(path.dirname(stateFile))) : null,
           transcriptFile,
           transcript: transcriptFile ? readTranscript(transcriptFile) : [],
           samples: sessionId
@@ -783,16 +791,22 @@ function stopOutcomes(run) {
   // record of running" on a perfectly healthy run, and it self-heals next run as the
   // log regrows, so it reads as flake rather than as a broken assumption.
   const offset = run.logOffset || 0;
-  if (log.length < offset) {
+  const end = run.logOffsetEnd ?? log.length;
+  if (log.length < offset || log.length < end) {
     throw new Error(
-      `hook-invocations.log shrank below this run's watermark (${log.length}B < ${offset}B) — ` +
-        `the TTL sweep trimmed it mid-run, so its lines can no longer be attributed. ` +
-        `Re-run; if it persists, the sweep threshold and this suite are in conflict.`
+      `hook-invocations.log shrank below this run's watermark (${log.length}B < ` +
+        `${Math.max(offset, end)}B) — the TTL sweep trimmed it mid-run, so its lines ` +
+        `can no longer be attributed. Re-run; if it persists, the sweep threshold and ` +
+        `this suite are in conflict.`
     );
   }
   // Bytes, not string indices: an outcome line may carry an em dash, so slicing the
-  // decoded string by a byte offset would cut in the wrong place.
-  const text = log.subarray(offset).toString("utf8");
+  // decoded string by a byte offset would cut in the wrong place. Sliced at both ends:
+  // the start watermark excludes history, the end watermark excludes what later runs
+  // append after this one finished. What neither can exclude is a concurrent session
+  // interleaving *during* the run — the breadcrumb carries no session id, so that
+  // remains this observer's known blind spot.
+  const text = log.subarray(offset, end).toString("utf8");
   return [...text.matchAll(/^.*?\bStop: (.+)$/gm)].map((match) => ({
     outcome: match[1].split(/ \(mode=| — /)[0].trim(),
     line: match[0],
@@ -826,6 +840,22 @@ function invocationLogSizes() {
     }
   }
   return sizes;
+}
+
+/**
+ * Byte length of one data dir's invocation log right now — the end-side watermark,
+ * sampled at child exit by the run assembly. No log means the hook never wrote: zero
+ * is the truthful tail, not an error.
+ *
+ * @param {string} dataDir
+ * @returns {number}
+ */
+function logSizeNow(dataDir) {
+  try {
+    return fs.statSync(path.join(dataDir, "hook-invocations.log")).size;
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -1074,8 +1104,12 @@ function isStopFeedback(row) {
   return text !== null && OUR_CAPTURE_REASON.test(text);
 }
 
-/** Our Stop handler's script, as it appears in the attachment's recorded command. */
-const OUR_STOP_HOOK = /stop-capture\.cjs/;
+/**
+ * Our Stop handler's script, as it appears in the attachment's recorded command —
+ * anchored to a path-component boundary, so a foreign `custom-stop-capture.cjs`
+ * stays foreign instead of matching on the shared suffix.
+ */
+const OUR_STOP_HOOK = /(?:^|[\\/"'\s])stop-capture\.cjs/;
 
 /** What our judge always asks for. Pinned by `hook-architecture.test.cjs`. */
 const OUR_CAPTURE_REASON = /memory-capture/;
@@ -1208,7 +1242,13 @@ function actedOnCapture(block) {
   );
 }
 
-/** Whether this tool call reached the graph. Strictly a write — the skill is not one. */
+/**
+ * Whether this tool call *attempted* a graph write. Strictly a write call — the skill
+ * is not one — and deliberately uncorrelated with its tool_result: this measures
+ * whether the routing path got as far as calling the write tool, and a call the server
+ * then rejected is still a routed capture. Whether the write also landed is the
+ * server's ledger to answer, not a transcript's.
+ */
 function wroteToGraph(block) {
   return /add_(?:personal_)?memory/.test(block.name || "");
 }
@@ -1225,8 +1265,8 @@ function wroteToGraph(block) {
  * Two counts rather than one, because two different questions are asked of this and
  * only one of them tolerates being pooled. `acted` answers "did the routing path do
  * anything", which is the regression guard and is true of a correct decline. `wrote`
- * answers "how often does a fire reach the graph", which is the baseline a change to
- * the hook's output channel has to be measured against — and a fraction cannot be
+ * answers "how often does a fire reach a write call", which is the baseline a change
+ * to the hook's output channel has to be measured against — and a fraction cannot be
  * recovered from a pooled boolean, so the per-fire split is the point.
  *
  * Each window ends at the next fire or the next genuine user prompt, whichever comes

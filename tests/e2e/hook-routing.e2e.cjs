@@ -544,7 +544,7 @@ describe(
       // changing the hook's output channel needs a before-and-after on this number,
       // and a run that reports nothing gives the comparison no baseline to use.
       const wrote = outcomes.filter((o) => o.wrote.length > 0).length;
-      t.diagnostic(`capture: ${wrote}/${outcomes.length} fires reached a graph write`);
+      t.diagnostic(`capture: ${wrote}/${outcomes.length} fires reached a graph write call`);
     });
 
     it("bounds how many times one turn may be re-judged", () => {
