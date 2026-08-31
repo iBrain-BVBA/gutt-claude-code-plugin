@@ -1053,13 +1053,15 @@ describe("hook architecture guards", () => {
     // wave a multiline second write straight through.
     const opens = [...src.matchAll(/process\s*\.\s*stdout\s*\.\s*write\s*\(/g)];
     assert.equal(opens.length, 1, `expected exactly one stdout write, found ${opens.length}`);
-    // The payload check stays anchored to the write it just counted: the bounded span
-    // reaches across the template-literal wrapper and any reformatting, but not far
-    // enough to borrow a stringify from elsewhere in the file.
+    // The payload check pins the *entire* argument of the one write it just counted:
+    // exactly the serialized two-field object and a newline, in the template-literal
+    // form the router uses. Any prefix or suffix smuggled into the same call — leaked
+    // template text included — breaks the match, as does a switch to a different
+    // output form, which is the review this guard exists to force.
     assert.match(
       src,
-      /process\s*\.\s*stdout\s*\.\s*write\s*\([\s\S]{0,80}?JSON\.stringify\(\{\s*decision:\s*"block",\s*reason,?\s*\}\)/,
-      "the router's stdout is no longer exactly the {decision, reason} pair"
+      /process\s*\.\s*stdout\s*\.\s*write\s*\(\s*`\$\{JSON\.stringify\(\{\s*decision:\s*"block",\s*reason,?\s*\}\)\}\\n`\s*\)/,
+      "the router's stdout is no longer exactly the {decision, reason} pair plus newline"
     );
     // The template must not even be in scope: a router that never holds it cannot echo
     // it, whatever later happens to the write above.
