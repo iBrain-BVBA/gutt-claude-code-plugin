@@ -1048,12 +1048,17 @@ describe("hook architecture guards", () => {
     );
     // Exactly one stdout write, of exactly the two-field routing object. A second
     // write, or a wider object, is a new channel back into the conversation and has to
-    // be reviewed as one.
-    const writes = [...src.matchAll(/process\.stdout\.write\((.*)\);/g)].map((m) => m[1]);
-    assert.equal(writes.length, 1, `expected exactly one stdout write, found ${writes.length}`);
+    // be reviewed as one. Openings are counted separately from the payload because a
+    // write reformatted across lines must still count — a single-line pattern would
+    // wave a multiline second write straight through.
+    const opens = [...src.matchAll(/process\s*\.\s*stdout\s*\.\s*write\s*\(/g)];
+    assert.equal(opens.length, 1, `expected exactly one stdout write, found ${opens.length}`);
+    // The payload check stays anchored to the write it just counted: the bounded span
+    // reaches across the template-literal wrapper and any reformatting, but not far
+    // enough to borrow a stringify from elsewhere in the file.
     assert.match(
-      writes[0],
-      /JSON\.stringify\(\{ decision: "block", reason \}\)/,
+      src,
+      /process\s*\.\s*stdout\s*\.\s*write\s*\([\s\S]{0,80}?JSON\.stringify\(\{\s*decision:\s*"block",\s*reason,?\s*\}\)/,
       "the router's stdout is no longer exactly the {decision, reason} pair"
     );
     // The template must not even be in scope: a router that never holds it cannot echo

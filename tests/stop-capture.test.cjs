@@ -1098,6 +1098,25 @@ describe("stop-capture: the e2e capture observer (GP-924)", () => {
     assert.equal(outcomes[0].acted.length, 1);
   });
 
+  it("closes a fire's window at the next user prompt, not only at the next fire", () => {
+    // The ignored-fire shape a window bounded only by fires cannot see: the fire drew
+    // nothing, the user moved on, and the next turn did organic memory work before its
+    // own Stop ever fired. Sliced to the next fire alone, that work is credited
+    // backwards and the ignored fire reads as answered.
+    const outcomes = captureOutcomes([
+      firedMessage(),
+      firedAttachment(),
+      { type: "user", message: { role: "user", content: "next question" } },
+      assistantCalls({ type: "tool_use", name: "add_memory", input: {} }),
+    ]);
+    assert.equal(outcomes.length, 1);
+    assert.deepEqual(
+      outcomes[0].acted,
+      [],
+      "the next turn's own memory work was credited to an ignored fire"
+    );
+  });
+
   it("keeps two fires separate when no assistant turn divides them", () => {
     // The livelock shape: a turn that returned an empty answer fires twice with
     // nothing between. Merging them here would hide an ignored fire, which is the one

@@ -1229,18 +1229,56 @@ function wroteToGraph(block) {
  * the hook's output channel has to be measured against — and a fraction cannot be
  * recovered from a pooled boolean, so the per-fire split is the point.
  *
- * Each window ends at the next fire. Without that, a later turn's capture is credited
- * to an earlier fire and a fire that went unanswered disappears.
+ * Each window ends at the next fire or the next genuine user prompt, whichever comes
+ * first. Without the fire bound, a later turn's capture is credited to an earlier fire
+ * and a fire that went unanswered disappears. Without the prompt bound, the same
+ * mis-credit survives across a turn boundary: an ignored fire followed by the user
+ * moving on inherits the next turn's organic memory work and reads as answered.
  *
  * @param {Object[]} transcript
  * @returns {Array<{fired: number, acted: Object[], wrote: Object[]}>}
  */
 function captureOutcomes(transcript) {
   const fires = stopFeedbackIndices(transcript);
+  const prompts = userPromptIndices(transcript);
   return fires.map((fired, i) => {
-    const uses = toolUses(transcript.slice(fired + 1, fires[i + 1] ?? transcript.length));
+    const nextFire = fires[i + 1] ?? transcript.length;
+    const nextPrompt = prompts.find((index) => index > fired) ?? transcript.length;
+    const uses = toolUses(transcript.slice(fired + 1, Math.min(nextFire, nextPrompt)));
     return { fired, acted: uses.filter(actedOnCapture), wrote: uses.filter(wroteToGraph) };
   });
+}
+
+/**
+ * Every index at which the user themselves speaks — a prompt, not machinery.
+ *
+ * Exists as `captureOutcomes`'s second window bound. Three user-typed shapes are not
+ * prompts, and each is excluded by what the transcript records rather than by guesswork:
+ * tool results arrive as user rows whose blocks carry `content` rather than `text`, so
+ * their text joins to the empty string; CLI-injected rows (hook feedback, compaction
+ * notes) are marked `isMeta`; and any Stop hook's fired reason — not only ours — opens
+ * with the "Stop hook feedback:" prefix, which covers an injected fire even where the
+ * marker is missing.
+ *
+ * @param {Object[]} transcript
+ * @returns {number[]}
+ */
+function userPromptIndices(transcript) {
+  const indices = [];
+  for (const [i, row] of transcript.entries()) {
+    if (row.type !== "user" || !row.message || row.isMeta) {
+      continue;
+    }
+    const content = row.message.content;
+    const blocks = Array.isArray(content) ? content : [{ text: content }];
+    const text = blocks
+      .map((block) => (block && typeof block.text === "string" ? block.text : ""))
+      .join("");
+    if (text && !text.startsWith("Stop hook feedback:")) {
+      indices.push(i);
+    }
+  }
+  return indices;
 }
 
 /**
