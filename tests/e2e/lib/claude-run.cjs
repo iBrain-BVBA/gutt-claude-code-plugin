@@ -460,6 +460,9 @@ function runClaude(options) {
   } = options;
 
   const debugFile = path.join(projectDir, `${debugLabel}.log`);
+  // Before anything spawns: the invocation log is append-only, so this is the
+  // watermark that makes `stopOutcomes` this run's rather than every run's.
+  const logSizesAtStart = invocationLogSizes();
   const args = buildArgs({
     prompt,
     projectDir,
@@ -527,6 +530,9 @@ function runClaude(options) {
           stateFile,
           state: stateFile ? readJsonQuiet(stateFile) : null,
           dataDir: stateFile ? path.dirname(path.dirname(stateFile)) : null,
+          logOffset: stateFile
+            ? logSizesAtStart.get(realDir(path.dirname(path.dirname(stateFile)))) || 0
+            : 0,
           transcriptFile,
           transcript: transcriptFile ? readTranscript(transcriptFile) : [],
           // Strictly this run's session. `!sessionId || …` used to widen this to
@@ -584,6 +590,9 @@ function runClaudeStream(options) {
   } = options;
 
   const debugFile = path.join(projectDir, `${debugLabel}.log`);
+  // Before anything spawns: the invocation log is append-only, so this is the
+  // watermark that makes `stopOutcomes` this run's rather than every run's.
+  const logSizesAtStart = invocationLogSizes();
   const args = buildArgs({
     projectDir,
     debugFile,
@@ -689,6 +698,9 @@ function runClaudeStream(options) {
           stateFile,
           state: stateFile ? readJsonQuiet(stateFile) : null,
           dataDir: stateFile ? path.dirname(path.dirname(stateFile)) : null,
+          logOffset: stateFile
+            ? logSizesAtStart.get(realDir(path.dirname(path.dirname(stateFile)))) || 0
+            : 0,
           transcriptFile,
           transcript: transcriptFile ? readTranscript(transcriptFile) : [],
           samples: sessionId
@@ -730,23 +742,114 @@ function runClaudeStream(options) {
  * the CLI changing its logging, and it distinguishes a judge that passed from one
  * that could not answer.
  *
- * @param {string|null} dataDir the run's ${CLAUDE_PLUGIN_DATA}
+ * Scoped to the lines *this run* appended, via the byte offset the run recorded before
+ * it started. The log is append-only and shared by every run that ever used the same
+ * data dir, so reading it whole attributes months of history to the run in hand: it
+ * reported 78 judgements for a two-turn session and failed a run on a four-week-old
+ * timeout, while in the other direction a bound that should have caught a real
+ * regression passed on a total nobody could interpret. A count over the wrong
+ * denominator is not a weak signal, it is not a signal.
+ *
+ * Takes the run record rather than a bare data dir so the offset cannot be left
+ * behind. A caller still passing a path gets no outcomes and an assertion that fails
+ * loudly, which is the right direction: the alternative silently resurrects the whole
+ * log.
+ *
+ * Byte offsets rather than timestamps, because the log stamps whole seconds and a line
+ * written in the same second the run began is unattributable by time alone — and
+ * because sizes are exact where a local-clock comparison is a judgement call.
+ *
+ * @param {Object|null} run the run record from `runClaude`/`runClaudeStream`
  * @returns {Array<{outcome: string, line: string}>}
  */
-function stopOutcomes(dataDir) {
+function stopOutcomes(run) {
+  const dataDir = run && run.dataDir;
   if (!dataDir) {
     return [];
   }
-  let text = "";
+  let log;
   try {
-    text = fs.readFileSync(path.join(dataDir, "hook-invocations.log"), "utf8");
+    log = fs.readFileSync(path.join(dataDir, "hook-invocations.log"));
   } catch {
     return []; // no log is a real answer: the hook never ran
   }
+  // The log is NOT append-only, which is the premise a watermark would like to rest
+  // on. `session-start.cjs` runs a TTL sweep that trims every breadcrumb log to the
+  // last 200 lines once it passes 256KB — and that sweep runs inside the *child*
+  // session a test spawns, after the watermark was taken. So the file can be smaller
+  // than the offset recorded for it.
+  //
+  // That case has to be loud. Returning the empty tail would report "the hook left no
+  // record of running" on a perfectly healthy run, and it self-heals next run as the
+  // log regrows, so it reads as flake rather than as a broken assumption.
+  const offset = run.logOffset || 0;
+  if (log.length < offset) {
+    throw new Error(
+      `hook-invocations.log shrank below this run's watermark (${log.length}B < ${offset}B) — ` +
+        `the TTL sweep trimmed it mid-run, so its lines can no longer be attributed. ` +
+        `Re-run; if it persists, the sweep threshold and this suite are in conflict.`
+    );
+  }
+  // Bytes, not string indices: an outcome line may carry an em dash, so slicing the
+  // decoded string by a byte offset would cut in the wrong place.
+  const text = log.subarray(offset).toString("utf8");
   return [...text.matchAll(/^.*?\bStop: (.+)$/gm)].map((match) => ({
     outcome: match[1].split(/ \(mode=| — /)[0].trim(),
     line: match[0],
   }));
+}
+
+/**
+ * Byte length of every plugin data dir's invocation log, as of now.
+ *
+ * Sampled before a run starts, because which data dir the run resolves to is not known
+ * until after it finishes — the dir is derived from the session state file the run
+ * writes. Sampling all of them costs one `stat` per dir and removes the ordering
+ * problem entirely.
+ *
+ * @returns {Map<string, number>} absolute data dir → current log size in bytes
+ */
+function invocationLogSizes() {
+  const sizes = new Map();
+  let entries = [];
+  try {
+    entries = fs.readdirSync(PLUGIN_DATA_ROOT);
+  } catch {
+    return sizes; // no data root yet: every run starts from zero
+  }
+  for (const entry of entries) {
+    const dir = path.join(PLUGIN_DATA_ROOT, entry);
+    try {
+      sizes.set(realDir(dir), fs.statSync(path.join(dir, "hook-invocations.log")).size);
+    } catch {
+      /* this dir has no log yet, which reads the same as offset 0 */
+    }
+  }
+  return sizes;
+}
+
+/**
+ * A data dir in canonical form, for use as a map key.
+ *
+ * Both sides of the watermark lookup have to normalise the same way or the lookup
+ * misses and the offset silently falls back to zero — which reads the whole log and
+ * restores the very bug the watermark exists to fix, with nothing to show it happened.
+ * On macOS the temp and data roots resolve through `/private`, and a symlinked HOME
+ * does the same, so the sampled key and the resolved key can differ by prefix alone
+ * while naming one directory.
+ *
+ * Falls back to the path as given when it cannot be resolved: an unresolvable dir has
+ * no log to measure either, so both sides miss consistently.
+ *
+ * @param {string} dir
+ * @returns {string}
+ */
+function realDir(dir) {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return dir;
+  }
 }
 
 /**
@@ -757,11 +860,11 @@ function stopOutcomes(dataDir) {
  * This is the livelock bound's replacement. The P1 it guards re-fired 16 times on one
  * turn.
  *
- * @param {string|null} dataDir
+ * @param {Object|null} run the run record from `runClaude`/`runClaudeStream`
  * @returns {number}
  */
-function stopJudgements(dataDir) {
-  return stopOutcomes(dataDir).filter((entry) => /\(mode=/.test(entry.line)).length;
+function stopJudgements(run) {
+  return stopOutcomes(run).filter((entry) => /\(mode=/.test(entry.line)).length;
 }
 
 /**
@@ -941,6 +1044,220 @@ function toolUses(transcript, name = null) {
 }
 
 /**
+ * Whether this row is the Stop hook's fired reason entering the conversation.
+ *
+ * Two signals, either of which is enough, because they fail differently. The
+ * attachment is structural and survives any rewording of what we feed back; the
+ * injected user message is the text the agent actually reads, and survives the CLI
+ * reclassifying the attachment. Requiring both would make this answer "no" — and
+ * every assertion built on it vacuous — the first time the platform stops emitting
+ * one of them.
+ *
+ * Naming the hook is *not* enough on the attachment arm, and matching on that alone
+ * was a defect. Four attachment types carry `hookName: "Stop"` and only two are
+ * fires: measured over the local transcript corpus, ~520 `hook_blocking_error` rows
+ * and 4 `hook_additional_context` rows carry feedback, while ~17 `hook_cancelled`
+ * and 5 `hook_success` rows carry none — the hook ran and deliberately said nothing.
+ * Treating those 22 as fires opens a window on a quiet turn, and since the turn then
+ * ends with nothing after it, the observer reports a fire the agent ignored. That is
+ * the exact defect it exists to detect, manufactured out of correct behaviour.
+ *
+ * So each arm tests for *feedback*, not for provenance. Testing the blocking payload
+ * alone would be the obvious fix and the wrong one: it silences the non-blocking
+ * channel, which is the one that matters as the hook moves off `decision: "block"`.
+ *
+ * @param {Object} row
+ * @returns {boolean}
+ */
+function isStopFeedback(row) {
+  const text = stopFeedbackText(row);
+  return text !== null && OUR_CAPTURE_REASON.test(text);
+}
+
+/** Our Stop handler's script, as it appears in the attachment's recorded command. */
+const OUR_STOP_HOOK = /stop-capture\.cjs/;
+
+/** What our judge always asks for. Pinned by `hook-architecture.test.cjs`. */
+const OUR_CAPTURE_REASON = /memory-capture/;
+
+/**
+ * The feedback text this row carried, or null if it carried none or came from
+ * somebody else's Stop hook.
+ *
+ * Attribution matters and its absence was a defect. `hookName: "Stop"` is on *every*
+ * plugin's Stop hook, and a session can carry several: a real run recorded two fires
+ * back to back with no assistant turn between them, one from a 2.x `stop-lessons.cjs`
+ * and one from ours. Scoring a foreign plugin's fire as ours makes it an ignored fire
+ * the moment our own is the one the agent acts on — a false failure produced by
+ * another plugin doing its job.
+ *
+ * The recorded `command` is the definitive discriminator and is used wherever it
+ * appears. The non-blocking channel does not carry one, so that arm and the injected
+ * message fall back to the reason text naming the skill we ask for. Both paths stay
+ * alive on purpose: the command survives any rewording, and the text survives the CLI
+ * dropping or reclassifying the attachment.
+ *
+ * @param {Object} row
+ * @returns {string|null}
+ */
+function stopFeedbackText(row) {
+  if (row.type === "attachment" && row.attachment && row.attachment.hookName === "Stop") {
+    const { type, blockingError, content } = row.attachment;
+    if (type === "hook_blocking_error" && blockingError) {
+      if (blockingError.command && !OUR_STOP_HOOK.test(blockingError.command)) {
+        return null; // another plugin's Stop hook fired here
+      }
+      return String(blockingError.blockingError || "") || null;
+    }
+    if (type === "hook_additional_context") {
+      return [].concat(content || []).join("") || null;
+    }
+    return null; // hook_success / hook_cancelled — the hook ran and fed nothing back
+  }
+  if (row.type !== "user" || !row.message) {
+    return null;
+  }
+  const content = row.message.content;
+  const blocks = Array.isArray(content) ? content : [{ text: content }];
+  const text = blocks
+    .map((block) => (block && typeof block.text === "string" ? block.text : ""))
+    .join("");
+  return text.startsWith("Stop hook feedback:") ? text : null;
+}
+
+/**
+ * Every index at which the Stop hook fed a reason back, one per fire, in order.
+ *
+ * All of them, not the first: a session that fired on several turns has to be scored
+ * per fire. Crediting a later turn's capture to an earlier fire is how an observer
+ * reports a routing path as live while one of its fires went unanswered.
+ *
+ * One fire produces *both* signals `isStopFeedback` recognises — the injected message
+ * and the attachment — so counting rows would report one fire as two and hand the
+ * first an empty window ending where the second begins. It would then read as a fire
+ * the agent ignored, which is the exact defect this observer exists to detect,
+ * manufactured out of a fire that was answered.
+ *
+ * The pair is coalesced on **adjacency**, which is what the transcripts actually
+ * show: across the local corpus, 528 attachment/message pairings sit at a gap of
+ * zero, and every larger gap observed is 13 rows or more with assistant turns inside
+ * it — a different fire, not a split pair. So two signals merge only when they are
+ * neighbours and of different kinds.
+ *
+ * An earlier rule here merged instead on "the agent has spoken since the last
+ * signal". That is unsafe in the direction that matters: a turn which returned an
+ * empty answer produces two fires with no assistant turn between them, and the rule
+ * would silently fold the second into the first — hiding an ignored fire, the one
+ * outcome this must never miss. It is also the negation of the livelock the sibling
+ * assertion guards, so the invariant it assumed is one the suite exists to disprove.
+ *
+ * @param {Object[]} transcript
+ * @returns {number[]}
+ */
+function stopFeedbackIndices(transcript) {
+  const kind = (row) => (row.type === "attachment" ? "attachment" : "message");
+  const hits = [];
+  let last = -2;
+  let lastKind = null;
+  let alreadyPaired = false;
+  for (const [i, row] of transcript.entries()) {
+    if (!isStopFeedback(row)) {
+      continue;
+    }
+    // A fire absorbs at most one partner. Without that cap, a run of adjacent signals
+    // from consecutive fires chains into a single window — each row pairing with the
+    // one before it — and the fires after the first disappear.
+    const partner = i === last + 1 && kind(row) !== lastKind && !alreadyPaired;
+    if (partner) {
+      alreadyPaired = true;
+    } else {
+      hits.push(i);
+      alreadyPaired = false;
+    }
+    last = i;
+    lastKind = kind(row);
+  }
+  return hits;
+}
+
+/**
+ * Whether this tool call is the agent acting on a fired capture reason.
+ *
+ * Deliberately wider than "wrote to the graph", because declining is a correct
+ * outcome and leaves no write behind. Two shapes produce that, and measurement on
+ * real fires found both: a confirmation-mode fire ends at `AskUserQuestion` when the
+ * user skips the subject, and a deduplication ends at a graph *search* that finds the
+ * point already recorded. Neither writes, both are the agent doing exactly what the
+ * reason asked.
+ *
+ * The dedup arm also has to accept a bare search with no `Skill` call in front of it.
+ * The capture skill is usually already loaded in context by the time a fire lands, so
+ * the agent runs the dedup directly and no `Skill` row is ever emitted — an observer
+ * requiring one scores a correct decline as a dead routing path.
+ *
+ * @param {Object} block
+ * @returns {boolean}
+ */
+function actedOnCapture(block) {
+  const target = `${block.name || ""} ${(block.input && block.input.skill) || ""}`;
+  return (
+    /memory-capture/.test(target) ||
+    /add_(?:personal_)?memory/.test(target) ||
+    /search_memory_(?:nodes|facts)/.test(target) ||
+    block.name === "AskUserQuestion"
+  );
+}
+
+/** Whether this tool call reached the graph. Strictly a write — the skill is not one. */
+function wroteToGraph(block) {
+  return /add_(?:personal_)?memory/.test(block.name || "");
+}
+
+/**
+ * What the agent did after each Stop fire, one entry per fire, in order.
+ *
+ * This is the outcome `stopOutcomes()` cannot see. The hook's own log records that a
+ * verdict fired and what its reason said; neither says whether the agent then did
+ * anything. A reason naming two Insights, answered with a fresh verdict and no tool
+ * call at all, is indistinguishable in that log from one that captured — which is the
+ * whole of GP-924.
+ *
+ * Two counts rather than one, because two different questions are asked of this and
+ * only one of them tolerates being pooled. `acted` answers "did the routing path do
+ * anything", which is the regression guard and is true of a correct decline. `wrote`
+ * answers "how often does a fire reach the graph", which is the baseline a change to
+ * the hook's output channel has to be measured against — and a fraction cannot be
+ * recovered from a pooled boolean, so the per-fire split is the point.
+ *
+ * Each window ends at the next fire. Without that, a later turn's capture is credited
+ * to an earlier fire and a fire that went unanswered disappears.
+ *
+ * @param {Object[]} transcript
+ * @returns {Array<{fired: number, acted: Object[], wrote: Object[]}>}
+ */
+function captureOutcomes(transcript) {
+  const fires = stopFeedbackIndices(transcript);
+  return fires.map((fired, i) => {
+    const uses = toolUses(transcript.slice(fired + 1, fires[i + 1] ?? transcript.length));
+    return { fired, acted: uses.filter(actedOnCapture), wrote: uses.filter(wroteToGraph) };
+  });
+}
+
+/**
+ * Every tool call in which the agent acted on a fired reason, across all fires.
+ *
+ * Scoped to after a fire deliberately: work the agent began on its own initiative
+ * beforehand is real, but it is not evidence that the routing path did anything, and
+ * counting it would let a guard pass on precisely the session it exists to fail.
+ *
+ * @param {Object[]} transcript
+ * @returns {Object[]}
+ */
+function captureAttempts(transcript) {
+  return captureOutcomes(transcript).flatMap((outcome) => outcome.acted);
+}
+
+/**
  * Everything the tools handed back, as one string.
  *
  * Needed to assert that a documented command *worked*, not merely that it was run —
@@ -980,6 +1297,8 @@ module.exports = {
   REPO_ROOT,
   additionalContextEvents,
   buildArgs,
+  captureAttempts,
+  captureOutcomes,
   claudeVersion,
   createCompanionPlugin,
   createProject,
@@ -987,18 +1306,22 @@ module.exports = {
   findTranscript,
   hookAttachments,
   hookCompletions,
+  invocationLogSizes,
+  isStopFeedback,
   inlineDataDir,
   listSessionFiles,
   parseResultJson,
   plantSessionFile,
   pluginName,
   promptHookEvaluations,
+  realDir,
   readJsonQuiet,
   readTranscript,
   removeDir,
   runClaude,
   runClaudeStream,
   sessionStartEvents,
+  stopFeedbackIndices,
   stopHookActiveStates,
   stopJudgements,
   stopOutcomes,

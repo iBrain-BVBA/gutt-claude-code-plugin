@@ -19,9 +19,14 @@ builds the same text into one prompt. That understates nothing about the templat
 content, and it treats every candidate identically, which is what a comparison needs.
 Confirm a winner on live sessions afterwards — do not replace them with this.
 
+Since GP-866 the shipped Stop handler is a command hook, which feeds back only the
+reason — `--shape command` reproduces that injection; the default `--shape prompt`
+keeps the historical template echo measurable as a control.
+
 Usage:
     python3 -m suites.stop_judge.leak_probe                  # every shippable variant
     python3 -m suites.stop_judge.leak_probe V14 V15 --trials 5
+    python3 -m suites.stop_judge.leak_probe V0-shipped --trials 6 --shape command
 """
 import argparse
 import concurrent.futures as cf
@@ -76,18 +81,23 @@ def reason_for(template):
     return REASON + ("\n" + demanded.group(1) if demanded else "")
 
 
-# Claude Code's own wrapper, reproduced. `$ARGUMENTS` arrives un-interpolated in the echo,
-# so the template goes in verbatim.
-def injected(template):
+# Claude Code's own wrapper, reproduced, one per hook shape. A `prompt` hook's fire
+# echoes the whole template — `$ARGUMENTS` arrives un-interpolated, so it goes in
+# verbatim. A `command` hook (the shipped shape since GP-866) feeds back only what the
+# router writes to stdout: the reason, no template. The template still picks the reason
+# wording in that shape, but none of its imperatives reach the main agent.
+def injected(template, shape="prompt"):
+    if shape == "command":
+        return f"Stop hook feedback:\n{reason_for(template)}"
     return f"Stop hook feedback:\n[{template}]: {reason_for(template)}"
 
 
-def build(template, case="durable"):
+def build(template, case="durable", shape="prompt"):
     user, assistant = CASES[case]
     return (
         f"User: {user}\n\n"
         f"You already answered: {assistant}\n\n"
-        f"{injected(template)}\n\n"
+        f"{injected(template, shape)}\n\n"
         "Continue the turn."
     )
 
@@ -111,6 +121,9 @@ def main(argv=None):
     ap.add_argument("--trials", type=int, default=5)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--case", choices=sorted(CASES), default="durable")
+    ap.add_argument("--shape", choices=["prompt", "command"], default="prompt",
+                    help="what a fire injects: the whole template (prompt hook) or "
+                         "the reason alone (command hook, shipped since GP-866)")
     args = ap.parse_args(argv)
 
     every = V.all_variants()
@@ -123,12 +136,12 @@ def main(argv=None):
     cwd = judge_cwd()
     jobs = [(n, t) for n in names for t in range(args.trials)]
     print(f"{len(jobs)} calls — {len(names)} variants x {args.trials} trials, "
-          f"case={args.case}\ncwd: {cwd}")
+          f"case={args.case}, shape={args.shape}\ncwd: {cwd}")
 
     def work(job):
         name, _ = job
         # No --system-prompt: the leak is about the *main* agent's default behaviour.
-        raw = ask(build(every[name], args.case), system=None, cwd=cwd)
+        raw = ask(build(every[name], args.case, args.shape), system=None, cwd=cwd)
         return name, raw
 
     tally = {n: {"leaked": 0, "n": 0, "blocked": 0} for n in names}

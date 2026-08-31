@@ -38,6 +38,7 @@ const {
   PLUGIN_DIR,
   REPO_ROOT,
   additionalContextEvents,
+  captureOutcomes,
   claudeVersion,
   createCompanionPlugin,
   createProject,
@@ -272,7 +273,7 @@ describe(
     it("convenes the Stop judge once per turn", () => {
       // Two turns, so two judgements. Fewer means Stop is not wired; more means a turn
       // was re-judged, which run 4 covers in detail.
-      const judgements = stopJudgements(run.dataDir);
+      const judgements = stopJudgements(run);
       assert.equal(judgements, 2, `expected 1 Stop judgement per turn, saw ${judgements}`);
     });
 
@@ -280,7 +281,7 @@ describe(
       // Replaces a verdict-parsing assertion that read the CLI's debug log. A command
       // hook logs its own outcome, which says more: it separates a judge that passed
       // from one that could not answer at all.
-      const outcomes = stopOutcomes(run.dataDir);
+      const outcomes = stopOutcomes(run);
       assert.ok(outcomes.length > 0, "the Stop hook left no record of running");
       for (const entry of outcomes) {
         assert.ok(
@@ -408,7 +409,7 @@ describe(
 
     /** Every turn across all attempts where the judge asked for a capture. */
     function routedVerdicts() {
-      return runs.flatMap((r) => stopOutcomes(r.dataDir)).filter((o) => o.outcome === "fired");
+      return runs.flatMap((r) => stopOutcomes(r)).filter((o) => o.outcome === "fired");
     }
 
     before(
@@ -421,15 +422,24 @@ describe(
         // is honest here because the claim under test is that the routing path works at
         // all, not that this exact wording fires every single time.
         const ids = [IDS.stopRouter, IDS.stopRouterRetry, IDS.stopRouterRetry2];
-        for (const sessionId of ids) {
-          runs.push(
-            await runClaude({ projectDir, sessionId, prompt: DURABLE_TURN, model: ROUTER_MODEL })
-          );
-          run = runs[0];
-          if (routedVerdicts().length) {
-            break;
+        // Pin the capture mode instead of inheriting the developer's. In `hitl` the
+        // judge appends an instruction to confirm each subject with `AskUserQuestion`
+        // — a tool a headless session does not have. Measured: the agent searched for
+        // it three times, gave up, and asked in prose instead, which is the most
+        // compliance the environment allows and still leaves no capture behind. The
+        // outcome assertion below would read that as an ignored fire, so the mode has
+        // to be the one whose instruction this environment can actually carry out.
+        await withPlantedConfig({ enabled: true, mode: "auto" }, async () => {
+          for (const sessionId of ids) {
+            runs.push(
+              await runClaude({ projectDir, sessionId, prompt: DURABLE_TURN, model: ROUTER_MODEL })
+            );
+            run = runs[0];
+            if (routedVerdicts().length) {
+              break;
+            }
           }
-        }
+        });
       },
       { timeout: 460000 }
     );
@@ -454,7 +464,7 @@ describe(
       // independent sessions at a measured 5/6 each, so a failure here means the
       // prompt has drifted conservative rather than the code breaking — read the
       // printed reasons, they say why the judge stayed quiet.
-      const outcomes = runs.flatMap((r) => stopOutcomes(r.dataDir));
+      const outcomes = runs.flatMap((r) => stopOutcomes(r));
       assert.ok(outcomes.length > 0, "the Stop hook left no record of running");
       const routed = routedVerdicts();
       assert.ok(
@@ -466,6 +476,75 @@ describe(
       // That the reason names the skill is pinned by unit guards on JUDGE_CONDITION
       // (`tests/hook-architecture.test.cjs`, "asks for the skill line"), which is where a
       // wording claim belongs. Here the claim is only that the routing path fires.
+      // Whether the fire then reached a capture is the sibling below — this test passes
+      // on a turn where nothing was captured, and is not the place to fix that.
+    });
+
+    // The outcome, which the assertion above cannot see. It reads `hook-invocations.log`,
+    // where a fire that the agent answered with a fresh verdict and no tool call at all
+    // is byte-identical to one that captured. So the whole routing path could be dead
+    // end-to-end with the sibling green.
+    //
+    // No skip when nothing fired: the run-4 `before` already retries three sessions to
+    // get a fire, and a guard that quietly excused itself on the one condition that
+    // makes it unfalsifiable is the failure this repo keeps re-learning. Two tests
+    // failing on one missed fire is noise worth paying for.
+    it("and the fire reaches a capture attempt, not just a well-formed reason", (t) => {
+      const firing = runs.filter((r) => stopOutcomes(r).some((o) => o.outcome === "fired"));
+      assert.ok(
+        firing.length > 0,
+        "no session fired, so there is no outcome to observe — see the sibling for why"
+      );
+      // Per fire, not pooled across the batch. Pooling was the price of an observer
+      // that only recognised a write: a legitimate decline scored as a dead path, so
+      // the assertion had to be loosened until one capture anywhere in the batch could
+      // carry it. `captureOutcomes` counts declining as acting, so the loosening is no
+      // longer needed — and pooling now costs real detection, because an OR across
+      // runs stays green while one session in three quietly stops responding.
+      const outcomes = firing.flatMap((r) =>
+        captureOutcomes(r.transcript).map((o) => ({ ...o, run: r }))
+      );
+      // Per run, not pooled: a batch total hides a run whose fire never reached the
+      // conversation at all. Run A fires and is acted on, runs B and C fire per the
+      // log and contribute nothing — the total is still positive and they vanish.
+      // Free to check, since both numbers are already in hand.
+      const unreached = firing
+        .map((r) => ({
+          run: r,
+          logged: stopOutcomes(r).filter((o) => o.outcome === "fired").length,
+          seen: captureOutcomes(r.transcript).length,
+        }))
+        .filter((r) => r.seen < r.logged);
+      assert.deepEqual(
+        unreached.map(
+          (r) => `session ${r.run.sessionId}: ${r.logged} fired, ${r.seen} in transcript`
+        ),
+        [],
+        "the hook logged a fire whose reason never appeared in the conversation"
+      );
+      assert.ok(
+        outcomes.length > 0,
+        "the hook log records a fire, but no fired reason reached any transcript:\n" +
+          firing
+            .map((r) => `  session ${r.sessionId}: ${r.transcriptFile || "no transcript found"}`)
+            .join("\n")
+      );
+      const ignored = outcomes.filter((o) => o.acted.length === 0);
+      assert.deepEqual(
+        ignored.map((o) => `session ${o.run.sessionId} @row ${o.fired}`),
+        [],
+        "a Stop fire named findings and the agent did nothing afterwards — no capture, " +
+          "no dedup search, no confirmation prompt. That is the reason being read as " +
+          "text to report rather than an instruction to act on (GP-924)."
+      );
+      // Reported, not asserted. A fire that reaches no write is frequently correct —
+      // the judge's subject was already recorded, or the user declined it — so the
+      // rate is a property of the turns the batch happened to draw rather than of the
+      // hook, and no threshold here could distinguish the two. It is printed because
+      // changing the hook's output channel needs a before-and-after on this number,
+      // and a run that reports nothing gives the comparison no baseline to use.
+      const wrote = outcomes.filter((o) => o.wrote.length > 0).length;
+      t.diagnostic(`capture: ${wrote}/${outcomes.length} fires reached a graph write`);
     });
 
     it("bounds how many times one turn may be re-judged", () => {
@@ -477,7 +556,7 @@ describe(
       // After GP-866 made Stop a command hook, that string is never emitted, so the
       // count was always 0 and this assertion passed without testing anything — the
       // vacuous-guard failure this PR is otherwise about, sitting on a P1.
-      const judgements = stopJudgements(run.dataDir);
+      const judgements = stopJudgements(run);
       assert.ok(judgements > 0, "no Stop judgement recorded — the bound below is vacuous");
       assert.ok(
         judgements <= MAX_STOP_EVALUATIONS_PER_TURN,
@@ -490,7 +569,7 @@ describe(
       // The router short-circuits on `stop_hook_active` in code now, before any child is
       // spawned, so re-entry is observable as its own outcome. Asserting the log exists
       // first keeps this from going quiet if Stop stops running altogether.
-      const outcomes = stopOutcomes(run.dataDir);
+      const outcomes = stopOutcomes(run);
       assert.ok(outcomes.length > 0, "the Stop hook left no record of running");
       const reentries = outcomes.filter((o) => o.outcome === "skipped, already active");
       for (const entry of reentries) {
@@ -571,16 +650,23 @@ describe(
       const companion = run.debug
         .split("\n")
         .filter((l) => new RegExp(`Read hooks\\.json for plugin ${COMPANION_PLUGIN_NAME}`).test(l));
-      assert.equal(gutt.length, 1, `expected exactly one gutt plugin to load, got ${gutt.length}`);
+      // At least one read, not exactly one: a developer machine with the marketplace
+      // install present reads its cached copy too, then registers a single plugin per
+      // name — during such a run the Stop log grew only under the inline data dir, and
+      // the sibling below holds the behavioural line (one SessionStart injection, one
+      // session-end completion). GP-921 already records that read counts are not a
+      // registration proxy, so the count is not asserted.
+      assert.ok(gutt.length >= 1, "the gutt plugin never loaded");
       assert.equal(
         companion.length,
         1,
         `the companion plugin did not load: ${companion.length} reads`
       );
-      assert.match(
-        gutt[0],
-        new RegExp(REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-        "the loaded hooks.json is not the one in this repo"
+      assert.ok(
+        gutt.some((line) =>
+          new RegExp(REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(line)
+        ),
+        "no loaded hooks.json is the one in this repo"
       );
     });
 

@@ -918,3 +918,553 @@ describe("stop-capture: the router", () => {
 
 // The real-file assertion that used to sit here now runs over every lib in every
 // plugin, in tests/hook-architecture.test.cjs.
+
+// ---------------------------------------------------------------------------
+// The e2e capture observer.
+//
+// `tests/e2e/hook-routing.e2e.cjs` asserts that a fire reaches a capture attempt.
+// That assertion costs a paid session to run, so its own discrimination is proved
+// here instead, for free and deterministically: the observer must come back empty on
+// a session that fired and captured nothing, and must not be satisfied by a capture
+// the fire had nothing to do with. An observer that answered "captured" either way
+// would leave the e2e assertion green while asserting nothing — which is the state
+// GP-924 found the previous one in.
+// ---------------------------------------------------------------------------
+
+const { captureAttempts, captureOutcomes } = require("./e2e/lib/claude-run.cjs");
+
+/** The fired reason as the CLI injects it into the conversation. */
+function firedMessage(reason = "Run the `gutt-pro:memory-capture` skill.\n- Insight: x") {
+  return {
+    type: "user",
+    isMeta: true,
+    message: { role: "user", content: `Stop hook feedback:\n${reason}` },
+  };
+}
+
+/**
+ * The sibling attachment the CLI records for the same fire.
+ *
+ * Shaped from a real record rather than from the fields the assertion reads: the
+ * nested `blockingError` is what distinguishes a fire from the other three attachment
+ * types that also carry `hookName: "Stop"`. The previous fixture omitted it, which is
+ * why no test in this file could see that quiet outcomes were being scored as fires.
+ */
+function firedAttachment(reason = "Run the `gutt-pro:memory-capture` skill.") {
+  return {
+    type: "attachment",
+    attachment: {
+      type: "hook_blocking_error",
+      hookName: "Stop",
+      hookEvent: "Stop",
+      toolUseID: "8518c32f-67ed-47c2-a91f-dab7c0ab468c",
+      blockingError: { blockingError: reason, command: 'node "stop-capture.cjs"' },
+    },
+  };
+}
+
+/** A Stop hook that ran and fed nothing back. Not a fire. */
+function quietAttachment(type) {
+  return { type: "attachment", attachment: { type, hookName: "Stop", hookEvent: "Stop" } };
+}
+
+/** A fire delivered over the non-blocking channel: no blockingError, real content. */
+function contextAttachment(reason = "Run the `gutt-pro:memory-capture` skill.") {
+  return {
+    type: "attachment",
+    attachment: { type: "hook_additional_context", hookName: "Stop", content: [reason] },
+  };
+}
+
+function assistantCalls(...calls) {
+  return { type: "assistant", message: { role: "assistant", content: calls } };
+}
+
+function assistantSays(text) {
+  return { type: "assistant", message: { role: "assistant", content: [{ type: "text", text }] } };
+}
+
+const skill = (name) => ({ type: "tool_use", name: "Skill", input: { skill: name } });
+
+describe("stop-capture: the e2e capture observer (GP-924)", () => {
+  it("sees the skill invoked after a fire", () => {
+    const found = captureAttempts([
+      firedMessage(),
+      firedAttachment(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(found.length, 1);
+  });
+
+  it("counts a direct graph write, not only the skill", () => {
+    const found = captureAttempts([
+      firedMessage(),
+      assistantCalls({ type: "tool_use", name: "mcp__gutt-pro-memory__add_memory", input: {} }),
+    ]);
+    assert.equal(found.length, 1, "an agent that wrote the episode itself did the thing asked");
+  });
+
+  // The mutation the AC names: this is the session the old assertion passed on.
+  it("comes back empty when the fire was answered with a fresh verdict and no tool", () => {
+    const found = captureAttempts([
+      firedMessage(),
+      firedAttachment(),
+      assistantSays('{"ok": false, "reason": "Run the `gutt-pro:memory-capture` skill."}'),
+    ]);
+    assert.deepEqual(found, [], "a reply that merely restates the verdict is not a capture");
+  });
+
+  it("comes back empty when the fire drew no tool call at all", () => {
+    const found = captureAttempts([firedMessage(), assistantSays("Done.")]);
+    assert.deepEqual(found, []);
+  });
+
+  it("is not satisfied by unrelated tool calls after a fire", () => {
+    const found = captureAttempts([
+      firedMessage(),
+      assistantCalls({ type: "tool_use", name: "Bash", input: {} }, skill("gutt-pro:health")),
+    ]);
+    assert.deepEqual(found, []);
+  });
+
+  it("ignores a capture that predates the fire", () => {
+    const found = captureAttempts([
+      assistantCalls(skill("gutt-pro:memory-capture")),
+      firedMessage(),
+      assistantSays("Nothing further."),
+    ]);
+    assert.deepEqual(found, [], "a capture the routing path cannot have caused is not evidence");
+  });
+
+  it("reports nothing when the hook never fed anything back", () => {
+    const found = captureAttempts([assistantCalls(skill("gutt-pro:memory-capture"))]);
+    assert.deepEqual(found, [], "a spontaneous capture must not stand in for a fire");
+  });
+
+  it("finds the fire from either signal alone", () => {
+    const viaAttachment = captureAttempts([
+      firedAttachment(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    const viaMessage = captureAttempts([
+      firedMessage(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(viaAttachment.length, 1, "the attachment alone did not register as a fire");
+    assert.equal(viaMessage.length, 1, "the injected message alone did not register as a fire");
+  });
+
+  it("finds the fire on the non-blocking channel too", () => {
+    const found = captureAttempts([
+      contextAttachment(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(found.length, 1, "a fire delivered as additionalContext did not register");
+  });
+
+  // The 22 rows in the local corpus that name the Stop hook and carry no feedback.
+  // Scoring these as fires opens a window on a quiet turn; nothing follows, because
+  // the turn ended, and the observer reports the defect it exists to detect out of
+  // entirely correct behaviour.
+  for (const type of ["hook_success", "hook_cancelled"]) {
+    it(`does not treat a ${type} attachment as a fire`, () => {
+      assert.deepEqual(
+        captureOutcomes([quietAttachment(type), assistantSays("Done.")]),
+        [],
+        "the hook ran and fed nothing back — there is no fire to score"
+      );
+    });
+  }
+
+  it("does not treat a blocking attachment with no reason as a fire", () => {
+    const empty = {
+      type: "attachment",
+      attachment: { type: "hook_blocking_error", hookName: "Stop" },
+    };
+    assert.deepEqual(captureOutcomes([empty, assistantSays("Done.")]), []);
+  });
+
+  it("still scores a quiet outcome sitting beside a real fire", () => {
+    // A session that passed on one turn and fired on the next. The quiet row must not
+    // consume the fire, nor open one of its own.
+    const outcomes = captureOutcomes([
+      quietAttachment("hook_success"),
+      assistantSays("First turn."),
+      firedMessage(),
+      firedAttachment(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(outcomes.length, 1, "expected exactly the one real fire");
+    assert.equal(outcomes[0].acted.length, 1);
+  });
+
+  it("keeps two fires separate when no assistant turn divides them", () => {
+    // The livelock shape: a turn that returned an empty answer fires twice with
+    // nothing between. Merging them here would hide an ignored fire, which is the one
+    // outcome this must never miss.
+    const outcomes = captureOutcomes([
+      firedMessage(),
+      firedAttachment(),
+      firedMessage("Run the `gutt-pro:memory-capture` skill.\n- Insight: second"),
+      firedAttachment("Run the `gutt-pro:memory-capture` skill.\n- Insight: second"),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(outcomes.length, 2, "two fires with no reply between them were folded into one");
+    assert.deepEqual(outcomes[0].acted, [], "the first fire drew nothing and must say so");
+    assert.equal(outcomes[1].acted.length, 1);
+  });
+
+  // The shape a live session actually produces, and the one that caught this: the CLI
+  // emits both signals for one fire, adjacent. Counting rows makes that two fires and
+  // gives the first an empty window — a fire the agent appears to have ignored,
+  // fabricated out of one it answered. `captureAttempts` cannot see it, because
+  // flattening hides the empty window; only the per-fire split below does.
+  it("treats the paired message and attachment as one fire, not two", () => {
+    const outcomes = captureOutcomes([
+      firedMessage(),
+      firedAttachment(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(outcomes.length, 1, "one fire was counted twice, once per signal");
+    assert.equal(outcomes[0].acted.length, 1);
+  });
+
+  it("pairs the signals in either order", () => {
+    const outcomes = captureOutcomes([
+      firedAttachment(),
+      firedMessage(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(outcomes.length, 1);
+    assert.equal(outcomes[0].acted.length, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The two counts, and what separates them.
+//
+// Widening the observer to accept a decline is what stops a correct outcome reading
+// as a dead routing path — and it is also how the assertion could go vacuous, by
+// accepting anything at all. These cases pin both edges: a decline counts as acting
+// and does *not* count as a write, and doing nothing still counts as nothing.
+//
+// The write count exists because the two questions asked of this observer have
+// different answers. "Did the routing path work" tolerates a decline; "how often does
+// a fire reach the graph" is the baseline a change of output channel gets measured
+// against, and a decline is not a write.
+// ---------------------------------------------------------------------------
+
+const search = (name) => ({ type: "tool_use", name: `mcp__gutt-pro-memory__${name}`, input: {} });
+
+describe("stop-capture: acting on a fire versus writing to the graph", () => {
+  it("counts a bare dedup search as acting, with no Skill call in front of it", () => {
+    const [outcome] = captureOutcomes([
+      firedMessage(),
+      assistantCalls(search("search_memory_facts")),
+    ]);
+    assert.equal(outcome.acted.length, 1, "an inline dedup is the agent doing what was asked");
+    assert.deepEqual(outcome.wrote, [], "a dedup that found a duplicate wrote nothing");
+  });
+
+  it("counts a confirmation prompt as acting, and not as a write", () => {
+    const [outcome] = captureOutcomes([
+      firedMessage(),
+      assistantCalls({ type: "tool_use", name: "AskUserQuestion", input: {} }),
+    ]);
+    assert.equal(outcome.acted.length, 1, "a hitl fire correctly ends at the question");
+    assert.deepEqual(outcome.wrote, [], "the user had not answered yet, so nothing was written");
+  });
+
+  it("does not count the skill itself as a write", () => {
+    const [outcome] = captureOutcomes([
+      firedMessage(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(outcome.acted.length, 1);
+    assert.deepEqual(outcome.wrote, [], "running the skill is not the same as reaching the graph");
+  });
+
+  it("counts a graph write as both", () => {
+    const [outcome] = captureOutcomes([
+      firedMessage(),
+      assistantCalls({ type: "tool_use", name: "mcp__gutt-pro-memory__add_memory", input: {} }),
+    ]);
+    assert.equal(outcome.acted.length, 1);
+    assert.equal(outcome.wrote.length, 1);
+  });
+
+  // The vacuity guard. Widening must not make "acted" true of every session.
+  it("still reports nothing acted when the fire drew only unrelated work", () => {
+    const [outcome] = captureOutcomes([
+      firedMessage(),
+      assistantCalls({ type: "tool_use", name: "Bash", input: {} }, skill("gutt-pro:health")),
+      assistantSays('{"ok": false, "reason": "Run the `gutt-pro:memory-capture` skill."}'),
+    ]);
+    assert.deepEqual(outcome.acted, [], "unrelated tools are not the agent acting on the reason");
+  });
+
+  it("scores each fire in its own window, so a later capture cannot cover an earlier miss", () => {
+    const outcomes = captureOutcomes([
+      firedMessage(),
+      assistantSays("Noted."),
+      firedMessage(),
+      assistantCalls({ type: "tool_use", name: "mcp__gutt-pro-memory__add_memory", input: {} }),
+    ]);
+    assert.equal(outcomes.length, 2, "two fires must produce two outcomes");
+    assert.deepEqual(outcomes[0].acted, [], "the ignored fire was covered by the later capture");
+    assert.equal(outcomes[1].wrote.length, 1);
+  });
+
+  it("returns nothing at all when the hook never fired", () => {
+    assert.deepEqual(captureOutcomes([assistantCalls(skill("gutt-pro:memory-capture"))]), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scoping the invocation log to one run.
+//
+// `hook-invocations.log` is append-only and shared by every run that ever used the
+// same data dir, so reading it whole hands the current run months of someone else's
+// history. That is not a small inaccuracy: it reported 78 judgements for a two-turn
+// session, and failed a run by quoting a timeout from four weeks earlier. The run
+// record carries the log's byte length from before it started, and everything before
+// that offset belongs to somebody else.
+// ---------------------------------------------------------------------------
+
+const { stopOutcomes, stopJudgements } = require("./e2e/lib/claude-run.cjs");
+
+describe("stop-capture: reading only this run's Stop lines", () => {
+  let dir;
+  // An em dash in the history, deliberately: it makes the byte length differ from the
+  // string length, which is what the byte-offset case below turns on.
+  const history =
+    "[2026-08-03 15:13:05] Stop: timeout — ETIMEDOUT: spawnSync claude ETIMEDOUT (mode=auto)\n" +
+    "[2026-08-05 14:18:03] Stop: pass (mode=auto)\n";
+  const mine =
+    "[2026-08-31 10:38:55] Stop: fired (mode=auto)\n[2026-08-31 10:40:55] Stop: skipped, already active\n";
+
+  before(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-stoplog-"));
+    fs.writeFileSync(path.join(dir, "hook-invocations.log"), history + mine);
+  });
+  after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("sees only what was appended after the offset", () => {
+    const run = { dataDir: dir, logOffset: Buffer.byteLength(history, "utf8") };
+    assert.deepEqual(
+      stopOutcomes(run).map((o) => o.outcome),
+      ["fired", "skipped, already active"]
+    );
+  });
+
+  it("measures the offset in bytes, not in string indices", () => {
+    // The history carries an em dash, so its byte length exceeds its length in UTF-16
+    // code units. Slicing the decoded text by a byte offset therefore overshoots and
+    // eats the start of the first line this run wrote. The outcome alone does not
+    // catch it — a couple of missing leading characters still leave `Stop: fired`
+    // matchable — so this asserts the whole line, which is where the damage shows.
+    assert.notEqual(
+      Buffer.byteLength(history, "utf8"),
+      history.length,
+      "fixture no longer contains a multibyte character, so it cannot prove this"
+    );
+    const run = { dataDir: dir, logOffset: Buffer.byteLength(history, "utf8") };
+    assert.equal(stopOutcomes(run)[0].line, "[2026-08-31 10:38:55] Stop: fired (mode=auto)");
+  });
+
+  it("counts judgements over this run's lines, not the whole file", () => {
+    assert.equal(
+      stopJudgements({ dataDir: dir, logOffset: Buffer.byteLength(history, "utf8") }),
+      1
+    );
+    assert.equal(stopJudgements({ dataDir: dir, logOffset: 0 }), 3, "offset 0 still reads it all");
+  });
+
+  it("does not report an older run's broken judge as this run's", () => {
+    const run = { dataDir: dir, logOffset: Buffer.byteLength(history, "utf8") };
+    assert.deepEqual(
+      stopOutcomes(run).filter((o) => /timeout/.test(o.outcome)),
+      [],
+      "a four-week-old ETIMEDOUT was attributed to this run"
+    );
+  });
+
+  it("returns nothing for a caller that still passes a bare path", () => {
+    // The signature changed so this cannot be forgotten silently. Empty is the loud
+    // direction: an assertion on it fails, where reading the whole log would let a
+    // stale line pass or fail a run for reasons that predate it.
+    assert.deepEqual(stopOutcomes(dir), []);
+    assert.deepEqual(stopOutcomes(null), []);
+    assert.deepEqual(stopOutcomes({ dataDir: null }), []);
+  });
+
+  it("treats a missing log as the hook never having run", () => {
+    assert.deepEqual(stopOutcomes({ dataDir: path.join(dir, "nope"), logOffset: 0 }), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The observer's discriminators, each pinned on its own.
+//
+// Four of these were found by mutation rather than by review: breaking them left all
+// 89 tests green, because a second check downstream happened to mask the first, or
+// because the path had no test at all. Defence in depth is good; relying on it to
+// notice a regression is not.
+// ---------------------------------------------------------------------------
+
+const { isStopFeedback, invocationLogSizes, realDir } = require("./e2e/lib/claude-run.cjs");
+
+describe("stop-capture: telling our Stop fire from everyone else's", () => {
+  /** Another plugin's Stop hook. Real shape, taken from a live transcript. */
+  function foreignFire() {
+    return {
+      type: "attachment",
+      attachment: {
+        type: "hook_blocking_error",
+        hookName: "Stop",
+        blockingError: {
+          blockingError:
+            "Before completing, consider if this work warrants capturing lessons learned. " +
+            "Session stats: 0 memory queries, 0 significant ops, 0 lessons captured.",
+          command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/stop-lessons.cjs"',
+        },
+      },
+    };
+  }
+
+  it("ignores a fire from another plugin's Stop hook", () => {
+    // `hookName: "Stop"` is on every plugin's Stop hook. A session really did record
+    // a 2.x stop-lessons fire immediately before ours, with no assistant turn between
+    // — so counting it opens a window that our own fire then closes, and the foreign
+    // fire reads as one we ignored.
+    assert.equal(isStopFeedback(foreignFire()), false);
+  });
+
+  it("ignores a foreign fire even when its reason names our skill", () => {
+    // The command is the definitive discriminator and has to stand on its own. Without
+    // this case the reason check masks it: the 2.x hook's wording happens not to
+    // mention the skill, so dropping the command test entirely still passes. A fork,
+    // or another plugin in this family, would not be so convenient.
+    const impostor = {
+      type: "attachment",
+      attachment: {
+        type: "hook_blocking_error",
+        hookName: "Stop",
+        blockingError: {
+          blockingError: "Run the `gutt-pro:memory-capture` skill.\n- Insight: not ours",
+          command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/some-other-stop.cjs"',
+        },
+      },
+    };
+    assert.equal(isStopFeedback(impostor), false, "attributed another plugin's fire to us");
+  });
+
+  it("still sees our fire when a foreign one precedes it", () => {
+    const outcomes = captureOutcomes([
+      foreignFire(),
+      firedMessage(),
+      firedAttachment(),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(outcomes.length, 1, "the foreign fire was counted as one of ours");
+    assert.equal(outcomes[0].acted.length, 1);
+  });
+
+  it("does not treat a blocking attachment with an empty reason as a fire", () => {
+    const hollow = {
+      type: "attachment",
+      attachment: {
+        type: "hook_blocking_error",
+        hookName: "Stop",
+        blockingError: { blockingError: "", command: 'node "hooks/stop-capture.cjs"' },
+      },
+    };
+    assert.equal(isStopFeedback(hollow), false, "our hook, but it fed nothing back");
+  });
+
+  it("does not treat a quiet outcome as a fire even if its type is unfamiliar", () => {
+    for (const type of ["hook_success", "hook_cancelled", "hook_something_new"]) {
+      assert.equal(isStopFeedback(quietAttachment(type)), false, type);
+    }
+  });
+
+  // The two text gates, each pinned on its own. Mutation showed either could be
+  // deleted with every test in this file still green — and they carry the most
+  // production load: over the local transcript corpus, 1,883 non-fire user rows name
+  // the capture skill (the plugin's own SessionStart pointer first among them), and
+  // without the prefix gate every one opens a phantom scoring window.
+  it("does not treat an ordinary message naming the skill as a fire", () => {
+    const pointer = {
+      type: "user",
+      message: {
+        role: "user",
+        content:
+          "Organizational memory is available — run the `gutt-pro:memory-capture` " +
+          "skill when the turn produces something durable.",
+      },
+    };
+    assert.deepEqual(
+      captureOutcomes([pointer, assistantCalls(skill("gutt-pro:memory-capture"))]),
+      [],
+      "a message that merely names the skill is not hook feedback"
+    );
+  });
+
+  it("ignores another hook's feedback whose reason does not ask for our skill", () => {
+    // The injected-message arm carries no recorded command to discriminate by, so the
+    // reason text is the only gate on it. A 2.x lessons hook's feedback is the live case.
+    const foreign = firedMessage(
+      "Before completing, consider if this work warrants capturing lessons learned."
+    );
+    assert.deepEqual(
+      captureOutcomes([foreign, assistantCalls(skill("gutt-pro:memory-capture"))]),
+      [],
+      "another plugin's feedback message was scored as our fire"
+    );
+  });
+});
+
+describe("stop-capture: the watermark's own guarantees", () => {
+  let dir;
+  before(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-watermark-"));
+    fs.writeFileSync(path.join(dir, "hook-invocations.log"), "[t] Stop: fired (mode=auto)\n");
+  });
+  after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("throws when the log shrank below the watermark, rather than reporting silence", () => {
+    // The TTL sweep in session-start.cjs trims breadcrumb logs past 256KB, and it runs
+    // inside the child session a test spawns — after the watermark was taken. Reading
+    // the empty tail would report "the hook left no record of running" on a healthy
+    // run, and it self-heals next run, so it reads as flake rather than as a broken
+    // premise.
+    assert.throws(
+      () => stopOutcomes({ dataDir: dir, logOffset: 999999 }),
+      /shrank below this run's watermark/,
+      "a trimmed log must not read as a hook that never ran"
+    );
+  });
+
+  it("keys the sampled sizes by resolved path, so the lookup cannot miss on a prefix", () => {
+    // On macOS the data and temp roots resolve through /private, and a symlinked HOME
+    // does the same. If the two sides of the lookup normalise differently the offset
+    // silently falls back to zero — which reads the whole log and restores the bug the
+    // watermark exists to fix, with nothing to show it happened.
+    const link = path.join(os.tmpdir(), `gutt-link-${process.pid}`);
+    fs.symlinkSync(dir, link, "dir");
+    try {
+      assert.equal(realDir(link), fs.realpathSync(dir), "a symlinked dir did not resolve");
+      assert.equal(realDir(dir), fs.realpathSync(dir));
+    } finally {
+      fs.rmSync(link, { force: true });
+    }
+    for (const key of invocationLogSizes().keys()) {
+      assert.equal(key, realDir(key), `sampled key is not in canonical form: ${key}`);
+    }
+  });
+
+  it("returns the path unchanged when it cannot be resolved", () => {
+    const missing = path.join(dir, "no-such-dir");
+    assert.equal(realDir(missing), missing, "an unresolvable dir must not throw");
+  });
+});

@@ -1021,21 +1021,49 @@ describe("hook architecture guards", () => {
     );
   });
 
-  // NOT guarded here, deliberately: that a fired verdict must not become the user's
-  // answer. It is a real defect — a fire injects this whole template into the main
-  // conversation as `Stop hook feedback:\n[<template>]: <reason>`, and the main agent
-  // reads "respond with exactly {"ok": true}" as an instruction to itself. Measured on
-  // live sessions: 3 of 5 fires returned a reply that was nothing but `{"ok": true}`.
+  // The defect this guards: a fired verdict became the user's answer. A `type: "prompt"`
+  // hook's fire injected the whole judge template into the main conversation as
+  // `Stop hook feedback:\n[<template>]: <reason>`, and the main agent read "respond
+  // with exactly {"ok": true}" as an instruction to itself. Two wordings were tried
+  // against it and both cost more than they saved; they are recorded in
+  // evals/suites/stop_judge/FINDINGS.md — a clause in the template (0/6 leaks, but the
+  // judge applied the prohibition to itself and fire rate fell to 3/15), and a mandated
+  // final line in the reason (0/6 leaks, but verdicts stopped parsing as the judge wrote
+  // the line outside the JSON, and a fire began reading as an R23 block).
   //
-  // No wording tested fixes it without costing more than it saves, so asserting the
-  // property here would only make the suite red against the best available prompt. Both
-  // attempts are recorded in evals/suites/stop_judge/FINDINGS.md: a clause in the template
-  // (0/6 leaks, but the judge applied the prohibition to itself and fire rate fell to
-  // 3/15), and a mandated final line in the reason (0/6 leaks, but verdicts stopped
-  // parsing as the judge wrote the line outside the JSON, and a fire began reading as an
-  // R23 block). The live detector is `never leaks the judge protocol into the reply` in
-  // tests/e2e/hook-routing.e2e.cjs, and the deterministic one is
-  // evals/suites/stop_judge/leak_probe.py. Add the guard here with the fix.
+  // Neither was needed in the end. GP-866 made the Stop handler a command hook, and a
+  // command hook feeds back only what the router writes to stdout — the `reason`, never
+  // the template. The structural half is pinned deterministically: the type assertion
+  // above ("keeps the Stop judgement with a model, now via a command hook") forbids the
+  // one hook shape that echoes its template, and the assertion below pins the router's
+  // stdout to the two-field verdict routing with the template out of its scope. The
+  // behavioural halves live where output is observed: `and the fire reaches a capture
+  // attempt` in tests/e2e/hook-routing.e2e.cjs asserts every fire draws a response, its
+  // sibling `never leaks the judge protocol into the reply` asserts the reply is not
+  // verdict-shaped, and the deterministic detector is
+  // evals/suites/stop_judge/leak_probe.py (`--shape command` since the conversion).
+  it("feeds a fire back as the reason alone, with the template out of the router's reach", () => {
+    const src = stripComments(
+      fs.readFileSync(path.join(ROOT, "gutt-core", "hooks", "stop-capture.cjs"), "utf8")
+    );
+    // Exactly one stdout write, of exactly the two-field routing object. A second
+    // write, or a wider object, is a new channel back into the conversation and has to
+    // be reviewed as one.
+    const writes = [...src.matchAll(/process\.stdout\.write\((.*)\);/g)].map((m) => m[1]);
+    assert.equal(writes.length, 1, `expected exactly one stdout write, found ${writes.length}`);
+    assert.match(
+      writes[0],
+      /JSON\.stringify\(\{ decision: "block", reason \}\)/,
+      "the router's stdout is no longer exactly the {decision, reason} pair"
+    );
+    // The template must not even be in scope: a router that never holds it cannot echo
+    // it, whatever later happens to the write above.
+    assert.doesNotMatch(
+      src,
+      /JUDGE_CONDITION|buildJudgePrompt/,
+      "the router holds the judge template — one stray interpolation reopens GP-921"
+    );
+  });
 
   // Measured on the `evals/` bench (see evals/suites/stop_judge/FINDINGS.md): the
   // prompt that enumerated activities to stay quiet about — "routine edits, answering a
