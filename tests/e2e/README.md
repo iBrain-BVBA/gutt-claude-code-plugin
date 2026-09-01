@@ -18,12 +18,21 @@ npm run test:e2e
 Requires the `claude` CLI on `PATH` and a logged-in subscription. If `claude` is
 missing the suite skips rather than fails.
 
-**Cost:** seven Haiku sessions, a few cents. The discipline is one `claude -p` call per
-set of claims, never one per assertion. Wall clock is not stated for the suite as a whole
-because it has not been measured since the GP-922 suites landed; the
+The files run **serially** (`--test-concurrency=1`), and that is load-bearing:
+the tier shares one global `${CLAUDE_PLUGIN_DATA}/config.json` (two suites plant
+it), one inline `hook-invocations.log` (whose breadcrumbs carry no session id),
+and the CLI's plugin-cache locks. Run in parallel, the plants race each other,
+Stop lines from one file land inside another file's watermark window, and five
+simultaneous CLI launches have been observed to break `--plugin-dir` shadowing
+of an installed copy of the plugin — all measured on 2026-09-01, all gone under
+serial execution.
+
+**Cost:** nine sessions (eight Haiku, one sonnet), a few cents. The discipline is one
+`claude -p` call per set of claims, never one per assertion. Wall clock is not stated for
+the suite as a whole because it has not been measured since the GP-922 suites landed; the
 `migrate-memory-skill` run alone was 55–90s across five observed runs.
 
-Four suites:
+Five suites:
 
 | Suite                              | Runs | Covers                                                                         |
 | ---------------------------------- | ---- | ------------------------------------------------------------------------------ |
@@ -31,6 +40,7 @@ Four suites:
 | `hook-routing.e2e.cjs`             | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence                 |
 | `builtin-memory-migration.e2e.cjs` | 1    | GP-922 the migration **offer** reaches a conversation, and changes nothing     |
 | `migrate-memory-skill.e2e.cjs`     | 1    | GP-922 the **skill**: body delivery, its CLI running for real, the safety gate |
+| `state-hygiene.e2e.cjs`            | 2    | GP-893 AC1 failure paths: a hook killed mid-flight still leaves no state trail |
 
 The two GP-922 suites split along what each can prove. The offer suite covers detection
 and injection; the skill suite covers the flow that runs after the user accepts. Neither
@@ -48,6 +58,25 @@ each of those asserts is documented in its own file header instead.
 **Not part of `npm test`.** These files are named `*.e2e.cjs`, not `*.test.cjs`,
 so the `node --test tests/**/*.test.cjs` glob does not pick them up. Keep it that
 way: `npm test` must stay free, offline, and deterministic.
+
+## The filesystem-hygiene watch (R37)
+
+Every suite file takes a filesystem watermark at load and ends with a `GP-893 AC1`
+describe that diffs against it (`lib/fs-snapshot.cjs`): a file **created or
+deleted** under `~/.claude` outside the plugin's own `plugins/data/<name>-inline`
+dir and a short allowlist of CLI-owned surfaces fails the suite, and
+`git status --porcelain` over the repo must come out byte-identical. This is the
+runtime counterpart of the static `tests/check-state-location.cjs` grep guard —
+the grep proves no code _writes_ to a banned path; the diff proves a real run,
+including one whose hook was killed mid-flight (`state-hygiene.e2e.cjs`),
+_behaved_. Its unit tier (`tests/fs-snapshot.test.cjs`, in `npm test`) proves the
+instrument itself goes red on strays, deletions, repo drift, and a broken git.
+
+The watch executes wherever this tier executes: locally and on release
+candidates, not in CI. A run on a machine with other Claude sessions live can in
+principle pick up a concurrent session's writes; the failure message names the
+exact path, and everything a healthy CLI writes concurrently lands inside the
+allowlisted surfaces.
 
 ## What gets asserted, and against what
 

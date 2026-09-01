@@ -74,6 +74,7 @@ const {
   toolUses,
   withPlantedConfig,
 } = require("./lib/claude-run.cjs");
+const { beginStateWatch } = require("./lib/fs-snapshot.cjs");
 
 const {
   projectKey,
@@ -122,6 +123,10 @@ const FACTS = {
 };
 
 const version = claudeVersion();
+
+// GP-893 AC1 watermark: taken at module load, before anything here plants bait or
+// launches a run, so everything this file's runs create falls inside the window.
+const stateWatch = version ? beginStateWatch() : null;
 
 if (!version && process.env.GUTT_E2E_REQUIRED === "1") {
   throw new Error(
@@ -392,5 +397,14 @@ describe(
         `the reply claims a completed migration:\n${reply.slice(0, 600)}`
       );
     });
+  }
+);
+
+describe(
+  "GP-893 AC1: filesystem hygiene across this file's runs",
+  { skip: version ? false : "the `claude` CLI is not available on PATH" },
+  () => {
+    it("created nothing outside the sanctioned roots", () => stateWatch.assertNoStrays());
+    it("left the repo working tree exactly as it found it", () => stateWatch.assertRepoUnchanged());
   }
 );
