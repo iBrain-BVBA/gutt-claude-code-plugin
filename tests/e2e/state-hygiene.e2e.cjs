@@ -16,21 +16,31 @@
  *      actually kills the process (in production `guard()` swallows it; a
  *      swallowed throw is the covered case, a killing one is this suite's).
  *
+ * A throw is a clean unwind: plugin-state releases its locks in `finally`, so
+ * neither poison interrupts a write mid-syscall — the hard-kill (SIGKILL between
+ * temp-file and rename) that manufactures real `.tmp.` debris is not exercised
+ * here, and that residue would land inside the sanctioned data dir anyway, where
+ * AC2's sweep tests own it. What these two runs prove is the AC1 claim: a hook
+ * process dying with work half done leaves nothing outside the sanctioned roots.
+ *
  * How the sabotage reaches a real run: hooks are `node <script>` children of the
  * CLI, and NODE_OPTIONS is inherited environment — so a `--require` preload (the
- * same mechanism the unit tier's poisonProbe uses in-process) rides into every
- * node process of the run and no-ops everywhere but the targeted script. Each
+ * same require-cache patching the unit tier's poisonProbe applies through
+ * runHook's spawn) rides into every node process of the run and no-ops
+ * everywhere but the targeted script. Each
  * poison writes a marker file into the throwaway project dir immediately before
  * throwing: without that, a poison that silently stopped firing would turn both
  * runs into healthy ones and this suite into decoration.
  *
  * What is deliberately not asserted: that the judge's *child* session behaves.
- * A --plugin-dir child has no installed copy of the plugin to re-enter, so the
- * nested-run guard's real shape is unreachable from this tier (see
- * hooks/lib/nested-run.cjs); its writes land in CLI-owned dirs the watch
- * sanctions anyway.
+ * On a machine with an installed copy of the plugin the child does re-enter its
+ * hooks, and it is the nested-run guard (GUTT_NESTED_RUN, unit-tested in its own
+ * right) that exits them — not anything this suite arranges; the child CLI's own
+ * writes land in surfaces the watch sanctions. See hooks/lib/nested-run.cjs.
  *
- * Cost: two Haiku sessions, a few cents. Not part of `npm test`.
+ * Cost: two Haiku parent sessions plus one Sonnet judge child (failure path 2
+ * calls the real judgeTurn, which spawns JUDGE_MODEL, before dying). Not part of
+ * `npm test`.
  */
 "use strict";
 
@@ -83,18 +93,54 @@ const PROJECT_ALLOWANCE = ["CLAUDE.md", "settings.json", "claude-debug.log", "la
  */
 function armPoison(projectDir, name, body) {
   const poisonFile = path.join(projectDir, name);
-  fs.writeFileSync(poisonFile, body);
   // NODE_OPTIONS has no quoting mechanism a path with spaces survives; the
   // mkdtemp roots this suite uses have none, and a rename that introduces one
   // should fail here rather than as an inscrutable CLI launch error.
   assert.ok(!poisonFile.includes(" "), `poison path contains a space: ${poisonFile}`);
-  return { nodeOptions: `--require ${poisonFile}`, poisonFile };
+  fs.writeFileSync(poisonFile, body);
+  // Appended, not replaced: a developer's own NODE_OPTIONS must survive the run.
+  const inherited = process.env.NODE_OPTIONS;
+  return {
+    nodeOptions: [inherited, `--require ${poisonFile}`].filter(Boolean).join(" "),
+    poisonFile,
+  };
 }
 
-/** Everything in the project dir that neither the fixture nor the poison put there. */
-function strayProjectFiles(projectDir, extraAllowed) {
+/**
+ * Damage to the project dir: entries (recursive — a crash can leave a nested
+ * tree) that neither the fixture nor the poison put there, and fixture files
+ * that stopped existing. Both directions matter: a crashed hook deleting the
+ * project's own files is as much an escape as littering it.
+ * @param {string} projectDir
+ * @param {string[]} extraAllowed
+ * @returns {{strays: string[], missing: string[]}}
+ */
+function projectDamage(projectDir, extraAllowed) {
   const allowed = new Set([...PROJECT_ALLOWANCE, ...extraAllowed]);
-  return fs.readdirSync(projectDir).filter((name) => !allowed.has(name));
+  const present = [];
+  const stack = [""];
+  while (stack.length) {
+    const dirRel = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(path.join(projectDir, dirRel), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const rel = dirRel ? `${dirRel}/${entry.name}` : entry.name;
+      present.push(rel);
+      if (entry.isDirectory()) {
+        stack.push(rel);
+      }
+    }
+  }
+  return {
+    strays: present.filter((rel) => !allowed.has(rel)).sort(),
+    missing: ["CLAUDE.md", "settings.json"].filter(
+      (name) => !fs.existsSync(path.join(projectDir, name))
+    ),
+  };
 }
 
 describe(
@@ -146,7 +192,14 @@ describe(
     });
 
     it("the session record was never begun — the crash landed before beginSession", () => {
-      // The async connectivity sibling still creates the session file, and it
+      // The observer must have resolved before its absence claims mean anything:
+      // run.state is also null when findSessionStateFile() failed, and that
+      // observer failure would satisfy the assertion below vacuously.
+      assert.ok(
+        run.stateFile,
+        "observer failure: no session state file resolved — the connectivity sibling should have created one"
+      );
+      // The async connectivity sibling creates the session file, and it
       // initialises `source` to null; only beginSession writes the real value.
       // So null and absent both mean "never begun" — a string means it ran.
       const source = run.state ? run.state.source : undefined;
@@ -162,8 +215,8 @@ describe(
       assert.equal(run.result.is_error, false);
     });
 
-    it("leaves nothing in the project dir beyond the fixture and the poison", () => {
-      const strays = strayProjectFiles(projectDir, [
+    it("leaves the project dir with the fixture intact and nothing extra", () => {
+      const { strays, missing } = projectDamage(projectDir, [
         "poison-session-start.cjs",
         "poison-fired.flag",
       ]);
@@ -172,6 +225,7 @@ describe(
         [],
         `the crashed run littered the project dir: ${strays.join(", ")}`
       );
+      assert.deepEqual(missing, [], `the crashed run deleted fixture files: ${missing.join(", ")}`);
     });
   }
 );
@@ -238,6 +292,12 @@ describe(
     });
 
     it("the router died before its own log line — a genuinely mid-flight death", () => {
+      // The observer must have resolved first: stopOutcomes() returns [] when
+      // run.dataDir is null, which would satisfy the zero-lines claim vacuously.
+      assert.ok(
+        run.dataDir,
+        "observer failure: the run's data dir never resolved — zero Stop lines would be vacuous"
+      );
       // A healthy judged turn always appends exactly one Stop line; the wrapper
       // throws between judgeTurn and that append, so this run must show none.
       const outcomes = stopOutcomes(run);
@@ -256,13 +316,17 @@ describe(
       assert.equal(run.result.is_error, false);
     });
 
-    it("leaves nothing in the project dir beyond the fixture and the poison", () => {
-      const strays = strayProjectFiles(projectDir, ["poison-stop.cjs", "poison-fired.flag"]);
+    it("leaves the project dir with the fixture intact and nothing extra", () => {
+      const { strays, missing } = projectDamage(projectDir, [
+        "poison-stop.cjs",
+        "poison-fired.flag",
+      ]);
       assert.deepEqual(
         strays,
         [],
         `the crashed run littered the project dir: ${strays.join(", ")}`
       );
+      assert.deepEqual(missing, [], `the crashed run deleted fixture files: ${missing.join(", ")}`);
     });
   }
 );

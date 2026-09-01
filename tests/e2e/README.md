@@ -27,7 +27,8 @@ simultaneous CLI launches have been observed to break `--plugin-dir` shadowing
 of an installed copy of the plugin — all measured on 2026-09-01, all gone under
 serial execution.
 
-**Cost:** nine sessions (eight Haiku, one sonnet), a few cents. The discipline is one
+**Cost:** nine parent sessions (eight Haiku, one Sonnet), plus the Sonnet judge
+children the Stop-router and state-hygiene runs spawn — a few cents. The discipline is one
 `claude -p` call per set of claims, never one per assertion. Wall clock is not stated for
 the suite as a whole because it has not been measured since the GP-922 suites landed; the
 `migrate-memory-skill` run alone was 55–90s across five observed runs.
@@ -62,21 +63,35 @@ way: `npm test` must stay free, offline, and deterministic.
 ## The filesystem-hygiene watch (R37)
 
 Every suite file takes a filesystem watermark at load and ends with a `GP-893 AC1`
-describe that diffs against it (`lib/fs-snapshot.cjs`): a file **created or
-deleted** under `~/.claude` outside the plugin's own `plugins/data/<name>-inline`
-dir and a short allowlist of CLI-owned surfaces fails the suite, and
-`git status --porcelain` over the repo must come out byte-identical. This is the
-runtime counterpart of the static `tests/check-state-location.cjs` grep guard —
-the grep proves no code _writes_ to a banned path; the diff proves a real run,
-including one whose hook was killed mid-flight (`state-hygiene.e2e.cjs`),
-_behaved_. Its unit tier (`tests/fs-snapshot.test.cjs`, in `npm test`) proves the
-instrument itself goes red on strays, deletions, repo drift, and a broken git.
+describe that diffs against it (`lib/fs-snapshot.cjs`): a file or directory
+**created or deleted** under `~/.claude` outside the allowlist fails the suite,
+and `git status --porcelain -uall --ignored=matching` over the repo must come out
+byte-identical — the ignored names matter, because the breadcrumb files debug.cjs
+writes are all gitignored and under `--plugin-dir` the plugin root is this repo.
+The allowlist sanctions what the AC sanctions: every plugin's own
+`plugins/data/<plugin>/` dir (which install variant the run under test used is
+pinned by the lifecycle suite's execution-evidence tests, not by the watch),
+CLI-owned session surfaces, and two measured developer-machine surfaces
+(`plans/`, `.ponytail-active`). Everything else stays watched — including the
+per-project `memory/` store under `projects/`, which the GP-922 suites plant and
+must fully remove, plugin installs, and the user's own config surfaces.
+
+This is the runtime counterpart of the static `tests/check-state-location.cjs`
+grep guard — the grep proves no code _matches a write-call pattern_ outside a
+sanctioned-writer list; the diff proves a real run, including one whose hook was
+killed mid-flight (`state-hygiene.e2e.cjs`), _behaved_. Its unit tier
+(`tests/fs-snapshot.test.cjs`, in `npm test`) proves the instrument itself goes
+red on strays, deletions, empty leftover directories, repo drift, gitignored
+writes, an unreadable subtree, a root that yielded nothing, a relocated
+`CLAUDE_CONFIG_DIR`, and a broken git — and pins the real allowlist's boundary
+plus the wiring invariant that every e2e file carries the watch and closes with
+its describe.
 
 The watch executes wherever this tier executes: locally and on release
-candidates, not in CI. A run on a machine with other Claude sessions live can in
-principle pick up a concurrent session's writes; the failure message names the
-exact path, and everything a healthy CLI writes concurrently lands inside the
-allowlisted surfaces.
+candidates, not in CI. Concurrent sessions are expected and their measured
+surfaces are sanctioned; a stray outside them is a real finding for whichever
+process wrote it, and the failure message names the exact path so it can be
+attributed rather than guessed at.
 
 ## What gets asserted, and against what
 
@@ -91,9 +106,12 @@ so a passing suite means three separate systems agree.
 
 Notable checks:
 
-- **The branch's code ran, not the installed plugin.** `--plugin-dir` shadows an
-  installed plugin of the same name; the suite asserts exactly one gutt plugin
-  loaded and that its `hooks.json` path is inside this repo.
+- **The branch's code ran, not the installed plugin.** The loader reads every
+  same-name manifest it can see (measured on CLI 2.1.235) and registers one
+  winner, so the suite asserts execution evidence instead of read counts: the
+  working tree's `hooks.json` is among the reads, gutt's SessionEnd completed
+  exactly once, and the session's state landed in the `-inline` data dir only a
+  `--plugin-dir` load resolves to.
 - **The connectivity write survives.** `session-start.cjs` and the `async`
   `session-connectivity.cjs` write the same file at once. The suite asserts the
   probe's verdict reached disk — the regression that motivated the write lock.

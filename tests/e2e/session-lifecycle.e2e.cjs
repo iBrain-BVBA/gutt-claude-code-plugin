@@ -285,10 +285,10 @@ describe(
       // Tri-state on purpose: true/false = the probe answered, null = the probe
       // threw and said so. Only `undefined` means the probe's write was lost —
       // the clobber this smoke check exists to catch. (`connectionStatus` is no
-      // longer written by this hook at all: it reads settings and cannot open a
-      // socket, so the green light moved to observed tool traffic; asserting
-      // "ok" here goes red against the current hook on every machine whose
-      // configured URL is not itself reachable.)
+      // longer written by this hook at all: its sole writer is post-memory-search
+      // via noteConnection, on an observed gutt MCP tool response — and this tier
+      // denies every tool, so no run of it can ever see "ok". Asserting "ok"
+      // here is therefore red by construction, not flaky; do not re-add it.)
       assert.notEqual(
         run.state.mcpConfigured,
         undefined,
