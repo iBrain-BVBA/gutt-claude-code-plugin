@@ -2023,6 +2023,7 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       fs.utimesSync(f, stale, stale);
     }
     fs.writeFileSync(path.join(dir, "sessions", "live.json.lock"), "");
+    fs.writeFileSync(path.join(dir, "config.json.tmp.5678"), "");
   }
 
   before(() => {
@@ -2148,6 +2149,14 @@ describe("session lifecycle: synchronous path stays inside the latency budget", 
       fs.existsSync(path.join(sessions, "live.json.lock")),
       true,
       "a lock younger than DEBRIS_TTL_MS must survive — it may still be held"
+    );
+    // Same discriminator, root scope: root-debris and session-debris pass their
+    // maxAgeMs independently, so the surviving session lock above proves nothing
+    // about the root step — a root-debris TTL broken to 0 left this suite green.
+    assert.equal(
+      fs.existsSync(path.join(dir, "config.json.tmp.5678")),
+      true,
+      "root debris younger than DEBRIS_TTL_MS must survive — an atomic write may be mid-flight"
     );
   });
 });
