@@ -1063,6 +1063,18 @@ describe("hook architecture guards", () => {
       /process\s*\.\s*stdout\s*\.\s*write\s*\(\s*`\$\{JSON\.stringify\(\{\s*decision:\s*"block",\s*reason,?\s*\}\)\}\\n`\s*\)/,
       "the router's stdout is no longer exactly the {decision, reason} pair plus newline"
     );
+    // The write above must also be the only *route* to stdout. A call-shape count
+    // alone misses an alias (`const out = process.stdout`) and misses console's
+    // stdout half — but any alias still needs the token, and the console calls that
+    // print to stdout are banned outright. console.error/warn go to stderr and stay
+    // out of the fire channel, so they stay legal.
+    const stdoutTokens = [...src.matchAll(/\bstdout\b/g)];
+    assert.equal(stdoutTokens.length, 1, "a second route to stdout appeared in the router");
+    assert.doesNotMatch(
+      src,
+      /console\.(log|info|debug)\(/,
+      "console's stdout half writes to the fire channel behind the guard's back"
+    );
     // The template must not even be in scope: a router that never holds it cannot echo
     // it, whatever later happens to the write above.
     assert.doesNotMatch(

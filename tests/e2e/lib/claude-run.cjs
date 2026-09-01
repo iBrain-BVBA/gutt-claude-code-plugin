@@ -805,7 +805,11 @@ function stopOutcomes(run) {
   // the start watermark excludes history, the end watermark excludes what later runs
   // append after this one finished. What neither can exclude is a concurrent session
   // interleaving *during* the run — the breadcrumb carries no session id, so that
-  // remains this observer's known blind spot.
+  // remains this observer's known blind spot. A sweep that trims and then regrows
+  // past the start watermark inside one run would likewise slip the shrink guard,
+  // but reaching it takes hundreds of kilobytes of appends in a single run, three
+  // orders beyond what one produces — and both holes end at the same fix,
+  // session-tagged breadcrumbs.
   const text = log.subarray(offset, end).toString("utf8");
   return [...text.matchAll(/^.*?\bStop: (.+)$/gm)].map((match) => ({
     outcome: match[1].split(/ \(mode=| — /)[0].trim(),
@@ -1106,13 +1110,19 @@ function isStopFeedback(row) {
 
 /**
  * Our Stop handler's script, as it appears in the attachment's recorded command —
- * anchored to a path-component boundary, so a foreign `custom-stop-capture.cjs`
- * stays foreign instead of matching on the shared suffix.
+ * anchored to a path-component boundary on both sides, so a foreign
+ * `custom-stop-capture.cjs` stays foreign instead of matching on the shared suffix
+ * and a `stop-capture.cjs.backup` stays foreign instead of matching on the prefix.
  */
-const OUR_STOP_HOOK = /(?:^|[\\/"'\s])stop-capture\.cjs/;
+const OUR_STOP_HOOK = /(?:^|[\\/"'\s])stop-capture\.cjs(?:$|["'\s])/;
 
-/** What our judge always asks for. Pinned by `hook-architecture.test.cjs`. */
-const OUR_CAPTURE_REASON = /memory-capture/;
+/**
+ * The line every reason our judge fires opens with — the judge contract pins this
+ * wording, so it is the one sentence a fire is guaranteed to carry. Matching the full
+ * sentence rather than the bare skill name keeps a foreign hook that merely talks
+ * about memory capture from opening a phantom outcome window.
+ */
+const OUR_CAPTURE_REASON = /Run the `gutt-pro:memory-capture` skill\./;
 
 /**
  * The feedback text this row carried, or null if it carried none or came from

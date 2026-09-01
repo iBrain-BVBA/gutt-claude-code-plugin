@@ -1113,6 +1113,26 @@ describe("stop-capture: the e2e capture observer (GP-924)", () => {
     assert.deepEqual(outcomes, [], "a near-name foreign Stop hook was scored as ours");
   });
 
+  it("does not claim a suffixed lookalike script as ours", () => {
+    // The boundary has to hold on both sides: `stop-capture.cjs.backup` shares our
+    // prefix the way `custom-stop-capture.cjs` shares our suffix.
+    const outcomes = captureOutcomes([
+      firedAttachment("Run the `gutt-pro:memory-capture` skill.", 'node "stop-capture.cjs.backup"'),
+      assistantSays("Done."),
+    ]);
+    assert.deepEqual(outcomes, [], "a suffixed lookalike script was scored as ours");
+  });
+
+  it("needs the contract's opening line, not just the words memory-capture", () => {
+    // The reason gate matches the sentence the judge contract pins, so a foreign
+    // hook that merely talks about memory capture cannot open a phantom window.
+    const outcomes = captureOutcomes([
+      firedMessage("Before finishing, review your memory-capture hygiene."),
+      assistantSays("Done."),
+    ]);
+    assert.deepEqual(outcomes, [], "a mention of memory-capture was scored as our fire");
+  });
+
   it("closes a fire's window at the next user prompt, not only at the next fire", () => {
     // The ignored-fire shape a window bounded only by fires cannot see: the fire drew
     // nothing, the user moved on, and the next turn did organic memory work before its
