@@ -1081,11 +1081,18 @@ function toolUses(transcript, name = null) {
  * Whether this row is the Stop hook's fired reason entering the conversation.
  *
  * Two signals, either of which is enough, because they fail differently. The
- * attachment is structural and survives any rewording of what we feed back; the
- * injected user message is the text the agent actually reads, and survives the CLI
- * reclassifying the attachment. Requiring both would make this answer "no" — and
- * every assertion built on it vacuous — the first time the platform stops emitting
- * one of them.
+ * attachment is structural: where it records the command, that alone identifies the
+ * fire and no rewording of what we feed back can hide it. The injected user message is
+ * the text the agent actually reads and survives the CLI reclassifying the attachment,
+ * but it carries no command, so there the reason wording is what attributes it.
+ * Requiring both would make this answer "no" — and every assertion built on it vacuous
+ * — the first time the platform stops emitting one of them.
+ *
+ * The gates are per-arm on purpose. Applying the reason gate to both, outside the arm
+ * split, is a redundancy that only looks like one: the structural arm then fails on a
+ * judge rewrite at exactly the moment the text arm does, which is the single failure
+ * the two arms exist to survive separately. It was written that way first, and the
+ * comment above claimed the independence the code did not implement.
  *
  * Naming the hook is *not* enough on the attachment arm, and matching on that alone
  * was a defect. Four attachment types carry `hookName: "Stop"` and only two are
@@ -1105,7 +1112,30 @@ function toolUses(transcript, name = null) {
  */
 function isStopFeedback(row) {
   const text = stopFeedbackText(row);
-  return text !== null && OUR_CAPTURE_REASON.test(text);
+  if (text === null) {
+    return false;
+  }
+  return attributedByCommand(row) || OUR_CAPTURE_REASON.test(text);
+}
+
+/**
+ * Whether this row's attachment names our Stop script in its own recorded command.
+ *
+ * The one signal that identifies a fire as ours without reading a word of it, which is
+ * why it is kept apart from the reason gate rather than folded in beside it: a fire
+ * proven by command is ours whatever the judge's wording has since become.
+ *
+ * @param {Object} row
+ * @returns {boolean}
+ */
+function attributedByCommand(row) {
+  if (row.type !== "attachment" || !row.attachment || row.attachment.hookName !== "Stop") {
+    return false;
+  }
+  const { blockingError } = row.attachment;
+  return Boolean(
+    blockingError && blockingError.command && OUR_STOP_HOOK.test(blockingError.command)
+  );
 }
 
 /**
@@ -1117,12 +1147,18 @@ function isStopFeedback(row) {
 const OUR_STOP_HOOK = /(?:^|[\\/"'\s])stop-capture\.cjs(?:$|["'\s])/;
 
 /**
- * The line every reason our judge fires opens with — the judge contract pins this
- * wording, so it is the one sentence a fire is guaranteed to carry. Matching the full
- * sentence rather than the bare skill name keeps a foreign hook that merely talks
- * about memory capture from opening a phantom outcome window.
+ * The line every reason our judge fires opens with. The judge contract pins this
+ * wording *and* its position — it says the reason "opens with the line" — so the anchor
+ * is part of the contract being checked rather than extra strictness on top of it.
+ * Matching the full sentence rather than the bare skill name keeps a foreign hook that
+ * merely talks about memory capture from opening a phantom outcome window; anchoring it
+ * keeps out the same hook with a preface of its own in front of the sentence.
+ *
+ * Multiline because the two shapes present that line differently: an attachment's
+ * `blockingError` is the reason by itself, while the injected message puts
+ * "Stop hook feedback:" on the line above it.
  */
-const OUR_CAPTURE_REASON = /Run the `gutt-pro:memory-capture` skill\./;
+const OUR_CAPTURE_REASON = /^Run the `gutt-pro:memory-capture` skill\./m;
 
 /**
  * The feedback text this row carried, or null if it carried none or came from
@@ -1243,14 +1279,31 @@ function stopFeedbackIndices(transcript) {
  * @returns {boolean}
  */
 function actedOnCapture(block) {
-  const target = `${block.name || ""} ${(block.input && block.input.skill) || ""}`;
+  const skill = (block.input && block.input.skill) || "";
   return (
-    /memory-capture/.test(target) ||
-    /add_(?:personal_)?memory/.test(target) ||
-    /search_memory_(?:nodes|facts)/.test(target) ||
+    CAPTURE_SKILL.test(skill) ||
+    MEMORY_TOOL.test(block.name || "") ||
     block.name === "AskUserQuestion"
   );
 }
+
+/**
+ * The memory tools, matched by suffix, and the capture skill, matched whole.
+ *
+ * The left end stays open because a deployment prefixes its MCP tools with
+ * `mcp__<server>__` and that server name is not ours to predict. The right end is
+ * anchored because leaving it open is what let a superset name through — a
+ * `search_memory_nodes_backup` tool, an `add_memory_dry_run`, a
+ * `memory-capture-preview` skill — and these predicates are the pass/fail
+ * discriminator the whole outcome assertion rests on, not a diagnostic.
+ *
+ * Name and skill are tested separately rather than against one joined string: joined,
+ * an anchor at the end of the string can only ever reach whichever of the two was
+ * written last.
+ */
+const MEMORY_TOOL = /(?:^|_)(?:add_(?:personal_)?memory|search_memory_(?:nodes|facts))$/;
+const GRAPH_WRITE_TOOL = /(?:^|_)add_(?:personal_)?memory$/;
+const CAPTURE_SKILL = /^(?:[\w-]+:)?memory-capture$/;
 
 /**
  * Whether this tool call *attempted* a graph write. Strictly a write call — the skill
@@ -1260,7 +1313,7 @@ function actedOnCapture(block) {
  * server's ledger to answer, not a transcript's.
  */
 function wroteToGraph(block) {
-  return /add_(?:personal_)?memory/.test(block.name || "");
+  return GRAPH_WRITE_TOOL.test(block.name || "");
 }
 
 /**

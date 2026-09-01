@@ -1057,6 +1057,37 @@ describe("stop-capture: the e2e capture observer (GP-924)", () => {
     assert.equal(viaMessage.length, 1, "the injected message alone did not register as a fire");
   });
 
+  // The case the test above cannot make, because both its fixtures carry the pinned
+  // wording: it proves either *channel* works, not that either *signal* does. The
+  // attachment's claim is that a recorded command identifies the fire without reading
+  // the reason — so the reason has to be wrong for the assertion to mean anything.
+  //
+  // What it guards is not hypothetical. The judge prompt is still being retuned for
+  // fire rate, and a reason gate applied to both arms at once would take the structural
+  // arm down on the same rewrite as the text arm — leaving `captureOutcomes` empty and
+  // the e2e failing about transcript plumbing rather than about the wording.
+  it("still sees our fire from the recorded command when the reason has been reworded", () => {
+    const found = captureAttempts([
+      firedAttachment(
+        "Please invoke the capture skill now.",
+        'node "/p/gutt-core/hooks/stop-capture.cjs"'
+      ),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.equal(found.length, 1, "a command-attributed fire was vetoed by the reason wording");
+  });
+
+  // The other half: with no command to attribute it, the wording is all there is, so
+  // the same reworded reason must *not* register. Without this, the case above could be
+  // satisfied by dropping the reason gate altogether.
+  it("does not accept a reworded reason on the arm that carries no command", () => {
+    const found = captureAttempts([
+      firedMessage("Please invoke the capture skill now."),
+      assistantCalls(skill("gutt-pro:memory-capture")),
+    ]);
+    assert.deepEqual(found, [], "an unattributable message was accepted on wording alone");
+  });
+
   it("finds the fire on the non-blocking channel too", () => {
     const found = captureAttempts([
       contextAttachment(),
@@ -1131,6 +1162,22 @@ describe("stop-capture: the e2e capture observer (GP-924)", () => {
       assistantSays("Done."),
     ]);
     assert.deepEqual(outcomes, [], "a mention of memory-capture was scored as our fire");
+  });
+
+  // "Opening line" is the contract's word, not a description of the gate — the judge
+  // template says the reason opens with the line. Unanchored, the gate enforced only
+  // "contains it somewhere", so a foreign hook that put a sentence of its own in front
+  // of ours was claimed as our fire and opened a window on somebody else's turn.
+  it("needs that line at the opening, not merely somewhere in the reason", () => {
+    const outcomes = captureOutcomes([
+      firedMessage("Foreign preface from another plugin. Run the `gutt-pro:memory-capture` skill."),
+      assistantSays("Done."),
+    ]);
+    assert.deepEqual(
+      outcomes,
+      [],
+      "a foreign reason with our sentence buried in it was scored as ours"
+    );
   });
 
   it("closes a fire's window at the next user prompt, not only at the next fire", () => {
@@ -1255,6 +1302,39 @@ describe("stop-capture: acting on a fire versus writing to the graph", () => {
       assistantSays('{"ok": false, "reason": "Run the `gutt-pro:memory-capture` skill."}'),
     ]);
     assert.deepEqual(outcome.acted, [], "unrelated tools are not the agent acting on the reason");
+  });
+
+  // The same vacuity guard, one step in: a name that *contains* a memory tool's name is
+  // not that tool. These are the discriminator the outcome assertion turns on, so a
+  // superset name slipping through does not merely blur a diagnostic — it reports a
+  // dead routing path as live. The left end must stay open (a deployment prefixes its
+  // MCP tools with a server name we cannot predict), which is exactly why the right end
+  // has to be anchored.
+  it("does not count a superset of a memory tool's name as acting or writing", () => {
+    const [outcome] = captureOutcomes([
+      firedMessage(),
+      assistantCalls(
+        { type: "tool_use", name: "not_add_memory_dry_run", input: {} },
+        { type: "tool_use", name: "search_memory_nodes_backup", input: {} },
+        skill("gutt-pro:memory-capture-preview")
+      ),
+    ]);
+    assert.deepEqual(outcome.acted, [], "a lookalike tool or skill name was scored as acting");
+    assert.deepEqual(outcome.wrote, [], "a lookalike tool name was scored as a graph write");
+  });
+
+  // ... while the real ones still count, prefixed or bare. Without this the case above
+  // is satisfied by a predicate that matches nothing at all.
+  it("still counts the real memory tools, with or without a server prefix", () => {
+    const [outcome] = captureOutcomes([
+      firedMessage(),
+      assistantCalls(
+        { type: "tool_use", name: "add_personal_memory", input: {} },
+        search("search_memory_nodes")
+      ),
+    ]);
+    assert.equal(outcome.acted.length, 2, "a real memory tool stopped counting as acting");
+    assert.equal(outcome.wrote.length, 1, "the bare-named write stopped counting as a write");
   });
 
   it("scores each fire in its own window, so a later capture cannot cover an earlier miss", () => {
