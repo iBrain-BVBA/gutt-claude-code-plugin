@@ -53,6 +53,7 @@ const {
   stopOutcomes,
   withPlantedConfig,
 } = require("./lib/claude-run.cjs");
+const { beginStateWatch } = require("./lib/fs-snapshot.cjs");
 
 const { OUTCOMES, BROKEN_OUTCOMES } = require("../../gutt-core/hooks/lib/stop-judge.cjs");
 
@@ -171,6 +172,10 @@ function dropOwnState(sessionId) {
 const MAX_STOP_EVALUATIONS_PER_TURN = 3;
 
 const version = claudeVersion();
+
+// GP-893 AC1 watermark: taken at module load, before anything here plants bait or
+// launches a run, so everything this file's runs create falls inside the window.
+const stateWatch = version ? beginStateWatch() : null;
 
 // Same gate as the lifecycle suite: skipping is the default, but a suite that
 // reports `pass 0 / fail 0` must not be mistaken for a green one where it is
@@ -847,3 +852,8 @@ describe(
     });
   }
 );
+
+describe("GP-893 AC1: filesystem hygiene across this file's runs", { skip }, () => {
+  it("created nothing outside the sanctioned roots", () => stateWatch.assertNoStrays());
+  it("left the repo working tree exactly as it found it", () => stateWatch.assertRepoUnchanged());
+});

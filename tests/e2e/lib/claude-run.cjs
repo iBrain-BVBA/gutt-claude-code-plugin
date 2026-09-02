@@ -442,6 +442,7 @@ function streamUserMessage(text) {
  * @param {string} [options.sessionId] - fix the session id up front
  * @param {string[]} [options.pluginDirs] - load more than one plugin (R23)
  * @param {string} [options.debugLabel] - debug log filename stem
+ * @param {Object} [options.extraEnv] - extra child env vars (scrubbing still applies)
  * @returns {Promise<Object>} the run record
  */
 function runClaude(options) {
@@ -457,6 +458,7 @@ function runClaude(options) {
     sessionId: fixedSessionId = null,
     debugLabel = "claude-debug",
     extraArgs = [],
+    extraEnv = {},
   } = options;
 
   const debugFile = path.join(projectDir, `${debugLabel}.log`);
@@ -478,7 +480,7 @@ function runClaude(options) {
 
   // Built once and returned with the result, so the R36 assertion can inspect
   // the environment the child was actually given rather than re-deriving one.
-  const childEnv = subscriptionSafeEnv();
+  const childEnv = subscriptionSafeEnv(extraEnv);
 
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();

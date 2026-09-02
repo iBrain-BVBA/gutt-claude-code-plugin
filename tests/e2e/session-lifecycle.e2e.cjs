@@ -36,6 +36,7 @@ const {
   removeDir,
   runClaude,
 } = require("./lib/claude-run.cjs");
+const { beginStateWatch } = require("./lib/fs-snapshot.cjs");
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const USER_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
@@ -90,6 +91,10 @@ function walk(dir, base = dir, found = []) {
 }
 
 const version = claudeVersion();
+
+// GP-893 AC1 watermark: taken at module load, before anything here plants bait or
+// launches a run, so everything this file's runs create falls inside the window.
+const stateWatch = version ? beginStateWatch() : null;
 
 // Skipping is the default because this tier needs a working CLI and a logged-in
 // subscription, which a contributor may not have. But a skip that reports
@@ -180,18 +185,32 @@ describe(
     });
 
     it("loads the plugin from this working tree, shadowing any installed copy", () => {
+      // The loader reads every same-name manifest it can see — an installed copy
+      // included (measured on CLI 2.1.235: two "Read hooks.json" lines, one
+      // registration) — so counting reads cannot distinguish shadowing from
+      // doubling. What can: the branch's manifest must be among the reads, and
+      // gutt's SessionEnd must have completed exactly once — completion lines are
+      // the one debug channel that attributes execution to a script (see
+      // createCompanionPlugin), and a doubled registration completes twice.
+      // Which same-name copy won is pinned by the state test below: only a
+      // --plugin-dir load writes to `<name>-inline`.
       const loads = run.debug
         .split("\n")
         .filter((line) => /Read hooks\.json for plugin gutt-pro/.test(line));
-      assert.equal(
-        loads.length,
-        1,
-        `expected exactly one gutt plugin to load, got ${loads.length}:\n${loads.join("\n")}`
+      assert.ok(
+        loads.some((line) =>
+          new RegExp(REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(line)
+        ),
+        `the working tree's hooks.json is not among the manifests read:\n${loads.join("\n")}`
       );
-      assert.match(
-        loads[0],
-        new RegExp(REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-        "the loaded hooks.json is not the one in this repo"
+      const sessionEndRuns = run.debug
+        .split("\n")
+        .filter((line) => /session-end\.cjs.*completed with status/.test(line));
+      assert.equal(
+        sessionEndRuns.length,
+        1,
+        `gutt's SessionEnd completed ${sessionEndRuns.length} times — a second copy of ` +
+          `the plugin is registered alongside the working tree's:\n${sessionEndRuns.join("\n")}`
       );
       assert.match(run.debug, /Registered \d+ hooks from \d+ plugins/);
     });
@@ -263,14 +282,18 @@ describe(
         Number.isFinite(Date.parse(run.state.connectionCheckedAt)),
         "the connectivity hook's write never reached disk"
       );
-      assert.equal(typeof run.state.mcpConfigured, "boolean");
-      if (run.state.mcpConfigured && run.state.mcpUrl) {
-        assert.equal(
-          run.state.connectionStatus,
-          "ok",
-          "MCP is configured but the probe's verdict was clobbered"
-        );
-      }
+      // Tri-state on purpose: true/false = the probe answered, null = the probe
+      // threw and said so. Only `undefined` means the probe's write was lost —
+      // the clobber this smoke check exists to catch. (`connectionStatus` is no
+      // longer written by this hook at all: its sole writer is post-memory-search
+      // via noteConnection, on an observed gutt MCP tool response — and this tier
+      // denies every tool, so no run of it can ever see "ok". Asserting "ok"
+      // here is therefore red by construction, not flaky; do not re-add it.)
+      assert.notEqual(
+        run.state.mcpConfigured,
+        undefined,
+        "the probe's mcpConfigured verdict was clobbered"
+      );
       // Both SessionStart writers plus SessionEnd landed, in some order.
       assert.ok(
         run.state.rev >= 3,
@@ -452,5 +475,14 @@ describe(
     // R25 is measured in-process by tests/session-lifecycle.test.cjs, which is the
     // only tier that can subtract Node's interpreter floor (~47ms p50 on this
     // machine, already over the 50ms budget before any of our code runs).
+  }
+);
+
+describe(
+  "GP-893 AC1: filesystem hygiene across this file's runs",
+  { skip: version ? false : "the `claude` CLI is not available on PATH" },
+  () => {
+    it("created nothing outside the sanctioned roots", () => stateWatch.assertNoStrays());
+    it("left the repo working tree exactly as it found it", () => stateWatch.assertRepoUnchanged());
   }
 );

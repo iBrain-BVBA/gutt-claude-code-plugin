@@ -18,19 +18,35 @@ npm run test:e2e
 Requires the `claude` CLI on `PATH` and a logged-in subscription. If `claude` is
 missing the suite skips rather than fails.
 
-**Cost:** seven Haiku sessions, a few cents. The discipline is one `claude -p` call per
-set of claims, never one per assertion. Wall clock is not stated for the suite as a whole
-because it has not been measured since the GP-922 suites landed; the
+The files run **serially** (`--test-concurrency=1`), and that is load-bearing:
+the tier shares one global `${CLAUDE_PLUGIN_DATA}/config.json` (two suites plant
+it), one inline `hook-invocations.log` (whose breadcrumbs carry no session id),
+and the CLI's plugin-cache locks. Run in parallel, the plants race each other,
+Stop lines from one file land inside another file's watermark window, and five
+simultaneous CLI launches have been observed to break `--plugin-dir` shadowing
+of an installed copy of the plugin — all measured on 2026-09-01, all gone under
+serial execution.
+
+**Cost:** nine parent sessions at minimum — eight Haiku, one Sonnet — plus the Sonnet
+judge children the Stop-router and state-hygiene runs spawn. **The ceiling is eleven.**
+The Stop-router run is the only one that retries: it draws up to three Sonnet sessions and
+breaks on the first that routes, so a run that misses twice pays for two more Sonnet
+parents (the verdict is a model call and fires ~76% of the time — the loop and its
+arithmetic are in `hook-routing.e2e.cjs`). Sonnet is also the only model the run 4 turn can
+use, for reasons recorded next to `ROUTER_MODEL`. A few cents either way. The discipline is
+one `claude -p` call per set of claims, never one per assertion. Wall clock is not stated for
+the suite as a whole because it has not been measured since the GP-922 suites landed; the
 `migrate-memory-skill` run alone was 55–90s across five observed runs.
 
-Four suites:
+Five suites:
 
 | Suite                              | Runs | Covers                                                                         |
 | ---------------------------------- | ---- | ------------------------------------------------------------------------------ |
 | `session-lifecycle.e2e.cjs`        | 1    | startup lifecycle, state contract, AC3, first-prompt pointer, R36              |
-| `hook-routing.e2e.cjs`             | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence                 |
+| `hook-routing.e2e.cjs`             | 4–6  | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence                 |
 | `builtin-memory-migration.e2e.cjs` | 1    | GP-922 the migration **offer** reaches a conversation, and changes nothing     |
 | `migrate-memory-skill.e2e.cjs`     | 1    | GP-922 the **skill**: body delivery, its CLI running for real, the safety gate |
+| `state-hygiene.e2e.cjs`            | 2    | GP-893 AC1 failure paths: a hook killed mid-flight still leaves no state trail |
 
 The two GP-922 suites split along what each can prove. The offer suite covers detection
 and injection; the skill suite covers the flow that runs after the user accepts. Neither
@@ -49,6 +65,39 @@ each of those asserts is documented in its own file header instead.
 so the `node --test tests/**/*.test.cjs` glob does not pick them up. Keep it that
 way: `npm test` must stay free, offline, and deterministic.
 
+## The filesystem-hygiene watch (R37)
+
+Every suite file takes a filesystem watermark at load and ends with a `GP-893 AC1`
+describe that diffs against it (`lib/fs-snapshot.cjs`): a file or directory
+**created or deleted** under `~/.claude` outside the allowlist fails the suite,
+and `git status --porcelain -uall --ignored=matching` over the repo must come out
+byte-identical — the ignored names matter, because the breadcrumb files debug.cjs
+writes are all gitignored and under `--plugin-dir` the plugin root is this repo.
+The allowlist sanctions what the AC sanctions: every plugin's own
+`plugins/data/<plugin>/` dir (which install variant the run under test used is
+pinned by the lifecycle suite's execution-evidence tests, not by the watch),
+CLI-owned session surfaces, and two measured developer-machine surfaces
+(`plans/`, `.ponytail-active`). Everything else stays watched — including the
+per-project `memory/` store under `projects/`, which the GP-922 suites plant and
+must fully remove, plugin installs, and the user's own config surfaces.
+
+This is the runtime counterpart of the static `tests/check-state-location.cjs`
+grep guard — the grep proves no code _matches a write-call pattern_ outside a
+sanctioned-writer list; the diff proves a real run, including one whose hook was
+killed mid-flight (`state-hygiene.e2e.cjs`), _behaved_. Its unit tier
+(`tests/fs-snapshot.test.cjs`, in `npm test`) proves the instrument itself goes
+red on strays, deletions, empty leftover directories, repo drift, gitignored
+writes, an unreadable subtree, a root that yielded nothing, a relocated
+`CLAUDE_CONFIG_DIR`, and a broken git — and pins the real allowlist's boundary
+plus the wiring invariant that every e2e file carries the watch and closes with
+its describe.
+
+The watch executes wherever this tier executes: locally and on release
+candidates, not in CI. Concurrent sessions are expected and their measured
+surfaces are sanctioned; a stray outside them is a real finding for whichever
+process wrote it, and the failure message names the exact path so it can be
+attributed rather than guessed at.
+
 ## What gets asserted, and against what
 
 One run produces three independent artifacts. Every assertion reads one of them,
@@ -62,9 +111,12 @@ so a passing suite means three separate systems agree.
 
 Notable checks:
 
-- **The branch's code ran, not the installed plugin.** `--plugin-dir` shadows an
-  installed plugin of the same name; the suite asserts exactly one gutt plugin
-  loaded and that its `hooks.json` path is inside this repo.
+- **The branch's code ran, not the installed plugin.** The loader reads every
+  same-name manifest it can see (measured on CLI 2.1.235) and registers one
+  winner, so the suite asserts execution evidence instead of read counts: the
+  working tree's `hooks.json` is among the reads, gutt's SessionEnd completed
+  exactly once, and the session's state landed in the `-inline` data dir only a
+  `--plugin-dir` load resolves to.
 - **The connectivity write survives.** `session-start.cjs` and the `async`
   `session-connectivity.cjs` write the same file at once. The suite asserts the
   probe's verdict reached disk — the regression that motivated the write lock.
