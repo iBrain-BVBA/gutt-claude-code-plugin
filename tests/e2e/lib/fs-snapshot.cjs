@@ -16,15 +16,27 @@
  *   deletions are AC1's subject, and the one user file with byte-level stakes
  *   (`settings.json`) has dedicated byte- and key-level assertions in
  *   session-lifecycle.e2e.cjs.
- * - The repo working tree, via `git status --porcelain -uall --ignored=matching`
- *   equality. `-uall` stops an untracked directory from collapsing to one line
- *   (a second file inside it would otherwise be invisible), and
- *   `--ignored=matching` lists ignored files — which is load-bearing: the
- *   breadcrumb names debug.cjs writes (`hook-errors.log`,
- *   `hook-invocations.log`, `config.json`) are all gitignored, and under
- *   `--plugin-dir` the plugin root *is* this repo, so a regression that loses the
- *   CLAUDE_PLUGIN_DATA routing would land exactly there. Equality also catches
- *   edits to tracked files, which a create/delete walk cannot.
+ * - The repo working tree, via `git status --porcelain -z -uall --ignored=matching`
+ *   equality **plus a size+mtime stamp for every path that status names**.
+ *   `-uall` stops an untracked directory from collapsing to one line (a second
+ *   file inside it would otherwise be invisible), and `--ignored=matching` lists
+ *   ignored files — which is load-bearing: the breadcrumb names debug.cjs writes
+ *   (`hook-errors.log`, `hook-invocations.log`, `config.json`) are all
+ *   gitignored, and under `--plugin-dir` the plugin root *is* this repo, so a
+ *   regression that loses the CLAUDE_PLUGIN_DATA routing would land exactly
+ *   there.
+ *
+ *   The stamps are why status text alone is not the whole check. Status reports a
+ *   path's *state*, not its bytes, so a write to a path that was **already** in
+ *   that state at the watermark leaves the output identical: rewriting a
+ *   pre-existing ignored `config.json` keeps one `!! config.json`, and editing an
+ *   already-dirty tracked file keeps one ` M file`. Both are green under equality
+ *   and both are exactly the escape this watch exists to catch, since a
+ *   developer tree is nearly always already dirty somewhere. Rejecting a dirty
+ *   baseline instead would make the tier unrunnable during normal work, so the
+ *   baseline is fingerprinted rather than refused. `-z` is what makes those paths
+ *   safe to read back: it turns off git's C-quoting, so a path with a space or a
+ *   quote in it needs no unescaping to stat.
  *
  * What is NOT watched, so nobody reads more into a green run than it proves:
  * `$HOME` outside `~/.claude` (`~/.claude.json` lives there), `/tmp`, the targets
@@ -216,16 +228,17 @@ function walkSet(root, allowed) {
 
 /**
  * Porcelain status including every untracked file individually (`-uall`) and
- * ignored paths (`--ignored=matching`) — see the module header for why both
- * flags are load-bearing. Throws rather than returning on any git failure: a
- * broken git is a red result, not a clean tree (the check-no-symlinks rule).
+ * ignored paths (`--ignored=matching`), NUL-terminated (`-z`) — see the module
+ * header for why all three flags are load-bearing. Throws rather than returning
+ * on any git failure: a broken git is a red result, not a clean tree (the
+ * check-no-symlinks rule).
  * @param {string} repoRoot
  * @returns {string}
  */
 function repoStatus(repoRoot) {
   const res = spawnSync(
     "git",
-    ["status", "--porcelain", "--untracked-files=all", "--ignored=matching"],
+    ["status", "--porcelain", "-z", "--untracked-files=all", "--ignored=matching"],
     { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }
   );
   if (res.error || res.status !== 0) {
@@ -234,6 +247,55 @@ function repoStatus(repoRoot) {
     );
   }
   return res.stdout;
+}
+
+/** Status char set of porcelain v1, so a `XY ` prefix can be told from a bare path. */
+const STATUS_PREFIX = /^[ MADRCUT?!]{2} /;
+
+/**
+ * The NUL-terminated records of a `repoStatus()` result. A rename emits two
+ * records — `R  <new>` then a bare `<old>` — so not every record carries a
+ * status prefix.
+ * @param {string} stdout
+ * @returns {string[]}
+ */
+function statusEntries(stdout) {
+  return stdout.split("\0").filter(Boolean);
+}
+
+/**
+ * `size:mtimeMs` for every path the given status records name, so an in-place
+ * write to a path that was already dirty at the watermark is visible even though
+ * its status text did not move. A path git names but that is not there is stamped
+ * `absent` rather than skipped: the same record in both snapshots then compares
+ * equal, while a path that appears or vanishes has already moved the status text.
+ *
+ * A directory record (`!! ignored-dir/`) is stamped from the directory node
+ * itself, which is one extra level of reach — adding or removing a direct child
+ * moves a directory's mtime — and no further.
+ *
+ * ponytail: size+mtime, not a content hash. A writer that restored both would
+ * slip through; nothing does, and hashing every ignored tree (node_modules) to
+ * cover it is not worth the walk. Switch to hashing if one ever turns up.
+ * @param {string} repoRoot
+ * @param {Iterable<string>} entries
+ * @returns {Map<string, string>}
+ */
+function fingerprint(repoRoot, entries) {
+  const stamps = new Map();
+  for (const entry of entries) {
+    const rel = STATUS_PREFIX.test(entry) ? entry.slice(3) : entry;
+    try {
+      const st = fs.lstatSync(path.join(repoRoot, rel));
+      stamps.set(rel, `${st.size}:${st.mtimeMs}`);
+    } catch (err) {
+      if (err.code !== "ENOENT" && err.code !== "ENOTDIR") {
+        throw new Error(`hygiene watch cannot stat ${path.join(repoRoot, rel)}: ${err.code}`);
+      }
+      stamps.set(rel, "absent");
+    }
+  }
+  return stamps;
 }
 
 /**
@@ -267,13 +329,32 @@ function beginStateWatch({
         "the hygiene watch would watch the wrong root. Unset it to run this tier."
     );
   }
-  const before = walkSet(root, allowed);
   // A watch that inspected nothing must not get the chance to report success —
   // a real config root always holds something (settings, projects, history).
-  if (before.size === 0) {
-    throw new Error(`hygiene watch inspected nothing under ${root} — wrong or empty root`);
+  //
+  // Measured on the raw root, never on the filtered walk. `walkSet` returns only
+  // *unallowlisted* entries, so gating on its size conflates "this root is wrong"
+  // with "this root is entirely sanctioned": a valid root holding nothing but
+  // allowlisted dirs would be refused. It only passes today by accident — the
+  // allowlist covers `projects/<name>/` and `plugins/data/<name>/` but not the
+  // bare `projects/`, `plugins/` and `plugins/data/` nodes above them, and those
+  // strays are what pad the count. Tighten the allowlist and the check starts
+  // rejecting the machines it is supposed to run on. A readdir answers the
+  // question actually being asked, and still refuses a root that is missing,
+  // unreadable, or empty.
+  try {
+    if (fs.readdirSync(root).length === 0) {
+      throw new Error(`hygiene watch inspected nothing under ${root} — wrong or empty root`);
+    }
+  } catch (err) {
+    if (err.code === undefined) {
+      throw err;
+    }
+    throw new Error(`hygiene watch inspected nothing under ${root} — cannot read it (${err.code})`);
   }
+  const before = walkSet(root, allowed);
   const repoBefore = repoStatus(repoRoot);
+  const stampsBefore = fingerprint(repoRoot, statusEntries(repoBefore));
 
   return {
     assertNoStrays() {
@@ -297,20 +378,30 @@ function beginStateWatch({
 
     assertRepoUnchanged() {
       const repoAfter = repoStatus(repoRoot);
-      // Print the drift itself, by porcelain line: a bare "differs" forces
+      // Print the drift itself, by porcelain record: a bare "differs" forces
       // whoever hits this to re-derive it, and the commonest cause — editing the
       // repo while the tier runs — is obvious from the changed paths alone.
-      const beforeLines = new Set(repoBefore.split("\n").filter(Boolean));
-      const afterLines = new Set(repoAfter.split("\n").filter(Boolean));
-      const drift = [...afterLines]
-        .filter((line) => !beforeLines.has(line))
-        .map((line) => `+ ${line}`)
+      const beforeEntries = new Set(statusEntries(repoBefore));
+      const afterEntries = new Set(statusEntries(repoAfter));
+      const drift = [...afterEntries]
+        .filter((entry) => !beforeEntries.has(entry))
+        .map((entry) => `+ ${entry}`)
         .concat(
-          [...beforeLines].filter((line) => !afterLines.has(line)).map((line) => `- ${line}`)
+          [...beforeEntries]
+            .filter((entry) => !afterEntries.has(entry))
+            .map((entry) => `- ${entry}`)
         );
-      assert.equal(
-        repoAfter,
-        repoBefore,
+      // Same status text, different bytes: a write to a path that was already in
+      // that state at the watermark. Invisible to the record diff above, and the
+      // gitignored breadcrumbs are the exact shape it takes.
+      for (const [rel, stamp] of fingerprint(repoRoot, afterEntries)) {
+        const was = stampsBefore.get(rel);
+        if (was !== undefined && was !== stamp) {
+          drift.push(`~ ${rel} (was ${was}, now ${stamp})`);
+        }
+      }
+      assert.ok(
+        drift.length === 0,
         `the run changed the repo working tree in ${repoRoot} —\n  ${drift.join("\n  ")}\n` +
           "(an edit made in the repo while the e2e tier was running trips this too)"
       );
@@ -318,4 +409,13 @@ function beginStateWatch({
   };
 }
 
-module.exports = { beginStateWatch, defaultAllowed, isAllowed, shouldPrune, walkSet, repoStatus };
+module.exports = {
+  beginStateWatch,
+  defaultAllowed,
+  isAllowed,
+  shouldPrune,
+  walkSet,
+  repoStatus,
+  statusEntries,
+  fingerprint,
+};

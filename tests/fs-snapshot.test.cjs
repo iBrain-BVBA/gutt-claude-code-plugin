@@ -174,6 +174,60 @@ describe("fs-snapshot: the hygiene watch", () => {
     }
   });
 
+  it("catches an in-place write to a tracked file that was ALREADY dirty", () => {
+    // Porcelain reports state, not bytes: " M tracked.txt" before and after, so
+    // status equality alone reads this as clean. A developer tree is nearly
+    // always already dirty somewhere, which is what makes it reachable.
+    fs.writeFileSync(path.join(repo, "tracked.txt"), "dirty");
+    const watch = beginStateWatch(opts());
+    assert.equal(
+      repoStatus(repo),
+      repoStatus(repo),
+      "sanity: status is stable when nothing is written"
+    );
+    const beforeStatus = repoStatus(repo);
+    fs.writeFileSync(path.join(repo, "tracked.txt"), "dirty-and-then-rewritten");
+    assert.equal(repoStatus(repo), beforeStatus, "the status text must be unmoved");
+    assert.throws(
+      () => watch.assertRepoUnchanged(),
+      /changed the repo working tree[\s\S]*~ tracked\.txt/
+    );
+  });
+
+  it("catches an in-place write to a gitignored file that ALREADY existed", () => {
+    // The load-bearing case: hook-errors.log / hook-invocations.log / config.json
+    // are all gitignored, and a stale one from an earlier local run is normal. If a
+    // regression loses the CLAUDE_PLUGIN_DATA routing and appends to one, the
+    // "!! path" record does not move.
+    fs.writeFileSync(path.join(repo, "hook-errors.log"), "from an earlier run\n");
+    const watch = beginStateWatch(opts());
+    const beforeStatus = repoStatus(repo);
+    fs.writeFileSync(path.join(repo, "hook-errors.log"), "from an earlier run\nplus a leak\n");
+    assert.equal(repoStatus(repo), beforeStatus, "the status text must be unmoved");
+    assert.throws(
+      () => watch.assertRepoUnchanged(),
+      /changed the repo working tree[\s\S]*~ hook-errors\.log/
+    );
+  });
+
+  it("accepts a root whose every entry is allowlisted", () => {
+    // Liveness must measure the root, not the post-allowlist walk. Gating on the
+    // filtered set refuses a valid root that happens to hold only sanctioned
+    // dirs — and a green run there is still a real run.
+    const sanctioned = fs.mkdtempSync(path.join(os.tmpdir(), "fs-snapshot-allowed-"));
+    try {
+      fs.mkdirSync(path.join(sanctioned, "allowed", "deep"), { recursive: true });
+      fs.writeFileSync(path.join(sanctioned, "allowed", "deep", "cli-owned.json"), "{}");
+      assert.equal(walkSet(sanctioned, ["allowed/"]).size, 0, "nothing survives the allowlist");
+      const watch = beginStateWatch({ root: sanctioned, allowed: ["allowed/"], repoRoot: repo });
+      watch.assertNoStrays();
+      fs.writeFileSync(path.join(sanctioned, "stray.txt"), "leak");
+      assert.throws(() => watch.assertNoStrays(), /stray\.txt/);
+    } finally {
+      fs.rmSync(sanctioned, { recursive: true, force: true });
+    }
+  });
+
   it("goes red, not green, on a subtree it cannot read", { skip: skipPermissionCase() }, () => {
     const sealed = path.join(root, "watched", "sealed");
     fs.mkdirSync(sealed);

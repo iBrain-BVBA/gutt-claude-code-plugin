@@ -27,9 +27,14 @@ simultaneous CLI launches have been observed to break `--plugin-dir` shadowing
 of an installed copy of the plugin — all measured on 2026-09-01, all gone under
 serial execution.
 
-**Cost:** nine parent sessions (eight Haiku, one Sonnet), plus the Sonnet judge
-children the Stop-router and state-hygiene runs spawn — a few cents. The discipline is one
-`claude -p` call per set of claims, never one per assertion. Wall clock is not stated for
+**Cost:** nine parent sessions at minimum — eight Haiku, one Sonnet — plus the Sonnet
+judge children the Stop-router and state-hygiene runs spawn. **The ceiling is eleven.**
+The Stop-router run is the only one that retries: it draws up to three Sonnet sessions and
+breaks on the first that routes, so a run that misses twice pays for two more Sonnet
+parents (the verdict is a model call and fires ~76% of the time — the loop and its
+arithmetic are in `hook-routing.e2e.cjs`). Sonnet is also the only model the run 4 turn can
+use, for reasons recorded next to `ROUTER_MODEL`. A few cents either way. The discipline is
+one `claude -p` call per set of claims, never one per assertion. Wall clock is not stated for
 the suite as a whole because it has not been measured since the GP-922 suites landed; the
 `migrate-memory-skill` run alone was 55–90s across five observed runs.
 
@@ -38,7 +43,7 @@ Five suites:
 | Suite                              | Runs | Covers                                                                         |
 | ---------------------------------- | ---- | ------------------------------------------------------------------------------ |
 | `session-lifecycle.e2e.cjs`        | 1    | startup lifecycle, state contract, AC3, first-prompt pointer, R36              |
-| `hook-routing.e2e.cjs`             | 4    | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence                 |
+| `hook-routing.e2e.cjs`             | 4–6  | anti-nag row 4, snooze row 1, the Stop router, R23 coexistence                 |
 | `builtin-memory-migration.e2e.cjs` | 1    | GP-922 the migration **offer** reaches a conversation, and changes nothing     |
 | `migrate-memory-skill.e2e.cjs`     | 1    | GP-922 the **skill**: body delivery, its CLI running for real, the safety gate |
 | `state-hygiene.e2e.cjs`            | 2    | GP-893 AC1 failure paths: a hook killed mid-flight still leaves no state trail |
