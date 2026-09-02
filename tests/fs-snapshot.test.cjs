@@ -228,6 +228,20 @@ describe("fs-snapshot: the hygiene watch", () => {
     }
   });
 
+  it("goes red, not green, when the watched root itself is deleted mid-run", () => {
+    // The companion to the case above, and the reason the walk's vanish-race
+    // tolerance is depth-gated. With an all-allowlisted baseline both snapshots
+    // are empty, so a swallowed ENOENT on the root diffs to nothing and reports
+    // clean — the root going missing is the most serious thing that can happen
+    // to the watched surface, and it must never read as tidy.
+    const doomed = fs.mkdtempSync(path.join(os.tmpdir(), "fs-snapshot-doomed-"));
+    fs.mkdirSync(path.join(doomed, "allowed"), { recursive: true });
+    fs.writeFileSync(path.join(doomed, "allowed", "cli-owned.json"), "{}");
+    const watch = beginStateWatch({ root: doomed, allowed: ["allowed/"], repoRoot: repo });
+    fs.rmSync(doomed, { recursive: true, force: true });
+    assert.throws(() => watch.assertNoStrays(), /hygiene walk cannot read .*: ENOENT/);
+  });
+
   it("goes red, not green, on a subtree it cannot read", { skip: skipPermissionCase() }, () => {
     const sealed = path.join(root, "watched", "sealed");
     fs.mkdirSync(sealed);
@@ -359,19 +373,58 @@ describe("fs-snapshot: the e2e tier carries the watch", () => {
     assert.ok(suites.length >= 5, `expected at least 5 e2e suites, found ${suites.length}`);
   });
 
+  /**
+   * The pin itself, over one suite's source. Both assertion calls are required
+   * **inside the final describe** rather than anywhere in the file: searching the
+   * whole file passes a suite that moved them into an earlier block and left an
+   * empty `GP-893 AC1` describe behind, which is precisely the "bury the
+   * assertions above the runs" regression this pin exists to stop. `beginStateWatch`
+   * stays a whole-file search because the watermark belongs at module load, above
+   * every describe, by design.
+   * @param {string} src
+   * @returns {string|null} the reason it fails, or null when it holds
+   */
+  function wiringFault(src) {
+    if (!/beginStateWatch\(/.test(src)) {
+      return "no stateWatch watermark";
+    }
+    const lastDescribe = src.lastIndexOf("describe(");
+    if (lastDescribe < 0) {
+      return "no describe blocks at all";
+    }
+    if (!/GP-893 AC1/.test(src.slice(lastDescribe, lastDescribe + 200))) {
+      return "the AC1 hygiene describe must be the file's last, so it runs after every run";
+    }
+    const finalBlock = src.slice(lastDescribe);
+    if (!/assertNoStrays\(\)/.test(finalBlock)) {
+      return "the final AC1 describe never asserts on strays";
+    }
+    if (!/assertRepoUnchanged\(\)/.test(finalBlock)) {
+      return "the final AC1 describe never asserts on the repo tree";
+    }
+    return null;
+  }
+
   for (const name of suites) {
     it(`${name} takes the watermark and closes with the AC1 hygiene describe`, () => {
-      const src = fs.readFileSync(path.join(e2eDir, name), "utf8");
-      assert.match(src, /beginStateWatch\(/, "no stateWatch watermark");
-      assert.match(src, /assertNoStrays\(\)/, "never asserts on strays");
-      assert.match(src, /assertRepoUnchanged\(\)/, "never asserts on the repo tree");
-      const lastDescribe = src.lastIndexOf("describe(");
-      assert.ok(lastDescribe >= 0, "no describe blocks at all");
-      assert.match(
-        src.slice(lastDescribe, lastDescribe + 200),
-        /GP-893 AC1/,
-        "the AC1 hygiene describe must be the file's last, so it runs after every run"
-      );
+      assert.equal(wiringFault(fs.readFileSync(path.join(e2eDir, name), "utf8")), null);
     });
   }
+
+  it("rejects a suite that buries the assertions above the runs", () => {
+    // The pin only pins while it can still fail. This is the shape it has to
+    // reject: assertions hoisted into an earlier describe, an empty AC1 describe
+    // left last so the file still looks wired.
+    const buried = [
+      'const { beginStateWatch } = require("./lib/fs-snapshot.cjs");',
+      "const stateWatch = beginStateWatch();",
+      'describe("hygiene, hoisted above the runs", () => {',
+      '  it("strays", () => stateWatch.assertNoStrays());',
+      '  it("repo", () => stateWatch.assertRepoUnchanged());',
+      "});",
+      'describe("the run that was supposed to be watched", () => {});',
+      'describe("GP-893 AC1: filesystem hygiene across this file\'s runs", () => {});',
+    ].join("\n");
+    assert.match(wiringFault(buried), /final AC1 describe never asserts on strays/);
+  });
 });

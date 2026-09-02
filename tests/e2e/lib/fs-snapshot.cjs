@@ -186,6 +186,15 @@ function shouldPrune(rel, allowed) {
  * vanish races (ENOENT/ENOTDIR: the entry was deleted or replaced between the
  * parent readdir and ours) are tolerated, because concurrent sessions delete
  * legitimately.
+ *
+ * That tolerance is for **descendants only**. `root` itself has no parent
+ * readdir to race against, so it vanishing is not a race — it is the single
+ * most serious thing that can happen to the surface being watched, and it must
+ * never be swallowed. Swallowed, it returns an empty set: harmless when the
+ * baseline was non-empty (every entry then reads as deleted and the assertion
+ * goes red), and a false green when the baseline was empty because everything
+ * in it was sanctioned. So the depth is part of the condition, not an
+ * afterthought.
  * @param {string} root
  * @param {Array<string|RegExp>} allowed
  * @returns {Set<string>}
@@ -199,7 +208,9 @@ function walkSet(root, allowed) {
     try {
       entries = fs.readdirSync(path.join(root, dirRel), { withFileTypes: true });
     } catch (err) {
-      if (err.code === "ENOENT" || err.code === "ENOTDIR") {
+      // `dirRel` truthy means a descendant, the only read that can legitimately
+      // lose its target mid-walk. A failure on the root is always red.
+      if (dirRel && (err.code === "ENOENT" || err.code === "ENOTDIR")) {
         continue;
       }
       throw new Error(`hygiene walk cannot read ${path.join(root, dirRel)}: ${err.code}`);
