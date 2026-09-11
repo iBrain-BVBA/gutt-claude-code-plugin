@@ -36,15 +36,15 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
    choosing summary-shaped tools. Never invent a truncation flag.
 6. **Bare tool names.** Call `search_memory_nodes` etc. by bare name; the
    `mcp__…__` prefix varies per install — use whatever your tool list surfaces.
-7. **Identifier lane.** When the question carries an identifier — a short prefix,
-   a hyphen and digits, whether the user typed it or you lifted it from the
-   ticket, report or result in hand — call **both** `search_memory_nodes` and
-   `search_memory_facts` with that identifier as the **entire** query and no
-   `agent_id`, `center_node_id` or `center_on_user`. Any extra word, and any of
-   those three, drops the call off the exact route and onto look-alike keys. One
-   pair per identifier, first, and in addition to the phrasings — never instead
-   of them. A list of items is not one question: a skill working through a slice
-   says which of its keys get a pair, and when.
+7. **Identifier lane.** When the question carries an identifier — a prefix of
+   up to ten characters, a hyphen and digits, whether the user typed it or you
+   lifted it from the ticket, report or result in hand — call **both**
+   `search_memory_nodes` and `search_memory_facts` with that identifier as the
+   **entire** query and no `agent_id`, `center_node_id` or `center_on_user`. Any
+   extra word, and any of those three, drops the call off the exact route and
+   onto look-alike keys. One pair per identifier, first, and in addition to the
+   phrasings — never instead of them. A list of items is not one question: a
+   skill working through a slice says which of its keys get a pair, and when.
 
 ## When to use
 

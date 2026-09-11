@@ -52,12 +52,13 @@ attributes}], has_more}`. **No relevance score is exposed.**
 **Identifier route.** A query that is nothing but an identifier is answered by
 an exact lookup over node names and summaries rather than by the hybrid recipe,
 and there is **no semantic fallback** behind it. What fires it is one token
-that opens with a letter, continues in letters, digits or underscores, then one
-hyphen and digits — `ABC-123`, `ABC_9-42` — with any punctuation around the
-token trimmed first, so `ABC-123?` still fires. A date, a digit-first code or a
-token with a second hyphen does not, and runs as an ordinary search instead. It
-is off when `center_node_id`, `agent_id` or `center_on_user` is set, so a
-scoped search keeps its ordinary behaviour; `entity` still applies on the route.
+that opens with a letter, continues in at most nine more letters, digits or
+underscores, then one hyphen and digits — `ABC-123`, `ABC_9-42` — with any
+punctuation around the token trimmed first, so `ABC-123?` still fires. A date, a
+digit-first code, a longer prefix or a token with a second hyphen does not, and
+runs as an ordinary search instead. It is off when `center_node_id`, `agent_id`
+or `center_on_user` is set, so a scoped search keeps its ordinary behaviour;
+`entity` still applies on the route.
 
 ### search_memory_facts (v1.0)
 
