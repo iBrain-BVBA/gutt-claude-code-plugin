@@ -333,8 +333,8 @@ not one question, and a skill working through a slice says which of its keys get
 when. pr-re-review had said "a fifth query", after its four phrasings and singular; it now
 says "its own pair of calls, before the four above", and the other eight role skills say
 "pair of calls" where they said "query". A fourth finding, that tools.md omits the
-ten-character prefix cap, stands declined: the eval's grammar matches the server's, so only
-the reference is broader.
+ten-character prefix cap, was declined here — the eval's grammar matches the server's, so
+only the reference was broader — and reversed after the third round, below.
 
 Those are text changes to both measured bodies, so the round is owed. V0 measured 18,319
 chars, `d8cce2ab8b47`. Eight trials, all six cases, 96 calls.
@@ -363,8 +363,39 @@ the reply used the exact token in its prose. A pasted-degrade reply dropped the
 related-tickets half without a word about the missing Jira tooling — a real miss, and the
 behaviour that case exists to catch; round 9 had two, round 10 none.
 
-**Round 11 is the table that describes what ships.** The committed memory-search and
-bug-investigation bodies hash to the V0 measured here.
+**Round 11 is the last table measured on the text as it stood.** The committed bodies hashed
+to the V0 measured here until the third Copilot round put the prefix cap into rule 7; the
+hash that ships is below.
+
+## After round 11 — the third Copilot round: the cap goes in, and a pair's key is its only query
+
+Copilot's third review, on the commit round 11 was measured at, returned three findings, all
+real, and no round was run for them. **The corpus.** `PAIRED` credited the first key after a
+grouped pair to both bare-key checks whatever followed it, so "search_memory_nodes and
+search_memory_facts respectively with query: \"GP-1088\" and query: \"unrelated\"" scored as a
+compliant pair. The pair branch now requires that key to be the pair's only query — no other
+`query` marker between the names and the key, none after it on the same line — while the
+nearer name still takes the key through the nearest-call span, so that reply scores as half
+a pair, which is the verdict a distributed pair deserves. The line this draws: a compliant
+pair whose phrasing follows on the same line — "first with query X, then with query Y" —
+also scores as half a pair, and a phrasing on the next line costs nothing. Rounds 9, 10 and
+11 re-scored under it move nothing, and the reason is worth writing down: `PAIRED` has
+matched no recorded reply in any round. It admits a shape no model has yet written, and
+every verdict so far rests on the nearest-call span alone.
+
+**The skills.** Rule 7 said "a short prefix" and tools.md gave the route's grammar without a
+bound, so an eleven-character prefix satisfied both while the server routed it as an ordinary
+search and rules 3 and 7 handled the result as an exact lookup. Rule 7 now says a prefix of
+up to ten characters; tools.md says at most nine more letters, digits or underscores after
+the opening letter, and lists a longer prefix among the shapes that run as an ordinary
+search. That reverses round 11's position, and the reason is not the eval, whose grammar
+already carried the bound: it is rule 3's paging and honesty clauses, which misfire on a key
+that silently left the route.
+
+Neither change was run. The rule 7 change adds a bound that no fixture key approaches —
+`GP-1088` has a two-letter prefix — and that no check reads; the corpus change is a
+tightening three re-scored rounds show to be latent. The committed V0 hashes to `c6ee405b71fc`
+(18,337 chars); round 11's table was measured at `d8cce2ab8b47` (18,319).
 
 ## What the numbers say
 

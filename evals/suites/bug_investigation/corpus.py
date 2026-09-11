@@ -92,6 +92,27 @@ PAIRED = (
 )
 
 
+def key_arg(key):
+    """A `query` marker or an open paren, then `key` alone between delimiters."""
+    return rf"""(?:query[^)\w]{{0,12}}|\(\s*)["'`]{key}["'`]"""
+
+
+def bare_key(tool, arg):
+    """One bare-key check: `tool` bound to `arg` by the nearest-call span, or a grouped
+    pair whose only query is `arg`. The pair credits one key to both tools, so that key
+    has to be the pair's single query — no other `query` between the names and the key,
+    none after it on the same line. "search_memory_nodes and search_memory_facts
+    respectively with query: 'ABC-1' and query: 'other'" hands each tool its own query,
+    and the first key must not be credited to both names. The line it draws: a pair
+    whose phrasing follows on the same line scores as half a pair — the nearer name
+    still takes the key — and a phrasing on the next line costs nothing.
+    """
+    return (
+        rf"(?:{tool}\b" + within(80) + arg
+        + rf"|{PAIRED}(?:(?!{TOOL_NAME}|\bquery\b).){{0,80}}?" + arg + r"(?![^\n]*\bquery\b))"
+    )
+
+
 # The org group has to be *nameable* from the session, because the skill forbids guessing
 # one. Without this line an ungrouped read is the compliant answer and a scope check would
 # be demanding the thing the rule prohibits — which is exactly what round 1 measured.
@@ -314,17 +335,10 @@ def build():
                 #
                 # One check per tool, not one alternation: rule 7 requires the pair, and
                 # rounds 7 and 8 recorded replies that sent the bare key to one tool only,
-                # which `(?:nodes|facts)` scored as complete.
-                (
-                    "bare-key-nodes",
-                    rf"""(?:search_memory_nodes\b|{PAIRED})""" + within(80) +
-                    r"""(?:query[^)\w]{0,12}|\(\s*)["'`]GP-1088["'`]""",
-                ),
-                (
-                    "bare-key-facts",
-                    rf"""(?:search_memory_facts\b|{PAIRED})""" + within(80) +
-                    r"""(?:query[^)\w]{0,12}|\(\s*)["'`]GP-1088["'`]""",
-                ),
+                # which `(?:nodes|facts)` scored as complete. A grouped pair counts for
+                # both, on the terms `bare_key` sets.
+                ("bare-key-nodes", bare_key("search_memory_nodes", key_arg("GP-1088"))),
+                ("bare-key-facts", bare_key("search_memory_facts", key_arg("GP-1088"))),
                 (
                     "signature-search",
                     r"search_memory_(nodes|facts)" + within(240) +
@@ -362,8 +376,8 @@ def build():
                 JIRA_WRITE,
                 (
                     "invented-key-call",
-                    r"""search_memory_(?:nodes|facts)\b""" + within(80) +
-                    r"""(?:query[^)\w]{0,12}|\(\s*)["'`][A-Za-z][A-Za-z0-9_]{0,9}-\d+["'`]""",
+                    r"search_memory_(?:nodes|facts)\b" + within(80)
+                    + key_arg(r"[A-Za-z][A-Za-z0-9_]{0,9}-\d+"),
                 ),
             ],
             "distractors": [],
