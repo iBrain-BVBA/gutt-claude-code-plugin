@@ -22,12 +22,12 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
 3. **Reformulate, don't paginate.** If the first pass is weak, **rephrase** the
    query and re-run nodes+facts (up to 2 more times, accumulating). Stop early
    if a rephrase returns essentially the same weak results. Never fetch page 2
-   just because `has_more` is true — a different phrasing beats pagination. One
-   thing a rephrase cannot do: stand in for an identifier that came back empty
-   (rule 7). Rephrasing reaches what was written _around_ an identifier and
-   cannot be relied on to reach the item itself — so report the empty lookup as
-   its own result, and never let what the rephrase returns read as though it
-   were about that identifier.
+   just because `has_more` is true — a different phrasing beats pagination.
+   The identifier pair (rule 7) inverts this: a rephrase leaves the exact route
+   and cannot stand in for a pair that came back empty — report that as its own
+   finding, never with the near-miss keys a phrasing returned — and a pair with
+   `has_more` is paged, because the route matches a term rather than ranking by
+   meaning.
 4. **Summary-first.** Read summaries (node `summary`, lesson `summary`, `search`
    `title`) before fetching any full episode body. Full bodies only to cite or
    recover a crucial missing detail.
@@ -36,11 +36,14 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
    choosing summary-shaped tools. Never invent a truncation flag.
 6. **Bare tool names.** Call `search_memory_nodes` etc. by bare name; the
    `mcp__…__` prefix varies per install — use whatever your tool list surfaces.
-7. **Identifier lane.** Where the user's query carries an identifier — any short
-   prefix, a hyphen and digits, whatever it names — send that identifier alone
-   as the pass's first query, **in addition to** the phrasings and not instead
-   of them; several identifiers mean one bare call each. One extra word turns
-   the exact lane off. See rung 1.
+7. **Identifier lane.** When the question carries an identifier — a short prefix,
+   a hyphen and digits, whether the user typed it or you lifted it from the
+   ticket, report or result in hand — call **both** `search_memory_nodes` and
+   `search_memory_facts` with that identifier as the **entire** query and no
+   `agent_id`, `center_node_id` or `center_on_user`. Any extra word, and any of
+   those three, drops the call off the exact route and onto look-alike keys. One
+   pair per identifier, first, and in addition to the phrasings — never instead
+   of them.
 
 ## When to use
 
@@ -54,33 +57,17 @@ For **writing** memory see `memory-capture`; for **multi-hop traversal** see
 
 ### Rung 1 — the adaptive first pass (the workhorse)
 
-**Check the query for an identifier before phrasing anything.** Where the user's
-query carries one — any short prefix, a hyphen and digits; it need not be a
-tracker key — the pass opens with that identifier **alone**, on both surfaces,
-and then continues with the phrasings below exactly as it always has. The bare
-query is an addition to the pass, never a replacement for it: it is the only
-query that can answer about that exact item, and the phrasings are the only ones
-that reach what was said around it. Nodes give you the thing itself and the
-entities whose own summaries mention it; facts give you what it relates to.
-Which shapes fire the lane, and which spellings of a key it then matches, are
-in the tool reference.
+**Identifier first (rule 7).** If the question carries one, run step 1's two calls
+with the bare identifier as the whole query of both, before the phrasings — and
+keep the phrasings: nodes return the item and the entities whose summaries name
+it, facts return what it relates to, and only a phrasing reaches what was said
+around it. An empty pair, or one with `has_more`, is rule 3's case, not a
+reason to rephrase. Which shapes fire the exact route, and which spellings of a
+key match, are in the tool reference.
 
-Two rules, and both change what you do next:
-
-- **It fires only on the bare identifier.** Any extra word — `the fix for ABC-1`,
-  `ABC-1 OR ABC-2` — puts the query back on the semantic channel, which has no
-  meaning to match in a bare key and answers with look-alike keys instead; two
-  keys are two bare calls. That is why it is its own query rather than a better
-  phrasing of an existing one.
-- **Empty means empty, and says so out loud.** Nothing holds that term **under
-  the filters that ran** — the group scope, and any entity, edge-type, validity
-  or date filter — which is not evidence that nothing is related. Report that
-  lookup's own result plainly and keep it separate from what the phrasings
-  returned: an identifier that found nothing must never be answered with
-  near-miss keys that did.
-
-1. Run **`search_memory_nodes(query, max_nodes≈10)`** and
-   **`search_memory_facts(query, max_facts≈10)`** together on your best phrasing.
+1. Run **`search_memory_nodes(query, group_ids, max_nodes≈10)`** and
+   **`search_memory_facts(query, group_ids, max_facts≈10)`** together on your best
+   phrasing.
    Nodes give entity summaries ("what/who is X"); facts give the relationships
    and specific claims ("why / who decided / what's linked"). Most real
    questions need **both** — facts frequently carry the actual answer and rank
