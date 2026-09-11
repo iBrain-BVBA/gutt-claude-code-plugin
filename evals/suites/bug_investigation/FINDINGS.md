@@ -315,6 +315,57 @@ their misses were the key being spent on the ticket read. With the rule itself i
 the model the miss rate is zero at eight trials. The pointer was doing about two-thirds of
 the work on its own; the rule does the rest.
 
+## Round 11 — the second Copilot round: a slice is not one question, and a pair is a pair
+
+Copilot's second review of PR #99 found one thing in the corpus and three in the skills, and
+all four are real. **The corpus.** The nearest-call span from round 9 ends a `bare-key-nodes`
+span at the next tool name, so a plan written as one sentence — "search_memory_nodes and
+search_memory_facts with query: \"GP-1088\"" — scored as half a pair; the old `[^)]` span had
+passed it. Both bare-key checks now also accept an explicitly grouped pair: both tool names
+with nothing but connective text between them, then one key, where the gap admits no
+parenthesis and no `query` so that two calls carrying different queries cannot pass as one.
+Rounds 9 and 10 re-scored under it move nothing — no recorded reply had written the shape.
+**The skills.** Rule 7 as rewritten triggers on an identifier lifted from a "result in
+hand", and a backlog slice is such a result, so a hard rule was demanding a pair per key
+while backlog-dedupe and backlog-prioritization scoped the lane per cluster and per selected
+item — an exception a role skill may not make on its own. Rule 7 now ends: a list of items is
+not one question, and a skill working through a slice says which of its keys get a pair, and
+when. pr-re-review had said "a fifth query", after its four phrasings and singular; it now
+says "its own pair of calls, before the four above", and the other eight role skills say
+"pair of calls" where they said "query". A fourth finding, that tools.md omits the
+ten-character prefix cap, stands declined: the eval's grammar matches the server's, so only
+the reference is broader.
+
+Those are text changes to both measured bodies, so the round is owed. V0 measured 18,319
+chars, `d8cce2ab8b47`. Eight trials, all six cases, 96 calls.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    18319   96%        98%       0     missing:signature-search 1/48 · names-the-gap 1/48
+V1-none           0    0%         0%       0     missing:signature-search 24/48 · group-scope 22/48 · severity-rubric 11/48 · bare-key-nodes 8/48 · bare-key-facts 8/48 · names-the-gap 8/48 · scope-of-absence 8/48 · cites-a-date 6/48 · refutable-hypothesis 6/48 · absence-named 6/48 · banned:jira-write 1/48 · symptom-search 1/48
+
+per case (V0 / V1): key-triage 7/8 · pasted-degrade 7/8 · identifier-lane 8/8 · prose-control 8/8 ·
+                    resemblance-not-cause 8/8 · novel-signature 8/8   (V1: 0/8 on all six)
+```
+
+**The pair is 8 of 8 again, and it has spread.** Every keyed V0 trial on identifier-lane
+planned both bare calls, and so did the two replies read for the misses below, each opening
+with `search_memory_nodes(query="GP-1042", group_ids=…)` and its facts twin before the
+phrasings — the lane firing on a key lifted from the report, which is what the widened
+trigger is for. `group_ids` was missing in no V0 trial. V1 planned no bare call in 8 of 8,
+the fifth round running.
+
+**Two single-trial misses, one of each kind.** A key-triage reply searched the signature as
+`"pool timeout acquire timed out checkout-db"` — the logged token `PoolTimeout` split into
+words. The `signature-search` check wants the token as logged; whether a semantic search on
+the split form would have found the same records is a judgement the check cannot make, and
+the reply used the exact token in its prose. A pasted-degrade reply dropped the
+related-tickets half without a word about the missing Jira tooling — a real miss, and the
+behaviour that case exists to catch; round 9 had two, round 10 none.
+
+**Round 11 is the table that describes what ships.** The committed memory-search and
+bug-investigation bodies hash to the V0 measured here.
+
 ## What the numbers say
 
 **V1 scores zero on every case in every round**, and it is worth being precise about
@@ -329,10 +380,10 @@ triage and an ungrounded one is invisible in the prose and visible in those four
 in a way the pattern did not catch, one omitting the degradation line. Nothing here points
 at a rule that needs rewriting; the next thing worth doing is more trials, not more prose.
 
-**Rounds 9 and 10 are a different instrument** — both skill bodies in V0, the identifier
+**Rounds 9 to 11 are a different instrument** — both skill bodies in V0, the identifier
 pair scored as a pair, the nearest-call span — and their tables are not comparable with
-rounds 1–8. Under it the residual is one absence-wording miss in 48, and the thing worth
-doing next is still more trials, not more prose.
+rounds 1–8. Under it the residual is one or two single-trial misses in 48 per round, and
+the thing worth doing next is still more trials, not more prose.
 
 ## What this suite does not measure
 

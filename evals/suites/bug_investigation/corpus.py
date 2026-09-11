@@ -81,6 +81,17 @@ def within(n):
     return rf"(?:(?!{TOOL_NAME}).){{0,{n}}}?"
 
 
+# An explicitly grouped pair — both tool names with nothing but connective text between
+# them — binds one key to both bare-key checks: "search_memory_nodes and
+# search_memory_facts with query: 'ABC-1'" is a compliant plan, and the nearest-call span
+# alone would end the nodes span at the second name. The gap admits no parenthesis and no
+# `query`, so two separate calls carrying different queries cannot pass as a pair.
+PAIRED = (
+    r"(?:search_memory_nodes\b(?:(?!query)[^\n(]){0,30}?search_memory_facts\b"
+    r"|search_memory_facts\b(?:(?!query)[^\n(]){0,30}?search_memory_nodes\b)"
+)
+
+
 # The org group has to be *nameable* from the session, because the skill forbids guessing
 # one. Without this line an ungrouped read is the compliant answer and a scope check would
 # be demanding the thing the rule prohibits — which is exactly what round 1 measured.
@@ -306,12 +317,12 @@ def build():
                 # which `(?:nodes|facts)` scored as complete.
                 (
                     "bare-key-nodes",
-                    r"""search_memory_nodes\b""" + within(80) +
+                    rf"""(?:search_memory_nodes\b|{PAIRED})""" + within(80) +
                     r"""(?:query[^)\w]{0,12}|\(\s*)["'`]GP-1088["'`]""",
                 ),
                 (
                     "bare-key-facts",
-                    r"""search_memory_facts\b""" + within(80) +
+                    rf"""(?:search_memory_facts\b|{PAIRED})""" + within(80) +
                     r"""(?:query[^)\w]{0,12}|\(\s*)["'`]GP-1088["'`]""",
                 ),
                 (
