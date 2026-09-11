@@ -135,9 +135,10 @@ only the pair, so its `all` column is not comparable with rounds 1–6.
 
 They are one measurement rather than two. The keyed case scores the bare-key call _and_
 the phrasings that have to keep running beside it, because the lane is an addition to the
-pass and a version that replaced the phrasings would pass half of it. The control is the
-same report with the key taken off and nothing else changed, so a lane that leaked into
-key-free asks shows up as the control losing checks it used to win.
+pass and a version that replaced the phrasings would pass half of it. The control is
+key-triage's report with its key taken off and nothing else changed — not the keyed case's
+— so a lane that leaked into key-free asks shows up as the control losing checks it used
+to win.
 
 ```
 variant       chars    all  confident  errors
@@ -210,8 +211,109 @@ It searched the signature (`query: "TemplateRenderError locale fallback exhauste
 the symptom (`query: "invoice PDF blank rendering"`), and scored as having done neither —
 because it wrote the tool name as `search_memory_nodes()` with empty parens, so `[^)]`
 stops one character in. Two rounds, three manifestations: a parenthesised aside, an empty
-parameter list, and a heading. The `bare-key-call` pattern does not use `[^)]` and is
-unaffected; the three sibling checks are, in every case that carries them.
+parameter list, and a heading. The `bare-key-call` pattern was believed not to use `[^)]`; it
+does (`[^)]{0,80}?`), and round 9 records the first miss that caused. The three sibling
+checks are affected in every case that carries them.
+
+## Round 9 — the instrument changes: both bodies, and the pair scored as a pair
+
+Two things changed before this round, and they make every table above a different sample
+from every table below. **The variant text.** Rounds 1–8 loaded the bug-investigation body
+alone, so any check that turned on a memory-search rule — the identifier lane is the first —
+was scoring the four-line pointer in bug-investigation, not the rule. From here V0 is the
+bug-investigation body and the memory-search body together, which is what a session running
+the skill has in front of it: the skill delegates the whole search ladder to memory-search,
+and both shipped agents preload the pair. **The lane check.** Rule 7 now names both search
+tools and says the identifier is the entire query of each; rounds 7 and 8 had recorded
+replies that sent it to one tool only, and `(?:nodes|facts)` scored those as complete.
+`bare-key-call` is now `bare-key-nodes` and `bare-key-facts`, and the keyed case owes five
+checks.
+
+The memory-search text under measurement is the rewrite that followed the PR #99 review:
+rule 7 restated as a pair of calls with no `agent_id`, `center_node_id` or `center_on_user`;
+a rung-1 lead that mirrors step 1's own "run both calls" shape; rule 3 carrying the two
+result cases on that lane — an empty pair is its own finding, a pair with `has_more` is
+paged, because a rephrase leaves the exact route. V0 measured 18,169 chars, `3738ec39fdea`.
+Eight trials, all six cases, 96 calls.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    18169   65%        75%       0     missing:group-scope 16/48 · signature-search 2/48 · names-the-gap 2/48 · bare-key-nodes 1/48 · bare-key-facts 1/48 · symptom-search 1/48
+V1-none           0    0%         0%       0     missing:group-scope 23/48 · signature-search 22/48 · severity-rubric 11/48 · bare-key-nodes 8/48 · bare-key-facts 8/48 · names-the-gap 8/48 · refutable-hypothesis 8/48 · scope-of-absence 8/48 · absence-named 7/48 · cites-a-date 5/48 · symptom-search 4/48 · severity-label 1/48
+
+per case (V0 / V1): key-triage 6/8 · pasted-degrade 1/8 · identifier-lane 1/8 · prose-control 7/8 ·
+                    resemblance-not-cause 8/8 · novel-signature 8/8   (V1: 0/8 on all six)
+```
+
+**The pair fires as a pair: 7 of 8 as scored, 8 of 8 in fact.** Seven trials planned
+`search_memory_nodes(query="GP-1088", …)` and `search_memory_facts(query="GP-1088", …)`
+both; none planned one without the other. The eighth planned both as well and lost them to
+the instrument: it wrote the tool name, then `(identifier lane — exact key)`, then
+`query: "GP-1088"` — and `[^)]` stops at the aside. V1 planned no bare call in any of its
+eight trials.
+
+**What the lane check no longer hides: `group_ids` went missing in 16 of 48 V0 trials.**
+Six of eight on identifier-lane, seven of eight on pasted-degrade, two on key-triage, one on
+prose-control — and it is what sank the two 1/8 cases, not the lane. Round 8, with
+bug-investigation alone, lost `group-scope` once in eight. Every failing trial wrote its
+calls as `search_memory_nodes(query="…", max_nodes=10)`, which is memory-search step 1's
+example signature copied verbatim; every passing trial wrote the same shape with
+`group_ids=["org_main"]` appended. The memory-search body did not mention `group_ids`
+anywhere, so once it entered the prompt the one line in bug-investigation that asks for an
+explicit org scope was competing with a concrete signature, and lost. Whether the rewrite's
+"no `agent_id`, `center_node_id` or `center_on_user`" clause added to that is not separable
+here — a control arm with the pre-rewrite memory-search text would settle it — but the
+mechanism is visible without it and fixes the same way either way: step 1's signature now
+reads `search_memory_nodes(query, group_ids, max_nodes≈10)`, one token per call. Round 10
+measures that.
+
+**The `[^)]` spans are gone, and round 9 was re-scored under their replacement.** The
+sibling checks had been left on `[^)]` since round 1 because fixing them re-baselined three
+cases; this round re-baselined all six anyway. A term is now bound to the nearest tool call
+before it — `(?:(?!<tool name>).){0,240}?` — so the span crosses a parenthesised aside, an
+empty parameter list or a heading, and never another tool name, which is the false positive
+the old stop was guarding against. Re-scored, the same 96 replies read: V0 67% / 78%
+confident, identifier-lane 2/8, `bare-key-nodes` and `bare-key-facts` 0 missing, and the only
+V0 labels left are `group-scope` 16/48 and `names-the-gap` 2/48. Two verdicts moved, both
+in the direction the artefact predicted; V1 did not move at all.
+
+## Round 10 — the same instrument, with `group_ids` in step 1's signature
+
+One token changed between rounds 9 and 10: memory-search's step 1 reads
+`search_memory_nodes(query, group_ids, max_nodes≈10)` and its facts twin, where round 9's
+text had `(query, max_nodes≈10)`. Nothing else in either body moved. V0 measured 18,194
+chars, `5681149bc1d4`. Eight trials, all six cases, 96 calls, scored under the nearest-call
+span from round 9's re-score.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    18194   98%        98%       0     missing:absence-named 1/48
+V1-none           0    0%         0%       0     missing:signature-search 23/48 · group-scope 23/48 · severity-rubric 10/48 · bare-key-nodes 8/48 · bare-key-facts 8/48 · names-the-gap 8/48 · cites-a-date 8/48 · refutable-hypothesis 8/48 · scope-of-absence 8/48 · absence-named 6/48 · area-history 1/48 · symptom-search 1/48
+
+per case (V0 / V1): key-triage 8/8 · pasted-degrade 8/8 · identifier-lane 8/8 · prose-control 8/8 ·
+                    resemblance-not-cause 8/8 · novel-signature 7/8   (V1: 0/8 on all six)
+```
+
+**`group-scope` went from 16 of 48 to 0 of 48 on one token.** The mechanism round 9 named
+is confirmed the cheap way: the models copy the example signature, so the example signature
+is where the parameter has to be. The four plan cases are 32 of 32, which they had never
+been at eight trials, and pasted-degrade's two `names-the-gap` misses did not recur.
+
+**The pair is 8 of 8, on both tools, in every keyed trial — and 0 of 8 without the skill.**
+With rounds 7 and 8 this is the third round in which V1 planned no bare identifier query
+at all; the behaviour does not appear unprompted on this model.
+
+**The one V0 miss is the instrument again, on a check this ticket did not touch.** The
+novel-signature reply wrote "No other similar failures found" and "No incident or lesson
+history found" — the absence named twice, with its scope — and `absence-named` accepts `no`
+only when `similar`, `matching`, `comparable`, `prior` or `past` follows it directly. A
+widening is a checker change with its own re-score, and is left for a round of its own.
+
+**What this round says about the 7 of 11.** Rounds 7 and 8 measured the lane through a
+four-line pointer in bug-investigation, without memory-search's text in the prompt, and
+their misses were the key being spent on the ticket read. With the rule itself in front of
+the model the miss rate is zero at eight trials. The pointer was doing about two-thirds of
+the work on its own; the rule does the rest.
 
 ## What the numbers say
 
@@ -226,6 +328,11 @@ triage and an ungrounded one is invisible in the prose and visible in those four
 **The residual V0 failures are single trials** — one reply phrasing the signature search
 in a way the pattern did not catch, one omitting the degradation line. Nothing here points
 at a rule that needs rewriting; the next thing worth doing is more trials, not more prose.
+
+**Rounds 9 and 10 are a different instrument** — both skill bodies in V0, the identifier
+pair scored as a pair, the nearest-call span — and their tables are not comparable with
+rounds 1–8. Under it the residual is one absence-wording miss in 48, and the thing worth
+doing next is still more trials, not more prose.
 
 ## What this suite does not measure
 

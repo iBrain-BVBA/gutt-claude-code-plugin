@@ -48,7 +48,7 @@ def build_prompt(variant_text, case):
     parts = [corpus.TODAY, case["surface"]]
     if variant_text:
         parts.append(
-            "You have loaded the following skill for this task:\n\n" + variant_text
+            "You have loaded the following skill text for this task:\n\n" + variant_text
         )
     parts.append(f'The user asks: "{case["ask"]}"')
     parts.append("The bug report reads:\n\n" + case["ticket"])

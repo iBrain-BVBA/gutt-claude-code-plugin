@@ -67,6 +67,20 @@ JIRA_TOOLS = """\
 - transitionJiraIssue(cloudId, issueIdOrKey, transition) — change status.
 - addCommentToJiraIssue(cloudId, issueIdOrKey, commentBody) — post a comment."""
 
+# A term is bound to the nearest tool call before it. The span may cross a
+# parenthesised aside, an empty parameter list or a heading — the three shapes at which
+# `[^)]` used to stop and score a planned search as a missing one — but never another
+# tool name, so a term cannot borrow a call that was not about it.
+TOOL_NAME = (
+    r"(?:search_memory_|fetch_lessons_learned|get_episode|get_node_edges|getJiraIssue"
+    r"|searchJiraIssuesUsingJql|editJiraIssue|transitionJiraIssue|addCommentToJiraIssue)"
+)
+
+
+def within(n):
+    return rf"(?:(?!{TOOL_NAME}).){{0,{n}}}?"
+
+
 # The org group has to be *nameable* from the session, because the skill forbids guessing
 # one. Without this line an ungrouped read is the compliant answer and a scope check would
 # be demanding the thing the rule prohibits — which is exactly what round 1 measured.
@@ -216,8 +230,8 @@ def build():
             "ask": "Investigate GP-1042 for me — how bad is it and where should I look?",
             "ticket": BUG_TEXT,
             "must_all": [
-                ("signature-search", r"search_memory_(nodes|facts)[^)]{0,240}PoolTimeout"),
-                ("symptom-search", r"search_memory_(nodes|facts)[^)]{0,240}(checkout|hang|502)"),
+                ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
+                ("symptom-search", r"search_memory_(nodes|facts)" + within(240) + r"(checkout|hang|502)"),
                 ("group-scope", r"group_ids"),
                 ("area-history", r"(?i)incident"),
             ],
@@ -241,7 +255,7 @@ def build():
             ),
             "ticket": BUG_TEXT,
             "must_all": [
-                ("signature-search", r"search_memory_(nodes|facts)[^)]{0,240}PoolTimeout"),
+                ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
                 ("group-scope", r"group_ids"),
                 (
                     "names-the-gap",
@@ -264,8 +278,8 @@ def build():
             "why": (
                 "The key is in the ask, but the ask is *about* the failure — the shape "
                 "that reads as prose and gets phrased away. `memory-search` rule 7 "
-                "sends the bare identifier out as its own query and keeps the phrasings "
-                "running, so every call below is owed; none of them is an alternative "
+                "sends the bare identifier to both search tools and keeps the phrasings "
+                "running, so every check below is owed; none of them is an alternative "
                 "to another."
             ),
             "ask": (
@@ -286,19 +300,28 @@ def build():
                 # the tool name, then either a `query` marker or an open paren, then the
                 # delimited key. Sibling checks below need none of this because they only
                 # look for a term near a tool name, not for the shape of one argument.
+                #
+                # One check per tool, not one alternation: rule 7 requires the pair, and
+                # rounds 7 and 8 recorded replies that sent the bare key to one tool only,
+                # which `(?:nodes|facts)` scored as complete.
                 (
-                    "bare-key-call",
-                    r"""search_memory_(?:nodes|facts)\b[^)]{0,80}?"""
+                    "bare-key-nodes",
+                    r"""search_memory_nodes\b""" + within(80) +
+                    r"""(?:query[^)\w]{0,12}|\(\s*)["'`]GP-1088["'`]""",
+                ),
+                (
+                    "bare-key-facts",
+                    r"""search_memory_facts\b""" + within(80) +
                     r"""(?:query[^)\w]{0,12}|\(\s*)["'`]GP-1088["'`]""",
                 ),
                 (
                     "signature-search",
-                    r"search_memory_(nodes|facts)[^)]{0,240}"
+                    r"search_memory_(nodes|facts)" + within(240) +
                     r"(TemplateRenderError|locale fallback)",
                 ),
                 (
                     "symptom-search",
-                    r"search_memory_(nodes|facts)[^)]{0,240}(invoice|blank|PDF)",
+                    r"search_memory_(nodes|facts)" + within(240) + r"(invoice|blank|PDF)",
                 ),
                 ("group-scope", r"group_ids"),
             ],
@@ -319,8 +342,8 @@ def build():
             "ask": "Investigate this for me — how bad is it and where should I look?",
             "ticket": UNKEYED_BUG,
             "must_all": [
-                ("signature-search", r"search_memory_(nodes|facts)[^)]{0,240}PoolTimeout"),
-                ("symptom-search", r"search_memory_(nodes|facts)[^)]{0,240}(checkout|hang|502)"),
+                ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
+                ("symptom-search", r"search_memory_(nodes|facts)" + within(240) + r"(checkout|hang|502)"),
                 ("group-scope", r"group_ids"),
                 ("area-history", r"(?i)incident"),
             ],
@@ -328,7 +351,7 @@ def build():
                 JIRA_WRITE,
                 (
                     "invented-key-call",
-                    r"""search_memory_(?:nodes|facts)\b[^)]{0,80}?"""
+                    r"""search_memory_(?:nodes|facts)\b""" + within(80) +
                     r"""(?:query[^)\w]{0,12}|\(\s*)["'`][A-Za-z][A-Za-z0-9_]{0,9}-\d+["'`]""",
                 ),
             ],
