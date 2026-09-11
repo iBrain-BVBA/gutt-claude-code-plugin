@@ -127,6 +127,92 @@ novel-signature 3/3   (V1: 0/3 on all four)
 First clean sweep for this suite — the cuts cost nothing the checks can see, and the
 signature fix did not move the group-scope behaviour, which V0 carried before and after.
 
+## Round 7 — the identifier lane, on the two new cases only
+
+`identifier-lane` and `prose-control` were added after round 6; every per-case line above
+is four cases wide because those rounds ran before the pair existed. This round scores
+only the pair, so its `all` column is not comparable with rounds 1–6.
+
+They are one measurement rather than two. The keyed case scores the bare-key call _and_
+the phrasings that have to keep running beside it, because the lane is an addition to the
+pass and a version that replaced the phrasings would pass half of it. The control is the
+same report with the key taken off and nothing else changed, so a lane that leaked into
+key-free asks shows up as the control losing checks it used to win.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    10473   50%        50%       0     missing:group-scope 1/6 · bare-key-call 1/6 · signature-search 1/6
+V1-none           0    0%         0%       0     signature-search 4/6 · bare-key-call 3/6 · group-scope 3/6
+
+per case (V0 / V1): identifier-lane 1/3 · prose-control 2/3   (V1: 0/3 on both)
+```
+
+**The lane check alone is 2/3 for V0 and 0/3 for V1.** The case-level 1/3 is lower than
+that because the case deliberately requires all four calls, and one trial that did issue
+the bare key lost the case on `group-scope` — the residual that rounds 3–5 already show as
+V0's most common single failure, and nothing to do with identifiers.
+
+**As first scored the lane check read 0/3, and that was the pattern's fault.** A model
+asked for concrete parameter values types a plan three ways — `query="X"` inside a call,
+`query: "X"` in a block under a heading that names the tool, and `- **query**: "X"` as a
+bullet — and the first version of `bare-key-call` recognised only the first. One trial had
+planned `search_memory_facts(query: "GP-1088", …)` and scored as never having planned it.
+**Fixed in the corpus:** the pattern now takes the tool name, then either a `query` marker
+or an open paren, then the delimited key — the delimiter still has to close immediately
+after the key, which is what keeps "the bare key and nothing else" enforced. The numbers
+above are the re-score of the same replies through the fixed instrument.
+
+**The one real miss is a real miss.** V0 trial 2 read the ticket with `getJiraIssue` and
+went straight to four phrased searches with no bare-key call on either memory surface. So
+the rule lands twice in three trials at three trials — a signal, not yet a rate.
+
+**V1 planned no bare-key memory call in any trial.** All three used the key only as
+`getJiraIssue(issueIdOrKey="GP-1088")`, which is the ticket read, not the lookup. The
+behaviour does not appear without the skill text, which is the comparison the pair exists
+to make.
+
+**Left unfixed, and visible here: `signature-search` breaks on a parenthesis.** The
+pattern is `search_memory_(nodes|facts)[^)]{0,240}<term>`, and `[^)]` stops at the first
+`)` — so a reply writing ``search_memory_facts`** (signature-focused)`` above
+`query: "PoolTimeout acquire timed out 30s …"` scores as never having searched the
+signature. That is one of the three V0/V1 misses in this round's `prose-control` column,
+and the same pattern is what `key-triage` and `pasted-degrade` have used since round 1,
+so some part of the historical `missing:signature-search` count is this and not the model.
+Fixing it re-baselines three cases at once, which is why it was left for a decision of its
+own rather than folded into this round.
+
+## Round 8 — `identifier-lane` at eight trials
+
+Round 7 left the lane at 2/3, which sizes nothing. This round runs the keyed case alone at
+eight trials per variant to find out whether the miss is one in three or one in ten.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    10473   50%        50%       0     missing:bare-key-call 3/8 · signature-search 1/8 · symptom-search 1/8 · group-scope 1/8
+V1-none           0    0%         0%       0     missing:bare-key-call 8/8 · group-scope 4/8 · signature-search 1/8 · symptom-search 1/8
+
+per case (V0 / V1): identifier-lane 4/8   (V1: 0/8)
+```
+
+**The bare-key call fires in 5 of 8 V0 trials and 0 of 8 V1 trials.** With round 7 that is
+7 of 11 with the skill and 0 of 11 without. The skill is doing something no model does
+unprompted, and it is doing it about two times in three.
+
+**All three misses are real, and two of them share a shape.** Trials 0 and 4 spend the key
+on the ticket read — `getJiraIssue(…, "GP-1088")` — and then run only phrased memory
+queries; the key never becomes a memory query at all. Trial 2 never uses the key anywhere,
+having pinned the failure from the pasted text. Nothing here is a pattern artefact: the
+widened `bare-key-call` matches all three of the syntaxes these replies use, and it found
+the call in the five trials that made one.
+
+**Trial 2 is also the sharpest evidence yet for the `[^)]` fragility left unfixed above.**
+It searched the signature (`query: "TemplateRenderError locale fallback exhausted"`) and
+the symptom (`query: "invoice PDF blank rendering"`), and scored as having done neither —
+because it wrote the tool name as `search_memory_nodes()` with empty parens, so `[^)]`
+stops one character in. Two rounds, three manifestations: a parenthesised aside, an empty
+parameter list, and a heading. The `bare-key-call` pattern does not use `[^)]` and is
+unaffected; the three sibling checks are, in every case that carries them.
+
 ## What the numbers say
 
 **V1 scores zero on every case in every round**, and it is worth being precise about

@@ -42,6 +42,8 @@ Fields per case:
   why         ground for the label
 """
 
+import re
+
 TODAY = "Today is Thursday 2026-08-06 in the user's timezone (Europe/Brussels, UTC+2)."
 
 # The memory half of the tool surface, signatures faithful to the live server
@@ -188,6 +190,17 @@ job reports success. The only signal is in the worker log:
 Affects version 4.12.0. Components: invoicing. Priority: currently unset."""
 
 
+# The keyed report with its key taken off. The identifier lane is additive, so an ask
+# carrying no identifier has to plan exactly the searches it planned before the lane
+# existed — which is only measurable against a case that differs in the key and in
+# nothing else. Derived rather than retyped so the two cannot drift apart, and asserted
+# because a `replace` that quietly stops matching would leave the control carrying the
+# one thing it controls for.
+UNKEYED_BUG = BUG_TEXT.replace("GP-1042 — ", "", 1)
+assert not re.search(
+    r"\b[A-Za-z][A-Za-z0-9_]{0,9}-\d+\b", UNKEYED_BUG
+), "UNKEYED_BUG still carries an identifier-shaped token"
+
 def build():
     return [
         {
@@ -240,6 +253,84 @@ def build():
             "must_not": [
                 # Inventing a JQL call against tooling the session does not have.
                 ("phantom-jira-call", r"searchJiraIssuesUsingJql\s*\(\s*[A-Za-z\"'{]"),
+            ],
+            "distractors": [],
+        },
+        {
+            "id": "identifier-lane",
+            "family": "plan",
+            "surface": SURFACE_FULL,
+            "confident": True,
+            "why": (
+                "The key is in the ask, but the ask is *about* the failure — the shape "
+                "that reads as prose and gets phrased away. `memory-search` rule 7 "
+                "sends the bare identifier out as its own query and keeps the phrasings "
+                "running, so every call below is owed; none of them is an alternative "
+                "to another."
+            ),
+            "ask": (
+                "The blank-invoice failure tracked in GP-1088 is back — how bad is it "
+                "and where should I look?"
+            ),
+            "ticket": NOVEL_BUG,
+            "must_all": [
+                # The query is the key and nothing else: the closing delimiter has to
+                # arrive before any other term, because one extra word puts the call back
+                # on the semantic channel and out of the lane being measured.
+                #
+                # What it does *not* pin is how the plan is typed. A model asked for
+                # concrete parameter values writes them three ways — `query="X"` inside
+                # a call, `query: "X"` in a block, and `- **query**: "X"` under a heading
+                # that names the tool — and the first version of this pattern recognised
+                # only the first, scoring a planned bare-key call as a missing one. So:
+                # the tool name, then either a `query` marker or an open paren, then the
+                # delimited key. Sibling checks below need none of this because they only
+                # look for a term near a tool name, not for the shape of one argument.
+                (
+                    "bare-key-call",
+                    r"""search_memory_(?:nodes|facts)\b[^)]{0,80}?"""
+                    r"""(?:query[^)\w]{0,12}|\(\s*)["'`]GP-1088["'`]""",
+                ),
+                (
+                    "signature-search",
+                    r"search_memory_(nodes|facts)[^)]{0,240}"
+                    r"(TemplateRenderError|locale fallback)",
+                ),
+                (
+                    "symptom-search",
+                    r"search_memory_(nodes|facts)[^)]{0,240}(invoice|blank|PDF)",
+                ),
+                ("group-scope", r"group_ids"),
+            ],
+            "must_not": [JIRA_WRITE],
+            "distractors": [],
+        },
+        {
+            "id": "prose-control",
+            "family": "plan",
+            "surface": SURFACE_FULL,
+            "confident": True,
+            "why": (
+                "key-triage with the identifier removed and nothing else touched. The "
+                "lane is an addition, so this case has to keep scoring what it scored "
+                "before the lane existed — and any bare-key call here would have to be "
+                "an invented key, which is the leak the pair exists to catch."
+            ),
+            "ask": "Investigate this for me — how bad is it and where should I look?",
+            "ticket": UNKEYED_BUG,
+            "must_all": [
+                ("signature-search", r"search_memory_(nodes|facts)[^)]{0,240}PoolTimeout"),
+                ("symptom-search", r"search_memory_(nodes|facts)[^)]{0,240}(checkout|hang|502)"),
+                ("group-scope", r"group_ids"),
+                ("area-history", r"(?i)incident"),
+            ],
+            "must_not": [
+                JIRA_WRITE,
+                (
+                    "invented-key-call",
+                    r"""search_memory_(?:nodes|facts)\b[^)]{0,80}?"""
+                    r"""(?:query[^)\w]{0,12}|\(\s*)["'`][A-Za-z][A-Za-z0-9_]{0,9}-\d+["'`]""",
+                ),
             ],
             "distractors": [],
         },
