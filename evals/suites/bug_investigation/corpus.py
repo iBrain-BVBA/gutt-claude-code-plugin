@@ -113,6 +113,22 @@ def bare_key(tool, arg):
     )
 
 
+# Two phrasings are two calls. The presence checks accept a signature term and a symptom
+# term near *any* search call, so one combined query —
+# `search_memory_nodes(query="TemplateRenderError blank invoice")` — satisfied both while
+# the skill asks for the two searched separately. This binds each term to its nearest
+# preceding search call and requires the two calls to differ, in either order. What it
+# still admits: one combined phrasing sent to nodes and then to facts, which is two calls
+# carrying one query — a hole the presence checks share and this does not widen.
+def separate(a, b):
+    tool = r"search_memory_(?:nodes|facts)\b"
+
+    def one(x, y):
+        return tool + within(240) + x + r".*?" + tool + within(240) + y
+
+    return rf"(?:{one(a, b)}|{one(b, a)})"
+
+
 # The org group has to be *nameable* from the session, because the skill forbids guessing
 # one. Without this line an ungrouped read is the compliant answer and a scope check would
 # be demanding the thing the rule prohibits — which is exactly what round 1 measured.
@@ -264,6 +280,7 @@ def build():
             "must_all": [
                 ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
                 ("symptom-search", r"search_memory_(nodes|facts)" + within(240) + r"(checkout|hang|502)"),
+                ("separate-searches", separate(r"PoolTimeout", r"(checkout|hang|502)")),
                 ("group-scope", r"group_ids"),
                 ("area-history", r"(?i)incident"),
             ],
@@ -348,6 +365,10 @@ def build():
                     "symptom-search",
                     r"search_memory_(nodes|facts)" + within(240) + r"(invoice|blank|PDF)",
                 ),
+                (
+                    "separate-searches",
+                    separate(r"(TemplateRenderError|locale fallback)", r"(invoice|blank|PDF)"),
+                ),
                 ("group-scope", r"group_ids"),
             ],
             "must_not": [JIRA_WRITE],
@@ -369,6 +390,7 @@ def build():
             "must_all": [
                 ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
                 ("symptom-search", r"search_memory_(nodes|facts)" + within(240) + r"(checkout|hang|502)"),
+                ("separate-searches", separate(r"PoolTimeout", r"(checkout|hang|502)")),
                 ("group-scope", r"group_ids"),
                 ("area-history", r"(?i)incident"),
             ],

@@ -4,29 +4,29 @@ Judge model: `claude-haiku-4-5-20251001`.
 
 6 cases, 2 variants, 96 calls.
 
-Round `bug-investigation-8t-V0-shipped-V1-none-r5` — 2026-09-11T14:56:54+00:00, tree `9eb37b1` (dirty tree).
-Variant text measured: V0-shipped:d8cce2ab8b47 V1-none:e3b0c44298fc.
+Round `bug-investigation-8t-V0-shipped-V1-none-r6` — 2026-09-11T17:52:09+00:00, tree `d5db7dd`.
+Variant text measured: V0-shipped:c6ee405b71fc V1-none:e3b0c44298fc.
 
 ```
 BUG TRIAGE — skill text vs no skill
 variant       chars    all  confident  errors
 ---------------------------------------------
-V0-shipped    18319   96%        98%       0
+V0-shipped    18337   88%        90%       0
+               missing:names-the-gap: 2/48
+               banned:uuid-leak: 2/48
                missing:signature-search: 1/48
-               missing:names-the-gap: 1/48
+               unmarked:Borealis: 1/48
 V1-none           0    0%         0%       0
-               missing:signature-search: 24/48
-               missing:group-scope: 22/48
-               missing:severity-rubric: 11/48
+               missing:group-scope: 23/48
+               missing:signature-search: 22/48
+               missing:severity-rubric: 13/48
                missing:names-the-gap: 8/48
                missing:bare-key-nodes: 8/48
                missing:bare-key-facts: 8/48
+               missing:refutable-hypothesis: 8/48
+               missing:absence-named: 8/48
                missing:scope-of-absence: 8/48
-               missing:cites-a-date: 6/48
-               missing:refutable-hypothesis: 6/48
-               missing:absence-named: 6/48
-               banned:jira-write: 1/48
-               missing:symptom-search: 1/48
+               missing:cites-a-date: 7/48
 
   failure labels: missing:<check> = a required behaviour never appeared;
   banned:<check> = a Jira write, a leaked UUID, or a resemblance asserted as a
@@ -35,10 +35,10 @@ V1-none           0    0%         0%       0
 PER CASE — trials correct   (~ = label held less firmly)
                   case     V0-shipped       V1-none
 ---------------------------------------------------
-            key-triage            7/8           0/8
-        pasted-degrade~           7/8           0/8
+            key-triage            8/8           0/8
+        pasted-degrade~           6/8           0/8
        identifier-lane            8/8           0/8
-         prose-control            8/8           0/8
- resemblance-not-cause            8/8           0/8
-       novel-signature            8/8           0/8
+         prose-control            7/8           0/8
+ resemblance-not-cause            6/8           0/8
+       novel-signature            7/8           0/8
 ```
