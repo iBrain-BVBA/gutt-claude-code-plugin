@@ -74,7 +74,10 @@ risk table.
   signal, not a measurement.
 - **Memory:** `memory-search` rung 1 on the subject and the work's shape —
   episodes of similar past work, and lessons about it: what was
-  underestimated, what turned out bigger than filed, what went smoothly.
+  underestimated, what turned out bigger than filed, what went smoothly. Where
+  the ticket carries a key, send that key alone as its own query as well
+  (`memory-search` rule 7) — it reaches this ticket's own history, which the
+  shape phrasings cannot be relied on to rank.
 
 **Minimum outcome:** a comparables list, or an explicit "no comparable history
 found" — which itself forces `low confidence` per rule 2.

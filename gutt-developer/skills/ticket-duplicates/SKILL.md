@@ -88,6 +88,11 @@ episodes of the same work, lessons from it, and — decisive when present — a
 decision that already accepted or rejected the idea. "We chose not to" is as
 strong a find as "already done".
 
+Where a key is in hand — the ticket under check, or a candidate a Jira angle
+surfaced — send it alone as its own query as well; `memory-search` rule 7 carries
+the boundary. An empty result there is about that key only, and must not be
+answered with the near misses the phrasings returned.
+
 ## Step 4 — verdicts
 
 Resolve every candidate (rule 2), order duplicates first, and report:

@@ -1,6 +1,6 @@
 ---
 name: memory-search
-description: "Search organizational memory efficiently before any non-trivial task — an adaptive, relevance-gated first pass over the gutt knowledge graph, deepening only when needed. Use to recall prior decisions, lessons learned, past work, patterns, owners, or why something was done. Triggers on: previous, before, last time, decision, why did we, what do we know about, prior art, past work, lessons learned, have we done, did we already, history of, who worked on."
+description: "Search organizational memory efficiently before any non-trivial task — an adaptive, relevance-gated first pass over the gutt knowledge graph, deepening only when needed. Use to recall prior decisions, lessons learned, past work, patterns, owners, or why something was done, and to look something up by an identifier it carries. Triggers on: previous, before, last time, decision, why did we, what do we know about, prior art, past work, lessons learned, have we done, did we already, history of, who worked on, what do we know about ABC-123, has ABC-123 been done, find ticket ABC-123, look up this key."
 ---
 
 # Memory Search
@@ -22,7 +22,12 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
 3. **Reformulate, don't paginate.** If the first pass is weak, **rephrase** the
    query and re-run nodes+facts (up to 2 more times, accumulating). Stop early
    if a rephrase returns essentially the same weak results. Never fetch page 2
-   just because `has_more` is true — a different phrasing beats pagination.
+   just because `has_more` is true — a different phrasing beats pagination. One
+   thing a rephrase cannot do: stand in for an identifier that came back empty
+   (rule 7). Rephrasing reaches what was written _around_ an identifier and
+   cannot be relied on to reach the item itself — so report the empty lookup as
+   its own result, and never let what the rephrase returns read as though it
+   were about that identifier.
 4. **Summary-first.** Read summaries (node `summary`, lesson `summary`, `search`
    `title`) before fetching any full episode body. Full bodies only to cite or
    recover a crucial missing detail.
@@ -31,6 +36,11 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
    choosing summary-shaped tools. Never invent a truncation flag.
 6. **Bare tool names.** Call `search_memory_nodes` etc. by bare name; the
    `mcp__…__` prefix varies per install — use whatever your tool list surfaces.
+7. **Identifier lane.** Where the user's query carries an identifier — any short
+   prefix, a hyphen and digits, whatever it names — send that identifier alone
+   as the pass's first query, **in addition to** the phrasings and not instead
+   of them; several identifiers mean one bare call each. One extra word turns
+   the exact lane off. See rung 1.
 
 ## When to use
 
@@ -43,6 +53,31 @@ For **writing** memory see `memory-capture`; for **multi-hop traversal** see
 ## The search ladder
 
 ### Rung 1 — the adaptive first pass (the workhorse)
+
+**Check the query for an identifier before phrasing anything.** Where the user's
+query carries one — any short prefix, a hyphen and digits; it need not be a
+tracker key — the pass opens with that identifier **alone**, on both surfaces,
+and then continues with the phrasings below exactly as it always has. The bare
+query is an addition to the pass, never a replacement for it: it is the only
+query that can answer about that exact item, and the phrasings are the only ones
+that reach what was said around it. Nodes give you the thing itself and the
+entities whose own summaries mention it; facts give you what it relates to.
+Which shapes fire the lane, and which spellings of a key it then matches, are
+in the tool reference.
+
+Two rules, and both change what you do next:
+
+- **It fires only on the bare identifier.** Any extra word — `the fix for ABC-1`,
+  `ABC-1 OR ABC-2` — puts the query back on the semantic channel, which has no
+  meaning to match in a bare key and answers with look-alike keys instead; two
+  keys are two bare calls. That is why it is its own query rather than a better
+  phrasing of an existing one.
+- **Empty means empty, and says so out loud.** Nothing holds that term **under
+  the filters that ran** — the group scope, and any entity, edge-type, validity
+  or date filter — which is not evidence that nothing is related. Report that
+  lookup's own result plainly and keep it separate from what the phrasings
+  returned: an identifier that found nothing must never be answered with
+  near-miss keys that did.
 
 1. Run **`search_memory_nodes(query, max_nodes≈10)`** and
    **`search_memory_facts(query, max_facts≈10)`** together on your best phrasing.
@@ -121,4 +156,6 @@ entirely: state the degradation in one line and proceed — never stall.
 ## References
 
 - `references/tools.md` — exact per-tool parameters, return shapes, version
-  tiers, and scoping behavior.
+  tiers, scoping behavior, and the identifier route's contract: which shapes
+  fire it, which spellings of a key match, which near-miss keys do not, and
+  what an empty page proves at each offset.

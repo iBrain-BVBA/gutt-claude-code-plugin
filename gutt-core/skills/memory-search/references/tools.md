@@ -49,6 +49,16 @@ are out of scope here):
 Returns `{message, nodes: [{id, name, summary, labels, group_id, created_at,
 attributes}], has_more}`. **No relevance score is exposed.**
 
+**Identifier route.** A query that is nothing but an identifier is answered by
+an exact lookup over node names and summaries rather than by the hybrid recipe,
+and there is **no semantic fallback** behind it. What fires it is one token
+that opens with a letter, continues in letters, digits or underscores, then one
+hyphen and digits — `ABC-123`, `ABC_9-42` — with any punctuation around the
+token trimmed first, so `ABC-123?` still fires. A date, a digit-first code or a
+token with a second hyphen does not, and runs as an ordinary search instead. It
+is off when `center_node_id`, `agent_id` or `center_on_user` is set, so a
+scoped search keeps its ordinary behaviour; `entity` still applies on the route.
+
 ### search_memory_facts (v1.0)
 
 | param                          | type        | default     | notes                              |
@@ -65,6 +75,21 @@ attributes}], has_more}`. **No relevance score is exposed.**
 
 **No `agent_id` / `center_on_user`.** To scope facts to a person/agent, pivot
 via `center_node_id` from a node you already scoped.
+
+**Identifier route**, as on nodes, with two differences: it searches the fact
+text, and it is off only when `center_node_id` is set. `edge_type`, the validity
+default and the date bounds all still apply.
+
+**Both routes, on either surface.** The term matches as an adjacent sequence of
+whole terms, so a key found under one spelling is found under the others
+(`ABC-100`, `ABC 100`, `ABC/100`, any case), is not found under a longer one
+that merely contains it (`ABC-1000`, `XABC-100`), and is not found where the
+same two terms appear out of order (`100 ABC`) — adjacency is a sequence, not a
+set. An empty first page comes back with a message naming every filter that was
+applied — read it before concluding anything, because it is the difference
+between "no match under this scope" and "nothing is related". That message is
+on the **first** page only: an empty page further into pagination is the
+ordinary end of results and says nothing about the term.
 
 ### fetch_lessons_learned (v1.0)
 

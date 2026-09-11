@@ -130,6 +130,11 @@ story's issue type, which is worth saying rather than working around.
 
 ## Step 3 — ground the effort and the risk
 
+Where the story carries a key, send it alone as its own query as well
+(`memory-search` rule 7) — a story already refined once, or already partly
+built, shows up there whether or not the slice-shape phrasings below happen to
+rank it.
+
 `memory-search` rung 1 per slice shape — comparable past work, and lessons about
 this surface: what was underestimated, which dependency stalled, where the
 incidents cluster. Every one of these reads carries the org group's `group_ids`
