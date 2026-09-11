@@ -105,7 +105,7 @@ separately — a signature matches occurrences, a symptom matches write-ups, and
 they rarely rank alike.
 
 Where the report carries a key — the bug's own, or one a comment names — send it
-alone as its own query alongside those two; `memory-search` rule 7 carries the
+alone as its own pair of calls alongside those two; `memory-search` rule 7 carries the
 boundary and what an empty one does and does not prove.
 
 **Minimum recall outcome — owe this list before writing the brief**, with an

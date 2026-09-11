@@ -75,7 +75,7 @@ risk table.
 - **Memory:** `memory-search` rung 1 on the subject and the work's shape —
   episodes of similar past work, and lessons about it: what was
   underestimated, what turned out bigger than filed, what went smoothly. Where
-  the ticket carries a key, send that key alone as its own query as well
+  the ticket carries a key, send that key alone as its own pair of calls as well
   (`memory-search` rule 7) — it reaches this ticket's own history, which the
   shape phrasings cannot be relied on to rank.
 

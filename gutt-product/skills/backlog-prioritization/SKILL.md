@@ -127,7 +127,7 @@ one key. A `backlog-dedupe` output already in the session is the overlap
 evidence — cite its clusters rather than re-searching them.
 
 For the few items whose position turns on their own history rather than their
-area's, send the key alone as its own query as well (`memory-search` rule 7).
+area's, send the key alone as its own pair of calls as well (`memory-search` rule 7).
 Reserve it for those: one query per key does not scale to a whole slice, which
 is why the cluster search above comes first.
 

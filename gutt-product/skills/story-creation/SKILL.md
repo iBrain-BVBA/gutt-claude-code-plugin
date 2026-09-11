@@ -125,7 +125,7 @@ This pass serves two ends: **grounding** — a draft that contradicts a recorded
 decision must say so — and **duplicate smell** — a subject that already has a
 ticket or a history gets flagged on the draft, with the same-or-different
 verdict handed on per When to use. Where a key is in hand — the story being
-managed, or one the source names — send it alone as its own query as well
+managed, or one the source names — send it alone as its own pair of calls as well
 (`memory-search` rule 7); it is the cheapest duplicate smell there is. Deepen a
 hop with `graph-traversal` only where a summary names a decision or dependency
 without stating it.

@@ -77,7 +77,7 @@ No Jira tooling in the session → Degradation (pasted text works).
 ## Step 2 — what memory adds
 
 Where the ask carries a key — the ticket's own, or one it names — open the pass
-by sending that key alone as its own query, alongside the phrasings below rather
+by sending that key alone as its own pair of calls, alongside the phrasings below rather
 than in place of them. `memory-search` rule 7 carries the boundary and what an
 empty one does and does not prove.
 

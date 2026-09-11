@@ -130,7 +130,7 @@ story's issue type, which is worth saying rather than working around.
 
 ## Step 3 — ground the effort and the risk
 
-Where the story carries a key, send it alone as its own query as well
+Where the story carries a key, send it alone as its own pair of calls as well
 (`memory-search` rule 7) — a story already refined once, or already partly
 built, shows up there whether or not the slice-shape phrasings below happen to
 rank it.

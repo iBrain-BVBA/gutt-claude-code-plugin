@@ -120,9 +120,9 @@ conditions. Four questions, and the answers together are the brief:
 | Lessons about the subsystem, including how to change it safely                     | Often the only place a non-obvious constraint is written down                                                         |
 
 Where the change carries a key — the ticket it implements, one its description
-or commits name — send that key alone as a fifth query; `memory-search` rule 7
-carries the boundary. It reaches what was recorded against that item
-specifically, which the four phrasings above cannot be relied on to rank.
+or commits name — send that key alone as its own pair of calls, before the four
+above; `memory-search` rule 7 carries the boundary. It reaches what was recorded
+against that item specifically, which the phrasings cannot be relied on to rank.
 
 Deepen one hop via `graph-traversal` only where a summary names an agreement,
 incident, or accepted finding without stating it.

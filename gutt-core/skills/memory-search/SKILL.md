@@ -43,7 +43,8 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
    `agent_id`, `center_node_id` or `center_on_user`. Any extra word, and any of
    those three, drops the call off the exact route and onto look-alike keys. One
    pair per identifier, first, and in addition to the phrasings — never instead
-   of them.
+   of them. A list of items is not one question: a skill working through a slice
+   says which of its keys get a pair, and when.
 
 ## When to use
 

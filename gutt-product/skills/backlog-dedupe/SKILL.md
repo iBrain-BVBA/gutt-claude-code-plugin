@@ -116,7 +116,7 @@ same area, and incident or rework history binding items together. Deepen a hop
 with `graph-traversal` only where a summary names a decision or dependency
 without stating it.
 
-Once a cluster has formed, send each of its keys alone as its own query as well
+Once a cluster has formed, send each of its keys alone as its own pair of calls as well
 (`memory-search` rule 7) — it separates two tickets that merely read alike from
 two that memory already ties together, which the theme search cannot be relied
 on to rank. Per cluster, not per slice item; the theme search above is what
