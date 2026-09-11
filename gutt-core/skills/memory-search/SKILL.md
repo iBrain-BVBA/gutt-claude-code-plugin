@@ -1,6 +1,6 @@
 ---
 name: memory-search
-description: "Search organizational memory efficiently before any non-trivial task — an adaptive, relevance-gated first pass over the gutt knowledge graph, deepening only when needed. Use to recall prior decisions, lessons learned, past work, patterns, owners, or why something was done, and to look something up by an identifier it carries. Triggers on: previous, before, last time, decision, why did we, what do we know about, prior art, past work, lessons learned, have we done, did we already, history of, who worked on, what do we know about ABC-123, has ABC-123 been done, find ticket ABC-123, look up this key."
+description: "Search organizational memory efficiently before any non-trivial task — an adaptive, relevance-gated first pass over the gutt knowledge graph, deepening only when needed. Use to recall prior decisions, lessons learned, past work, patterns, owners, or why something was done. Triggers on: previous, before, last time, decision, why did we, what do we know about, prior art, past work, lessons learned, have we done, did we already, history of, who worked on."
 ---
 
 # Memory Search
