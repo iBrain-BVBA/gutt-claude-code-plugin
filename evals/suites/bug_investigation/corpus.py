@@ -42,6 +42,8 @@ Fields per case:
   why         ground for the label
 """
 
+import re
+
 TODAY = "Today is Thursday 2026-08-06 in the user's timezone (Europe/Brussels, UTC+2)."
 
 # The memory half of the tool surface, signatures faithful to the live server
@@ -64,6 +66,68 @@ JIRA_TOOLS = """\
 - editJiraIssue(cloudId, issueIdOrKey, fields) — write issue fields.
 - transitionJiraIssue(cloudId, issueIdOrKey, transition) — change status.
 - addCommentToJiraIssue(cloudId, issueIdOrKey, commentBody) — post a comment."""
+
+# A term is bound to the nearest tool call before it. The span may cross a
+# parenthesised aside, an empty parameter list or a heading — the three shapes at which
+# `[^)]` used to stop and score a planned search as a missing one — but never another
+# tool name, so a term cannot borrow a call that was not about it.
+TOOL_NAME = (
+    r"(?:search_memory_|fetch_lessons_learned|get_episode|get_node_edges|getJiraIssue"
+    r"|searchJiraIssuesUsingJql|editJiraIssue|transitionJiraIssue|addCommentToJiraIssue)"
+)
+
+
+def within(n):
+    return rf"(?:(?!{TOOL_NAME}).){{0,{n}}}?"
+
+
+# An explicitly grouped pair — both tool names with nothing but connective text between
+# them — binds one key to both bare-key checks: "search_memory_nodes and
+# search_memory_facts with query: 'ABC-1'" is a compliant plan, and the nearest-call span
+# alone would end the nodes span at the second name. The gap admits no parenthesis and no
+# `query`, so two separate calls carrying different queries cannot pass as a pair.
+PAIRED = (
+    r"(?:search_memory_nodes\b(?:(?!query)[^\n(]){0,30}?search_memory_facts\b"
+    r"|search_memory_facts\b(?:(?!query)[^\n(]){0,30}?search_memory_nodes\b)"
+)
+
+
+def key_arg(key):
+    """A `query` marker or an open paren, then `key` alone between delimiters."""
+    return rf"""(?:query[^)\w]{{0,12}}|\(\s*)["'`]{key}["'`]"""
+
+
+def bare_key(tool, arg):
+    """One bare-key check: `tool` bound to `arg` by the nearest-call span, or a grouped
+    pair whose only query is `arg`. The pair credits one key to both tools, so that key
+    has to be the pair's single query — no other `query` between the names and the key,
+    none after it on the same line. "search_memory_nodes and search_memory_facts
+    respectively with query: 'ABC-1' and query: 'other'" hands each tool its own query,
+    and the first key must not be credited to both names. The line it draws: a pair
+    whose phrasing follows on the same line scores as half a pair — the nearer name
+    still takes the key — and a phrasing on the next line costs nothing.
+    """
+    return (
+        rf"(?:{tool}\b" + within(80) + arg
+        + rf"|{PAIRED}(?:(?!{TOOL_NAME}|\bquery\b).){{0,80}}?" + arg + r"(?![^\n]*\bquery\b))"
+    )
+
+
+# Two phrasings are two calls. The presence checks accept a signature term and a symptom
+# term near *any* search call, so one combined query —
+# `search_memory_nodes(query="TemplateRenderError blank invoice")` — satisfied both while
+# the skill asks for the two searched separately. This binds each term to its nearest
+# preceding search call and requires the two calls to differ, in either order. What it
+# still admits: one combined phrasing sent to nodes and then to facts, which is two calls
+# carrying one query — a hole the presence checks share and this does not widen.
+def separate(a, b):
+    tool = r"search_memory_(?:nodes|facts)\b"
+
+    def one(x, y):
+        return tool + within(240) + x + r".*?" + tool + within(240) + y
+
+    return rf"(?:{one(a, b)}|{one(b, a)})"
+
 
 # The org group has to be *nameable* from the session, because the skill forbids guessing
 # one. Without this line an ungrouped read is the compliant answer and a scope check would
@@ -188,6 +252,17 @@ job reports success. The only signal is in the worker log:
 Affects version 4.12.0. Components: invoicing. Priority: currently unset."""
 
 
+# The keyed report with its key taken off. The identifier lane is additive, so an ask
+# carrying no identifier has to plan exactly the searches it planned before the lane
+# existed — which is only measurable against a case that differs in the key and in
+# nothing else. Derived rather than retyped so the two cannot drift apart, and asserted
+# because a `replace` that quietly stops matching would leave the control carrying the
+# one thing it controls for.
+UNKEYED_BUG = BUG_TEXT.replace("GP-1042 — ", "", 1)
+assert not re.search(
+    r"\b[A-Za-z][A-Za-z0-9_]{0,9}-\d+\b", UNKEYED_BUG
+), "UNKEYED_BUG still carries an identifier-shaped token"
+
 def build():
     return [
         {
@@ -203,8 +278,9 @@ def build():
             "ask": "Investigate GP-1042 for me — how bad is it and where should I look?",
             "ticket": BUG_TEXT,
             "must_all": [
-                ("signature-search", r"search_memory_(nodes|facts)[^)]{0,240}PoolTimeout"),
-                ("symptom-search", r"search_memory_(nodes|facts)[^)]{0,240}(checkout|hang|502)"),
+                ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
+                ("symptom-search", r"search_memory_(nodes|facts)" + within(240) + r"(checkout|hang|502)"),
+                ("separate-searches", separate(r"PoolTimeout", r"(checkout|hang|502)")),
                 ("group-scope", r"group_ids"),
                 ("area-history", r"(?i)incident"),
             ],
@@ -228,7 +304,7 @@ def build():
             ),
             "ticket": BUG_TEXT,
             "must_all": [
-                ("signature-search", r"search_memory_(nodes|facts)[^)]{0,240}PoolTimeout"),
+                ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
                 ("group-scope", r"group_ids"),
                 (
                     "names-the-gap",
@@ -240,6 +316,91 @@ def build():
             "must_not": [
                 # Inventing a JQL call against tooling the session does not have.
                 ("phantom-jira-call", r"searchJiraIssuesUsingJql\s*\(\s*[A-Za-z\"'{]"),
+            ],
+            "distractors": [],
+        },
+        {
+            "id": "identifier-lane",
+            "family": "plan",
+            "surface": SURFACE_FULL,
+            "confident": True,
+            "why": (
+                "The key is in the ask, but the ask is *about* the failure — the shape "
+                "that reads as prose and gets phrased away. `memory-search` rule 7 "
+                "sends the bare identifier to both search tools and keeps the phrasings "
+                "running, so every check below is owed; none of them is an alternative "
+                "to another."
+            ),
+            "ask": (
+                "The blank-invoice failure tracked in GP-1088 is back — how bad is it "
+                "and where should I look?"
+            ),
+            "ticket": NOVEL_BUG,
+            "must_all": [
+                # The query is the key and nothing else: the closing delimiter has to
+                # arrive before any other term, because one extra word puts the call back
+                # on the semantic channel and out of the lane being measured.
+                #
+                # What it does *not* pin is how the plan is typed. A model asked for
+                # concrete parameter values writes them three ways — `query="X"` inside
+                # a call, `query: "X"` in a block, and `- **query**: "X"` under a heading
+                # that names the tool — and the first version of this pattern recognised
+                # only the first, scoring a planned bare-key call as a missing one. So:
+                # the tool name, then either a `query` marker or an open paren, then the
+                # delimited key. Sibling checks below need none of this because they only
+                # look for a term near a tool name, not for the shape of one argument.
+                #
+                # One check per tool, not one alternation: rule 7 requires the pair, and
+                # rounds 7 and 8 recorded replies that sent the bare key to one tool only,
+                # which `(?:nodes|facts)` scored as complete. A grouped pair counts for
+                # both, on the terms `bare_key` sets.
+                ("bare-key-nodes", bare_key("search_memory_nodes", key_arg("GP-1088"))),
+                ("bare-key-facts", bare_key("search_memory_facts", key_arg("GP-1088"))),
+                (
+                    "signature-search",
+                    r"search_memory_(nodes|facts)" + within(240) +
+                    r"(TemplateRenderError|locale fallback)",
+                ),
+                (
+                    "symptom-search",
+                    r"search_memory_(nodes|facts)" + within(240) + r"(invoice|blank|PDF)",
+                ),
+                (
+                    "separate-searches",
+                    separate(r"(TemplateRenderError|locale fallback)", r"(invoice|blank|PDF)"),
+                ),
+                ("group-scope", r"group_ids"),
+            ],
+            "must_not": [JIRA_WRITE],
+            "distractors": [],
+        },
+        {
+            "id": "prose-control",
+            "family": "plan",
+            "surface": SURFACE_FULL,
+            "confident": True,
+            "why": (
+                "key-triage with the identifier removed and nothing else touched. The "
+                "lane is an addition, so this case has to keep scoring what it scored "
+                "before the lane existed — and any bare-key call here would have to be "
+                "an invented key, which is the leak the pair exists to catch."
+            ),
+            "ask": "Investigate this for me — how bad is it and where should I look?",
+            "ticket": UNKEYED_BUG,
+            "must_all": [
+                ("signature-search", r"search_memory_(nodes|facts)" + within(240) + r"PoolTimeout"),
+                ("symptom-search", r"search_memory_(nodes|facts)" + within(240) + r"(checkout|hang|502)"),
+                ("separate-searches", separate(r"PoolTimeout", r"(checkout|hang|502)")),
+                ("group-scope", r"group_ids"),
+                ("area-history", r"(?i)incident"),
+            ],
+            "must_not": [
+                JIRA_WRITE,
+                (
+                    "invented-key-call",
+                    r"search_memory_(?:nodes|facts)\b" + within(80)
+                    + key_arg(r"[A-Za-z][A-Za-z0-9_]{0,9}-\d+"),
+                ),
             ],
             "distractors": [],
         },

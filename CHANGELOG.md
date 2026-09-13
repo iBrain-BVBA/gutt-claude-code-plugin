@@ -1,5 +1,35 @@
 # Changelog
 
+## [3.0.9] - 2026-09-11
+
+### Added
+
+- **Looking something up by an identifier it carries now actually reaches it.** The
+  memory server routes a bare identifier — a short prefix, a hyphen and digits,
+  whatever it names — to an exact-term lookup rather than a semantic one, because a
+  bare key gives an embedding nothing to match and the semantic channel answers it
+  with look-alike keys carrying different numbers. None of the skills knew that, so a
+  question like "what do we know about ABC-1234" was phrased as prose, which is the
+  one query shape guaranteed to miss the exact route.
+
+  `memory-search` now opens a pass by sending any identifier the question carries to
+  both search tools, as the entire query. It is an addition, not a replacement: the
+  phrased searches still run, because the bare pair is the only one that can answer
+  about that exact item and the phrasings are the only ones that reach what was said
+  around it. An ask that carries a key but is about something else gets both, and
+  several identifiers mean one pair each.
+
+  The same pass is now honest about coming back empty. An identifier that found
+  nothing is reported as its own result and kept apart from whatever the phrasings
+  returned, so a near-miss key is never presented as though it were about the one you
+  asked for; one that has more pages is paged rather than rephrased, since a rephrase
+  leaves the exact route. Rung 1's example calls now name `group_ids`, because an
+  example signature is what gets copied.
+
+  The nine skills that start from a key — six in gutt-developer, three in
+  gutt-product — reach for that rule where they already have one in hand.
+  gutt-developer moves to 0.2.4 and gutt-product to 0.2.1.
+
 ## [3.0.8] - 2026-08-20
 
 ### Fixed

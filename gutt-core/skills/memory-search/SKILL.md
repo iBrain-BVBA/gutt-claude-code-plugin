@@ -23,6 +23,11 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
    query and re-run nodes+facts (up to 2 more times, accumulating). Stop early
    if a rephrase returns essentially the same weak results. Never fetch page 2
    just because `has_more` is true — a different phrasing beats pagination.
+   The identifier pair (rule 7) inverts this: a rephrase leaves the exact route
+   and cannot stand in for a pair that came back empty — report that as its own
+   finding, never with the near-miss keys a phrasing returned — and a pair with
+   `has_more` is paged, because the route matches a term rather than ranking by
+   meaning.
 4. **Summary-first.** Read summaries (node `summary`, lesson `summary`, `search`
    `title`) before fetching any full episode body. Full bodies only to cite or
    recover a crucial missing detail.
@@ -31,6 +36,15 @@ fast as possible **when it exists**, and to say so plainly when it doesn't.
    choosing summary-shaped tools. Never invent a truncation flag.
 6. **Bare tool names.** Call `search_memory_nodes` etc. by bare name; the
    `mcp__…__` prefix varies per install — use whatever your tool list surfaces.
+7. **Identifier lane.** When the question carries an identifier — a prefix of
+   up to ten characters, a hyphen and digits, whether the user typed it or you
+   lifted it from the ticket, report or result in hand — call **both**
+   `search_memory_nodes` and `search_memory_facts` with that identifier as the
+   **entire** query and no `agent_id`, `center_node_id` or `center_on_user`. Any
+   extra word, and any of those three, drops the call off the exact route and
+   onto look-alike keys. One pair per identifier, first, and in addition to the
+   phrasings — never instead of them. A list of items is not one question: a
+   skill working through a slice says which of its keys get a pair, and when.
 
 ## When to use
 
@@ -44,8 +58,17 @@ For **writing** memory see `memory-capture`; for **multi-hop traversal** see
 
 ### Rung 1 — the adaptive first pass (the workhorse)
 
-1. Run **`search_memory_nodes(query, max_nodes≈10)`** and
-   **`search_memory_facts(query, max_facts≈10)`** together on your best phrasing.
+**Identifier first (rule 7).** If the question carries one, run step 1's two calls
+with the bare identifier as the whole query of both, before the phrasings — and
+keep the phrasings: nodes return the item and the entities whose summaries name
+it, facts return what it relates to, and only a phrasing reaches what was said
+around it. An empty pair, or one with `has_more`, is rule 3's case, not a
+reason to rephrase. Which shapes fire the exact route, and which spellings of a
+key match, are in the tool reference.
+
+1. Run **`search_memory_nodes(query, group_ids, max_nodes≈10)`** and
+   **`search_memory_facts(query, group_ids, max_facts≈10)`** together on your best
+   phrasing.
    Nodes give entity summaries ("what/who is X"); facts give the relationships
    and specific claims ("why / who decided / what's linked"). Most real
    questions need **both** — facts frequently carry the actual answer and rank
@@ -121,4 +144,6 @@ entirely: state the degradation in one line and proceed — never stall.
 ## References
 
 - `references/tools.md` — exact per-tool parameters, return shapes, version
-  tiers, and scoping behavior.
+  tiers, scoping behavior, and the identifier route's contract: which shapes
+  fire it, which spellings of a key match, which near-miss keys do not, and
+  what an empty page proves at each offset.
