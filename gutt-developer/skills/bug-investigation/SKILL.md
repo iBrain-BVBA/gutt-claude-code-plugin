@@ -1,6 +1,10 @@
 ---
 name: bug-investigation
 description: "Turn a bug into an investigation brief — how bad it is and why, which area it most likely lives in, and the similar failures the organization has already paid for, every claim cited. Produces a brief the developer acts on, never a severity, area, or status written into Jira. Use when a bug lands and nobody yet knows how bad it is or where to look. Triggers on: investigate this bug, triage this bug, how bad is this, what severity, where does this bug live, seen this before, similar failure, has this broken before, suspected area, root cause, why is this happening."
+argument-hint: "<Jira key or bug report>"
+model: sonnet
+metadata:
+  memory-identity: bug-investigator
 ---
 
 # Bug Investigation
@@ -14,13 +18,37 @@ past failures that resemble this one together with what actually fixed them.
 It is triage, not repair — the diagnosis and every line of the fix stay with
 the developer.
 
-Underneath, `memory-search` owns the search ladder and the relevance gate,
-`graph-traversal` owns relationship walking when a summary names an incident
-without stating it, and `memory-capture` owns any durable write; all three ship
-with the gutt-pro plugin (this plugin depends on it) — without them, follow the
-rules below and note the gap in one line. Jira access comes from whatever
-Atlassian tooling the session surfaces; find it in your tool list — names and
-prefixes vary per install.
+Use `$ARGUMENTS` as the direct task input when provided, then retain the current
+conversation so a confirmed outcome can be captured without re-running the skill.
+
+Underneath, invoke `gutt-pro:memory-search` for the search ladder and relevance
+gate, `gutt-pro:graph-traversal` when a summary names an incident without stating
+it, and `gutt-pro:memory-capture` for any durable write. Invoke
+`gutt-pro:agent-memory-protocol` before identity-scoped memory work. Skills cannot
+preload other skills, so these dependencies are explicit invocations; the
+identity invariants below remain inline. Without them, follow the rules below and
+note the gap in one line. Jira access comes from whatever Atlassian tooling the
+session surfaces; find it in your tool list — names and prefixes vary per install.
+
+## Memory identity
+
+This workflow preserves the former agent's registered identity as
+**`bug-investigator--<scope>`**. After the authoritative org group is known,
+resolve `<scope>` with `agent-memory-protocol`, then register before the first
+identity-scoped recall or tagged org write:
+
+```
+register_agent(
+  name="bug-investigator--<scope>",
+  description="Investigates bug severity, likely area, and relevant failure history",
+  group_id=<the resolved org group>)
+```
+
+Registration is idempotent. Keep its returned node id or uuid for verification.
+If registration is hidden but the legacy identity already works, keep the scoped
+calls and tags. On an unknown-identity error, re-register and retry; only then run
+group-wide without `agent_id`, note the degradation once, and continue. Never
+invent a group or scope.
 
 ## Hard rules (non-negotiable — read first)
 
@@ -64,8 +92,8 @@ prefixes vary per install.
    The same filter applies before any finding enters a comment the user asked
    to have posted.
    **Bare tool names**, probed with ToolSearch before concluding one is missing.
-   **No memory writes** — a durable root-cause lesson goes through
-   `memory-capture` and its trust-tier gate.
+   **No memory writes from hypotheses.** A durable confirmed root-cause lesson
+   is captured automatically through `memory-capture` and its trust-tier gate.
 
 ## When to use
 
@@ -97,9 +125,16 @@ missing rather than filling them in:
 A report with no signature and no reproduction is a triage input in its own
 right: it caps severity confidence and it belongs in the brief's gaps.
 
+## Grounding Protocol
+
+After registration, recall in two passes. First ask what this workflow concluded
+before with `agent_id="bug-investigator--<scope>"`; then repeat the relevant
+queries group-wide, without `agent_id`. The group-wide pass is never skipped,
+because a new or thin identity does not contain the organization's history.
+
 ## Step 2 — has this failed before
 
-`memory-search` rung 1 on the signature and on the symptom phrasing, following
+Run `memory-search` rung 1 on the signature and on the symptom phrasing, following
 its reformulation loop and its stop-early conditions. Search the two
 separately — a signature matches occurrences, a symptom matches write-ups, and
 they rarely rank alike.
@@ -181,6 +216,17 @@ surface is a weak one, and the brief says so.
 Lines where nothing was found stay in the brief as "none found" — absence is
 information, and it is what makes the brief trustworthy on a genuinely new bug.
 
+## Learning Protocol
+
+Do not ask the user to re-run this skill. When the current conversation contains
+a confirmed root cause, a fix that held, or another durable investigation lesson,
+invoke `gutt-pro:memory-capture` automatically before completing the workflow.
+Let that skill classify, deduplicate, and apply its trust-tier gate; pause only if
+the gate itself requires confirmation that is not yet present. Pass the resolved org `group_id`,
+`agent_id="bug-investigator--<scope>"`, and `last_n_episodes=0` on every org
+write, then verify the stored group when it matters. Personal writes are always
+untagged. Never capture a hypothesis merely because it appeared in the brief.
+
 ## Degradation
 
 - **No Jira tools:** ask for the bug text pasted in — description, reproduction
@@ -205,8 +251,8 @@ information, and it is what makes the brief trustworthy on a genuinely new bug.
   (gutt-pro) — its `references/tools.md` holds the per-tool contracts.
 - Relationship walking and edge-currency checks: `graph-traversal`.
 - Durable captures out of an investigation: `memory-capture` and its tier gate.
-- If an agent runs this as itself, `agent-memory-protocol` owns identity and
-  registration; read-only triage needs neither.
+- Named-workflow registration, legacy identity continuity, and `agent_id`
+  tagging: `agent-memory-protocol`.
 - Siblings: `ticket-duplicates` (duplicate verdicts), `ticket-estimate` (sizing
   the fix), `ticket-research` (the full background brief when the bug turns out
   to be a design question).

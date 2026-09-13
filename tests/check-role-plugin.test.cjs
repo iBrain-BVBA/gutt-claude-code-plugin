@@ -25,6 +25,7 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 const CHECK = path.join(__dirname, "check-role-plugin.cjs");
 const TEMPLATE = path.join(ROOT, "templates", "role-plugin");
+const AGENT_TEMPLATE = path.join(ROOT, "templates", "role-agent", "AGENT_NAME.md");
 
 const PLUGIN = "gutt-sample";
 const AGENT = "sample-agent";
@@ -47,18 +48,19 @@ const SUBSTITUTIONS = {
   "{{OTHER_SKILL}}": "some-other-skill",
 };
 
-/** Scaffold the template into a throwaway directory, exactly as the doc says to. */
-function scaffold() {
+/** Scaffold the documented skill-first template, optionally adding the agent boundary. */
+function scaffold({ withAgent = true } = {}) {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "role-plugin-")));
   const target = path.join(dir, PLUGIN);
   fs.cpSync(TEMPLATE, target, { recursive: true });
 
-  // Step 1 of the doc: rename the component file and directory, and their `name:` fields.
-  fs.renameSync(
-    path.join(target, "agents", "AGENT_NAME.md"),
-    path.join(target, "agents", `${AGENT}.md`)
-  );
+  // Step 1 of the doc: rename the skill directory and its frontmatter fields.
   fs.renameSync(path.join(target, "skills", "SKILL_NAME"), path.join(target, "skills", SKILL));
+  // Step 4's optional path: add the standalone agent template only when its boundary is earned.
+  if (withAgent) {
+    fs.mkdirSync(path.join(target, "agents"), { recursive: true });
+    fs.copyFileSync(AGENT_TEMPLATE, path.join(target, "agents", `${AGENT}.md`));
+  }
 
   for (const file of walk(target)) {
     let text = fs.readFileSync(file, "utf8");
@@ -69,6 +71,7 @@ function scaffold() {
     // The bare frontmatter names, which carry no braces so the files stay shell-safe.
     text = text.replace(/^name: AGENT_NAME$/m, `name: ${AGENT}`);
     text = text.replace(/^name: SKILL_NAME$/m, `name: ${SKILL}`);
+    text = text.replace(/^[ ]{2}memory-identity: SKILL_NAME$/m, `  memory-identity: ${SKILL}`);
     text = text.replace(/^(\s*)- SKILL_NAME$/m, `$1- ${SKILL}`);
     for (const [from, to] of Object.entries(SUBSTITUTIONS)) {
       text = text.split(from).join(to);
@@ -114,6 +117,15 @@ const patch = (file, from, to) => {
 // ── green: the scaffold is loadable ────────────────────────────────────────────
 
 describe("a plugin scaffolded from the template", () => {
+  it("passes as the default skills-only scaffold", (t) => {
+    const { dir, target } = scaffold({ withAgent: false });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const out = review(target);
+    assert.equal(out.status, 0, `expected a pass, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stdout, /1 plugin\(s\), 0 agent\(s\), 1 skill\(s\)/);
+  });
+
   it("passes the review step", (t) => {
     const { dir, target } = scaffold();
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -147,7 +159,7 @@ describe("a plugin scaffolded from the template", () => {
   it("keeps placeholders in a form `npm run format` will not rewrite", () => {
     // `__LIKE_THIS__` is markdown bold. Prettier turns it into `**LIKE_THIS**` in prose,
     // which silently converts a placeholder the review step catches into one it cannot.
-    for (const file of walk(TEMPLATE)) {
+    for (const file of [...walk(TEMPLATE), AGENT_TEMPLATE]) {
       const text = fs.readFileSync(file, "utf8");
       assert.doesNotMatch(
         text,
@@ -384,6 +396,40 @@ describe("the identity gate", () => {
 
     assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
     assert.match(out.stderr, /hardcodes the MCP server prefix/);
+  });
+
+  it("catches an org-writing skill with no memory-identity metadata", (t) => {
+    const { dir, out } = withMutation((target) =>
+      patch(skillFile(target), `  memory-identity: ${SKILL}\n`, "")
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /declares no frontmatter `metadata\.memory-identity`/);
+  });
+
+  it("catches a named skill whose identity heading was removed", (t) => {
+    const { dir, out } = withMutation((target) =>
+      patch(skillFile(target), "## Memory identity", "## Provenance")
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /missing a `## Memory identity` section/);
+  });
+
+  it("catches a named skill using another workflow's agent_id", (t) => {
+    const { dir, out } = withMutation((target) =>
+      patch(
+        skillFile(target),
+        `agent_id="${SKILL}--<scope>"`,
+        'agent_id="different-workflow--<scope>"'
+      )
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /names a different identity than this workflow declares/);
   });
 });
 
@@ -764,18 +810,18 @@ describe("the dedupe gate", () => {
     assert.match(out.stderr, /skill "memory-search" is already declared by/);
   });
 
-  it("catches an agent name another role plugin already owns", (t) => {
+  it("catches an agent name the core plugin already owns", (t) => {
     const { dir, out } = withMutation((target) => {
       fs.renameSync(
         path.join(target, "agents", `${AGENT}.md`),
-        path.join(target, "agents", "pr-reviewer.md")
+        path.join(target, "agents", "gutt-pro-memory.md")
       );
-      patch(path.join(target, "agents", "pr-reviewer.md"), `name: ${AGENT}`, "name: pr-reviewer");
+      patch(path.join(target, "agents", "gutt-pro-memory.md"), AGENT, "gutt-pro-memory");
     });
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
     assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
-    assert.match(out.stderr, /agent "pr-reviewer" is already declared by/);
+    assert.match(out.stderr, /agent "gutt-pro-memory" is already declared by/);
   });
 });
 
@@ -804,11 +850,13 @@ describe("the one-owner-per-skill gate", () => {
   });
 
   it("does not accept an unrelated core-skill mention on a raw tool's behalf", (t) => {
-    // The scaffold references memory-search and its siblings but not agent-memory-protocol,
-    // which owns register_agent — any core-skill mention used to satisfy the rule.
-    const { dir, out } = withMutation((target) =>
-      fs.appendFileSync(skillFile(target), "\nRegister first with register_agent, then proceed.\n")
-    );
+    // Remove the specific owner while leaving unrelated core-skill references in place;
+    // any core-skill mention used to satisfy this rule.
+    const { dir, out } = withMutation((target) => {
+      const file = skillFile(target);
+      const text = fs.readFileSync(file, "utf8").split("agent-memory-protocol").join("identity");
+      fs.writeFileSync(file, `${text}\nRegister first with register_agent, then proceed.\n`);
+    });
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
     assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
@@ -875,7 +923,6 @@ describe("the scaffold-completeness gate", () => {
 
     const out = review(target);
     assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
-    assert.match(out.stderr, /placeholder filename \(AGENT_NAME\.md\)/);
     assert.match(out.stderr, /placeholder directory name \(SKILL_NAME\/\)/);
   });
 
@@ -1094,7 +1141,10 @@ describe("the identity gate, remaining branches", () => {
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
     assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
-    assert.match(out.stderr, /names a different identity than this agent registers/);
+    assert.match(
+      out.stderr,
+      /names a different identity than this (agent registers|workflow declares)/
+    );
   });
 
   it("catches a registered name carrying the tokens but not as its suffix", (t) => {

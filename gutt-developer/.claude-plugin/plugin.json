@@ -1,13 +1,13 @@
 {
   "name": "gutt-developer",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "dependencies": ["gutt-pro"],
   "defaultEnabled": true,
   "author": {
     "name": "iBRAIN BV",
     "email": "support@gutt.pro"
   },
-  "description": "Developer skills and agents for Jira tickets and pull requests — context research, duplicates, estimates, bug triage, story breakdown, memory-informed review — backed by GUTT organizational memory",
+  "description": "Developer skills for Jira tickets and pull requests — context research, duplicates, estimates, bug triage, story breakdown, and memory-informed review — backed by GUTT organizational memory",
   "homepage": "https://gutt.pro",
   "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
   "license": "MIT",

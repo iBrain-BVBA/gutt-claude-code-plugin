@@ -1,6 +1,10 @@
 ---
 name: pr-re-review
 description: "Review a pull request against what the organization already knows — its recorded standards and agreements, the findings this team has accepted before, and the incident history of the files being touched — with each finding verified at the source before it is reported, and accepted findings offered up as lessons afterwards. Produces a review for a human to act on, never a verdict pushed to the pull request unasked. Use on a PR where part of the risk lives in the team's history, not only in the diff. Triggers on: review this PR, re-review, review my changes, does this follow our standards, code review, what did we say about this, have we been bitten here, review before merge, second pass on this PR."
+argument-hint: "<PR, branch, or working-tree target>"
+model: sonnet
+metadata:
+  memory-identity: pr-reviewer
 ---
 
 # PR Re-review
@@ -12,22 +16,47 @@ requests in this file, the incident whose cause is one line above the change. A
 review that does not know those things re-litigates settled questions and misses
 the one that matters. This skill recalls them first, briefs the review with them,
 verifies every finding against the actual code before reporting it, and then
-offers the findings the team accepts back to memory so the next review starts
+captures the findings the team accepts so the next review starts
 where this one ended.
 
 It is a second pass, and it says so in its name: it complements
 correctness-focused review and the project's own automated gates rather than
 replacing either. The merge decision is the human's.
 
-Underneath, `memory-search` owns the search ladder and the relevance gate,
-`graph-traversal` owns relationship walking, and `memory-capture` owns the
-capture at the end — including its trust-tier gate, which is the reason this
-skill cannot store a lesson on its own say-so. All three ship with the gutt-pro
-plugin (this plugin depends on it); without them, follow the rules below and note
-the gap in one line. Repository and pull-request access comes from whatever
-tooling the session surfaces — a hosting-platform integration, or the local
-checkout and its CLI. Find it in your tool list; names and prefixes vary per
-install.
+Use `$ARGUMENTS` as the direct task input when provided, then retain the current
+conversation so accepted findings can be captured without re-running the skill.
+
+Underneath, invoke `gutt-pro:memory-search` for the search ladder and relevance
+gate, `gutt-pro:graph-traversal` for relationship walking, and
+`gutt-pro:memory-capture` for the capture at the end. Invoke
+`gutt-pro:agent-memory-protocol` before identity-scoped memory work. Skills cannot
+preload other skills, so these dependencies are explicit invocations; the
+identity invariants below remain inline. The capture skill owns the trust-tier
+gate, which is why this skill cannot store a lesson on its own say-so. All four
+ship with gutt-pro; without them, follow the rules below and note the gap in one
+line. Repository and pull-request access comes from whatever tooling the session
+surfaces — a hosting-platform integration, or the local checkout and its CLI.
+Find it in your tool list; names and prefixes vary per install.
+
+## Memory identity
+
+This workflow preserves the former agent's registered identity as
+**`pr-reviewer--<scope>`**. After the authoritative org group is known, resolve
+`<scope>` with `agent-memory-protocol`, then register before the first
+identity-scoped recall or tagged org write:
+
+```
+register_agent(
+  name="pr-reviewer--<scope>",
+  description="Reviews pull requests against verified code and organizational memory",
+  group_id=<the resolved org group>)
+```
+
+Registration is idempotent. Keep its returned node id or uuid for verification.
+If registration is hidden but the legacy identity already works, keep the scoped
+calls and tags. On an unknown-identity error, re-register and retry; only then run
+group-wide without `agent_id`, note the degradation once, and continue. Never
+invent a group or scope.
 
 ## Hard rules (non-negotiable — read first)
 
@@ -61,12 +90,12 @@ install.
    lane starts, and every lane prompt carries the recalled material verbatim
    along with the diff scope. A lane that has to guess the team's standards
    invents them, which rule 3 then has to catch one finding at a time.
-6. **Nothing is captured to memory without an explicit human signal.** The
-   capture at the end is an offer. A finding the user accepts may be proposed as
-   a Lesson; `memory-capture` owns the classification and its tier gate, and a
-   Lesson needs that human signal regardless of how obviously true the finding
-   looks. Never capture a finding the author disputed, and never capture during
-   the review — only after the outcome is known.
+6. **Nothing is captured to memory without an explicit human signal.** Once a
+   finding is accepted, capture it automatically if it generalizes;
+   `memory-capture` owns the classification and its tier gate, and a Lesson needs
+   that human signal regardless of how obviously true the finding looks. Never
+   capture a finding the author disputed, and never capture during the review —
+   only after the outcome is known.
 7. **A capture lands in the engagement's group scope, explicitly and verifiably.**
    Pass `group_id` naming that org group on the write, taken from a read that
    returned it — never guessed, never inferred from a write tool's name suffix,
@@ -107,9 +136,16 @@ kind of change (interface, data, dependency, configuration, sweep), and the
 author — because "what has this team already told this author" is a real and
 frequently repeated finding.
 
+## Grounding Protocol
+
+After registration, recall in two passes. First ask what this workflow concluded
+before with `agent_id="pr-reviewer--<scope>"`; then repeat the relevant queries
+group-wide, without `agent_id`. The group-wide pass is never skipped, because a
+new or thin identity does not contain the organization's history.
+
 ## Step 2 — recall the brief
 
-`memory-search` rung 1, following its reformulation loop and stop-early
+Run `memory-search` rung 1, following its reformulation loop and stop-early
 conditions. Four questions, and the answers together are the brief:
 
 | What to recall                                                                     | Why it changes the review                                                                                             |
@@ -218,20 +254,30 @@ Lead with the verdict, and let a clean review be short. A review that pads
 `consider` to look thorough costs the author's attention and teaches them to skim
 the next one.
 
-## Step 6 — offer the capture
+## Step 6 — capture accepted findings
 
 After the author or reviewer has settled which findings they accept — not
-before — offer to record what is durable. Hand it to `memory-capture`: it
+before — automatically hand what is durable to `memory-capture`: it
 classifies, dedupes against what is already stored, and applies its tier gate.
 Rules 6 and 7 govern; in practice:
 
-- Offer only findings the team **accepted**, and only the ones that generalize
+- Capture only findings the team **accepted**, and only the ones that generalize
   past this PR. A one-off typo is not a lesson.
 - A repeat finding that memory already holds needs no second episode — say it was
   already recorded and cite it.
 - Write with the engagement's `group_id`, verify the stored group, and report it.
 - A disputed finding is not captured. If the dispute itself was informative, that
   is a conversation for the team, not a write.
+
+## Learning Protocol
+
+Do not ask the user to re-run this skill. When the current conversation contains
+an accepted, reusable finding, invoke `gutt-pro:memory-capture` automatically
+before completing the workflow. Let that skill classify, deduplicate, and apply
+its trust-tier gate; pause only if the gate itself requires confirmation that is
+not yet present. Pass the resolved org `group_id`, `agent_id="pr-reviewer--<scope>"`, and
+`last_n_episodes=0` on every org write, then verify the stored group. Personal
+writes are always untagged; disputed or one-off findings are never captured.
 
 ## Degradation
 
@@ -253,7 +299,7 @@ Rules 6 and 7 govern; in practice:
 - Search ladder, relevance gate, summary-first reads: `memory-search` (gutt-pro).
 - Relationship walking and edge-currency checks: `graph-traversal`.
 - Classification, dedup, and the trust-tier gate for the capture: `memory-capture`.
-- If an agent runs this as itself — and one does, since a capture is a write —
-  `agent-memory-protocol` owns registration and the `agent_id` tag.
+- Named-workflow registration, legacy identity continuity, and `agent_id`
+  tagging: `agent-memory-protocol`.
 - Siblings: `bug-investigation` (a failure that already shipped),
   `ticket-research` (why the change exists at all).

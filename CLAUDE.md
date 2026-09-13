@@ -16,10 +16,10 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── gutt-core/              # core plugin (name + displayName: gutt-pro; dir name kept)
 │   ├── .claude-plugin/     # plugin.json
 │   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
-│   ├── skills/ agents/ commands/
+│   ├── skills/ agents/ commands/ # gutt-pro-memory is the sole shipped agent
 │   └── rules/ mcp.json config.json.example
-├── gutt-mentor/            # mentor plugin (depends on gutt-pro) — onboarding + mentor agents, personal-scope program design/tracking
-├── gutt-developer/         # developer plugin (depends on gutt-pro) — ticket research/duplicates/estimate, bug-investigation, sub-task-breakdown, pr-re-review + pr-reviewer & bug-investigator agents; no hooks
+├── gutt-mentor/            # mentor plugin (depends on gutt-pro) — onboarding + mentor skills, personal-scope program design/tracking
+├── gutt-developer/         # developer plugin (depends on gutt-pro) — six ticket, bug, breakdown, and review skills; no agents or hooks
 ├── gutt-product/           # product plugin (depends on gutt-pro) — story-creation, backlog-dedupe, backlog-prioritization for product leadership; no hooks
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── templates/              # role-plugin scaffold + its review gates — not shipped
@@ -197,7 +197,7 @@ that requires it. Two things it enforces that nothing else did:
 
 - **Frontmatter parses.** YAML rejecting a frontmatter block does not drop the offending
   field, it drops the whole block — so the component loads with no name, no model and no
-  preloaded skills, and nothing reports it. Three shapes reach that: an unquoted value
+  frontmatter behavior, and nothing reports it. Three shapes reach that: an unquoted value
   holding a colon, and either quote style that fails to close cleanly. Opening a quote is
   not on its own an escape. This check reaches every marketplace plugin's agents and
   skills. `hook-architecture.test.cjs` also walks `skills/`, but only for a block's

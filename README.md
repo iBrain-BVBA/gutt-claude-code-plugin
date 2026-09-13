@@ -171,10 +171,11 @@ model reads anything, and written to `${CLAUDE_PLUGIN_DATA}/config.json`.
 | `/gutt-pro:statusline`      | Install the HUD in your `~/.claude/settings.json` (`off` removes it, `status` reports it)  |
 | `/gutt-pro:agent-scope`     | Bind the agent scope for this directory, or run it bare to be walked through choosing one  |
 
-**Agent scope decides whether agents share memory across checkouts.** The label becomes
-a suffix on every agent name registered here, so `pr-reviewer` becomes
-`pr-reviewer--<label>`. Directories bound to the same label share one agent identity and
-one pool of agent memory; different labels stay isolated. With nothing bound, an agent
+**Agent scope decides whether named workflows share memory across checkouts.** The command
+keeps its compatibility name, but the label applies to registered agents and skills alike.
+It becomes a suffix on every workflow identity registered here, so `pr-reviewer` becomes
+`pr-reviewer--<label>`. Directories bound to the same label share one identity and one pool
+of workflow memory; different labels stay isolated. With nothing bound, a workflow
 derives a label from the git remote's `owner/repo`, or the working folder's name when
 there is no remote. `/gutt-pro:agent-scope show` reports whether a label is bound here
 and, if it is, which one — it does not resolve the derived steps, because that means
@@ -216,22 +217,30 @@ whole session.
 
 ### Skills
 
-| Skill            | Command                      | Purpose                                    |
-| ---------------- | ---------------------------- | ------------------------------------------ |
-| memory-search    | `/gutt-pro:memory-search`    | Shallow-first, summary-first memory search |
-| memory-capture   | `/gutt-pro:memory-capture`   | Structured lesson capture with 4 patterns  |
-| memory-retrieval | `/gutt-pro:memory-retrieval` | Deprecated alias → use memory-search       |
+| Skill                   | Purpose                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| `memory-search`         | Shallow-first, summary-first memory search                                               |
+| `memory-capture`        | Structured lesson capture with trust-tier gates                                          |
+| `memory-retrieval`      | Deprecated alias → use `memory-search`                                                   |
+| `agent-memory-protocol` | Stable identity, scoped recall, and org-write provenance for named agents and skills     |
+| `component-creator`     | Skills-first component design and scaffolding; agents only for real execution boundaries |
+| `conflict-adjudication` | Evidence-based resolution of conflicting memory records                                  |
+| `graph-traversal`       | Controlled multi-hop relationship exploration                                            |
+| `migrate-memory`        | Memory migration workflow                                                                |
+| `onboard`               | Install and connection onboarding                                                        |
+| `output-style`          | Concise, evidence-carrying response conventions                                          |
+| `skills-discovery`      | Discover the installed capability surface                                                |
+| `weekly-recap`          | Weekly synthesis from memory                                                             |
 
 ### Agents
 
-Two, deliberately. An agent earns its place here only when the **separate context
-window** is the point; anything that is a procedure the main agent should follow is a
-skill instead.
+One, deliberately. An agent earns its place here only when the **separate context
+window and deterministic preload** are the point; anything that is a reusable procedure
+the main agent should follow is a skill instead.
 
-| Agent             | Purpose                                                                                                                                |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `gutt-pro-memory` | Multi-hop graph exploration — traverses in its own context and returns a short cited answer, so it doesn't consume the caller's window |
-| `agent-creator`   | Scaffolds agent and skill definitions with correct frontmatter, a registered memory identity, and the grounding/learning protocol      |
+| Agent             | Purpose                                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `gutt-pro-memory` | Multi-hop graph exploration in its own context with deterministic memory-search and traversal preload |
 
 Autonomous end-of-turn capture is **not** an agent: the Stop hook judges the turn and
 the `memory-capture` skill does the write, with the trust-tier gate applied. Twelve
@@ -247,7 +256,7 @@ program (goals, milestones, check-in cadence) as one self-contained episode, and
 chains the next check-in — so a fresh session picks up where the person stands
 without re-explaining.
 
-The `onboarding-guide` agent joins the two halves for a new joiner: it reads the
+The `onboarding-guide` skill joins the two halves for a new joiner: it reads the
 org graph for team, architecture, decisions, lessons and experts, then turns that
 grounding into their own plan. **The plan goes to both scopes — personal, where it
 is tracked, and (with their confirmation) org, where the next person joining that
@@ -255,21 +264,22 @@ role can learn from it. Their progress, blockers and open questions stay persona
 Self-service: personal scope follows the authenticated login, so the joiner runs it
 themselves. No hooks.
 
-The `mentor` agent covers growth after the ramp — a goal-shaped ask ("get better
+The `mentor` skill covers growth after the ramp — a goal-shaped ask ("get better
 at code reviews", "grow toward tech lead") rather than new territory to map. It
 elicits the goal, grounds it in whatever the org graph has recorded about it
 (expectations, working agreements, lessons, people to learn from), assembles a
 materials list, and turns it into a program tracked the same way. **Everything it
 writes is personal — the program never goes to the org graph**, so it registers
 no agent identity and tags nothing. Where the graph is thin it says so plainly
-and gives general best practice, labeled as general.
+and gives general best practice, labeled as general. Both skills stay inline so
+their confirmation steps remain part of the same conversation.
 
 ### Developer ticket work (gutt-developer plugin)
 
 Developer-role skills for Jira tickets, shipped as a separate plugin that
 depends on gutt-pro (the core plugin, in `gutt-core/`) and composes its
 curriculum skills (`memory-search`, `graph-traversal`, `memory-capture`)
-rather than restating them. No hooks — six task-shaped skills and two agents:
+rather than restating them. No hooks and no agents — six task-shaped skills:
 
 | Skill                | Purpose                                                                                      |
 | -------------------- | -------------------------------------------------------------------------------------------- |
@@ -280,15 +290,15 @@ rather than restating them. No hooks — six task-shaped skills and two agents:
 | `sub-task-breakdown` | Jira-native sub-tasks carrying acceptance criteria, effort and dependencies — nothing filed  |
 | `pr-re-review`       | Review against recorded standards and incident history, each finding verified at the source  |
 
-Two agents run the last two of those as registered memory identities, so a
-repeat finding can be cited as one: `pr-reviewer` and `bug-investigator`.
+The last two preserve their former registered memory identities in skill metadata,
+so prior findings remain reachable: `pr-reviewer` and `bug-investigator`. They run
+inline, allowing confirmation and capture to complete in the same conversation.
 
 All six leave Jira alone: they never edit ticket fields and post at most one
-user-approved comment. Five write nothing to memory at all. The exception is
-`pr-re-review`, which after the team has settled which findings it accepts may
-offer to record them — routed through `memory-capture` and its trust-tier gate,
-so a Lesson still needs an explicit human signal, and an unattended run stops
-and writes nothing.
+user-approved comment. `bug-investigation` and `pr-re-review` automatically hand
+a confirmed or accepted reusable outcome to `memory-capture` before completing;
+that skill still owns classification, deduplication, and any required human gate.
+Every resulting org write carries the preserved workflow identity.
 
 ### Product leadership (gutt-product plugin)
 
@@ -361,17 +371,15 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 ├── gutt-core/                      # core plugin — name/displayName: gutt-pro (dir keeps its name)
 │   ├── .claude-plugin/plugin.json
 │   ├── hooks/                      # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
-│   ├── skills/                     # memory-search, memory-capture, onboard, skills-discovery
-│   ├── agents/                     # gutt-pro-memory, agent-creator
+│   ├── skills/                     # memory workflows + component-creator
+│   ├── agents/                     # gutt-pro-memory only
 │   ├── commands/                   # setup, start, health
 │   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow
 │   ├── mcp.json                    # MCP config template
 │   └── config.json.example
-├── gutt-mentor/                    # mentor plugin — onboarding + mentor agents, personal-scope program design/tracking (no hooks)
-│   ├── agents/                     # onboarding-guide, mentor
-│   └── skills/                     # individual-program-design, progress-tracking
+├── gutt-mentor/                    # mentor plugin — onboarding, mentoring, personal program design/tracking (no hooks)
+│   └── skills/                     # onboarding-guide, mentor, individual-program-design, progress-tracking
 ├── gutt-developer/                 # developer plugin — ticket, bug and review skills over org memory (no hooks)
-│   ├── agents/                     # pr-reviewer, bug-investigator
 │   └── skills/                     # ticket-research, ticket-duplicates, ticket-estimate,
 │                                   # bug-investigation, sub-task-breakdown, pr-re-review
 ├── gutt-product/                   # product plugin — story creation, backlog dedupe + prioritization over org memory (no hooks)

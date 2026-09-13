@@ -61,8 +61,8 @@ line, only when the memory server is absent, or when scoped calls keep failing a
 re-register. Never fail the task because memory is down.
 
 SCAFFOLD NOTE — an agent that never writes org-side takes the read-only variant instead: no
-registration, no tagging, no Learning Protocol, and no scoped recall pass. `agent-creator` in
-the core plugin owns that wording. Note also that preloading a skill brings its `SKILL.md`
+registration, no tagging, no Learning Protocol, and no scoped recall pass. `component-creator`
+in the core plugin owns that wording. Note also that preloading a skill brings its `SKILL.md`
 body and **not** its `references/`, which is why the blocks above are written out here rather
 than left as a pointer — read a reference explicitly if you need one.
 

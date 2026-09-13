@@ -1,6 +1,9 @@
 ---
 name: SKILL_NAME
 description: "{{WHAT_THIS_SKILL_PRODUCES}} — {{THE_EVIDENCE_IT_RESTS_ON}}. {{WHAT_IT_NEVER_DOES}}. Use when {{THE_SITUATION}}. Triggers on: {{TRIGGER_PHRASE}}, {{TRIGGER_PHRASE_TWO}}, {{TRIGGER_PHRASE_THREE}}."
+argument-hint: "<the task input>"
+metadata:
+  memory-identity: SKILL_NAME
 ---
 
 # {{SKILL_TITLE}}
@@ -8,7 +11,7 @@ description: "{{WHAT_THIS_SKILL_PRODUCES}} — {{THE_EVIDENCE_IT_RESTS_ON}}. {{W
 {{ONE_PARAGRAPH_ON_WHAT_THIS_SKILL_DOES_AND_WHAT_IT_HANDS_BACK}}.
 
 SCAFFOLD NOTE — delete this paragraph and every other one marked the same way; they are
-addressed to you rather than to the agent that will read this skill, and the review step
+addressed to you rather than to the workflow that will read this skill, and the review step
 fails while any remain. Rename this directory and the `name:` above together: a skill's
 `name:` must equal its directory name, and nothing at runtime reports a mismatch.
 
@@ -17,6 +20,24 @@ owns relationship walking, and `memory-capture` owns any durable write. This ski
 what is specific to {{THE_ROLE_ACTIVITY}} — the inputs to read, the order to read them in, and
 the shape of the output. **Do not restate their rules here.** A second copy of the search
 ladder is a copy that drifts, and the reader cannot tell which one is current.
+
+## Memory identity
+
+This named workflow writes to the org graph as
+**`{{SKILL_NAME}}--<scope>`**. Resolve the authoritative group first. Then resolve
+`<scope>` through `agent-memory-protocol` and register before the first
+identity-scoped recall or tagged write:
+
+```
+register_agent(
+  name="{{SKILL_NAME}}--<scope>",
+  description="{{WHAT_THIS_SKILL_DOES_IN_A_SENTENCE_OR_TWO}}",
+  group_id=<the resolved org group>)
+```
+
+Keep the returned node id or uuid for verification. A read-only or personal-only
+path declares no memory identity instead: remove this metadata and section, skip
+registration and scoped recall, and never tag personal writes.
 
 ## Hard rules (non-negotiable — read first)
 
@@ -49,6 +70,13 @@ the user pasted and say which half you are missing.
 
 ## Step 2 — {{WHAT_MEMORY_ADDS}}
 
+## Grounding Protocol
+
+After registration, recall this workflow's prior conclusions first with
+`agent_id="{{SKILL_NAME}}--<scope>"`, then repeat the relevant queries group-wide,
+without `agent_id`. Never skip the group-wide pass: a new workflow identity is
+empty while the org graph is not.
+
 One adaptive pass per `memory-search`, on the specifics Step 1 surfaced. Deepen only if the
 first pass leaves the question open.
 
@@ -76,6 +104,16 @@ What was searched for and not found, and what a human needs to decide.
 The records actually read.
 ```
 
+## Learning Protocol
+
+Before completing the workflow, automatically hand any reusable outcome to
+`memory-capture` for classification, deduplication, and its trust-tier gate. Do
+not ask for the skill to be run again; pause only when that gate requires human
+confirmation that is not yet present. Pass the resolved org group,
+`agent_id="{{SKILL_NAME}}--<scope>"`, and `last_n_episodes=0` on every org write.
+Personal writes stay untagged. Verify the stored group when it matters; never
+capture routine completion or an inference the trust gate rejects.
+
 ## Degradation
 
 If the tracker tooling is absent, work from pasted text and name the gap in one line. If the
@@ -88,3 +126,5 @@ and never present a degraded pass as a complete one.
 - `memory-capture` (gutt-pro) — classification, dedup, and the write itself.
 - `graph-traversal` (gutt-pro) — relationship walking, once a first pass has the entities.
 - `output-style` (gutt-pro) — the shape of the reply that ends the turn.
+- `agent-memory-protocol` (gutt-pro) — named-workflow registration, scoped
+  recall, and org-write provenance.

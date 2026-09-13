@@ -1,5 +1,39 @@
 # Changelog
 
+## [3.0.10] - 2026-09-13
+
+### Changed
+
+- **Reusable role procedures are skills now; `gutt-pro-memory` remains the one
+  deliberate agent.** `agent-creator` became the skills-first
+  `component-creator`; `mentor` and `onboarding-guide` moved into gutt-mentor
+  skills; the developer agents were folded into `bug-investigation` and
+  `pr-re-review`. The latter four stay inline so questions, confirmation, and
+  memory capture complete in the same conversation. `gutt-pro-memory` is
+  unchanged because its isolated context plus deterministic memory-search and
+  graph-traversal preload are the capability, not wrapper overhead.
+
+- **Memory identity now belongs to a named workflow, not a file type.** An
+  org-writing skill declares `metadata.memory-identity` and carries the same
+  registration, own-then-group recall, and tagged-write contract as an agent.
+  The migrated workflows preserve their existing bases — `agent-creator`,
+  `onboarding-guide`, `pr-reviewer`, and `bug-investigator` — so previous scoped
+  memory remains reachable. Inline-skill `agent_id` denotes workflow provenance;
+  personal-only and read-only paths still do not register or tag.
+
+- **Learning completes inside the active skill workflow.** A named skill
+  automatically hands a durable outcome to `memory-capture` before completing,
+  with its preserved `agent_id`; it pauses only when the capture skill's own
+  trust-tier gate requires confirmation. No second skill invocation is used as
+  a handoff.
+
+- **Role scaffolding is skills-first and the gate follows it.** The default
+  template ships a named writer skill; the agent template is now optional and
+  separate for real system-prompt, permission, resumability, or deterministic
+  preload boundaries. The role-plugin checker validates memory metadata and the
+  operative identity, Grounding, and Learning sections on skills as well as
+  agents. `gutt-developer` moves to 0.3.0 and `gutt-mentor` to 0.2.0.
+
 ## [3.0.9] - 2026-09-11
 
 ### Added

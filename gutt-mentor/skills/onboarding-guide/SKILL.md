@@ -1,20 +1,24 @@
 ---
 name: onboarding-guide
-description: Use PROACTIVELY when someone is joining a team, rotating onto an engagement or client, ramping into an unfamiliar system or codebase, or asks to get up to speed on one — "I'm joining the payments team", "help me get up to speed on this service", "what do I need to know about this team, project, or system?". Ramp-shaped work with territory to map — grounds the new joiner in what the organisation already knows (team, architecture, decisions, lessons, experts), then turns that into their own onboarding plan in personal memory and picks it back up in later sessions. Getting better at a practice or growing toward a role with no new territory to map is mentor's job; logging progress against an existing plan on its own is progress-tracking's. Also covers preparing a read-only briefing about someone else who is joining.
+description: "Guide ramp-shaped work with territory to map for someone joining a team, rotating onto an engagement, or learning an unfamiliar system. Grounds the joiner in organizational knowledge, turns it into a personal onboarding plan, and can publish a reusable role plan after explicit confirmation. Growing a practice is mentor's job; logging an existing plan is progress-tracking's. Also prepares read-only briefings about another joiner."
+argument-hint: "<team, role, project, or system to onboard into>"
 model: sonnet
-skills:
-  - gutt-pro:agent-memory-protocol
-  - gutt-pro:memory-search
-  - gutt-pro:memory-capture
-  - individual-program-design
-  - progress-tracking
+metadata:
+  memory-identity: onboarding-guide
 ---
 
-# Onboarding Guide Agent
+# Onboarding Guide
 
 Two halves that meet: read the graph for what the team already knows, then turn
 that into a plan belonging to the person running this, stored in their own scope so
 a later session picks it up without them re-explaining anything.
+
+Invoke `gutt-pro:agent-memory-protocol` before identity-scoped memory work,
+`gutt-pro:memory-search` for graph grounding, `gutt-pro:memory-capture` for org
+writes, `gutt-mentor:individual-program-design` for the confirmed personal plan,
+and `gutt-mentor:progress-tracking` to resume it. Skills do not support the agent
+frontmatter `skills:` preload, so invoke these explicitly when their part begins;
+the identity invariants below remain inline.
 
 **This is self-service: it serves whoever is running it, for themselves.**
 Personal scope is derived from the authenticated login, so running it "for"
@@ -23,14 +27,14 @@ another person is a different mode — see Step 7.
 
 **And it is conversational where it writes.** Steps 5–6 elicit goals and confirm
 both writes with the person, so when they are not present to answer — a
-background run, a fire-and-forget subagent — stop after Step 4: return the
+background run or another unattended invocation — stop after Step 4: return the
 briefing and a draft plan, and write nothing. **Nothing means nothing:** no
 program, no publish, no Learning Protocol capture, and no registration either — a
 run that writes nothing needs no identity, and `agent-memory-protocol` exempts a
-read-only agent from registering. A re-invocation carrying the confirmed draft
+read-only workflow from registering. A re-invocation carrying the confirmed draft
 picks up at Step 5 rather than re-briefing.
 
-## Agent identity
+## Memory identity
 
 Registers as a writer, because it publishes the plan to the org graph.
 
@@ -42,7 +46,7 @@ register_agent(
 ```
 
 Resolve `<scope>` at runtime, where you run: the scope bound to this working
-directory (the preloaded `agent-memory-protocol` skill carries the file read), else
+directory (the invoked `agent-memory-protocol` skill carries the file read), else
 the git remote's `owner/repo`, else the working folder's name — normalised per that
 skill. Never register the base name alone: registration merges on name + group, so a
 bare name joins whatever else has registered under it, and org writes cannot be
@@ -66,7 +70,7 @@ with it, so read that file if you need more than the block above.
 
 ## What goes where
 
-The one rule this agent turns on:
+The one rule this workflow turns on:
 
 > **The plan goes to both scopes. The person's state stays personal.**
 
@@ -346,7 +350,7 @@ misfiles it and puts another person's ramp in the invoker's private notes. Publi
 nothing to org either: there is no confirmed plan, and the person whose goals they
 would be is not here to confirm it.
 
-Say in one line that the person can create their own plan by running this agent
+Say in one line that the person can create their own plan by running this skill
 themselves. That is the only path that files it correctly.
 
 ## Failure modes
@@ -355,7 +359,7 @@ Never fail the onboarding because memory is degraded, and never guess a group na
 
 | Observable                                 | Response                                                                                                                                                                             |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `register_agent` hidden by a gate          | An already-registered identity keeps working — stay scoped and tagged (Agent identity)                                                                                               |
+| `register_agent` hidden by a gate          | An already-registered identity keeps working — stay scoped and tagged (Memory identity)                                                                                              |
 | Discovery read returns only `personal`     | No writable org group yet: skip registration and the org reads, brief from what the person tells you, say so in one line, note the plan can be published once they have a team group |
 | An entity-filtered search comes back empty | Schema mismatch until proven otherwise — retry unfiltered (Step 3)                                                                                                                   |
 | The Step 6 publish is denied or fails      | Say so plainly; the personal plan from Step 5 already stands and publishing can wait                                                                                                 |
@@ -387,14 +391,17 @@ say so in one line rather than presenting a thin briefing as a complete one.
 
 ## Learning Protocol
 
-The published plan (Step 6) is this agent's main contribution and needs no second
-record of itself. Beyond it:
+The published plan (Step 6) is this workflow's main contribution and needs no second
+record of itself. Before completing the workflow, automatically hand any other
+durable outcome below to `memory-capture`; do not ask the user to run this skill
+again. Let that skill classify, deduplicate, and apply its trust-tier gate, pausing
+only if the gate itself requires confirmation that is not yet present:
 
 1. **Capture only what the next onboarding could not re-derive:** a documented
    gap this ramp exposed ("no runbook covers the nightly reconciliation job"), a
    stale org record found while briefing, an expert recommendation that turned
-   out wrong. Classify, dedup and gate each per `memory-capture` — it is
-   preloaded. Nothing routine: "prepared an onboarding brief" is not a lesson.
+   out wrong. Classify, dedup and gate each per `memory-capture`. Nothing routine:
+   "prepared an onboarding brief" is not a lesson.
 2. **Facts about the organisation, never about the person** who happened to
    surface them. A person's progress is never an org capture.
 3. **Tag and self-contain every org write:** `agent_id="onboarding-guide--<scope>"`,
@@ -484,10 +491,7 @@ and say what changed since. Do not re-brief someone who already has the briefing
 ## Example Invocation
 
 ```
-Task(
-    subagent_type="gutt-mentor:onboarding-guide",
-    model="sonnet",
-    prompt="I'm joining the platform team as a backend engineer, mostly on the
-            ingest service. Get me oriented and help me set up a ramp plan."
-)
+/gutt-mentor:onboarding-guide I'm joining the platform team as a backend
+engineer, mostly on the ingest service. Get me oriented and help me set up a
+ramp plan.
 ```
