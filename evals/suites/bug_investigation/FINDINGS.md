@@ -363,9 +363,9 @@ the reply used the exact token in its prose. A pasted-degrade reply dropped the
 related-tickets half without a word about the missing Jira tooling — a real miss, and the
 behaviour that case exists to catch; round 9 had two, round 10 none.
 
-**Round 11 is the last table measured on the text as it stood.** The committed bodies hashed
-to the V0 measured here until the third Copilot round put the prefix cap into rule 7; the
-hash that ships is below.
+**Round 11 is the last table measured on the text as it stood then.** The committed bodies
+hashed to the V0 measured here until the third Copilot round put the prefix cap into rule 7;
+round 12 measures the hash that ships.
 
 ## After round 11 — the third Copilot round: the cap goes in, and a pair's key is its only query
 
@@ -392,10 +392,56 @@ search. That reverses round 11's position, and the reason is not the eval, whose
 already carried the bound: it is rule 3's paging and honesty clauses, which misfire on a key
 that silently left the route.
 
-Neither change was run. The rule 7 change adds a bound that no fixture key approaches —
+Neither change was run here. The rule 7 change adds a bound that no fixture key approaches —
 `GP-1088` has a two-letter prefix — and that no check reads; the corpus change is a
 tightening three re-scored rounds show to be latent. The committed V0 hashes to `c6ee405b71fc`
-(18,337 chars); round 11's table was measured at `d8cce2ab8b47` (18,319).
+(18,337 chars); round 11's table was measured at `d8cce2ab8b47` (18,319). Round 12, below,
+measures `c6ee405b71fc`.
+
+## Round 12 — the fourth Copilot round: two phrasings are two calls
+
+Copilot's fourth review returned two corpus findings. **The first is now answered.** The
+presence checks accept a signature term and a symptom term near _any_ search call, so one
+combined query — `search_memory_nodes(query="TemplateRenderError blank invoice")` — satisfied
+both while bug-investigation asks for the two searched separately. A third check,
+`separate-searches`, binds each term to its nearest preceding search call and requires the two
+calls to differ, in either order. It still admits one combined phrasing sent to nodes and then
+to facts: two calls carrying one query, a hole the presence checks share and this does not
+widen. Rounds 9 to 12 re-scored under it move no verdict — the label appears in V0 only on the
+two replies that already failed `signature-search`.
+
+**The second stands open.** `group-scope` asks only that `group_ids` appear somewhere in the
+reply, not that the required bare-key calls carry it, so a reply scoping one later phrased read
+and leaving both exact calls bare would score clean. No recorded reply does that: `group_ids`
+has been missing in no V0 trial for four rounds. The check is certifying nothing false today —
+it is simply weaker than the claim its clean column invites, and that is the gap to close if
+the scope number is ever quoted on its own.
+
+This is the first table measured on a clean tree and on the text that ships. Round 11 ran dirty
+at `9eb37b1`; round 12 ran at `d5db7dd` clean, V0 `c6ee405b71fc`, 18,337 chars. Eight trials,
+all six cases, 96 calls.
+
+```
+variant       chars    all  confident  errors
+V0-shipped    18337   88%        90%       0     missing:names-the-gap 2/48 · banned:uuid-leak 2/48 · missing:signature-search 1/48 · unmarked:Borealis 1/48
+V1-none           0    0%         0%       0     missing:group-scope 23/48 · signature-search 22/48 · severity-rubric 13/48 · names-the-gap 8/48 · bare-key-nodes 8/48 · bare-key-facts 8/48 · refutable-hypothesis 8/48 · absence-named 8/48 · scope-of-absence 8/48 · cites-a-date 7/48
+
+per case (V0 / V1): key-triage 8/8 · pasted-degrade 6/8 · identifier-lane 8/8 · prose-control 7/8 ·
+                    resemblance-not-cause 6/8 · novel-signature 7/8   (V1: 0/8 on all six)
+```
+
+**The lane is unmoved: 8 of 8 with the skill, 0 of 8 without**, the sixth round running. Every
+keyed V0 trial planned both bare calls, and `group_ids` was missing in none of them.
+
+**V0 is 42 of 48 against round 11's 46, and none of the four extra misses touches rule 7.** Two
+are a conflict inside the skill rather than a regression: two resemblance-not-cause replies
+cited an incident by the raw UUID the fixture handed them, which the skill's "(id, date)"
+wording licenses and the `uuid-leak` check bans. One of those two has to give, and it is a
+question about the text, not about the checker. One novel-signature reply marked the Borealis
+distractor "unrelated" 153 characters after the token, against a 150-character window. One more
+pasted-degrade reply dropped the Jira half, making two where round 11 had one. Eighteen
+characters of text change do not explain a four-trial swing at n=48; the honest reading is that
+most of it is variance and the raw-UUID pair is the part that is not.
 
 ## What the numbers say
 
@@ -407,14 +453,18 @@ on a cited past failure (2–3/12), and no account of what was searched when not
 found (3/12). That is the whole thesis of the skill — the difference between a grounded
 triage and an ungrounded one is invisible in the prose and visible in those four checks.
 
-**The residual V0 failures are single trials** — one reply phrasing the signature search
-in a way the pattern did not catch, one omitting the degradation line. Nothing here points
-at a rule that needs rewriting; the next thing worth doing is more trials, not more prose.
+**The residual V0 failures are single trials, or pairs of them.** Through round 11 they were
+one of each kind — a signature search phrased past the pattern, a degradation line omitted.
+Round 12's six are listed in its own section; one of them, the raw-UUID pair, points at the
+skill text rather than at variance, and it is the only residual that ever has. Otherwise the
+next thing worth doing is more trials, not more prose.
 
-**Rounds 9 to 11 are a different instrument** — both skill bodies in V0, the identifier
+**Rounds 9 to 12 are a different instrument** — both skill bodies in V0, the identifier
 pair scored as a pair, the nearest-call span — and their tables are not comparable with
-rounds 1–8. Under it the residual is one or two single-trial misses in 48 per round, and
-the thing worth doing next is still more trials, not more prose.
+rounds 1–8. Under it the residual runs from one to six misses in 48, and the spread between
+round 11's two and round 12's six is wider than any text change between them accounts for: at
+eight trials a case this instrument cannot resolve a swing that size. The thing worth doing
+next is still more trials, not more prose.
 
 ## What this suite does not measure
 
