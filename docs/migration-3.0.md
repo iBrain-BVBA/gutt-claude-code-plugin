@@ -299,7 +299,7 @@ New: the five config verbs above, plus `/gutt-pro:agent-scope` and `/gutt-pro:st
 
 ### Skills
 
-All four 2.x skill entry points survive; the core has twelve skills in 3.0.10.
+All four 2.x skill entry points survive; the core has twelve skills in 3.1.0.
 
 | 2.x                | 3.0                         | Note                              |
 | ------------------ | --------------------------- | --------------------------------- |
@@ -319,7 +319,7 @@ This is where 3.0 cut deepest: fifteen agents became six across the suite. Most 
 capability that became a skill, because a skill runs in your conversation with your context,
 and a separate agent only earns its own window when the point is to keep work out of yours.
 
-> **Current layout (3.0.10+):** the consolidation continued after the original 3.0
+> **Current layout (3.1.0+):** the consolidation continued after the original 3.0
 > release. `gutt-pro-memory` is now the only shipped agent. `agent-creator` became
 > `gutt-pro:component-creator`; `onboarding-guide` and `mentor` are gutt-mentor
 > skills; `pr-reviewer` and `bug-investigator` became the memory identities retained

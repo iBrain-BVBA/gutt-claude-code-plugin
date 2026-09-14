@@ -91,13 +91,25 @@ function fmNestedPairs(lines, parent) {
   if (start < 0) {
     return out;
   }
+  // Immediate children only, pinned to the indentation of the first one. Matching every
+  // indented key instead reads a grandchild as a direct child, so `metadata.owner.x` is
+  // reported as `metadata.x` — and this gate exists to check that frontmatter metadata and
+  // the skill body name the same identity. A reader laxer than the tooling it models lets
+  // the two disagree in exactly the case it was written to catch.
+  let indent = null;
   for (const line of lines.slice(start + 1)) {
     if (/^[^ \t]/.test(line)) {
       break;
     }
-    const m = line.match(/^[ \t]+([A-Za-z_][\w-]*):[ \t]*(.*)$/);
-    if (m) {
-      out.set(m[1], m[2].trim());
+    const m = line.match(/^([ \t]+)([A-Za-z_][\w-]*):[ \t]*(.*)$/);
+    if (!m) {
+      continue;
+    }
+    if (indent === null) {
+      indent = m[1];
+    }
+    if (m[1] === indent) {
+      out.set(m[2], m[3].trim());
     }
   }
   return out;

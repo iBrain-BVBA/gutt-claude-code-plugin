@@ -334,10 +334,12 @@ exact content in the session. `backlog-prioritization` writes nothing — never 
 rank or priority field. Claims with no supporting evidence are labelled as such
 rather than presented with confidence.
 
-The same two also write to memory, under their own workflow identities
-(`story-creation--<scope>` and `backlog-dedupe--<scope>`): once the user has decided,
-each captures the outcome automatically through `memory-capture` and its trust-tier
-gate, so the next run on that backlog starts from what this one decided.
+The same two also write to memory. Once the user has decided, each offers the
+outcome — a dedupe run's slice and verdicts, a story's keys and what was asked —
+through `memory-capture` and its trust-tier gate, into the engagement's own group,
+so the next run on that backlog starts from what this one decided. Neither carries
+a workflow identity of its own, so those writes are untagged; an agent that runs
+these skills supplies the identity where one is wanted.
 `backlog-prioritization` writes nothing anywhere.
 
 ## Usage

@@ -408,6 +408,20 @@ describe("the identity gate", () => {
     assert.match(out.stderr, /declares no frontmatter `metadata\.memory-identity`/);
   });
 
+  it("does not read a doubly-nested key as metadata.memory-identity", (t) => {
+    const { dir, out } = withMutation((target) =>
+      patch(
+        skillFile(target),
+        `  memory-identity: ${SKILL}\n`,
+        `  owner:\n    memory-identity: ${SKILL}\n`
+      )
+    );
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /declares no frontmatter `metadata\.memory-identity`/);
+  });
+
   it("catches a named skill whose identity heading was removed", (t) => {
     const { dir, out } = withMutation((target) =>
       patch(skillFile(target), "## Memory identity", "## Provenance")
