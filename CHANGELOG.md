@@ -35,17 +35,18 @@
 - **Learning is automatic and state-triggered.** When the conversation holds a
   durable outcome, a named skill captures it before finishing through
   `memory-capture` with its preserved `agent_id`; only the capture skill's own
-  trust-tier gate can hold a write. gutt-product's two org writers,
-  `story-creation` and `backlog-dedupe`, adopt the same contract under their own
-  identities — they previously offered the capture and now perform it.
+  trust-tier gate can hold a write. Identity stays with the workflows that
+  already carried one: a skill that has never registered keeps writing through
+  `memory-capture` untagged, because giving it an identity creates a new
+  permanent registration rather than preserving an existing one.
 
 - **Role scaffolding is skills-first and the gate follows it.** The default
   template ships a named writer skill; the agent template is now optional and
   separate for real system-prompt, permission, resumability, or deterministic
   preload boundaries. The role-plugin checker validates memory metadata and the
   operative identity, Grounding, and Learning sections on skills as well as
-  agents. `gutt-developer` moves to 0.3.0, `gutt-mentor` to 0.2.0, and
-  `gutt-product` to 0.3.0.
+  agents. `gutt-developer` moves to 0.3.0 and `gutt-mentor` to 0.2.0;
+  `gutt-product` is unchanged.
 
 ## [3.0.9] - 2026-09-11
 

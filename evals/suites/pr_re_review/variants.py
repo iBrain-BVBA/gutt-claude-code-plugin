@@ -26,8 +26,30 @@ def _skill_body():
     return text.strip()
 
 
+# The candidate wording for the scope-resolution sentence, carried as an arm rather than
+# applied as an edit. Derived from the shipped body by one substitution, asserted to have
+# applied, so the two arms cannot drift and the text that ships if this arm wins is
+# byte-identical to the text this round measured. The shipped sentence runs the source
+# order and the normalisation together, chained by "else"; the candidate restores the
+# reference's own phrasing, which states that the first step yielding a value wins.
+OLD_ORDER = """Resolve `<scope>` at runtime, where you run: the scope bound to this working
+directory (the invoked `agent-memory-protocol` skill carries the file read), else
+the git remote's `owner/repo`, else the working folder's name"""
+
+NEW_ORDER = """Resolve `<scope>` at runtime, where you run. Take the first of these that yields a
+value and stop there: the scope bound to this working directory (the invoked
+`agent-memory-protocol` skill carries the file read); the git remote's `owner/repo`;
+the working folder's name"""
+
+
+def _candidate(body):
+    assert body.count(OLD_ORDER) == 1, "shipped scope-resolution sentence not found"
+    return body.replace(OLD_ORDER, NEW_ORDER)
+
+
 def all_variants():
     return {
         "V0-shipped": _skill_body(),
+        "V2-order": _candidate(_skill_body()),
         "V1-none": "",
     }

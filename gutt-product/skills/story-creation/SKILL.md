@@ -1,8 +1,6 @@
 ---
 name: story-creation
 description: "Draft Jira-ready stories from source material — a meeting transcript, a wiki page, a freeform ask — and manage the ones already filed: structured updates, splits into sibling stories, links, and refreshes of stale text. Every draft cites its source and carries testable acceptance criteria; every create and edit is gated on approval of the exact content in the session, and without Jira tooling the output is ready-to-paste markdown. Use when discussion needs to become tickets, or a filed story no longer says what the team means. Triggers on: create stories from this transcript, draft tickets from this meeting, turn these notes into stories, write a story for, draft a Jira story, update this story, rework the description, split into separate stories, refresh this stale story."
-metadata:
-  memory-identity: story-creation
 ---
 
 # Story Creation & Management
@@ -17,41 +15,11 @@ only then.
 
 Underneath, `memory-search` owns the search ladder and the relevance gate,
 `graph-traversal` owns relationship walking when a summary names a thing without
-stating it, `memory-capture` owns any durable write, and `agent-memory-protocol`
-owns this workflow's memory identity; all four ship with the gutt-pro plugin
-(this plugin depends on it) — without them, follow the rules below and note the
-gap in one line. Jira access comes from whatever Atlassian
+stating it, and `memory-capture` owns any durable write; all three ship with the
+gutt-pro plugin (this plugin depends on it) — without them, follow the rules
+below and note the gap in one line. Jira access comes from whatever Atlassian
 tooling the session surfaces; find it in your tool list — names and prefixes
 vary per install.
-
-## Memory identity
-
-This workflow writes to the org graph as **`story-creation--<scope>`**.
-
-Resolve `<scope>` at runtime, where you run: the scope bound to this working
-directory (the invoked `gutt-pro:agent-memory-protocol` skill carries the file read), else
-the git remote's `owner/repo`, else the working folder's name — lower-cased, with
-every run of characters outside `a-z0-9` collapsed to a single dash and the dashes
-trimmed. A memory group id is never a scope: identity is already keyed on the group,
-so a scope taken from it separates nothing. Never register the base name alone:
-registration merges on name + group, so a bare name joins whatever else registered
-under it, and org writes cannot be reassigned afterwards.
-
-Once the authoritative org group is known (rule 6), register before the first
-identity-scoped recall or tagged org write:
-
-```
-register_agent(
-  name="story-creation--<scope>",
-  description="Drafts and manages Jira stories from meeting and document sources, grounded in organizational memory",
-  group_id=<the resolved org group>)
-```
-
-Registration is idempotent. Keep its returned node id or uuid for verification.
-If registration is hidden but the identity already works, keep the scoped calls
-and tags. On an unknown-identity error, re-register and retry; only then run
-group-wide without `agent_id`, note the degradation once, and continue. Never
-invent a group or scope.
 
 ## Hard rules (non-negotiable — read first)
 
@@ -110,12 +78,11 @@ invent a group or scope.
    names**, probed with ToolSearch before concluding one is missing; the
    `mcp__…__` prefix varies per install.
 7. **Memory writes go through `memory-capture` — and accepted stories are worth
-   one.** Once the user has approved and the stories are filed, capture the
-   outcome — what was asked, what was created, the keys — through
+   one.** Once the user has approved and the stories are filed, offer to capture
+   the outcome — what was asked, what was created, the keys — through
    `memory-capture`'s gate into the engagement's own group, chosen deliberately
    on rule 6's never-guess terms and targeted by whatever means `memory-capture`
-   says targets it, tagged with this workflow's identity (Learning Protocol).
-   Rejected drafts are not captured; they were proposals.
+   says targets it. Rejected drafts are not captured; they were proposals.
 8. **Issue types, fields, and link names come from the organization, not from
    this skill.** Read what the project actually exposes before drafting to it:
    its issue types, the fields its create screen carries, the link types the
@@ -166,14 +133,6 @@ without stating it.
 **Minimum outcome:** per draft, either grounding citations or an explicit
 `no memory evidence` line. The second is a real result, not a failure.
 
-## Grounding Protocol
-
-After registration, recall in two passes. First ask what this workflow drafted or
-decided before on these subjects with `agent_id="story-creation--<scope>"` — prior
-drafts for the same source, stories it filed, splits it proposed. Then run Step 2
-group-wide, without `agent_id`. The group-wide pass is never skipped: a new or
-thin identity does not contain the organization's history.
-
 ## Step 3 — the drafts
 
 From the captured source, extract every candidate story — deliberately more than
@@ -223,20 +182,8 @@ and approves the exact content (rule 1). Only then:
 - report failures item by item. A partial filing is the normal failure here, and
   the user needs to know exactly where it stopped.
 
-Then the Learning Protocol: the accepted outcome, through `memory-capture`, into
-the engagement's group.
-
-## Learning Protocol
-
-When the conversation holds an approved, filed outcome — what was asked, what was
-created, the keys, and any decision the drafting surfaced — capture it before
-finishing: invoke `gutt-pro:memory-capture` with the resolved org `group_id`,
-`agent_id="story-creation--<scope>"` and `last_n_episodes=0` on every org write.
-That skill classifies, deduplicates, and applies its trust-tier gate; a gated type
-waits for the human signal it requires, and nothing else waits. No visible org
-write tool means no capture — say so in one line. Verify the stored group when it
-matters. Personal writes stay untagged. Rejected drafts and unfiled proposals are
-never captured.
+Then rule 7's offer: the accepted outcome, through `memory-capture`, into the
+engagement's group.
 
 ## Degradation
 
@@ -258,7 +205,7 @@ never captured.
 
 - Search ladder and relevance gate: `memory-search` (gutt-pro); relationship
   walking: `graph-traversal`; durable captures and their gate: `memory-capture`;
-  this workflow's identity, registration and tagging: `agent-memory-protocol`.
+  identity if an agent runs this: `agent-memory-protocol`.
 - Reply shape — substance first, one next action last: `output-style` (gutt-pro).
 - Siblings in this plugin: `backlog-dedupe` (slice-wide duplicate clusters —
   its approved consolidation drafts are refined here), `backlog-prioritization`

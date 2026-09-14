@@ -1,8 +1,6 @@
 ---
 name: backlog-dedupe
 description: "Scan a JQL-scoped slice of a Jira backlog for tickets that are really the same work: duplicate and overlap clusters with cited evidence, consolidation proposals that map source tickets to one drafted item, and stale candidates each carrying its justification. Propose-only — every close, cancel, merge, or link waits for the user's per-action approval. Use when a backlog has grown noisy, before a planning pass, or when old tickets need recycling into something current. Triggers on: scan the backlog for duplicates, clean up the backlog, consolidate these tickets, overlapping work across the backlog, stale tickets, backlog hygiene, merge candidates, recycle old tickets, too many open tickets."
-metadata:
-  memory-identity: backlog-dedupe
 ---
 
 # Backlog Dedupe & Aggregation
@@ -16,41 +14,11 @@ carrying its evidence, every action waiting for the human. The agent proposes;
 the human disposes.
 
 Underneath, `memory-search` owns the search ladder and the relevance gate,
-`graph-traversal` owns relationship walking, `memory-capture` owns any durable
-write, and `agent-memory-protocol` owns this workflow's memory identity; all four
-ship with the gutt-pro plugin (this plugin depends on it) — without them, follow
-the rules below and note the gap in one line. Jira
+`graph-traversal` owns relationship walking, and `memory-capture` owns any
+durable write; all three ship with the gutt-pro plugin (this plugin depends on
+it) — without them, follow the rules below and note the gap in one line. Jira
 access comes from whatever Atlassian tooling the session surfaces; find it in
 your tool list — names and prefixes vary per install.
-
-## Memory identity
-
-This workflow writes to the org graph as **`backlog-dedupe--<scope>`**.
-
-Resolve `<scope>` at runtime, where you run: the scope bound to this working
-directory (the invoked `gutt-pro:agent-memory-protocol` skill carries the file read), else
-the git remote's `owner/repo`, else the working folder's name — lower-cased, with
-every run of characters outside `a-z0-9` collapsed to a single dash and the dashes
-trimmed. A memory group id is never a scope: identity is already keyed on the group,
-so a scope taken from it separates nothing. Never register the base name alone:
-registration merges on name + group, so a bare name joins whatever else registered
-under it, and org writes cannot be reassigned afterwards.
-
-Once the authoritative org group is known (rule 6), register before the first
-identity-scoped recall or tagged org write:
-
-```
-register_agent(
-  name="backlog-dedupe--<scope>",
-  description="Clusters a backlog slice into duplicate, overlap, and stale candidates with cited evidence",
-  group_id=<the resolved org group>)
-```
-
-Registration is idempotent. Keep its returned node id or uuid for verification.
-If registration is hidden but the identity already works, keep the scoped calls
-and tags. On an unknown-identity error, re-register and retry; only then run
-group-wide without `agent_id`, note the degradation once, and continue. Never
-invent a group or scope.
 
 ## Hard rules (non-negotiable — read first)
 
@@ -108,8 +76,7 @@ invent a group or scope.
    proposal — check per line, not per run. The run summary, once decisions are
    made, goes through `memory-capture`'s gate into the engagement's own group,
    chosen deliberately on the same never-guess terms and targeted by whatever
-   means `memory-capture` says targets it, tagged with this workflow's identity
-   (Learning Protocol).
+   means `memory-capture` says targets it.
 7. **Bare tool names**, probed with ToolSearch before concluding one is missing;
    the `mcp__…__` prefix varies per install.
 8. **Issue types, workflow transitions, and link names come from the
@@ -158,15 +125,6 @@ handles the slice.
 **Minimum outcome:** per cluster and per stale candidate, either a memory
 citation or an explicit `similarity only` mark — wording-level evidence is real,
 but the reader must see which kind they are getting.
-
-## Grounding Protocol
-
-After registration, recall in two passes. First ask what this workflow decided on
-this backlog before with `agent_id="backlog-dedupe--<scope>"` — prior run
-summaries for the slice, clusters already consolidated, stale candidates already
-declined. Then run Step 2 group-wide, without `agent_id`. The group-wide pass is
-never skipped: a new or thin identity does not contain the organization's
-history.
 
 ## Step 3 — cluster and classify
 
@@ -248,21 +206,9 @@ failure, and the user needs to know where it stopped.
 
 ## Step 5 — the record
 
-Once decisions are made, the Learning Protocol captures the run summary — slice,
-clusters found, actions taken and declined — into the engagement's own group
-(rule 6). The next scan of this backlog starts from what this one decided.
-
-## Learning Protocol
-
-When the conversation holds the decisions on a slice — clusters confirmed or
-rejected, actions taken and declined, stale candidates retired or kept — capture
-the run summary before finishing: invoke `gutt-pro:memory-capture` with the
-resolved org `group_id`, `agent_id="backlog-dedupe--<scope>"` and
-`last_n_episodes=0` on every org write. That skill classifies, deduplicates, and
-applies its trust-tier gate; a gated type waits for the human signal it requires,
-and nothing else waits. No visible org write tool means no capture — say so in one
-line. Verify the stored group when it matters. Personal writes stay untagged. A
-proposal the user has not decided on is never captured.
+Once decisions are made, offer the run summary — slice, clusters found, actions
+taken and declined — through `memory-capture`'s gate into the engagement's own
+group (rule 6). The next scan of this backlog starts from what this one decided.
 
 ## Degradation
 
@@ -281,7 +227,7 @@ proposal the user has not decided on is never captured.
 
 - Search ladder and relevance gate: `memory-search` (gutt-pro); relationship
   walking: `graph-traversal`; durable captures and their gate: `memory-capture`;
-  this workflow's identity, registration and tagging: `agent-memory-protocol`.
+  identity if an agent runs this: `agent-memory-protocol`.
 - Reply shape — substance first, lists ranked and capped: `output-style`
   (gutt-pro).
 - Siblings in this plugin: `backlog-prioritization` (consumes these clusters as
