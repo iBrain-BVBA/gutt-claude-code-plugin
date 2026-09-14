@@ -5,8 +5,8 @@ gates a role plugin does not merge without.
 
 A role plugin is a thin plugin that depends on the core memory plugin and adds skills tied
 to one role's activities. It ships no hooks: the core plugin owns the hook surface, and a
-second plugin writing hook state is how sessions break. Skills, agents, and a manifest —
-nothing else.
+second plugin writing hook state is how sessions break. The default scaffold is one skill
+and a manifest. Agents are optional execution boundaries, not the default unit of reuse.
 
 ## Scaffolding one
 
@@ -19,33 +19,39 @@ ships, so the copy needs no pruning.
 
 Then, in the copy:
 
-1. Rename `agents/AGENT_NAME.md` and `skills/SKILL_NAME/` to their real names, and change the
-   matching `name:` in each. An agent's `name:` must equal its filename without `.md`; a
-   skill's `name:` must equal its directory name, and nothing at runtime reports a mismatch.
+1. Rename `skills/SKILL_NAME/` to its real name, and change both its `name:` and
+   `metadata.memory-identity` to the same stable base. A skill's `name:` must equal its
+   directory name, and nothing at runtime reports a mismatch. If the skill is read-only or
+   personal-only, remove the memory-identity metadata and section as the template directs.
 2. **Delete every paragraph marked `SCAFFOLD NOTE`.** They are addressed to you, doing this
-   edit. What survives becomes a prompt an agent reads at call time, where instructions
+   edit. What survives becomes a prompt the workflow reads at call time, where instructions
    about renaming files are noise. The review step fails while any remain.
 3. Replace every `{{PLACEHOLDER}}`. They are deliberately loud, and the review step fails
    while any survive — including the ones in `plugin.json`, whose `description` is what the
    marketplace shows a user. Two things that are **not** placeholders and stay exactly as
    written: `<scope>`, which the agent resolves where it runs, and prose stand-ins like
    `<group_id>` or `<the specific thing>`, which are the skill-writing convention for a
-   value the agent fills at call time.
+   value the workflow fills at call time.
    Keep the `{{...}}` form if you add placeholders of your own. The `__LIKE_THIS__` form is
    markdown bold, and `npm run format` rewrites it in prose — which turns a placeholder the
    review step would have caught into ordinary emphasised text that it never will.
-4. Delete `ATTRIBUTION.md` if nothing was borrowed. Keep it, filled in, if anything was.
-5. Add the plugin to `.claude-plugin/marketplace.json` — `name`, `source`, `description`,
+4. Add an agent only when the workflow needs a separate system prompt, a strict tool or
+   permission boundary, resumable specialist context, or deterministic `skills:` preload.
+   Copy `templates/role-agent/AGENT_NAME.md` into the new plugin's `agents/` directory,
+   rename the file and `name:` together, and state the boundary that justifies it. A skill
+   with `context: fork` is the lighter option when isolation alone is enough.
+5. Delete `ATTRIBUTION.md` if nothing was borrowed. Keep it, filled in, if anything was.
+6. Add the plugin to `.claude-plugin/marketplace.json` — `name`, `source`, `description`,
    `category`. No `version` there; the manifest is the single source of truth for that.
-6. Run the review step:
+7. Run the review step:
 
 ```bash
 npm run check:role-plugin                      # the two gates below, plus the structural rules
 claude plugin validate ./gutt-<role> --strict  # the platform's own validator, when the CLI is to hand
 ```
 
-Drop a skill or the agent if the role does not need one. A plugin with skills and no agent
-is normal; the marketplace already ships one.
+Add more skills only when each owns a distinct activity. A plugin with skills and no agent
+is the normal shape.
 
 ## What the manifest must carry
 
@@ -74,7 +80,7 @@ end up half opt-in.
 **Quote every prose scalar in frontmatter, and close the quotes cleanly.** `description` and
 `whenToUse` are sentences, and sentences attract colons. When YAML rejects a frontmatter
 block it does not drop the offending field — it drops the block, so the component loads with
-no name, no model, and none of its preloaded skills, and nothing at runtime tells you.
+no name, no model, and none of its frontmatter behavior, and nothing at runtime tells you.
 
 Opening a quote is not on its own an escape. Three shapes all reach that outcome:
 
@@ -89,12 +95,14 @@ phrasings a user would type is exactly what a good description does. Write them 
 quotes inside the double-quoted value — `'review this PR', 'is this ready'` — and the value
 survives both hazards at once.
 
-## The agent's identity block
+## Named workflow identity
 
-Every agent that can write to the org graph ships with its registration convention in its
-own body, under `## Agent identity`. Copy the block from the template rather than
-paraphrasing it: it encodes rules that are easy to invert, and the scaffolder that owns the
-canonical wording is the `agent-creator` agent in the core plugin.
+Every named skill that can write to the org graph declares its stable base as
+`metadata.memory-identity` and ships its operative registration convention under
+`## Memory identity`. An org-writing agent uses its filename as the base and the heading
+`## Agent identity`. Copy the relevant block from the template rather than paraphrasing it:
+it encodes rules that are easy to invert, and `component-creator` in the core plugin owns
+the shape.
 
 Three things the review step checks, because each has been got wrong:
 
@@ -104,16 +112,14 @@ Three things the review step checks, because each has been got wrong:
 - **`<scope>` stays unresolved in the file.** It is resolved where the agent runs, which is
   not where it was scaffolded.
 - **Recall is two passes, own scope then group-wide, and the group-wide pass is never
-  skipped.** An agent's own scope is empty on its first run; the group graph is not.
+  skipped.** A workflow's own scope is empty on its first run; the group graph is not.
 
-An agent that never writes org-side registers nothing, tags nothing, and runs no scoped
-recall — it gets the read-only variant, and a registration it cannot use is a bug, not a
-precaution.
+A workflow that never writes org-side registers nothing, tags nothing, and runs no scoped
+recall. Personal-only workflows also remain unregistered and never tag personal writes.
 
-Two further sections are checked by exact heading: **`## Grounding Protocol`** on every
-role-plugin agent, and **`## Learning Protocol`** on every agent that registers an identity.
-Both ship in the template, so copying it whole satisfies them — deleting one because the role
-looks not to need it is what fails the review step.
+Two further sections are checked by exact heading on every named writer:
+**`## Grounding Protocol`** and **`## Learning Protocol`**. Both ship in the skill and
+optional-agent templates, so copying the relevant template whole satisfies them.
 
 ## One owner per skill
 

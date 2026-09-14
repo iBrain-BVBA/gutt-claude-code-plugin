@@ -84,6 +84,37 @@ function fmPairs(lines) {
   return out;
 }
 
+/** Indented scalar pairs under one top-level mapping, enough for frontmatter metadata. */
+function fmNestedPairs(lines, parent) {
+  const out = new Map();
+  const start = lines.findIndex((line) => line === `${parent}:`);
+  if (start < 0) {
+    return out;
+  }
+  // Immediate children only, pinned to the indentation of the first one. Matching every
+  // indented key instead reads a grandchild as a direct child, so `metadata.owner.x` is
+  // reported as `metadata.x` — and this gate exists to check that frontmatter metadata and
+  // the skill body name the same identity. A reader laxer than the tooling it models lets
+  // the two disagree in exactly the case it was written to catch.
+  let indent = null;
+  for (const line of lines.slice(start + 1)) {
+    if (/^[^ \t]/.test(line)) {
+      break;
+    }
+    const m = line.match(/^([ \t]+)([A-Za-z_][\w-]*):[ \t]*(.*)$/);
+    if (!m) {
+      continue;
+    }
+    if (indent === null) {
+      indent = m[1];
+    }
+    if (m[1] === indent) {
+      out.set(m[2], m[3].trim());
+    }
+  }
+  return out;
+}
+
 const unquote = (v) => v.replace(/^["'](.*)["']$/s, "$1");
 
 /**
@@ -275,6 +306,86 @@ function checkManifest(dir, manifest) {
  */
 const SENTINEL_NAMES = new Set(["AGENT_NAME", "SKILL_NAME"]);
 
+/** Validate the stable provenance contract shared by agents and named skill workflows. */
+function checkMemoryIdentity({ f, text, identity, heading }) {
+  if (!/^([a-z0-9]+)(-[a-z0-9]+)*$/.test(identity)) {
+    err(f, `memory identity must be kebab-case (got ${JSON.stringify(identity)})`);
+  }
+  if (!new RegExp(`^## ${heading}$`, "m").test(text)) {
+    err(f, `missing a \`## ${heading}\` section for its named memory identity`);
+  }
+  if (!/^## Grounding Protocol$/m.test(text)) {
+    err(f, "named memory identity has no `## Grounding Protocol` section");
+  }
+  if (!/^## Learning Protocol$/m.test(text)) {
+    err(f, "named memory identity has no `## Learning Protocol` section");
+  }
+
+  const calls = [...text.matchAll(/register_agent\s*\([\s\S]*?\)/g)].map((m) => m[0]);
+  if (!calls.length) {
+    err(f, "declares a memory identity but never calls register_agent(...)");
+  }
+  let registersOwnIdentity = false;
+  for (const call of calls) {
+    const named = call.match(/name\s*=\s*["']([^"']+)["']/);
+    if (!named) {
+      err(f, "a register_agent(...) call has no literal name= argument to check");
+    } else if (!named[1].includes("--")) {
+      err(
+        f,
+        `registers as the bare name "${named[1]}" — the registered name must carry a ` +
+          "`--<scope>` suffix, or it merges with every other instance in the group"
+      );
+    } else if (!named[1].includes("<scope>")) {
+      err(
+        f,
+        `register_agent name "${named[1]}" bakes in a resolved scope — leave "<scope>" for ` +
+          "the workflow to resolve where it runs"
+      );
+    } else if (!/--<scope>$/.test(named[1])) {
+      err(
+        f,
+        `register_agent name "${named[1]}" does not end with \`--<scope>\` — the scope ` +
+          "suffix is terminal, nothing follows it"
+      );
+    } else if (named[1] === `${identity}--<scope>`) {
+      registersOwnIdentity = true;
+    }
+  }
+  if (!registersOwnIdentity) {
+    err(f, `never registers its declared identity "${identity}--<scope>"`);
+  }
+
+  const ids = [...text.matchAll(/agent_id\s*=\s*["']([^"']*)["']/g)].map((m) => m[1]);
+  if (!ids.length) {
+    err(f, "registers an identity but no call passes agent_id — scoped recall is missing");
+  }
+  for (const id of new Set(ids)) {
+    if (id.startsWith("<")) {
+      continue;
+    }
+    if (!id.includes("--")) {
+      err(
+        f,
+        `agent_id="${id}" is a bare resolved name — pass the \`--<scope>\`-suffixed name, or ` +
+          "refer to the registered name so there is one source of truth for it"
+      );
+    } else if (!id.startsWith(`${identity}--`)) {
+      err(
+        f,
+        `agent_id="${id}" names a different identity than this workflow declares ` +
+          `("${identity}--<scope>")`
+      );
+    }
+  }
+  if (!/without\s+`?agent_id`?|[Gg]roup-wide/.test(text)) {
+    err(f, "identity block never states the group-wide recall pass, which is never skipped");
+  }
+  if (!text.includes("agent-memory-protocol")) {
+    err(f, "named memory identity does not reference the agent-memory-protocol owner");
+  }
+}
+
 function checkAgent(file, requireShape = true) {
   const name = path.basename(file, ".md");
   const text = fs.readFileSync(file, "utf8");
@@ -316,7 +427,7 @@ function checkAgent(file, requireShape = true) {
   }
   // Template shape, so it binds the agents this scaffold produces. The core plugin's own
   // agents predate it and are allowed a specialist section that does the job more
-  // specifically — `agent-creator` blesses that substitution by name. The identity rules
+  // specifically — `component-creator` blesses that substitution by name. The identity rules
   // below are not shape, and bind everywhere.
   if (requireShape && !/^## Grounding Protocol$/m.test(text)) {
     err(f, "missing a `## Grounding Protocol` section (heading text is exact)");
@@ -324,76 +435,7 @@ function checkAgent(file, requireShape = true) {
 
   const writes = /register_agent\s*\(/.test(text);
   if (writes) {
-    // Identity merges on name + group, so a bare name pools with whatever else ever
-    // registered under it and org writes cannot be reassigned afterwards. Every call is
-    // checked, not just the first: a file can carry more than one — an agent that
-    // documents the call it emits as well as the one it makes — and the second is exactly
-    // where an un-suffixed example survives review.
-    const calls = [...text.matchAll(/register_agent\s*\([\s\S]*?\)/g)].map((m) => m[0]);
-    for (const call of calls) {
-      const named = call.match(/name\s*=\s*["']([^"']+)["']/);
-      if (!named) {
-        err(f, "a register_agent(...) call has no literal name= argument to check");
-      } else if (!named[1].includes("--")) {
-        err(
-          f,
-          `registers as the bare name "${named[1]}" — the registered name must carry a ` +
-            "`--<scope>` suffix, or it merges with every other instance in the group"
-        );
-      } else if (!named[1].includes("<scope>")) {
-        err(
-          f,
-          `register_agent name "${named[1]}" bakes in a resolved scope — leave "<scope>" for ` +
-            "the agent to resolve where it runs"
-        );
-      } else if (!/--<scope>$/.test(named[1])) {
-        // Containing both tokens is not the convention; ending with them is. A reversed or
-        // extended form still gets a unique merge key, so what this stops is shape drift,
-        // not pooling — but one drifted name becomes the example the next agent copies.
-        err(
-          f,
-          `register_agent name "${named[1]}" does not end with \`--<scope>\` — the scope ` +
-            "suffix is terminal, nothing follows it"
-        );
-      }
-    }
-    if (!/^## Learning Protocol$/m.test(text)) {
-      err(f, "registers an identity but has no `## Learning Protocol` section");
-    }
-    // Scoped calls carry the identity in one of two forms that both survive being
-    // scaffolded elsewhere: this agent's own suffixed name, or an indirection back to the
-    // registered one (a value opening `<`). A bare resolved literal pools this agent's
-    // writes with every other instance in the group; a suffixed literal that names some
-    // OTHER agent silently reads and writes the wrong scope, which containment alone
-    // waved through.
-    const ids = [...text.matchAll(/agent_id\s*=\s*["']([^"']*)["']/g)].map((m) => m[1]);
-    if (!ids.length) {
-      err(
-        f,
-        "registers an identity but no call passes agent_id — the scoped recall pass is missing"
-      );
-    }
-    for (const id of new Set(ids)) {
-      if (id.startsWith("<")) {
-        continue;
-      }
-      if (!id.includes("--")) {
-        err(
-          f,
-          `agent_id="${id}" is a bare resolved name — pass the \`--<scope>\`-suffixed name, or ` +
-            "refer to the registered name so there is one source of truth for it"
-        );
-      } else if (!id.startsWith(`${name}--`)) {
-        err(
-          f,
-          `agent_id="${id}" names a different identity than this agent registers ` +
-            `("${name}--<scope>") — scoped calls carry the agent's own registered name`
-        );
-      }
-    }
-    if (!/without\s+`?agent_id`?|[Gg]roup-wide/.test(text)) {
-      err(f, "identity block never states the group-wide recall pass, which is never skipped");
-    }
+    checkMemoryIdentity({ f, text, identity: name, heading: "Agent identity" });
   } else if (/^## Learning Protocol$/m.test(text)) {
     err(
       f,
@@ -408,7 +450,7 @@ function checkAgent(file, requireShape = true) {
   }
 }
 
-function checkSkill(dir) {
+function checkSkill(dir, requireOwnership = true) {
   const file = path.join(dir, "SKILL.md");
   const f = rel(file);
   if (!fs.existsSync(file)) {
@@ -443,11 +485,26 @@ function checkSkill(dir) {
   if (!pairs.get("description")) {
     err(f, 'frontmatter "description" is required — it decides whether the skill loads at all');
   }
+  const model = unquote(pairs.get("model") || "");
+  if (model && !MODELS.has(model)) {
+    err(f, `frontmatter "model" must be one of ${[...MODELS].join(", ")} (got ${model})`);
+  }
+
+  const metadata = fmNestedPairs(fm.lines, "metadata");
+  const identity = unquote(metadata.get("memory-identity") || "");
+  const registers = /register_agent\s*\(/.test(text);
+  if (identity) {
+    checkMemoryIdentity({ f, text, identity, heading: "Memory identity" });
+  } else if (registers && path.basename(dir) !== "agent-memory-protocol") {
+    err(f, "calls register_agent(...) but declares no frontmatter `metadata.memory-identity`");
+  } else if (/^## Memory identity$/m.test(text)) {
+    err(f, "has a `## Memory identity` section but declares no metadata.memory-identity");
+  }
 
   // One owner per skill: each raw tool named owes the reader its own owner, not just any
   // core skill — an unrelated mention used to satisfy this.
   for (const [tool, owners] of RAW_TOOL_OWNERS) {
-    if (text.includes(tool) && !owners.some((s) => text.includes(s))) {
+    if (requireOwnership && text.includes(tool) && !owners.some((s) => text.includes(s))) {
       err(
         f,
         `names ${tool} without referencing the core skill that owns it (${owners.join(" or ")}) — ` +
@@ -682,6 +739,7 @@ let rolePlugins;
 // separately so the summary reports everything it actually read — an under-reported count is
 // how a widened pass quietly becomes a no-op.
 let identityOnly = 0;
+let coreSkills = 0;
 
 /** Report everything collected so far, then stop. */
 function fail(reason) {
@@ -724,23 +782,12 @@ if (target) {
       checkAgent(a, false);
       identityOnly++;
     }
-    // The frontmatter parse hazard is not template shape either — it drops a component's
-    // whole metadata block wherever it happens. The skills guard in hook-architecture
-    // checks naming and presence, never whether the block parses, so nothing else covers
-    // the core plugin's own skills for it.
+    // Skill identities and frontmatter hazards bind the core plugin too. The generic
+    // protocol skill documents registration but is exempt from declaring an identity for
+    // itself; checkSkill handles that narrow distinction.
     for (const s of skillDirs(p.dir)) {
-      const file = path.join(s, "SKILL.md");
-      if (!fs.existsSync(file)) {
-        continue;
-      }
-      const fm = frontmatter(fs.readFileSync(file, "utf8"));
-      for (const key of fm ? unquotedColonScalars(fm.lines) : []) {
-        err(
-          rel(file),
-          `frontmatter ${key} — YAML rejects the document, and the skill then loads with every ` +
-            "field dropped and nothing reporting it. Quote the value, and close the quotes."
-        );
-      }
+      checkSkill(s, false);
+      coreSkills++;
     }
   }
 }
@@ -779,5 +826,5 @@ if (errors.length) {
 }
 console.log(
   `Role-plugin check OK: ${rolePlugins.length} plugin(s), ${agents + identityOnly} agent(s)` +
-    `${identityOnly ? ` (${identityOnly} identity-only)` : ""}, ${skills} skill(s).`
+    `${identityOnly ? ` (${identityOnly} identity-only)` : ""}, ${skills + coreSkills} skill(s).`
 );

@@ -443,6 +443,67 @@ pasted-degrade reply dropped the Jira half, making two where round 11 had one. E
 characters of text change do not explain a four-trial swing at n=48; the honest reading is that
 most of it is variance and the raw-UUID pair is the part that is not.
 
+## Rounds 13-15 — identity and scope, and one candidate that did not settle
+
+The instrument gains a subject. The plan cases now also score the memory identity this
+workflow keeps from the agent it was: that it registers at all, that the registered name
+carries the scope its environment resolves to, and that the scoped recall carries
+`agent_id`. `register_agent` joined the tool surface for it — without the tool on the page
+a check would have scored a missing tool rather than a missing behaviour — and
+`SESSION_SCOPE` states the environment the scope derives from, for the same reason
+`SESSION_GROUPS` states the group: the rule forbids inventing one, so a check run without
+it scores a guess rather than a resolution.
+
+Round 13 named the directory after the repository, and the two normalised to the same
+string. That made the answer unreadable: a reply carrying it could not say whether the
+folder had been preferred over the remote or the remote's owner half had been dropped,
+which are different defects wanting different fixes. Round 14 took the directory off the
+page to isolate the second. Round 15 put back a directory the repository is not named
+after, so all three outcomes carry distinct values, and added the candidate arm.
+
+```
+round 13 — directory named after the repo (ambiguous)
+variant       chars    all  confident  errors
+V0-shipped    20970   78%        87%       0     scope-from-folder 4/18 · registers-scoped 2/18
+                                                 recall-carries-agent-id 1/18
+V1-none           0    6%         7%       0     group-scope 10/18 · signature-search 7/18 · +12 more
+
+round 14 — remote only, no directory on the page
+V0-shipped    20970   89%        87%       0     scope-drops-owner 1/18 · registers-scoped 1/18
+                                                 uuid-leak 1/18
+V1-none           0    0%         0%       0     signature-search 10/18 · separate-searches 9/18 · +13 more
+
+round 15 — directory back, named something the repo is not; candidate arm added
+V0-shipped    20970   78%        80%       0     scope-from-folder 4/18 · registers-scoped 3/18
+                                                 recall-carries-agent-id 1/18
+V2-order      21020   67%        80%       0     scope-from-folder 6/18 · registers-scoped 3/18
+V1-none           0    0%         0%       0     signature-search 8/18 · group-scope 7/18 · +14 more
+```
+
+**The candidate did not settle, and is not applied.** `V2-order` is `V0-shipped` with the
+resolution sentence replaced — the shipped sentence chains the source order and the
+normalisation together with "else", the candidate restores the reference's own phrasing,
+that the first step yielding a value wins. It moved this suite two trials the wrong way
+and the pr-re-review suite two trials the right way. At three trials a case neither is a
+result: round 13's control scored 6% and round 14's scored 0% on identical text, which is
+the size of swing this instrument produces on its own. The arm stays in `variants.py`
+rather than being deleted, because the question is open and retyping the string later
+would measure a different one. Settling it wants eight trials, not more prose.
+
+**What did settle, across all three rounds and every arm.** `banned:bare-identity` never
+fired, and neither did `banned:scope-from-group` — the two mistakes that write a
+permanent, unreassignable registration. `registers-at-all` never failed for a skill arm
+either: registration happens, and what varies is only which scope it picks. The residual
+is `scope-from-folder` at 4 to 6 in 18 whenever a directory name is visible beside a
+remote — a legal scope, derived from the wrong step of the order. That step belongs to the
+shared identity convention rather than to this skill, so the fix, when it is found, belongs
+there too.
+
+**Rounds 13-15 are a different instrument again** — the identity checks, the registration
+tool on the surface, an environment line the earlier rounds did not carry — and their
+tables are not comparable with rounds 9-12. Round 13's and round 15's are comparable with
+each other only in the labels the ambiguity did not touch.
+
 ## What the numbers say
 
 **V1 scores zero on every case in every round**, and it is worth being precise about

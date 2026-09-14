@@ -17,13 +17,13 @@
     {
       "name": "gutt-mentor",
       "source": "./gutt-mentor",
-      "description": "Individual development programs and progress tracking in personal memory, via GUTT",
+      "description": "Conversational onboarding, mentoring, individual development programs, and progress tracking via GUTT memory",
       "category": "productivity"
     },
     {
       "name": "gutt-developer",
       "source": "./gutt-developer",
-      "description": "Developer skills and agents for Jira tickets and pull requests — context research, duplicates, estimates, bug triage, story breakdown, memory-informed review — backed by GUTT organizational memory",
+      "description": "Developer skills for Jira tickets and pull requests — context research, duplicates, estimates, bug triage, story breakdown, and memory-informed review — backed by GUTT organizational memory",
       "category": "productivity"
     },
     {

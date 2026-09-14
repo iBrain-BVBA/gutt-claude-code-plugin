@@ -174,6 +174,55 @@ scorer-shaped losses, `unverified-findings` gave back one trial to the session-l
 distractor, and `pasted-diff-degrade` repeated its single metadata-gap miss. Every V0
 loss is a single-trial shape already on record; nothing the follow-up touched moved.
 
+## Rounds 8-10 — identity and scope, and one candidate that did not settle
+
+The plan cases now also score the memory identity this workflow keeps from the agent it
+was: that it registers at all, that the registered name carries the scope its environment
+resolves to, that the scoped recall carries `agent_id`, and — on `capture-gate`, which
+already scored the group and the episode-history bleed — that the tag reaches the write.
+`SESSION_SCOPE` states the environment the scope derives from, for the same reason
+`SESSION_GROUPS` states the group: the rule forbids inventing one, so a check run without
+it scores a guess rather than a resolution.
+
+Round 8 named the directory after the repository and the two normalised to the same
+string, leaving the result unable to say whether the folder had been preferred over the
+remote or the owner half dropped. Round 9 took the directory off the page; round 10 put
+back one the repository is not named after, and added the candidate arm.
+
+```
+round 8 — directory named after the repo (ambiguous)
+variant       chars    all  confident  errors
+V0-shipped    16546   73%        75%       0     registers-scoped 3/15 · scope-from-folder 3/15
+                                                 no-history-bleed 1/15 · write-carries-agent-id 1/15
+V1-none           0    0%         0%       0     registers-scoped 6/15 · recall-precedes-lanes 3/15 · +10 more
+
+round 9 — remote only, no directory on the page
+V0-shipped    16546   73%        75%       0     metadata-gap-named 2/15 · write-carries-agent-id 1/15
+                                                 (no identity failure of any kind)
+V1-none           0    0%         0%       0     registers-scoped 6/15 · recall-precedes-lanes 3/15 · +13 more
+
+round 10 — directory back, named something the repo is not; candidate arm added
+V0-shipped    16546   73%        83%       0     registers-scoped 2/15 · write-carries-agent-id 2/15
+                                                 scope-from-folder 2/15 · ungrouped-write 1/15
+V2-order      16596   73%        75%       0     recall-carries-agent-id 1/15 · write-carries-agent-id 1/15
+                                                 ungrouped-write 1/15
+V1-none           0    0%         0%       0     registers-at-all 6/15 · registers-scoped 6/15 · +16 more
+```
+
+**The candidate did not settle, and is not applied.** `V2-order` cleared every identity
+failure here and cost two trials on the bug-investigation suite, on the same substitution.
+Two trials in fifteen is inside what this instrument moves on its own, and the two suites
+disagreeing is the whole reason not to read either as a result. The arm stays in
+`variants.py`, frozen; settling it wants eight trials.
+
+**The write half is measured here for the first time.** `write-carries-agent-id` asks that
+the tag ride the same call the group and `last_n_episodes=0` already ride. It lands in 13
+or 14 of 15 trials — the same shape as the other write-discipline checks in this case, and
+better than the suite's residual on `metadata-gap-named`.
+
+**Rounds 8-10 are a different instrument** than rounds 1-7 and their tables are not
+comparable with them.
+
 ## What the numbers say
 
 **The four checks V1 loses on every trial are the four the skill exists for.**

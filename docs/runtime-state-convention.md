@@ -155,15 +155,16 @@ second one.
 
 `{type, value}`, written by `/gutt-pro:agent-scope`. `type` is one of `project`, `team`
 or `individual` and is a label for whoever reads it back; the `value` alone becomes the
-`--<scope>` suffix on agent names registered from this directory, so two directories
-share an agent identity when their **values** match, whatever type each was set as.
+`--<scope>` suffix on named agent or skill identities registered from this directory, so
+two directories share one workflow identity when their **values** match, whatever type
+each was set as.
 
 `value` is validated on write **and on read**, against lower-case letters and digits
 separated by single dashes. Both ends, because the file is hand-editable and the value
 decides an identity that cannot be withdrawn — registration merges on name and group, and
 org writes cannot be deleted or reassigned. A record this version will not act on is
 reported as such rather than treated as absent, since a stored label is evidence that
-agents may already carry it.
+registered workflows may already carry it.
 
 Inheriting the migration record's key has one consequence worth stating plainly: the key
 is the working directory, not the repository. A second checkout of one project is two

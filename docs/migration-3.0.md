@@ -299,7 +299,7 @@ New: the five config verbs above, plus `/gutt-pro:agent-scope` and `/gutt-pro:st
 
 ### Skills
 
-All four 2.x skills survive; the core has eleven now.
+All four 2.x skill entry points survive; the core has twelve skills in 3.1.0.
 
 | 2.x                | 3.0                         | Note                              |
 | ------------------ | --------------------------- | --------------------------------- |
@@ -308,15 +308,25 @@ All four 2.x skills survive; the core has eleven now.
 | `onboard`          | `gutt-pro:onboard`          |                                   |
 | `skills-discovery` | `gutt-pro:skills-discovery` |                                   |
 
-New in the core: `agent-memory-protocol`, `conflict-adjudication`, `graph-traversal`,
-`migrate-memory`, `output-style`, `weekly-recap`. The role plugins add eleven more between
-them — `/plugin` lists what your install actually has.
+New primary capabilities in the core include `agent-memory-protocol`,
+`component-creator`, `conflict-adjudication`, `graph-traversal`, `migrate-memory`,
+`output-style`, and `weekly-recap`. The role plugins add thirteen more between them —
+`/plugin` lists what your install actually has.
 
 ### Agents
 
 This is where 3.0 cut deepest: fifteen agents became six across the suite. Most removals are
 capability that became a skill, because a skill runs in your conversation with your context,
 and a separate agent only earns its own window when the point is to keep work out of yours.
+
+> **Current layout (3.1.0+):** the consolidation continued after the original 3.0
+> release. `gutt-pro-memory` is now the only shipped agent. `agent-creator` became
+> `gutt-pro:component-creator`; `onboarding-guide` and `mentor` are gutt-mentor
+> skills; `pr-reviewer` and `bug-investigator` became the memory identities retained
+> by `pr-re-review` and `bug-investigation`. `gutt-pro-memory` stayed an agent by a
+> deliberate sequencing decision — its memory orchestration and identity behaviour
+> get their own migration decision — not because a skill could not carry it. The
+> table below records the initial 3.0 migration destinations.
 
 | 2.x agent                | 3.0                                                                                                                                                                                                       |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

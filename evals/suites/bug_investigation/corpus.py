@@ -58,7 +58,8 @@ MEMORY_TOOLS = """\
 - fetch_lessons_learned(query, domain=None, time_range="all", max_results=5,
   group_ids=None, agent_id=None) — lessons.
 - get_episode(id) — one episode, full body.
-- get_node_edges(node_id, edge_type=None) — all edges of a node."""
+- get_node_edges(node_id, edge_type=None) — all edges of a node.
+- register_agent(name, description, group_id=None) — get-or-create an agent identity."""
 
 JIRA_TOOLS = """\
 - getJiraIssue(cloudId, issueIdOrKey, fields=None) — read one issue, comments included.
@@ -137,6 +138,48 @@ SESSION_GROUPS = (
     "own personal scope is readable too."
 )
 
+# The registered name carries a scope suffix derived from where the workflow runs, so a
+# scope check needs that environment on the page for the same reason SESSION_GROUPS puts
+# the group there: the rule forbids inventing one, and a check run without it would be
+# scoring a guess. Both derivable steps are given, not just the winning one — the rule is
+# an *order*, and an order is only measurable when the step that loses is also visible.
+# Both derivable steps are on the page, and the directory is deliberately named something
+# the repository is not. An earlier instrument named the directory after the repo, and the
+# two normalised to one string: a reply carrying it could not say whether the folder had
+# been preferred over the remote or the remote's owner half had been dropped, which are
+# different defects with different fixes. Three distinct values separate them.
+# The remote is spelled in a shape no normaliser passes through unchanged, so the rule is
+# exercised rather than copied: "Acme-Corp/My_App" resolves to "acme-corp-my-app", the
+# folder alone would give "checkout-svc", and the repo half alone would give "my-app".
+SESSION_SCOPE = (
+    "No agent scope is bound to this working directory. Its git remote is "
+    "\"Acme-Corp/My_App\", and it is checked out in a directory named \"checkout-svc\"."
+)
+
+# The identity this workflow keeps from the agent it was, and the scope SESSION_SCOPE
+# resolves to: lower-cased, every run of characters outside a-z0-9 collapsed to one dash.
+IDENTITY = "bug-investigator"
+SCOPE = "acme-corp-my-app"
+
+# Registration before the first scoped call, and the scoped recall itself. Both accept the
+# plan's prose forms as well as the call form — a plan states parameters as a block about
+# as often as it states them as a call.
+REGISTERS_SCOPED = (
+    "registers-scoped-identity",
+    r"register_agent[\s\S]{0,300}?" + IDENTITY + r"--" + SCOPE,
+)
+RECALL_TAGGED = ("recall-carries-agent-id", r"agent_id\s*[=:]\s*[\"\']?" + IDENTITY + r"--")
+REGISTERS_AT_ALL = ("registers-at-all", r"register_agent")
+
+# The three ways the suffix goes wrong, each one permanent once written. Bare is the
+# merge-with-everything case; the other two take a value that was never the scope.
+IDENTITY_BANS = [
+    ("bare-identity", r"name\s*[=:]\s*[\"\']" + IDENTITY + r"[\"\']"),
+    ("scope-from-group", IDENTITY + r"--org[_-]?main"),
+    ("scope-from-folder", IDENTITY + r"--checkout-svc\b"),
+    ("scope-drops-owner", IDENTITY + r"--my[-_]app\b"),
+]
+
 SURFACE_FULL = (
     "Available tools (names as surfaced by the session; no other tools are connected):\n\n"
     + MEMORY_TOOLS
@@ -144,6 +187,8 @@ SURFACE_FULL = (
     + JIRA_TOOLS
     + "\n\n"
     + SESSION_GROUPS
+    + "\n"
+    + SESSION_SCOPE
 )
 
 SURFACE_NO_JIRA = (
@@ -152,6 +197,8 @@ SURFACE_NO_JIRA = (
     + MEMORY_TOOLS
     + "\n\n"
     + SESSION_GROUPS
+    + "\n"
+    + SESSION_SCOPE
 )
 
 # An actual Jira write, distinguished from a sentence declining to make one. The call
@@ -283,8 +330,11 @@ def build():
                 ("separate-searches", separate(r"PoolTimeout", r"(checkout|hang|502)")),
                 ("group-scope", r"group_ids"),
                 ("area-history", r"(?i)incident"),
+                REGISTERS_AT_ALL,
+                REGISTERS_SCOPED,
+                RECALL_TAGGED,
             ],
-            "must_not": [JIRA_WRITE],
+            "must_not": [JIRA_WRITE, *IDENTITY_BANS],
             "distractors": [],
         },
         {
@@ -316,6 +366,7 @@ def build():
             "must_not": [
                 # Inventing a JQL call against tooling the session does not have.
                 ("phantom-jira-call", r"searchJiraIssuesUsingJql\s*\(\s*[A-Za-z\"'{]"),
+                *IDENTITY_BANS,
             ],
             "distractors": [],
         },

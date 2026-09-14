@@ -1,13 +1,13 @@
 {
   "name": "gutt-mentor",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "dependencies": ["gutt-pro"],
   "defaultEnabled": true,
   "author": {
     "name": "iBRAIN BV",
     "email": "support@gutt.pro"
   },
-  "description": "Individual development programs and progress tracking in personal memory, via GUTT",
+  "description": "Conversational onboarding, mentoring, individual development programs, and progress tracking via GUTT memory",
   "homepage": "https://gutt.pro",
   "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
   "license": "MIT",

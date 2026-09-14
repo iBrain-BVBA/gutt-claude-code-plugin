@@ -1,22 +1,28 @@
-# Agent identity (shared convention)
+# Named memory identity (shared convention)
 
-Single source of truth for how an agent identifies itself in gutt memory: what its
-name is, how it registers, how it tags what it writes, and the order it recalls in.
-The `agent-memory-protocol` skill and the gutt-core agents build on this — they
+Single source of truth for how a named agent or skill workflow identifies itself in
+gutt memory: what its name is, how it registers, how it tags what it writes, and the
+order it recalls in. The server API retains the terms `Agent` and `agent_id`; for an
+inline skill these mean named workflow provenance, not a separate actor. The
+`agent-memory-protocol` skill and memory-aware components build on this — they
 reference it rather than restate it, and where they compress it, this file wins.
 
 Contents: Name · Register · Write · Recall · Unavailable · Guard rails · Template.
 
 ## Name
 
-- A registered agent is a node `{alias}:Agent:{name}` — you supply `{name}`; the server
+- A registered identity is a node `{alias}:Agent:{name}` — you supply `{name}`; the server
   derives the `{alias}:Agent:` prefix from the memory group (e.g. `gutt_pro:Agent:pr-reviewer`).
-- Pick a stable, descriptive name (`pr-reviewer`, `jira-agent`). Every name in the examples
-  below is illustrative; resolve your own from your purpose rather than copying one.
+- Pick a stable, descriptive base name (`pr-reviewer`, `jira-agent`). A migrated
+  workflow keeps its legacy base name even when its implementation changes from an
+  agent to a skill. A skill declares the base in frontmatter as
+  `metadata.memory-identity`; tooling may inspect that metadata, while the rules in
+  the skill body remain the runtime contract. Every name in the examples below is
+  illustrative; resolve your own from your purpose rather than copying one.
 - Identity is keyed on **name + group** (see Register), so different groups separate
   same-named agents on their own. Inside one group they do not separate themselves:
   **always carry a `--<scope>` suffix** — `pr-reviewer--acme-web` — so that one agent
-  run from two places is two identities unless someone chose otherwise. The double dash
+  invoked from two places is two identities unless someone chose otherwise. The double dash
   marks where the name ends and the scope begins; a single dash would be ambiguous
   inside kebab-case names.
 - **Why always, and not only when a clash appears:** a clash is not visible at the
@@ -46,8 +52,8 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
   value on its own — a remote is `owner/repo` and a folder may be `My_App`. Lower-case it,
   replace every run of characters outside `a-z0-9` with a single dash, then trim leading
   and trailing dashes: `Acme-Corp/My_App` becomes `acme-corp-my-app`. Do it the same way
-  every time — the result is a permanent identity, and two agents normalising differently
-  in the same place become two agents. A bound scope needs none of this; it is already
+  every time — the result is a permanent identity, and two workflows normalising differently
+  in the same place become two identities. A bound scope needs none of this; it is already
   stored in the legal form.
 - A bound scope is the only step a person chose, and the only one that is stable against
   the others changing — a remote can be renamed and a folder can be moved. It is also
@@ -56,11 +62,11 @@ Contents: Name · Register · Write · Recall · Unavailable · Guard rails · T
   moved or re-created. Re-bind after either. Steps 2 and 3 need no setup but are derived,
   so they change whenever what they are derived from changes.
 - Two places bound to the same value share one identity and therefore one pool of agent
-  memory — that is how several checkouts of one product get a single agent — and two
+  memory — that is how several checkouts of one product get a single identity — and two
   different values stay isolated. Where that sharing is wanted, bind it; do not rely on
   two remotes happening to normalise alike.
 
-## Register (once, before tagging or scoped recall)
+## Register (once, after resolving the group and before tagging or scoped recall)
 
 ```
 register_agent(
@@ -73,23 +79,26 @@ register_agent(
   identity node. Re-registering only refreshes the description; it never duplicates.
   Idempotent and cheap. The response returns your node handles — `id` (the semantic ID)
   and `uuid`; keep one for ID-based calls like write verification.
-- **Choosing the group:** if you can write to more than one group, pass `group_id`
+- **Choosing the group:** resolve the authoritative target group before
+  registration. If you can write to more than one group, pass `group_id`
   explicitly — omitting it targets an unspecified one of your groups, not a fixed
   default. With exactly one group you may omit it.
 - If a later scoped call fails with an unknown-agent error, register again and retry.
-- **Read-only agents don't register.** Agent scope is provenance over _writes_, so an agent
-  that never writes has an empty scope by construction — registering buys it nothing, and
-  step 1 of Recall could only ever answer "No memories found for agent …". Skip registration,
-  skip tagging, recall group-wide only, and say so in one line where the agent describes itself.
+- **Read-only and personal-only paths don't register.** Those paths do not
+  establish org-write provenance. Skip registration and tagging, recall
+  group-wide or personal as appropriate, and say so in one line where the
+  workflow describes itself.
 
-## Write (as this agent): tag every write
+## Write (as this workflow): tag every org write
 
-- When you act as this registered agent, pass `agent_id="<name>"` on **every** org-graph
+- When you act as this registered workflow, pass `agent_id="<name>"` on **every** org-graph
   write you make (`add_memory` / `add_memory_to_<group>`). This stamps the episode as yours
   (provenance) and lets you recall it later from your own scope.
-- This rule is about authorship — it applies to writes _an agent_ makes. Memory captured from
-  the main session with no agent involved (e.g. the `memory-capture` skill used directly)
-  carries no `agent_id`; there is no agent identity to attach.
+- This rule is about provenance — it applies to writes a _named workflow_ makes.
+  For an inline skill, the tag names the capability that produced the memory; it
+  does not claim that a separate actor ran. Memory captured from the main session
+  with no named workflow identity (for example `memory-capture` used directly)
+  carries no `agent_id`; there is no workflow identity to attach.
 - **When you capture another agent's run, tag that agent instead of yourself.** An episode
   carries exactly one `agent_id` — a single scalar, with no list and no metadata
   side-channel — so the choice is exclusive. A capture agent writing on its own account stamps
@@ -99,7 +108,7 @@ register_agent(
   can yield both. The delegating agent names itself in its delegation prompt; default to your
   own name when it doesn't.
 - Tagging hides nothing: a tagged write is still found by anyone's un-scoped search — the
-  tag only _adds_ it to your scope on top. So as an agent, always tag; there is no
+  tag only _adds_ it to your scope on top. As a named workflow, always tag; there is no
   "leave it untagged" case for your own org writes.
 - Set `last_n_episodes=0` on org-scope writes.
 - The write response does not confirm the tag landed. When it matters, verify with
@@ -118,7 +127,7 @@ Agent scope contains only what has been tagged to your identity — it is proven
 scoping, not access control, and it never falls back on its own: a new or thin identity
 has an empty scope by construction, and the server answers "No memories found for
 agent …" even when the group graph is rich. Scoped-only recall silently misses
-everything the agent has not written itself.
+everything the workflow has not written itself.
 
 - `agent_id` and `center_on_user` are mutually exclusive — one at a time.
 - Facts carry no `agent_id`. To scope facts, first get one of your scoped nodes, then
@@ -136,7 +145,7 @@ is down.
 
 ## Guard rails (rules)
 
-- **Names are identifiers, not to be reused.** Never adopt a similarly-named existing agent
+- **Names are identifiers, not to be reused.** Never adopt a similarly-named existing identity
   node from another context (repo/project) just because the name matches — it pollutes both
   subgraphs. Check _before_ you register, because there is no opting out afterwards:
   registration MERGEs on **name + group**, so the same name in the same group always resolves to
@@ -150,7 +159,9 @@ is down.
 
 ## Identity template (copy, fill in)
 
-Drop this into a role agent to make it memory-aware:
+Drop this into a named agent or skill to make it memory-aware. A skill also adds
+`metadata.memory-identity: <identity-base>` to frontmatter and uses an exact
+`## Memory identity` heading for this contract:
 
 ```
 # On start, register once (idempotent; the response returns your node id + uuid):

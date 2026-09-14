@@ -1,6 +1,6 @@
 ---
 name: health
-description: "Show plugin health status — MCP connectivity, hook registration, memory stats, agent count. Use for quick diagnostics."
+description: "Show plugin health status — MCP connectivity, hook registration, memory stats, and component counts. Use for quick diagnostics."
 ---
 
 # Plugin Health Dashboard
@@ -53,9 +53,11 @@ If it is absent but the runtime config records that they installed it, say the k
 was dropped from settings — Claude Code does that when it rewrites the file — and
 that the next session restores it.
 
-### 4. Count Agents
+### 4. Count Components
 
-List the `agents/` directory in the plugin root. Count `.md` files (excluding any starting with `_`).
+List the `agents/` directory in the plugin root and count `.md` files (excluding any
+starting with `_`). List `skills/` and count immediate subdirectories containing a
+`SKILL.md`.
 
 ### 5. Format Report
 
@@ -84,7 +86,8 @@ Session
   Connection:        [status]
   Session started:   [timestamp]
 
-Agents
+Components
+  Total skill definitions: [N]
   Total agent definitions: [N]
 
 ═══════════════════════════════════════════

@@ -75,13 +75,62 @@ SESSION_GROUPS = (
     "own personal scope is readable too."
 )
 
+# The registered name carries a scope suffix derived from where the workflow runs, so a
+# scope check needs that environment on the page for the same reason SESSION_GROUPS puts
+# the group there: the rule forbids inventing one, and a check run without it would be
+# scoring a guess. Both derivable steps are given, not just the winning one — the rule is
+# an *order*, and an order is only measurable when the step that loses is also visible.
+# Both derivable steps are on the page, and the directory is deliberately named something
+# the repository is not. An earlier instrument named the directory after the repo, and the
+# two normalised to one string: a reply carrying it could not say whether the folder had
+# been preferred over the remote or the remote's owner half had been dropped, which are
+# different defects with different fixes. Three distinct values separate them.
+# "acme/billing-api" resolves to "acme-billing-api", the folder alone would give
+# "payments", and the repo half alone would give "billing-api".
+SESSION_SCOPE = (
+    "No agent scope is bound to this working directory. Its git remote is "
+    "\"acme/billing-api\", and it is checked out in a directory named \"payments\"."
+)
+
+# The identity this workflow keeps from the agent it was, and the scope SESSION_SCOPE
+# resolves to: the remote's owner/repo, lower-cased, its separator collapsed to one dash.
+IDENTITY = "pr-reviewer"
+SCOPE = "acme-billing-api"
+
+# Registration before the first scoped call, the scoped recall, and the tag on the write.
+# All three accept the plan's prose forms as well as the call form — a plan states its
+# parameters as a block about as often as it states them as a call.
+REGISTERS_SCOPED = (
+    "registers-scoped-identity",
+    r"register_agent[\s\S]{0,300}?" + IDENTITY + r"--" + SCOPE,
+)
+RECALL_TAGGED = ("recall-carries-agent-id", r"agent_id\s*[=:]\s*[\"\']?" + IDENTITY + r"--")
+REGISTERS_AT_ALL = ("registers-at-all", r"register_agent")
+WRITE_TAGGED = (
+    "write-carries-agent-id",
+    r"(add_memory|episode_body)[\s\S]{0,400}?agent_id\s*[=:]\s*[\"\']?"
+    + IDENTITY
+    + r"--"
+    + SCOPE,
+)
+
+# The three ways the suffix goes wrong, each one permanent once written. Bare is the
+# merge-with-everything case; the other two take a value that was never the scope.
+IDENTITY_BANS = [
+    ("bare-identity", r"name\s*[=:]\s*[\"\']" + IDENTITY + r"[\"\']"),
+    ("scope-from-group", IDENTITY + r"--org[_-]?main"),
+    ("scope-from-folder", IDENTITY + r"--payments\b"),
+    ("scope-drops-owner", IDENTITY + r"--billing-api\b"),
+]
+
 SURFACE_FULL = (
     "Available tools (names as surfaced by the session; no other tools are connected):\n\n"
     + MEMORY_TOOLS
     + "\n"
     + REPO_TOOLS
     + "\n\n"
-    + SESSION_GROUPS
+    + SESSION_GROUPS    + "\n"
+    + SESSION_SCOPE
 )
 
 SURFACE_NO_REPO = (
@@ -89,7 +138,8 @@ SURFACE_NO_REPO = (
     "There is no repository or pull-request tooling in this session:\n\n"
     + MEMORY_TOOLS
     + "\n\n"
-    + SESSION_GROUPS
+    + SESSION_GROUPS    + "\n"
+    + SESSION_SCOPE
 )
 
 # An actual post to the pull request, distinguished from a sentence declining to make
@@ -301,8 +351,11 @@ def build():
                     r"(?i)verif\w+|re-?read (the )?(code|file|line)|confirm (each|the) "
                     r"finding|check (each|every) finding",
                 ),
+                REGISTERS_AT_ALL,
+                REGISTERS_SCOPED,
+                RECALL_TAGGED,
             ],
-            "must_not": [POSTED_UNASKED],
+            "must_not": [POSTED_UNASKED, *IDENTITY_BANS],
             "distractors": [],
         },
         {
@@ -343,8 +396,11 @@ def build():
                     r"(?i)(accept\w*|agree\w*|confirm\w*|approv\w*|sign-?off|human signal|"
                     r"once (you|the author|the team))",
                 ),
+                REGISTERS_AT_ALL,
+                REGISTERS_SCOPED,
+                WRITE_TAGGED,
             ],
-            "must_not": [POSTED_UNASKED, UNGROUPED_WRITE],
+            "must_not": [POSTED_UNASKED, UNGROUPED_WRITE, *IDENTITY_BANS],
             "distractors": [],
         },
         {
