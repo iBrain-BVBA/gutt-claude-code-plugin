@@ -30,9 +30,17 @@ This workflow preserves the legacy creator identity as
 stable identity is provenance for the capability, not a claim that an isolated
 actor ran.
 
-After resolving the authoritative org group and `<scope>` through
-`agent-memory-protocol`, register before the first identity-scoped read or tagged
-org write:
+Resolve `<scope>` at runtime, where you run: the scope bound to this working
+directory (the invoked `agent-memory-protocol` skill carries the file read), else
+the git remote's `owner/repo`, else the working folder's name — lower-cased, with
+every run of characters outside `a-z0-9` collapsed to a single dash and the dashes
+trimmed. A memory group id is never a scope: identity is already keyed on the group,
+so a scope taken from it separates nothing. Never register the base name alone:
+registration merges on name + group, so a bare name joins whatever else registered
+under it, and org writes cannot be reassigned afterwards.
+
+Once the authoritative org group is resolved too, register before the first
+identity-scoped read or tagged org write:
 
 ```
 register_agent(
@@ -116,9 +124,10 @@ Choose exactly one:
 - **Named org-writing workflow:** declare
   `metadata.memory-identity: <stable-base>` in a skill, or use the agent
   filename as the base. Include an exact `## Memory identity` or
-  `## Agent identity` section, register `<stable-base>--<scope>` after the
-  target group and scope are resolved, recall own scope then group-wide, and
-  tag every org write.
+  `## Agent identity` section carrying the scope-resolution rule in full — the
+  invocation, the bound-scope precedence, the `owner/repo` fallback and its
+  normalisation — register `<stable-base>--<scope>` after the target group and
+  scope are resolved, recall own scope then group-wide, and tag every org write.
 
 When migrating, the stable base is the old identity. It may intentionally differ
 from the new skill directory name; metadata makes that continuity explicit.

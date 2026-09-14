@@ -24,6 +24,14 @@
   memory remains reachable. Inline-skill `agent_id` denotes workflow provenance;
   personal-only and read-only paths still do not register or tag.
 
+- **Each identity block resolves its own scope.** The `--<scope>` suffix is
+  derived where the workflow runs — a scope bound to the working directory first,
+  then the git remote's `owner/repo`, then the folder name, normalised — and every
+  identity block now carries that order inline rather than only naming the skill
+  that holds it. A workflow that must resolve a permanent identity before its
+  first call cannot depend on a second file being loaded first. A memory group id
+  is explicitly not a scope.
+
 - **Learning is automatic and state-triggered.** When the conversation holds a
   durable outcome, a named skill captures it before finishing through
   `memory-capture` with its preserved `agent_id`; only the capture skill's own

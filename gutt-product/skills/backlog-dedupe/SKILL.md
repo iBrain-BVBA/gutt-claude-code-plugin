@@ -25,10 +25,19 @@ your tool list — names and prefixes vary per install.
 
 ## Memory identity
 
-This workflow writes to the org graph as **`backlog-dedupe--<scope>`**. After the
-authoritative org group is known (rule 6), resolve `<scope>` with
-`gutt-pro:agent-memory-protocol`, then register before the first identity-scoped
-recall or tagged org write:
+This workflow writes to the org graph as **`backlog-dedupe--<scope>`**.
+
+Resolve `<scope>` at runtime, where you run: the scope bound to this working
+directory (the invoked `gutt-pro:agent-memory-protocol` skill carries the file read), else
+the git remote's `owner/repo`, else the working folder's name — lower-cased, with
+every run of characters outside `a-z0-9` collapsed to a single dash and the dashes
+trimmed. A memory group id is never a scope: identity is already keyed on the group,
+so a scope taken from it separates nothing. Never register the base name alone:
+registration merges on name + group, so a bare name joins whatever else registered
+under it, and org writes cannot be reassigned afterwards.
+
+Once the authoritative org group is known (rule 6), register before the first
+identity-scoped recall or tagged org write:
 
 ```
 register_agent(

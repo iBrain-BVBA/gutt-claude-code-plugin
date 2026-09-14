@@ -24,9 +24,18 @@ ladder is a copy that drifts, and the reader cannot tell which one is current.
 ## Memory identity
 
 This named workflow writes to the org graph as
-**`{{SKILL_NAME}}--<scope>`**. Resolve the authoritative group first. Then resolve
-`<scope>` through `agent-memory-protocol` and register before the first
-identity-scoped recall or tagged write:
+**`{{SKILL_NAME}}--<scope>`**. Resolve the authoritative group first.
+
+Resolve `<scope>` at runtime, where you run: the scope bound to this working
+directory (the invoked `agent-memory-protocol` skill carries the file read), else
+the git remote's `owner/repo`, else the working folder's name — lower-cased, with
+every run of characters outside `a-z0-9` collapsed to a single dash and the dashes
+trimmed. A memory group id is never a scope: identity is already keyed on the group,
+so a scope taken from it separates nothing. Never register the base name alone:
+registration merges on name + group, so a bare name joins whatever else registered
+under it, and org writes cannot be reassigned afterwards.
+
+Then register before the first identity-scoped recall or tagged write:
 
 ```
 register_agent(
