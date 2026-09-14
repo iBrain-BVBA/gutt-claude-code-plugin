@@ -106,13 +106,13 @@ The records actually read.
 
 ## Learning Protocol
 
-Before completing the workflow, automatically hand any reusable outcome to
-`memory-capture` for classification, deduplication, and its trust-tier gate. Do
-not ask for the skill to be run again; pause only when that gate requires human
-confirmation that is not yet present. Pass the resolved org group,
-`agent_id="{{SKILL_NAME}}--<scope>"`, and `last_n_episodes=0` on every org write.
-Personal writes stay untagged. Verify the stored group when it matters; never
-capture routine completion or an inference the trust gate rejects.
+When the conversation holds a durable outcome of this work, capture it before finishing:
+invoke `memory-capture` with the resolved org group, `agent_id="{{SKILL_NAME}}--<scope>"` and
+`last_n_episodes=0` on every org write. That skill classifies, deduplicates, and applies its
+trust-tier gate; a gated type waits for the human signal it requires, and nothing else waits.
+No visible org write tool means no capture — say so in one line. Personal writes stay
+untagged. Verify the stored group when it matters; never capture routine completion or an
+inference the trust gate rejects.
 
 ## Degradation
 

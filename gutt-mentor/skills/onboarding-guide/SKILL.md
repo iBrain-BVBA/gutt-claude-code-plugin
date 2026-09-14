@@ -65,8 +65,8 @@ keeps working — do not degrade in that case.** Probe with ToolSearch before
 assuming a tool is missing; on an unknown-agent error, register again and retry.
 
 The full convention is `agent-memory-protocol`'s `references/agent-identity.md`;
-on any conflict it wins. Note that a skill preload does not bring `references/`
-with it, so read that file if you need more than the block above.
+on any conflict it wins. Invoking that skill brings its `SKILL.md` body and not its
+`references/`, so read that file if you need more than the block above.
 
 ## What goes where
 
@@ -392,10 +392,11 @@ say so in one line rather than presenting a thin briefing as a complete one.
 ## Learning Protocol
 
 The published plan (Step 6) is this workflow's main contribution and needs no second
-record of itself. Before completing the workflow, automatically hand any other
-durable outcome below to `memory-capture`; do not ask the user to run this skill
-again. Let that skill classify, deduplicate, and apply its trust-tier gate, pausing
-only if the gate itself requires confirmation that is not yet present:
+record of itself. When the conversation holds another durable outcome of the kinds
+below, capture it before finishing through `memory-capture`, which classifies,
+deduplicates, and applies its trust-tier gate; a gated type waits for the human
+signal it requires, and nothing else waits. No visible org write tool means no
+capture — say so in one line.
 
 1. **Capture only what the next onboarding could not re-derive:** a documented
    gap this ramp exposed ("no runbook covers the nightly reconciliation job"), a
@@ -404,8 +405,8 @@ only if the gate itself requires confirmation that is not yet present:
    "prepared an onboarding brief" is not a lesson.
 2. **Facts about the organisation, never about the person** who happened to
    surface them. A person's progress is never an org capture.
-3. **Tag and self-contain every org write:** `agent_id="onboarding-guide--<scope>"`,
-   `last_n_episodes=0`.
+3. **Tag and self-contain every org write:** the org group from Step 3's
+   discovery read, `agent_id="onboarding-guide--<scope>"`, `last_n_episodes=0`.
 
 ## Output Format
 

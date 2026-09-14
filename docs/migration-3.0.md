@@ -323,8 +323,10 @@ and a separate agent only earns its own window when the point is to keep work ou
 > release. `gutt-pro-memory` is now the only shipped agent. `agent-creator` became
 > `gutt-pro:component-creator`; `onboarding-guide` and `mentor` are gutt-mentor
 > skills; `pr-reviewer` and `bug-investigator` became the memory identities retained
-> by `pr-re-review` and `bug-investigation`. The table below records the initial
-> 3.0 migration destinations.
+> by `pr-re-review` and `bug-investigation`. `gutt-pro-memory` stayed an agent by a
+> deliberate sequencing decision — its memory orchestration and identity behaviour
+> get their own migration decision — not because a skill could not carry it. The
+> table below records the initial 3.0 migration destinations.
 
 | 2.x agent                | 3.0                                                                                                                                                                                                       |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

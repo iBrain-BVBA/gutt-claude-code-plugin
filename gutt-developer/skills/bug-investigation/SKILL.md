@@ -18,8 +18,7 @@ past failures that resemble this one together with what actually fixed them.
 It is triage, not repair — the diagnosis and every line of the fix stay with
 the developer.
 
-Use `$ARGUMENTS` as the direct task input when provided, then retain the current
-conversation so a confirmed outcome can be captured without re-running the skill.
+Use `$ARGUMENTS` as the direct task input when provided.
 
 Underneath, invoke `gutt-pro:memory-search` for the search ladder and relevance
 gate, `gutt-pro:graph-traversal` when a summary names an incident without stating
@@ -218,14 +217,15 @@ information, and it is what makes the brief trustworthy on a genuinely new bug.
 
 ## Learning Protocol
 
-Do not ask the user to re-run this skill. When the current conversation contains
-a confirmed root cause, a fix that held, or another durable investigation lesson,
-invoke `gutt-pro:memory-capture` automatically before completing the workflow.
-Let that skill classify, deduplicate, and apply its trust-tier gate; pause only if
-the gate itself requires confirmation that is not yet present. Pass the resolved org `group_id`,
-`agent_id="bug-investigator--<scope>"`, and `last_n_episodes=0` on every org
-write, then verify the stored group when it matters. Personal writes are always
-untagged. Never capture a hypothesis merely because it appeared in the brief.
+When the conversation holds a confirmed root cause, a fix that held, or another
+durable investigation lesson, capture it before finishing: invoke
+`gutt-pro:memory-capture` with the resolved org `group_id`,
+`agent_id="bug-investigator--<scope>"` and `last_n_episodes=0` on every org
+write. That skill classifies, deduplicates, and applies its trust-tier gate; a
+gated type waits for the human signal it requires, and nothing else waits. No
+visible org write tool means no capture — say so in one line. Verify the stored
+group when it matters. Personal writes are always untagged. Never capture a
+hypothesis merely because it appeared in the brief.
 
 ## Degradation
 

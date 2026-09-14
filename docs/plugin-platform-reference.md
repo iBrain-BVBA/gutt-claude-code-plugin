@@ -318,6 +318,43 @@ claimed. The probe's census is flat across the session, so it cannot attribute a
 non-injection to a specific turn — and a config-verb turn emits no recall pointer anyway,
 so the absence of one proves nothing extra.
 
+## 9. Where a plugin's agents surface, and whether that regressed — **Measured** in part
+
+Why this section exists: GP-1043 moved five agents to skills on the premise that "skills
+appear in slash autocomplete; agents do not", and asked whether that had regressed in
+3.0.x. The premise decides the framing of the migration rather than its shape, so the
+answer lives here with each claim's provenance marked.
+
+**Measured 2026-09-14**, Claude Code 2.1.268, `gutt-pro` 3.0.9 installed from the
+marketplace and this checkout loaded in a real session:
+
+- Plugin agents surface to the **model**, not to the typing user: they appear as
+  `subagent_type` values on the Agent tool, namespaced `<plugin>:<agent>`
+  (`gutt-pro:gutt-pro-memory` and `gutt-pro:agent-creator` on 3.0.9). That is the surface
+  an agent has always had, and it is why an agent runs only when the model volunteers a
+  delegation.
+- A skill's body is what reaches the model when it is invoked; the frontmatter is not
+  injected. Observed on a Skill-tool invocation of `memory-search`, whose injected text
+  began at the H1. Consequence for GP-1043: a skill cannot read its own
+  `metadata.memory-identity`, so the identity is restated in the body and the metadata
+  is for tooling. `tests/check-role-plugin.cjs` enforces that the two agree.
+
+**Recorded, not re-run today:** a real run on 2.1.268 found the `@agent-<name>` mention,
+the user-facing way to address an agent, not working. Kept in this project's memory notes
+as a fact to re-verify with a run, never from docs.
+
+**Unverified:** whether the slash menu ever listed agents. Every surface we have seen
+lists commands and skills there and routes agents through the Agent tool and the mention,
+which reads as "never in autocomplete" rather than "removed in 3.0.x" — but that is an
+inference from the surfaces above, not a measurement of the menu. The run that settles
+it: in an interactive session on the current build, type a slash followed by a plugin
+prefix, then an at-sign followed by the same prefix, and record what each menu lists.
+
+**What this means for GP-1043:** on present evidence there is no regression to fix. The
+migration stands on its own merits — one shape for reusable procedures, a surface the
+user can find, and a memory identity that belongs to the workflow rather than to the file
+type.
+
 ## Follow-ups
 
 Recorded, none done.
@@ -329,6 +366,8 @@ Recorded, none done.
 5. Consider `bin/` for `store-cli.cjs`.
 6. Re-probe §8 interactively, and check whether the built-in command list that beats a
    plugin's own is version-dependent.
+7. Settle §9's slash-menu question with an interactive run on the current build, and
+   re-check the `@agent-` mention at the same time.
 
 ## Provenance
 
@@ -343,3 +382,8 @@ disagree, §8 wins.
 Everything under "Follow-ups", and every judgement about what this means for our design,
 is our inference and not upstream text. §3 is explicitly an unresolved conflict, not a
 finding.
+
+§9's measured bullets come from a live session on 2026-09-14 (Claude Code 2.1.268): the
+agent list is that session's own tool listing, and the frontmatter finding is a Skill-tool
+invocation observed in it. Its recorded bullet is a prior run's result carried in project
+memory; its unverified bullet is inference and says so.

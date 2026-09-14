@@ -23,8 +23,7 @@ It is a second pass, and it says so in its name: it complements
 correctness-focused review and the project's own automated gates rather than
 replacing either. The merge decision is the human's.
 
-Use `$ARGUMENTS` as the direct task input when provided, then retain the current
-conversation so accepted findings can be captured without re-running the skill.
+Use `$ARGUMENTS` as the direct task input when provided.
 
 Underneath, invoke `gutt-pro:memory-search` for the search ladder and relevance
 gate, `gutt-pro:graph-traversal` for relationship walking, and
@@ -271,13 +270,14 @@ Rules 6 and 7 govern; in practice:
 
 ## Learning Protocol
 
-Do not ask the user to re-run this skill. When the current conversation contains
-an accepted, reusable finding, invoke `gutt-pro:memory-capture` automatically
-before completing the workflow. Let that skill classify, deduplicate, and apply
-its trust-tier gate; pause only if the gate itself requires confirmation that is
-not yet present. Pass the resolved org `group_id`, `agent_id="pr-reviewer--<scope>"`, and
-`last_n_episodes=0` on every org write, then verify the stored group. Personal
-writes are always untagged; disputed or one-off findings are never captured.
+When the conversation holds an accepted, reusable finding, capture it before
+finishing: invoke `gutt-pro:memory-capture` with the resolved org `group_id`,
+`agent_id="pr-reviewer--<scope>"` and `last_n_episodes=0` on every org write.
+That skill classifies, deduplicates, and applies its trust-tier gate; a gated
+type waits for the human signal it requires, and nothing else waits. No visible
+org write tool means no capture — say so in one line. Then verify the stored
+group (rule 7). Personal writes are always untagged; disputed or one-off
+findings are never captured.
 
 ## Degradation
 

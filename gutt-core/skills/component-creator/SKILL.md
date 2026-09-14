@@ -194,15 +194,17 @@ missing historical layer once.
 
 ## Learning Protocol
 
-Before completing the workflow, automatically invoke `gutt-pro:memory-capture`
-for any reusable design lesson a future component creator could not cheaply
-derive from the files or platform documentation. Do not require this skill to be
-run again. Let `memory-capture` classify, deduplicate, and apply its trust-tier
-gate; pause only if that gate itself requires confirmation that is not yet
-present. On every org write pass the resolved `group_id`,
-`agent_id="agent-creator--<scope>"`, and `last_n_episodes=0`; verify with the
-registered node when it matters. Personal writes remain untagged. Routine facts
-such as “created a skill” and unaccepted design opinions are not lessons.
+When the conversation holds a reusable design lesson a future component creator
+could not cheaply derive from the files or the platform documentation — a naming
+collision and how it was resolved, a convention gap the scaffold exposed, a
+template clause that turned out wrong — capture it before finishing: invoke
+`gutt-pro:memory-capture` with the resolved `group_id`,
+`agent_id="agent-creator--<scope>"` and `last_n_episodes=0` on every org write.
+That skill classifies, deduplicates, and applies its trust-tier gate; a gated
+type waits for the human signal it requires, and nothing else waits. No visible
+org write tool means no capture — say so in one line. Verify with the registered
+node when it matters. Personal writes remain untagged. Routine facts such as
+"created a skill" and unaccepted design opinions are not lessons.
 
 ## Output format
 

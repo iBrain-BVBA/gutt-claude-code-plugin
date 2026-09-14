@@ -234,9 +234,12 @@ whole session.
 
 ### Agents
 
-One, deliberately. An agent earns its place here only when the **separate context
-window and deterministic preload** are the point; anything that is a reusable procedure
-the main agent should follow is a skill instead.
+One, deliberately. `gutt-pro-memory` stayed an agent as a sequencing decision: its
+memory orchestration and identity behaviour get their own migration decision rather
+than riding along with the straightforward conversions, and it is the stable
+compatibility point while everything else moved. The generalized memory protocol
+supports agents and skills alike, so nothing waits on it. Anything that is a reusable
+procedure the main agent should follow is a skill.
 
 | Agent             | Purpose                                                                                               |
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
@@ -330,6 +333,12 @@ names every key; `story-creation` gates each create and edit on approval of the
 exact content in the session. `backlog-prioritization` writes nothing — never a
 rank or priority field. Claims with no supporting evidence are labelled as such
 rather than presented with confidence.
+
+The same two also write to memory, under their own workflow identities
+(`story-creation--<scope>` and `backlog-dedupe--<scope>`): once the user has decided,
+each captures the outcome automatically through `memory-capture` and its trust-tier
+gate, so the next run on that backlog starts from what this one decided.
+`backlog-prioritization` writes nothing anywhere.
 
 ## Usage
 
