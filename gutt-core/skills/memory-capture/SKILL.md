@@ -1,6 +1,6 @@
 ---
 name: memory-capture
-description: "Write to the gutt knowledge graph with discipline — the capture counterpart to memory-search. Use when something learned, decided, or agreed is worth persisting for future work; classify it, dedup against what's already there, and write one self-contained episode. Auto-write covers only Insight and Incident — Lesson, Decision, and WorkingAgreement need an explicit human signal first. Triggers on: remember that, capture this, we decided, lesson learned, next time, note that, actually that's wrong, document this decision, store this insight, record this, worth remembering, don't forget."
+description: "Write to the gutt knowledge graph with discipline — the capture counterpart to memory-search. Use when something learned, decided, or agreed is worth persisting for future work; classify it, dedup against what's already there, and write one self-contained episode. Auto-write covers only Insight and Incident — Lesson, Decision, and WorkingAgreement need an explicit human signal first, and are stored only once the user approves the exact text: in the review card on hosts that draw one, through a question in chat on hosts that don't. Triggers on: remember that, capture this, we decided, lesson learned, next time, note that, actually that's wrong, document this decision, store this insight, record this, worth remembering, don't forget, not stored yet, held draft, review these memories."
 ---
 
 # Memory Capture
@@ -24,8 +24,11 @@ _whether you may write it without asking_.
 2. **Trust-tier gate.** Auto-write only **Insight** and **Incident**.
    **Lesson**, **Decision**, and **WorkingAgreement** need an **explicit human
    signal** — the user asked for it or confirmed it. No signal (you inferred it
-   yourself) → **draft it for review, don't write.** Can't confidently type it →
-   treat it as gated.
+   yourself) → **draft it for review, don't write** (rule 8). Can't confidently
+   type it → treat it as gated. The signal is a reason to draft, not a waiver of
+   review: where the server holds gated types, "capture that lesson" still ends
+   in the user approving the text you wrote, because they asked for the lesson,
+   not for your wording of it.
 3. **Keep org writes self-contained — `last_n_episodes=0`.** Pass
    `last_n_episodes=0` on every org/group write; the server default of `3` is
    wrong for plugin writes — it pulls unrelated recent episodes into entity/edge
@@ -95,6 +98,18 @@ _whether you may write it without asking_.
    rule 3. Prose in the body is not a substitute — extraction reads this field,
    not your cross-references.
 
+8. **A held draft is settled by the user, on a surface they can see.** With
+   memory review on, a gated write comes back _held_ — "Not stored yet", with a
+   draft id — and nothing is stored until the user approves its exact text.
+   Where that happens depends on the **host, not the tool list**: a host that
+   draws the review card (desktop and web chat clients, Cowork among them)
+   reviews there; a terminal or IDE agent such as Claude Code draws none, even
+   with the card tools listed, so the review is a question in chat and each
+   draft is settled with `confirm_memory` or `discard_draft`. Unsure which you
+   are → chat. Never confirm a draft the user has not seen and agreed to, never
+   report a held draft as captured, and settle it this session — drafts expire
+   after 24 hours. Both paths are in `references/review.md`.
+
 ## When to write — and when not to
 
 **Write** when there's a concrete, reusable insight a future agent couldn't get
@@ -111,7 +126,8 @@ fight the tier gate: a Decision you inferred without the user saying so is a
 1. **Worth it?** Apply the significance test above. Cheap, obvious, or transient
    → stop.
 2. **Classify + gate.** Pick the type (below) and apply rule 2. Gated type with
-   no human signal → draft for review and stop here.
+   no human signal → it goes to review as a draft (rule 8), never straight to a
+   write. Carry on through steps 3–4 so the draft is deduped and well-formed.
 3. **Dedup.** `memory-search` rung 1 on the key terms. Already there? Write only
    the delta as a new episode, or skip. Before you move on, collect the episode
    ids of the near-matches you're writing against — from the `episodes` array of
@@ -119,7 +135,9 @@ fight the tier gate: a Decision you inferred without the user saying so is a
    you, and step 5 needs them.
 4. **Structure.** `name` with a typed prefix — one of the five tier types
    (`Insight:` / `Incident:` / `Lesson:` / `Decision:` / `WorkingAgreement:`);
-   `episode_body` as Context → Insight → Outcome → Guidance, ≤15,000 chars;
+   `episode_body` as Context → Insight → Outcome → Guidance, ≤15,000 chars —
+   written as `## Context`, `## Insight`, `## Outcome`, `## Guidance` headings,
+   since that is what the review card renders and what its checks look for;
    `source="json"` for structured runs, `"text"` for narrative; tz-aware ISO
    `reference_time` only when backdating.
 5. **Write.** Resolve tool and group per rule 4. If more than one scope is
@@ -128,8 +146,11 @@ fight the tier gate: a Decision you inferred without the user saying so is a
    is a misfile you cannot undo from here. Pass `last_n_episodes=0`, and
    `previous_episodes` with step 3's ids when there are any (rule 7). Omit
    `group_id` unless you're on the generic tool and must target a specific group.
-6. **Report — don't verify.** Say what you captured and stop; no confirmation
-   search (rule 6). Verify only if you're about to delete the source.
+   A gated draft goes through §"Review" instead, and a gated write that comes
+   back held joins it there — that reply is rule 8, not a failure.
+6. **Report — don't verify.** Say what you captured, and what is still waiting
+   on review, and stop; no confirmation search (rule 6). Verify only if you're
+   about to delete the source.
 
 ## Trust tiers
 
@@ -143,11 +164,11 @@ operative map, from the program's capture policy:
 - **Incident** — something broke, and what happened. _"A marker file was written
   on MCP failure too, permanently poisoning the needs-onboarding gate."_
 
-**Gated — write only on an explicit human signal, otherwise queue for review:**
+**Gated — write only on an explicit human signal, otherwise draft for review:**
 
 - **Lesson** — a corrective takeaway. _"Don't hardcode the MCP prefix; read it
   from the tool list."_ (User says "capture that lesson" → write; you inferred
-  it → queue.)
+  it → draft it for review.)
 - **Decision** — a choice with rationale. _"We kept the marketplace file
   version-free to avoid a second source of version drift."_
 - **WorkingAgreement** — a team rule. _"Every PR gets a Copilot review before
@@ -158,7 +179,9 @@ Anything you can't cleanly place → treat as gated.
 ## Batching
 
 Don't write one episode at a time in a tight loop. Collect up to **5–10**
-episodes and write them together.
+episodes and write them together. A review batch is smaller: at most five drafts,
+and four on a text host, where each draft gets its own question and a single
+question call takes four.
 
 Then stop. Don't run a verification search (rule 6): extraction is asynchronous
 and lags far enough behind the write that an immediate search tells you nothing —
@@ -170,6 +193,28 @@ Verify only when something irreversible depends on the write having landed — t
 `migrate-memory` path, which deletes local files and so treats an unverified
 write as unfinished. That skill owns the mechanics; it is the exception, not the
 pattern.
+
+## Review — getting a gated draft stored
+
+The procedure, the question layout and the replies to expect are in
+`references/review.md`. Its shape:
+
+- **Draft only what needs review.** Insight and Incident are written directly
+  (rule 2); putting them in a draft batch only makes their storage wait on
+  someone. For the gated types, `draft_memories_ui` stages up to five drafts in
+  one call and reports each one's checks; a write tool holds a single one and
+  replies with its draft id.
+- **Pick the surface by host** (rule 8). A card host shows the batch in the
+  review card and the user approves and submits it there. A text host asks — in
+  Claude Code with `AskUserQuestion`, one question per draft with its exact text
+  as the preview — then confirms what the user kept and discards what they
+  didn't.
+- **Ask at a pause, not mid-task.** Review the drafts once the turn's work is
+  done, all together.
+- **The user decides; you only carry it out.** Your own `approve` never approves
+  a review-tier draft — the server ignores it and refuses a submit while one is
+  undecided — and a `confirm_memory` the user didn't ask for is the one write
+  this design exists to prevent.
 
 ## Reporting back after a capture
 
@@ -209,6 +254,12 @@ name each tool's target namespace and are what you pair a group to anyway
 choice between several groups is worth pausing to ask about — and there, ask
 rather than guess.
 
+**No review tools** — `confirm_memory` absent from your tool list — means the
+server has memory review off and writes gated types directly. Rule 2 still holds,
+and you carry the review yourself: an explicit signal licenses the write, and an
+inferred draft gets the text path's question (`references/review.md`) before you
+write it, never after.
+
 ## References
 
 - `references/tools.md` — exact write-tool contracts (`add_memory`,
@@ -216,6 +267,9 @@ rather than guess.
   group-targeting model, and the queued-not-persisted caveat. Its §"Finding the
   group" covers the `group://` resources: how to enumerate them, the payload
   shape, and what to do when the payload is empty or the resource is missing.
+  Its §"Memory review" has the draft, card and settle tools and the held reply.
+- `references/review.md` — settling held drafts: telling a card host from a text
+  host, the card path, the question-tool path, and what each refusal means.
 - Dedup and read tools: `memory-search`. Relationship checks: `graph-traversal`.
 - Deciding which of two contradicting memories should stand:
   `conflict-adjudication`. It recommends only — the approved correction is

@@ -93,7 +93,9 @@ register_agent(
 
 - When you act as this registered workflow, pass `agent_id="<name>"` on **every** org-graph
   write you make (`add_memory` / `add_memory_to_<group>`). This stamps the episode as yours
-  (provenance) and lets you recall it later from your own scope.
+  (provenance) and lets you recall it later from your own scope. A draft batch takes it
+  once, on `draft_memories_ui`, for every draft in the batch; a draft a write tool held
+  keeps the `agent_id` that write carried, and confirming it does not change it.
 - This rule is about provenance — it applies to writes a _named workflow_ makes.
   For an inline skill, the tag names the capability that produced the memory; it
   does not claim that a separate actor ran. Memory captured from the main session
