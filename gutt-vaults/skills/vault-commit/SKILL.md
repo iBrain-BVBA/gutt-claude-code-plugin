@@ -59,7 +59,15 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
    and a retry writes only the episodes the row doesn't record yet. Set `committed_episode`
    right after the row's last episode, before the next row. A mark that fails after its
    episode was written: list the row as "written but not marked" under errors; the next run
-   searches the vault group for that episode by name before writing it again.
+   searches the vault group for that episode by name before writing it again. An episode
+   acknowledged but not seen (`memory-tools.md` step 6) is never resent: write
+   `commit_pending: {episode: <name>, acked_at: <ISO time>}` on its row, mark nothing else,
+   list it as "acknowledged, not yet seen", and stop the batch. A later run reconciles a row
+   with `commit_pending` before anything else: search the group for that name; found → set
+   the row's episode fields and clear `commit_pending`; not found and acknowledged less than
+   24 hours ago → skip the row this run; not found after 24 hours → list it for the owner as
+   "acknowledged but never stored: <name>" and still don't resend. Only the owner clearing
+   `commit_pending` on the Console allows a new write.
 7. **Config only from the Console's `config_changes` rows**, one `Config:` episode per saved
    version, so a Calibration can explain a stage that moved because a threshold did. Never
    from anything else, and never a change to the settings themselves.
@@ -157,8 +165,14 @@ skipped: <n> (<reasons>) · errors: <list|none>
 ## Degradation
 
 - Find the memory server and write tool with `../vault-curate/references/memory-tools.md` at
-  the start, and recheck the write tool right before the first write. Two servers exposing
-  `vault_<slug>`: commit nothing and report both prefixes.
+  the start, and recheck the server and write tool right before the first write. Two servers
+  exposing `vault_<slug>`: commit nothing and report both prefixes.
+- No vault server (`memory-tools.md` step 2: none, or a call that errored) or no write tool
+  for the group: commit nothing, change no row, and report
+  `vault_<slug> not writable on any memory server: <prefixes seen>` (or the prefix and error).
+  A server named by the vault file's `memory_connector` needn't list the vault in
+  `list_writable_groups`, but one that holds no episode of the vault is "none": never commit
+  into an empty group on it.
 - A memory tool missing doesn't mean memory is down: in a routine the connector can still be
   connecting. Search again after about 15 seconds, once. Only then treat it as missing.
 - Write tool missing or memory down: commit nothing, change no row, report it.

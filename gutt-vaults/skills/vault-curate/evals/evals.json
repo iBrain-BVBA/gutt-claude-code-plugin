@@ -101,6 +101,66 @@
         "stage_by_class has finding/pricing at stage 1 with auto_reject true",
         "The run row notes name finding/pricing as moved by config v5"
       ]
+    },
+    {
+      "id": 8,
+      "eval_name": "two-servers-stop-before-write",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire. Two memory servers are connected, mcp__claude_ai_gutt-pro-memory__ and mcp__plugin_gutt-pro_gutt-mcp-remote__, and list_writable_groups on both lists vault_next_agent_to_hire.",
+      "expected_output": "Finds both prefixes (searching twice), sees both expose the vault, and stops before any write: no memory write, no scout or reviewer spawn, no pending rows. The run row and the output name both prefixes.",
+      "files": [],
+      "assertions": [
+        "No add_memory* or register_agent call",
+        "No Agent call (no vault-scout, no vault-reviewer)",
+        "No pending row is written to the Console findings collection",
+        "The output names both mcp__claude_ai_gutt-pro-memory__ and mcp__plugin_gutt-pro_gutt-mcp-remote__"
+      ]
+    },
+    {
+      "id": 9,
+      "eval_name": "reviewer-unwritten-validated",
+      "prompt": "(Step 5 of /gutt-vaults:vault-curate next-agent-to-hire; the reviewer has returned.) Its output is in fixtures/reviewer-unwritten.json. Apply it. get_episode on this run's server finds no episode for id 00000000-0000-0000-0000-000000000000 or 00000000-0000-0000-0000-000000000001. Id 00000000-0000-0000-0000-000000000002 is 'Procedure: vault-reviewer source check v2' in vault_next_agent_to_hire with source_description 'vault-reviewer, curate-2026-11-16'. Id 00000000-0000-0000-0000-000000000003 is 'Procedure: vault-reviewer confidence' in vault_next_agent_to_hire with an empty source_description, written before curate set one; get_episodes_for_entity on the vault-reviewer agent node lists it.",
+      "expected_output": "Writes only the valid pairs: the Run, Insights 1-5, 'Ack: Feedback vault-librarian → vault-reviewer 2026-11-20' and both Procedure deltas that refine the reviewer's own episodes (one in the current source_description format, one older episode tagged vault-reviewer) under vault-reviewer, each with its previous_episodes unchanged, and the Feedback to vault-scout under vault-scout. Drops the Finding, the Insight tagged vault-librarian, the Procedure tagged vault-librarian, the Feedback whose agent_id doesn't match its target, Insights 6-7 over budget, the Procedure delta whose previous_episodes id isn't an episode of the vault, and the Ack that carries previous_episodes, and logs each dropped name and reason in the run row.",
+      "files": ["evals/fixtures/reviewer-unwritten.json"],
+      "assertions": [
+        "Every add_memory* call targets vault_next_agent_to_hire with last_n_episodes=0",
+        "'Run: vault-reviewer 2026-11-23', 'Ack: Feedback vault-librarian → vault-reviewer 2026-11-20' and 'Insight: verdict pattern 1' to 5 are written with agent_id vault-reviewer",
+        "'Feedback: vault-reviewer → vault-scout — cite the pricing page, not the blog' is written with agent_id vault-scout",
+        "No episode whose name starts 'Finding:' is written",
+        "'Insight: librarian should auto-approve pricing' and 'Procedure: librarian step 3' are not written",
+        "'Feedback: vault-reviewer → vault-librarian — tag mismatch' (agent_id vault-scout) is not written",
+        "'Insight: verdict pattern 6' and 'Insight: verdict pattern 7' are not written",
+        "'Procedure: vault-reviewer precedent search v2' (previous_episodes id not found by get_episode in vault_next_agent_to_hire) and 'Ack: Feedback vault-scout → vault-reviewer 2026-11-21' (previous_episodes on an Ack) are not written",
+        "'Procedure: vault-reviewer source check v3' is written with previous_episodes [\"00000000-0000-0000-0000-000000000002\"] and 'Procedure: vault-reviewer confidence v2' with previous_episodes [\"00000000-0000-0000-0000-000000000003\"], both with agent_id vault-reviewer",
+        "Every episode written carries source_description '<agent_id>, curate-2026-11-23'",
+        "The run row lists every dropped entry by name with a reason"
+      ]
+    },
+    {
+      "id": 10,
+      "eval_name": "memory-connector-picks-the-named-server",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire --dry-run. The vault file sets memory_connector: gutt-pro-memory-stage. Two memory servers are connected: mcp__claude_ai_gutt-pro-memory-stage__, whose list_writable_groups does not list vault_next_agent_to_hire but whose get_episodes(group_id=\"vault_next_agent_to_hire\") returns the charter, and mcp__claude_ai_gutt-pro-memory__, whose list_writable_groups lists vault_next_agent_to_hire and whose get_episodes(group_id=\"vault_next_agent_to_hire\") also returns an episode.",
+      "expected_output": "Searches for servers twice, takes mcp__claude_ai_gutt-pro-memory-stage__ as the vault's server because the vault file names its connector (no list_writable_groups requirement), ignores the other server and names it in the run row as \"also exposes vault_next_agent_to_hire, ignored\", picks the generic add_memory with group_id as write_tool, and goes on with the dry run instead of stopping on two servers.",
+      "files": [],
+      "assertions": [
+        "The printed boot line's memory_server is mcp__claude_ai_gutt-pro-memory-stage__",
+        "The run row names mcp__claude_ai_gutt-pro-memory__ as 'also exposes vault_next_agent_to_hire, ignored'",
+        "The run does not stop with 'not writable on any memory server' or on two servers",
+        "Under mcp__claude_ai_gutt-pro-memory__ the only call, if any, is one read-only get_episodes(group_id=\"vault_next_agent_to_hire\") during server discovery",
+        "No add_memory* call is made (dry run)"
+      ]
+    },
+    {
+      "id": 11,
+      "eval_name": "memory-connector-empty-group-stops",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire. The vault file sets memory_connector: gutt-pro-memory-stage. mcp__claude_ai_gutt-pro-memory-stage__ is connected and its get_episodes(group_id=\"vault_next_agent_to_hire\") returns no episodes. mcp__claude_ai_gutt-pro-memory__ is also connected and its get_episodes for the group returns the charter.",
+      "expected_output": "Treats the named connector's empty group as no vault server and stops before any write: the vault's copy is elsewhere, so it neither reads the charter from the other server nor starts a second copy on the named one. Reports 'vault_next_agent_to_hire not writable on any memory server' with the prefixes seen.",
+      "files": [],
+      "assertions": [
+        "No add_memory* or register_agent call",
+        "No Agent call (no vault-scout, no vault-reviewer)",
+        "No pending row is written to the Console findings collection",
+        "The output contains 'vault_next_agent_to_hire not writable on any memory server'"
+      ]
     }
   ]
 }

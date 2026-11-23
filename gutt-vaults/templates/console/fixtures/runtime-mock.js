@@ -113,6 +113,13 @@
         press("r1-4", "Keep open"); return wait(100);
       }).then(function () { return { status: store.findings["r1-4"].status, left_open: store.findings["r1-4"].left_open, human: store.findings["r1-4"].human || null }; });
     },
+    leave_open_past: function () {
+      press("r1-4", "Leave open"); return wait(50).then(function () {
+        var input = document.getElementById("revisit-r1-4"); input.value = "2000-01-01";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        press("r1-4", "Keep open"); return wait(100);
+      }).then(function () { return { left_open: store.findings["r1-4"].left_open || null, writes: window.__writes.length, toast: document.getElementById("toast").textContent }; });
+    },
     in_place: function () {
       press("r1-1", "Add a note"); var ta;
       return wait(50).then(function () {

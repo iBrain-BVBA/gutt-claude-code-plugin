@@ -48,7 +48,9 @@ Percentages are stored as fractions (`0.90`), shown as `90%` on the Console.
 
 `ladder.class_ceilings` is a map of stage class to stage (`{"finding/pricing": 1}`), each
 from 0 to 3. A class in it may not go above its own number or above `ladder.ceiling`. The
-`conflict` class always escalates and takes no ceiling.
+`conflict` class always escalates and takes no ceiling. It is stored as the top-level
+`meta/config.class_ceilings`, not inside `values`: read it from there, and always pass it in
+the reviewer's `config:` line as `ladder.class_ceilings` (`{}` when the field is absent).
 
 Every key takes effect at the **next curate run**, the brief keys at the next brief run. A
 lower `ladder.ceiling` or class ceiling drops a class at once; a changed promotion threshold
@@ -115,8 +117,11 @@ config: {"config_version": 8, "review": {"precedents_min": 5, …}, "ladder": {"
 stage_by_class: {"finding/pricing": {"stage": 1, "auto_reject": true, "auto_approve": false}, …}
 ```
 
-The reviewer checks the values again (clamps out-of-range ones and says so in `notes`) and
-never reads the Console itself.
+Always send both lines, even when every value is a default (`config_version: 0`) or no class
+has a stage yet (`stage_by_class: {}`). Without them the reviewer holds every class at stage 0
+for the run; it never falls back to a Calibration or the defaults. The reviewer checks the
+values again (clamps out-of-range ones and says so in `notes`) and never reads the Console
+itself.
 
 ## Promotion re-check (every curate run)
 
@@ -125,17 +130,30 @@ next curate run. vault-curate re-checks each class at boot:
 
 1. Take the latest per-class numbers from `meta/reviewer` (`stage_by_class`: reject and
    approve predictions with their adjusted accuracy, rolling 30-day agreement, last override)
-   and the latest replay (`k` agreeing of `n` replayed); if `meta/reviewer` is missing, from the latest `Calibration:`
-   episode. No Calibration yet: every class is stage 0. A missing replay never skips the
-   re-check: `auto_reject` is still re-checked on its own, and only `auto_approve` needs a
-   qualifying replay (it stays off without one).
+   and the latest replay (`k` agreeing of `n` replayed); if `meta/reviewer` is missing, has no
+   `calibration`, or its `calibration` isn't the name of the latest `Calibration:` episode
+   (newest by the date and time in its name; the brief's Console write failed, a rerun
+   included), from that episode, and note the mismatch. Compare names, never `at` with an
+   episode's creation time: the brief writes the episode before `meta/reviewer`, and
+   ingestion lags. If the latest Calibration episode can't be read either, every class is
+   stage 0 for the run. No Calibration yet: every class is stage 0. A
+   `meta/reviewer` read that fails: every class is stage 0 for the run, listed in the run
+   row's errors. A source without per-direction counts (a Calibration written before them):
+   keep the Calibration's stage and permissions, capped by step 4, and note `re-check skipped:
+Calibration <date> has no per-direction counts`; never read missing counts as zero. A
+   missing replay never skips the re-check: `auto_reject` is still re-checked on its own, and
+   only `auto_approve` needs a qualifying replay (it stays off without one).
 2. Apply `../../vault-review/references/autonomy-ladder.md` to those numbers with this run's
    config: `auto_reject` on when the reject predictions meet `ladder.stage1_calls` at
    `ladder.stage1_agreement`; `auto_approve` on when the approve predictions meet
    `ladder.stage2_approve_calls` at `ladder.stage2_agreement` and a replay of at least
    `ladder.replay_size` verdicts meets `ladder.replay_pass` (a smaller replay, run before the
-   owner raised the size, doesn't count until the next Calibration replays the new size); stage 3 when `auto_approve` is on and the rolling agreement meets
-   `ladder.stage3_agreement`.
+   owner raised the size, doesn't count until the next Calibration replays the new size);
+   stage 3 when `auto_approve` is on and the class's own rolling 30-day adjusted agreement
+   meets `ladder.stage3_agreement`. A source without that number (a Calibration written
+   before it) keeps the Calibration's own stage 3 call, as step 1 does for missing counts, and
+   notes `stage 3 re-check skipped: no class rolling agreement`; the vault-wide rolling
+   agreement never stands in for it.
 3. An override since the Calibration turns off the overridden direction for that class (the
    ladder's immediate demotion). `auto_approve` also stays off while the class has any
    override within `review.override_cooloff_days` (stage 2's entry rule).
@@ -164,9 +182,20 @@ reach the Console:
 {
   "slug": "<slug>",
   "group_id": "vault_<slug with - as _>",
-  "console_url": "https://claude.ai/artifact/…"
+  "console_url": "https://claude.ai/artifact/…",
+  "memory_connector": "<connector name, or a list of names; optional>"
 }
 ```
+
+`memory_connector` is optional. When set, it names the gutt connector that holds the vault,
+or a list of names for that one deployment as different surfaces see it (for a vault on the
+shared gutt stage, `gutt-mcp-remote` where the gutt-pro plugin's default server is used, and
+the stage connector's name where a routine connects through claude.ai). `memory-tools.md`
+step 2 uses that server, ignores any other that also exposes the group, doesn't require the
+vault in its `list_writable_groups`, and stops when it holds no episode of the vault (except
+for a new vault's first charter). Unset: the vault's server is the one that lists
+`vault_<slug>` as writable. Each name's prefix must be on the reviewer's allowlist
+(`memory-tools.md` §vault-reviewer).
 
 Everything else is on the Console. `meta/vault` (`console-data.md`) holds name, owner,
 question, beats, the page URLs, `companion_groups_read_only` and an optional `write_tool_hint`;

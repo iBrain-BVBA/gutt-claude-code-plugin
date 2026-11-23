@@ -41,6 +41,30 @@
       "expected_output": "Stops with the missing-slug message and writes nothing; doesn't assume the only vault in the repo.",
       "files": [],
       "assertions": ["No memory call", "The reply asks for the slug"]
+    },
+    {
+      "id": 4,
+      "eval_name": "new-vault-on-named-connector",
+      "prompt": "/gutt-vaults:vault-steer example-new-vault --charter. The vault file exists with memory_connector: gutt-pro-memory-stage. mcp__claude_ai_gutt-pro-memory-stage__ is connected; its list_writable_groups does not list vault_example_new_vault and get_episodes(group_id=\"vault_example_new_vault\") returns no episodes. The owner says yes to each drafted episode.",
+      "expected_output": "Takes the named connector as the vault's server even though the group has no episodes and isn't in list_writable_groups, doesn't ask for a gutt admin, and writes the confirmed Charter episodes through the generic add_memory with group_id=\"vault_example_new_vault\".",
+      "files": [],
+      "assertions": [
+        "The reply never says a gutt admin is needed or that the group is missing",
+        "Every add_memory call is under mcp__claude_ai_gutt-pro-memory-stage__ and passes group_id='vault_example_new_vault'",
+        "No add_memory call happens before the owner's yes for that episode"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "new-vault-group-not-provisioned",
+      "prompt": "/gutt-vaults:vault-steer example-new-vault --charter. The vault file exists without memory_connector. One memory server, mcp__claude_ai_gutt-pro-memory__, is connected; its list_writable_groups does not list vault_example_new_vault. The owner says yes to each drafted episode.",
+      "expected_output": "Finds no server that lists vault_example_new_vault as writable, writes nothing, prints the confirmed episodes for the owner to keep, and says the group needs a gutt admin to create it, or memory_connector set to a connector whose server starts groups on the first write.",
+      "files": [],
+      "assertions": [
+        "No add_memory* call",
+        "The reply prints the drafted Charter episodes",
+        "The reply says vault_example_new_vault must be created by a gutt admin, or memory_connector set for a server that starts groups on the first write"
+      ]
     }
   ]
 }

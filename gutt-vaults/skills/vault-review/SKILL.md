@@ -24,8 +24,8 @@ the reviewer's episodes afterwards. The reviewer only reads under `agent_id="vau
 
 Before the first scoped read, check `search_memory_nodes(query="vault-reviewer",
 entity="Agent", group_ids=["vault_<slug>"])`. A node of that exact name whose only episodes come
-from this vault's own episodes is ours. Any other exact-name node is foreign: stop, return every
-row as `escalate` with reason "identity check failed", and say so. On an unknown-agent error on a
+from this vault's own episodes is ours. Any other exact-name node is foreign: fail closed
+(Step 1.0) with reason "identity check failed", and say so. On an unknown-agent error on a
 scoped read, work group-wide without `agent_id` and say so in `notes`.
 
 ## Settings
@@ -36,9 +36,16 @@ each value against that file's range: clamp one outside it, use the default for 
 missing or not a number, and list each in `notes` (`config: review.precedents_min 1 → 3
 (clamped)`). The `ladder` keys fail closed: a `ladder.ceiling` or class ceiling that is
 missing or not a number counts as 0, never its default (the default is the most permissive
-stage). No `config:` line at all: the owner's limits are unknown, so escalate every row with
-reason "config missing" and say so in `notes` (`../vault-curate/references/vault-config.md`
-§Reading the config at boot).
+stage). `ladder.class_ceilings` missing from `config:` (vault-curate always sends it, `{}`
+when the vault has none): you can't know which classes the owner capped, so hold every class
+at stage 0 for this run and note `class_ceilings absent: every class held at stage 0`; never
+read it as "no class ceilings".
+
+**No `config:` line, or no `stage_by_class:` line: hold every class at stage 0** for this run.
+Escalate every row (still with its prediction and precedents) and start `notes` with
+`config not passed: every class held at stage 0`. Never fall back to the defaults or to a
+Calibration for autonomy: vault-curate always sends both lines
+(`../vault-curate/references/vault-config.md` §What vault-curate passes to the reviewer).
 
 ## Hard rules
 
@@ -69,34 +76,49 @@ reason "config missing" and say so in `notes` (`../vault-curate/references/vault
 
 ### Step 1 — boot
 
-0. **Vault check** (hard rule 0), before any tool call.
-1. **Memory tools.** Search for `<memory_server>search_memory_facts` with ToolSearch, using
-   the prefix vault-curate passed. Found → use that prefix for every call. Not found, or no
-   prefix passed → every row `escalate`, reason
-   `memory server not in reviewer allowlist: <prefix>`; stop
-   (`../vault-curate/references/memory-tools.md`).
-2. Identity check (above). No registration: vault-curate has registered you.
-3. **Effective charter**, group-wide: follow `../vault-curate/references/charter-assembly.md`.
+**Vault check first** (hard rule 0), before any tool call. Then:
+
+0. **Memory tools.** Use only the prefix vault-curate passed; never search by a bare tool name
+   or call a tool under another prefix. Read the known prefixes in
+   `../vault-curate/references/memory-tools.md` §vault-reviewer, then:
+   - **No prefix passed** → fail closed, reason `no memory_server passed by vault-curate`.
+   - **Prefix not a known prefix** → fail closed, reason
+     `memory server not in reviewer allowlist: <prefix>`.
+   - **Known prefix** → search for `<memory_server>search_memory_facts` with ToolSearch. Not
+     found: the connector may still be connecting, so search once more after about 15 seconds.
+     Found → use that prefix for every call. Still missing → fail closed, reason
+     `memory unavailable: <prefix>`.
+
+   **Fail closed** means: every row `escalate` with that reason, `prediction: null`,
+   `confidence: null`, `precedents: []`, `unwritten: []`; read nothing more and return. A
+   prediction made without memory is a guess, so it never counts toward Calibration
+   (`references/autonomy-ladder.md` §Agreement).
+
+1. Identity check (above). No registration: vault-curate has registered you.
+2. **Effective charter**, group-wide: follow `../vault-curate/references/charter-assembly.md`.
    Take the review-policy charter's always-escalate classes. Numbers come from `config:`.
-4. **Own scope** (`agent_id="vault-reviewer"`): the latest `Calibration:` (only when no
-   `stage_by_class` was passed), every `Verdict: override …` episode within
+   "charter incomplete: <reason>" (that file's step 2): escalate every row with that reason,
+   still with its prediction and precedents (memory works, only the policy is uncertain, so
+   the predictions count toward Calibration), and say so in `notes`.
+3. **Own scope** (`agent_id="vault-reviewer"`): every `Verdict: override …` episode within
    `review.override_cooloff_days`, the newest `Procedure:` of each step, unacknowledged
    `Feedback: … → vault-reviewer` episodes.
-5. **Peer scope:** `vault-librarian` Runs and Insights, only for rows whose significance you
+4. **Peer scope:** `vault-librarian` Runs and Insights, only for rows whose significance you
    need to understand.
-6. **Group-wide:** human Verdicts for the classes in this batch (§Precedent).
-7. Note one boot line for the Run: charter ids, procedure versions, feedback ids applied,
-   `config_version`.
+5. **Group-wide:** human Verdicts for the classes in this batch (§Precedent).
+6. Note one boot line for the Run: `memory_server`, charter ids, procedure versions, feedback
+   ids applied, `config_version`.
 
-No `stage_by_class` and no Calibration means **stage 0 (shadow) for every class**.
+No `config:` or no `stage_by_class:` line means **stage 0 (shadow) for every class**
+(§Settings).
 
 ### Step 2 — classify each row
 
 Each row gets two keys (`references/autonomy-ladder.md` §Stage class):
 
 - **Stage class** (`class` in the output), the key Calibration stages: `finding/<beat>`,
-  `card_update`, `reverify`, `conflict`. Read the stage for this key from `stage_by_class`
-  (or the Calibration's "Stage by class" table); a key missing from it is stage 0.
+  `card_update`, `reverify`, `conflict`. Read the stage for this key from `stage_by_class`; a
+  key missing from it is stage 0.
 - **Precedent features**, for similarity only: `beat`, `claim_type`, `source_class`,
   `source_domain`, significance band (1–2, 3, 4, 5).
 
@@ -123,8 +145,7 @@ and no override of you exists in its stage class within `review.override_cooloff
 ### Step 4 — decide within the stage
 
 Follow `references/autonomy-ladder.md`. Read each class's permissions from `stage_by_class`
-(`auto_reject`, `auto_approve`), or the Calibration line `stage <s> (auto_reject on|off,
-auto_approve on|off)`. An override you find that vault-curate didn't account for turns that
+(`auto_reject`, `auto_approve`). An override you find that vault-curate didn't account for turns that
 direction off; nothing turns one on. Shadow, or the permission for your
 predicted direction is off: return `escalate` with your prediction. `auto_reject` on: you may
 auto-reject an eligible row. `auto_approve` on: you may auto-approve an eligible row at
@@ -150,7 +171,7 @@ Final message: only this JSON.
     {
       "row_id": "...",
       "decision": "auto_approve|auto_reject|escalate",
-      "prediction": "approve|reject|edit",
+      "prediction": "approve|reject|edit|null",
       "confidence": 0.0,
       "precedents": ["<Verdict episode uuid>"],
       "class": "<class key>",
@@ -163,7 +184,8 @@ Final message: only this JSON.
     {
       "agent_id": "vault-reviewer|vault-librarian|vault-scout",
       "name": "<episode name>",
-      "body": "<episode text>"
+      "body": "<episode text>",
+      "previous_episodes": ["<episode uuid it refines>"]
     }
   ],
   "notes": "<anything curate should log in the run row>"
@@ -173,16 +195,28 @@ Final message: only this JSON.
 `audit_sample`: `review.audit_rate` of your auto decisions, rounded up, and at least
 `review.audit_min` when you made that many or more.
 
+`prediction` and `confidence` are `null` only when you failed closed (Step 1.0, identity check
+failed); every other row carries a prediction.
+
 `unwritten`: `agent_id` is `vault-reviewer` for `Run:`, `Insight:`, `Procedure:` and `Ack:`, and
 the target's name for `Feedback: vault-reviewer → <to> — …`.
 
+`previous_episodes`: only on a `Procedure:` or `Insight:` that refines one of your earlier
+episodes (`../vault-curate/references/run-end-memory.md` step 3). The body carries only the
+change, so list the uuid of each episode it refines, as `get_episodes` or
+`get_episodes_for_entity` returned it under `vault_<slug>` and `vault-reviewer`, and open the
+body with `Refines '<predecessor name>'`. vault-curate checks each id with `get_episode` and
+drops a delta whose predecessor isn't in `vault_<slug>`, isn't the same type, has a
+`source_description` that doesn't start with `vault-reviewer` (a librarian's or scout's
+episode; an older episode written before that format passes when it is tagged
+`vault-reviewer`), or isn't named in the body. Omit the field (or `[]`) for a new episode.
+
 ## Degradation
 
-- A memory tool missing from your tool list doesn't mean memory is down: in a routine the
-  connector can still be connecting. If you have ToolSearch, search for the tool by its own
-  name (e.g. `get_episodes`) and once more after a short wait. Only then treat memory as
-  unavailable.
-- Memory unavailable: every row `escalate`, reason "memory unavailable"; write nothing.
+- Memory tools missing at boot: Step 1.0 owns it (one retry under the passed prefix only,
+  then fail closed). A tool under that prefix that disappears mid-run: search for
+  `<memory_server><tool>` once more; still missing → fail closed with reason
+  `memory unavailable: <prefix>`.
 - Episodes always go under `unwritten`; you have no write tools.
 - A row missing beat, domain or claim type: escalate it ("unclassifiable").
 
@@ -204,11 +238,19 @@ is `Feedback: vault-reviewer → <to> — <topic>`, tagged with the target, nami
 `evals/evals.json` replays the last `ladder.replay_size` held-out human verdicts.
 Auto-approve needs the replay to agree at or above `ladder.replay_pass`.
 
-Each eval prompt starts with the `vault:`, `group:` and `run:` lines vault-curate sends, and
-carries `memory_server: {memory_server}`. The runner fills it the way
-vault-curate does (`../vault-curate/references/memory-tools.md` steps 1–2), with a prefix on the
-reviewer's allowlist. The `unknown-prefix-fails-closed` eval passes a prefix that isn't, and
-`mismatched-group-refuses` a group that isn't the slug's.
+Each eval prompt starts with the `vault:`, `group:` and `run:` lines vault-curate sends, then
+`memory_server:`; the policy evals also send `config:` and `stage_by_class:`. The policy evals
+pass `memory_server: {memory_server}`, which the runner fills on **every** invocation,
+vault-brief's Calibration replay included, the way vault-curate does
+(`../vault-curate/references/memory-tools.md` steps 1–2, the vault file's `memory_connector`
+included). Never fill it from a previous run or a hard-coded prefix: installing the gutt-pro
+plugin can replace the connector and rename its tools. The filled prefix must be one of the
+known prefixes (§vault-reviewer there); if discovery finds no such server, or more than one,
+don't run the policy evals and report "replay not run: <reason>" instead of a score, so
+Calibration never records one. The fail-closed evals keep their fixed unknown prefix
+(`unknown-prefix-fails-closed`) and no prefix (`no-prefix-fails-closed`);
+`mismatched-group-refuses` sends a group that isn't the slug's, and
+`missing-config-holds-stage-0` no `config:` or `stage_by_class:`.
 
 ## Example invocation
 

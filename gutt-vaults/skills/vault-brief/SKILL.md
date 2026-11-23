@@ -100,20 +100,29 @@ then write nothing and put the episodes in the Console run row's notes.
    never with `out_dir` (`../vault-curate/references/console-data.md` §Reads).
 6. **Calibration**: compute per-class agreement (stage classes and steering adjustment from
    `../vault-review/references/autonomy-ladder.md` §Stage class, §Agreement), escalation rate,
-   the share of predictions that cited precedents, audit outcomes, overrides; per class,
-   approve and reject prediction accuracy separately, written as `stage <s> (auto_reject
-on|off, auto_approve on|off)`, using this run's `ladder` and `review` settings; run the
-   vault-review replay eval over the last `ladder.replay_size` human verdicts if that many
-   exist; write `Calibration: <date>` tagged vault-reviewer (with `config_version` and
-   per-direction counts per class, so vault-curate can re-check them). Then write the same
-   numbers to the Console in one batch: `meta/reviewer` (the latest week, with `week` and
-   `owner_verdicts`) and `calibrations/<YYYY-Www>` (one document per week, replaced if the
-   brief reruns that week), shaped as in `../vault-curate/references/console-data.md`. The
-   per-row fields (`human.at`, `human.blind`) come from one inline `query` of Console
-   `findings` with `committed_episode` set (§Reads allows it). Count
-   per class how many of the owner's calls were blind (`human.blind`, made before the page
-   showed the prediction) and record it as `blind`; blind and seen calls count alike. The
-   Console's Reviewer tab draws each class's agreement trend from `calibrations`.
+   the share of predictions that cited precedents, audit outcomes, overrides, and the count of
+   `prediction: null` rows left out (fail-closed reviews); per class, approve and reject
+   prediction accuracy separately, written as `stage <s> (auto_reject on|off, auto_approve
+on|off)`, and the class's rolling 30-day adjusted agreement, using this run's `ladder` and
+   `review` settings. Run the vault-review replay eval over the last `ladder.replay_size`
+   human verdicts if that many exist, filling `{memory_server}` with this run's discovered
+   prefix (`../vault-review/SKILL.md` §Evals; replay not run → no replay score this week).
+   Write `Calibration: <date>` tagged vault-reviewer (`Calibration: <date> <HH:MM>` when that
+   date's Calibration already exists, so a rerun has its own name) (with `config_version`, and per class the
+   per-direction counts and the rolling 30-day adjusted agreement, so vault-curate can
+   re-check them). Then write the same numbers to the Console in one batch: `meta/reviewer`
+   (the latest week, with `week`, `calibration` = the exact name of the Calibration episode
+   just written, `owner_verdicts` and `counted_through`) and
+   `calibrations/<YYYY-Www>` (one document per week, replaced if the brief reruns that week),
+   shaped as in `../vault-curate/references/console-data.md`. The per-row fields (`human.at`,
+   `human.blind`) come from one inline `query` of Console `findings` with `committed_episode`
+   set (§Reads allows it); `counted_through` is the latest `human.at` among those rows, the
+   last owner call `owner_verdicts` includes. Count per class how many of the owner's calls
+   were blind (`human.blind`, made before the page showed the prediction) and record it as
+   `blind` in `calibrations/<YYYY-Www>.by_class` and as `blind <b>/<n>` on the class's
+   Calibration line; blind and seen calls count alike. The Console's Reviewer tab draws each
+   class's agreement trend from `calibrations`, and adds the owner's calls made after
+   `meta/reviewer.counted_through` to `owner_verdicts`.
 7. **Distill** verdict patterns (`references/distillation.md`) into Insights; propose each
    rejection pattern seen `brief.steering_after_weeks` weeks running as a Console `steering`
    row with `source: proposed`.
@@ -142,8 +151,13 @@ pages: graph <url|failed: reason> · timelapse <url|failed: reason>
 ## Degradation
 
 - Find the memory server and write tool with `../vault-curate/references/memory-tools.md` at
-  the start, and recheck the write tool right before the first write. Two servers exposing
+  the start, and recheck the server and write tool right before the first write. Two servers exposing
   `vault_<slug>`: write nothing and report both prefixes.
+- No vault server (`memory-tools.md` step 2: none, or a call that errored) or no write tool
+  for the group: write nothing, draft nothing, and report
+  `vault_<slug> not writable on any memory server: <prefixes seen>` (or the prefix and error).
+  A server named by the vault file's `memory_connector` needn't list the vault in
+  `list_writable_groups`, but one that holds no episode of the vault is "none".
 - A memory tool missing doesn't mean memory is down: in a routine the connector can still be
   connecting. Search again after about 15 seconds, once. Only then treat memory as down: write
   nothing, draft nothing, report it.

@@ -46,8 +46,12 @@ Auto-approve stays capped at significance 1–3 below stage 3, and the audit sam
   and the eval replay, and sets its stage with the thresholds in force.
 - **Each curate run** re-checks those numbers against the thresholds in force that day
   (`vault-config.md` §Promotion re-check), so a threshold changed in Settings applies at the
-  next curate run, raising or lowering a class, without waiting for Friday. New evidence still
-  waits for the Calibration.
+  next curate run, raising or lowering a class, without waiting for Friday. `auto_reject` is
+  re-checked from the reject counts even before a qualifying replay exists; only
+  `auto_approve` needs the replay. A `meta/reviewer` whose `calibration` isn't the
+  latest Calibration episode's name yields to that Calibration; a `meta/reviewer` read that fails holds every class at stage 0 for the
+  run; a Calibration without per-direction counts keeps its own stage (never read as zero).
+  New evidence still waits for the Calibration.
 - **The reviewer** reads the stage vault-curate passes; it never sets it, and may only lower a
   class for an override vault-curate didn't see.
 
@@ -72,8 +76,11 @@ librarian from proposing (for example, Steering that took a topic out of scope).
 rows. Calibration reports both numbers, raw and adjusted, and lists the excluded rows by
 Steering; the ladder's entry criteria and demotion use the adjusted one.
 Predictions with an empty `precedents` list count, as misses or hits, like any other.
-In a stage-0 class the Console hides the prediction until the owner decides ("called blind"
+In a stage-0 class the Console hides the prediction until the owner decides ("Called blind."
 in the Verdict); blind and seen calls count alike, and Calibration reports how many were blind.
+Rows with `prediction: null` (the reviewer failed closed: no memory server, memory
+unavailable, identity check failed, or "reviewer unavailable") are not predictions: leave them
+out of every agreement number and report how many were left out.
 
 ## Calibration episode (written by vault-brief, tagged vault-reviewer)
 
@@ -84,10 +91,13 @@ Vault: <name>. Config version: <n>. Owner verdicts to date: <n>. Rolling 30-day 
 Escalation rate this week: <x%>. Eval replay: <k>/<ladder.replay_size>.
 Stage by class:
 - <stage class>: stage <s> (auto_reject on|off, auto_approve on|off); reject predictions
-  <k>/<n>, approve predictions <k>/<n>, <x%> adjusted agreement, <p%> with precedents,
-  last override <date|none>
+  <k>/<n>, approve predictions <k>/<n>, <x%> adjusted agreement, <r%> rolling 30-day
+  adjusted agreement, <p%> with precedents, blind <b>/<n> owner calls, last override <date|none>
+Left out (prediction: null): <n>.
 Moved by config since the last Calibration: <class: old → new (config v<n>)|none>.
 ```
 
-The per-direction counts are what vault-curate re-checks against new thresholds, so every
-class line carries both.
+The per-direction counts and the class's rolling 30-day steering-adjusted agreement are what
+vault-curate re-checks against new thresholds (stages 1–2 and stage 3), so every class line
+carries all three; the vault-wide rolling agreement on the second line never stands in for a
+class's.

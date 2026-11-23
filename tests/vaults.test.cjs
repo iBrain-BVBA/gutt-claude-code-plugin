@@ -19,7 +19,7 @@
  * Run: node --test tests/vaults.test.cjs
  */
 
-const { describe, it } = require("node:test");
+const { describe, it, after } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync, spawn } = require("child_process");
 const fs = require("fs");
@@ -387,6 +387,129 @@ describe("the reviewer's allowlist", () => {
     assert.ok(curate.includes('subagent_type="gutt-vaults:vault-reviewer"'));
     assert.ok(curate.includes('subagent_type="gutt-vaults:vault-scout"'));
   });
+
+  it("covers every connector a vault file or eval names, in at least one prefix form", () => {
+    // The plugin ships no vault files (they live in the owner's repo), so the evals' vault
+    // files stand in for them; any vault file added later is checked too. A memory_connector
+    // whose prefixes are all off the list makes every curate run of that vault escalate everything.
+    const prefixes = new Set(knownPrefixes());
+    const named = [];
+    for (const file of walk(PLUGIN, (f) => /[\\/]vaults[\\/][^\\/]+\.json$/.test(f))) {
+      const c = JSON.parse(read(file)).memory_connector;
+      for (const name of [].concat(c || [])) {
+        named.push([relp(file), name]);
+      }
+    }
+    for (const file of walk(SKILLS, (f) => f.endsWith("evals.json"))) {
+      for (const m of read(file).matchAll(/memory_connector: ([\w-]+)/g)) {
+        named.push([relp(file), m[1]]);
+      }
+    }
+    assert.ok(named.length > 0, "no eval names a memory_connector any more");
+    for (const [where, connector] of named) {
+      const forms = [
+        `mcp__claude_ai_${connector}__`,
+        `mcp__${connector}__`,
+        `mcp__plugin_gutt-pro_${connector}__`,
+      ];
+      assert.ok(
+        forms.some((f) => prefixes.has(f)),
+        `${where}: add ${connector}'s read tools to the reviewer's allowlist`
+      );
+    }
+  });
+
+  it("is checked before the spawn, and every fail-closed row carries prediction null", () => {
+    const curate = read(path.join(SKILLS, "vault-curate", "SKILL.md"));
+    const skill = read(path.join(SKILLS, "vault-review", "SKILL.md"));
+    assert.match(
+      curate,
+      /\*\*Before spawning\*\*, check `memory_server` against the known prefixes/
+    );
+    assert.ok(curate.includes("`review.prediction: null`"));
+    assert.ok(curate.includes("Always send `config:` and `stage_by_class:`"));
+    for (const reason of [
+      "no memory_server passed by vault-curate",
+      "memory server not in reviewer allowlist: <prefix>",
+      "memory unavailable: <prefix>",
+    ]) {
+      assert.ok(skill.includes(reason), `vault-review Step 1.0 lost the reason ${reason}`);
+    }
+    assert.match(skill, /`prediction: null`,\s+`confidence: null`/);
+  });
+
+  it("returns reviewer deltas with previous_episodes, and curate checks their provenance", () => {
+    const skill = read(path.join(SKILLS, "vault-review", "SKILL.md"));
+    const contract = skill.match(/## Output contract\s+[\s\S]*?```json([\s\S]*?)```/);
+    assert.ok(contract, "vault-review lost its output contract");
+    assert.match(contract[1], /"previous_episodes"/);
+    const curate = read(path.join(SKILLS, "vault-curate", "SKILL.md"));
+    for (const check of [
+      "with `get_episode`",
+      "its `group_id` is `vault_<slug>`",
+      "`source_description` starts with `vault-reviewer`",
+      "`Refines '<predecessor name>'`",
+      "`source_description` = `<agent_id>, <run_id>`",
+    ]) {
+      assert.ok(curate.includes(check), `vault-curate Step 5 lost: ${check}`);
+    }
+  });
+});
+
+describe("finding the vault's memory server", () => {
+  const flat = (t) => t.replace(/\s+/g, " ");
+
+  it("no rule makes list_writable_groups the only confirmation", () => {
+    // A vault on a server that starts groups on the first write (the shared gutt stage) is
+    // named by the vault file's memory_connector and never appears in list_writable_groups.
+    const hits = [];
+    for (const file of ruleFiles()) {
+      read(file)
+        .split("\n")
+        .forEach((line, i) => {
+          if (/confirm the group exists in `list_writable_groups`/i.test(line)) {
+            hits.push(`${relp(file)}:${i + 1}: ${line.trim()}`);
+          }
+        });
+    }
+    assert.deepEqual(hits, []);
+    const tools = flat(read(MEMORY_TOOLS));
+    assert.ok(tools.includes("Don't require `vault_<slug>` in its `list_writable_groups`"));
+    for (const form of [
+      "`mcp__claude_ai_<connector>__`",
+      "`mcp__<connector>__`",
+      "`mcp__plugin_gutt-pro_<connector>__`",
+    ]) {
+      assert.ok(tools.includes(form), `memory-tools.md step 2 lost ${form}`);
+    }
+    assert.ok(read(CONFIG_REF).includes("`memory_connector` is optional"));
+  });
+
+  it("an empty group on the named connector stops every workflow but a new vault's charter", () => {
+    const tools = flat(read(MEMORY_TOOLS));
+    assert.ok(
+      tools.includes(
+        "The read returning nothing is **None** below, for every workflow but one: vault-steer `--charter` for a new vault"
+      )
+    );
+    assert.ok(!tools.includes("no episode is fine"));
+    for (const skill of ["vault-curate", "vault-commit", "vault-brief"]) {
+      const text = flat(read(path.join(SKILLS, skill, "SKILL.md")));
+      assert.ok(
+        text.includes("`vault_<slug> not writable on any memory server: <prefixes seen>`"),
+        `${skill} Degradation lost the no-server report`
+      );
+      assert.match(text, /holds? no episode of the vault|must hold an episode of the vault/);
+    }
+  });
+
+  it("vault-steer keeps both paths for a group that doesn't exist yet", () => {
+    const steer = flat(read(path.join(SKILLS, "vault-steer", "SKILL.md")));
+    assert.ok(steer.includes("**`memory_connector` set:**"));
+    assert.ok(steer.includes("**Not set:**"));
+    assert.ok(steer.includes("the group needs a gutt admin to create it"));
+    assert.ok(steer.includes("must be created on, or granted to them on, the server"));
+  });
 });
 
 // ── Console ─────────────────────────────────────────────────────────────────────
@@ -502,6 +625,467 @@ describe("the Console", () => {
     assert.doesNotMatch(script, /\.innerHTML\s*=|insertAdjacentHTML|outerHTML\s*=|document\.write/);
     assert.match(script, /function mdView\(/);
     assert.match(script, /function linkedinCount\(/);
+  });
+
+  // A merge that keeps both sides of a block leaves two definitions; the later one silently wins.
+  it("defines each function once", () => {
+    // Same name at the same indent is the same scope here; a nested helper may reuse a name.
+    const counts = {};
+    for (const m of read(CONSOLE).matchAll(
+      /^( *)(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm
+    )) {
+      const k = `${m[2]} (indent ${m[1].length})`;
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    assert.deepEqual(
+      Object.keys(counts).filter((k) => counts[k] > 1),
+      []
+    );
+  });
+});
+
+// ── the Console's logic, in node against a stub DOM and a fake db ───────────────
+
+const CONSOLE_HARNESS = String.raw`
+const fs = require("fs");
+const [scriptPath, fieldsPath, labelsPath, scenarioPath] = process.argv.slice(2);
+const _st = setTimeout;
+global.setTimeout = (f, ms) => { const t = _st(f, Math.min(ms || 0, 5)); if (t.unref) t.unref(); return t; };
+global.setInterval = () => 0;
+function fake() {
+  const fn = function () { return proxy; };
+  const proxy = new Proxy(fn, {
+    get(target, prop) {
+      if (prop === Symbol.toPrimitive) return () => "";
+      if (prop === "then") return undefined;
+      if (prop in target) return target[prop];
+      return proxy;
+    },
+    set(target, prop, value) { target[prop] = value; return true; },
+    apply() { return proxy; },
+  });
+  return proxy;
+}
+const blocks = { "config-fields": fs.readFileSync(fieldsPath, "utf8"), "console-labels": fs.readFileSync(labelsPath, "utf8") };
+global.document = {
+  getElementById(id) { return id in blocks ? { textContent: blocks[id] } : fake(); },
+  createElement() { return fake(); },
+  createTextNode() { return fake(); },
+  activeElement: null,
+  addEventListener() {},
+};
+global.location = { hash: "" };
+let api = null;
+global.window = { addEventListener() {}, scrollTo() {}, __vaultConsoleTest(x) { api = x; } };
+const realError = console.error;
+console.error = () => {};
+console.warn = () => {};
+new Function(fs.readFileSync(scriptPath, "utf8"))();
+const scenario = require(scenarioPath);
+Promise.resolve(scenario(api)).then(
+  (out) => { process.stdout.write(JSON.stringify(out === undefined ? null : out)); },
+  (err) => { realError(err); process.exit(1); }
+);
+`;
+
+let consoleDir = null;
+let scenarioCount = 0;
+/** Runs `scenario` (a module exporting `(api) => result`) against the Console's script in a fresh node. */
+function runConsole(scenario) {
+  if (!consoleDir) {
+    consoleDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-console-"));
+    const html = read(CONSOLE);
+    const block = (id) =>
+      html.match(new RegExp(`<script type="application/json" id="${id}">([\\s\\S]*?)</script>`))[1];
+    fs.writeFileSync(path.join(consoleDir, "fields.json"), block("config-fields"));
+    fs.writeFileSync(path.join(consoleDir, "labels.json"), block("console-labels"));
+    fs.writeFileSync(path.join(consoleDir, "console.js"), consoleScript());
+    fs.writeFileSync(path.join(consoleDir, "harness.js"), CONSOLE_HARNESS);
+  }
+  const file = path.join(consoleDir, `scenario${scenarioCount++}.js`);
+  fs.writeFileSync(file, scenario);
+  const out = spawnSync(
+    process.execPath,
+    ["harness.js", "console.js", "fields.json", "labels.json", file].map((f) =>
+      path.resolve(consoleDir, f)
+    ),
+    { encoding: "utf8", timeout: 30000 }
+  );
+  assert.equal(out.status, 0, out.stderr);
+  return JSON.parse(out.stdout);
+}
+
+const TICKS = `const ticks = async (n) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); };`;
+
+const FAKE_SETTINGS_DB = String.raw`
+${TICKS}
+function makeDb(opts) {
+  const docs = Object.assign({}, opts.docs || {}), calls = [];
+  let failCfgSet = opts.failCfgSet || 0, acquires = 0;
+  const realNow = Date.now;
+  Date.now = () => realNow() + (opts.slowWrite && calls.includes("set " + opts.slowWrite) ? 31000 : 0);
+  const doc = (path) => ({
+    acquire: opts.noLease ? undefined : (a) => {
+      calls.push("acquire " + path + " " + a.holder.slice(0, 5)); holders.add(a.holder); acquires++;
+      return Promise.resolve({ acquired: !(opts.busy || (opts.renewBusy && acquires > 1)) });
+    },
+    get: () => { calls.push("get " + path); const d = docs[path]; return Promise.resolve({ exists: d !== undefined, data: () => d }); },
+    set: (v) => {
+      calls.push("set " + path);
+      if (path === "meta/config" && failCfgSet) {
+        failCfgSet--;
+        if (opts.landAnyway) docs[path] = v;
+        const e = new Error("write failed"); e.code = opts.failCode || "unavailable"; return Promise.reject(e);
+      }
+      docs[path] = v; return Promise.resolve();
+    },
+    delete: () => { calls.push("delete " + path); delete docs[path]; return Promise.resolve(); },
+  });
+  const holders = new Set();
+  return { doc, calls, docs, holders };
+}
+async function save(api, opts) {
+  const db = makeDb(opts);
+  api.S.db = db; api.S.me = "viewer-1"; api.S.readOnly = false; api.S.busy = {};
+  api.S.cfgDraft = { "run.pending_cap": "20" };
+  api.saveSettings();
+  // The harness's timers are unref'd, so wait on setImmediate, bounded by the clock.
+  const t0 = performance.now();
+  while (api.S.busy.settings && performance.now() - t0 < 2000) await ticks(1);
+  await ticks(20);
+  return {
+    calls: db.calls, config: db.docs["meta/config"] || null, holders: [...db.holders],
+    log: Object.keys(db.docs).filter((k) => k.startsWith("config_changes/")),
+    draftCleared: !("run.pending_cap" in api.S.cfgDraft),
+  };
+}
+`;
+
+after(() => {
+  if (consoleDir) {
+    fs.rmSync(consoleDir, { recursive: true, force: true });
+  }
+});
+
+const saveWith = (opts) =>
+  runConsole(FAKE_SETTINGS_DB + `module.exports = (api) => save(api, ${JSON.stringify(opts)});`);
+const sets = (calls) => calls.filter((c) => c.startsWith("set "));
+
+describe("the Console's Settings save", () => {
+  it("opens Settings only when user.canEdit() resolved true", () => {
+    const out = runConsole(`module.exports = (api) => {
+      api.S.db = {}; api.S.readOnly = false;
+      return [null, undefined, false, "yes", true].map((v) => { api.S.canAdmin = v; return api.canSettings(); });
+    };`);
+    assert.deepEqual(out, [false, false, false, false, true]);
+  });
+
+  it("takes the lease as this page load, renews it before each write, then writes the log and the config", () => {
+    const out = saveWith({});
+    assert.deepEqual(out.calls, [
+      "acquire meta/config_lock page-",
+      "get meta/config",
+      "get config_changes/v1",
+      "acquire meta/config_lock page-",
+      "set config_changes/v1",
+      "acquire meta/config_lock page-",
+      "set meta/config",
+    ]);
+    assert.equal(out.holders.length, 1, "one holder for the page load");
+    assert.notEqual(out.holders[0], "viewer-1", "the holder is the page load, not the viewer");
+    assert.equal(out.config.config_version, 1);
+    assert.deepEqual(out.config.values, { "run.pending_cap": 20 });
+    assert.deepEqual(out.log, ["config_changes/v1"]);
+    assert.ok(out.draftCleared);
+  });
+
+  it("refuses when the version moved, the lease is busy, or the runtime has no lease", () => {
+    for (const opts of [
+      { docs: { "meta/config": { config_version: 3, values: {} } } },
+      { busy: true },
+      { noLease: true },
+    ]) {
+      const out = saveWith(opts);
+      assert.deepEqual(sets(out.calls), [], JSON.stringify(opts));
+      assert.ok(!out.draftCleared, JSON.stringify(opts));
+    }
+  });
+
+  it("replaces a leftover log row from a save that never landed", () => {
+    const out = saveWith({ docs: { "config_changes/v1": { version: 1, changes: [] } } });
+    assert.equal(out.config.config_version, 1);
+    assert.deepEqual(out.log, ["config_changes/v1"]);
+  });
+
+  it("rolls the log row back only when meta/config didn't land", () => {
+    const failed = saveWith({ failCfgSet: 1, failCode: "internal" });
+    assert.ok(failed.calls.includes("delete config_changes/v1"));
+    assert.equal(failed.config, null);
+    assert.deepEqual(failed.log, []);
+    assert.ok(!failed.draftCleared);
+
+    const landed = saveWith({ failCfgSet: 1, failCode: "internal", landAnyway: true });
+    assert.ok(!landed.calls.includes("delete config_changes/v1"));
+    assert.equal(landed.config.config_version, 1);
+    assert.deepEqual(landed.log, ["config_changes/v1"]);
+    assert.ok(landed.draftCleared);
+  });
+
+  it("a retry after `unavailable` finishes the save once", () => {
+    const out = saveWith({ failCfgSet: 1 });
+    assert.equal(out.config.config_version, 1);
+    assert.deepEqual(out.log, ["config_changes/v1"]);
+    assert.ok(out.draftCleared);
+  });
+
+  it("stops, sending nothing more, when a write settles after the lease could have lapsed", () => {
+    const lateLog = saveWith({ slowWrite: "config_changes/v1" });
+    assert.equal(lateLog.calls.at(-1), "set config_changes/v1");
+    assert.equal(lateLog.config, null);
+    assert.ok(!lateLog.draftCleared);
+
+    const lateConfig = saveWith({ slowWrite: "meta/config" });
+    assert.equal(lateConfig.calls.at(-1), "set meta/config");
+    assert.ok(!lateConfig.draftCleared, "a late config write is never reported saved");
+  });
+
+  it("sends no write when a renewal is refused", () => {
+    const out = saveWith({ renewBusy: true });
+    assert.deepEqual(sets(out.calls), []);
+    assert.ok(!out.draftCleared);
+  });
+});
+
+describe("the Console's Reviewer numbers", () => {
+  it("a class's latest override includes overrides of auto calls made after the Calibration", () => {
+    const out = runConsole(`module.exports = (api) => {
+      const row = (id, cls, decision, human, at) => ({ id, review: { "class": cls, decision }, human: { decision: human, at } });
+      api.S.findings = [
+        row("a", "finding/x", "auto_approve", "rejected", "2026-11-20T10:00:00Z"),
+        row("b", "finding/x", "auto_approve", "approved", "2026-11-22T10:00:00Z"),
+        row("c", "finding/x", "escalate", "rejected", "2026-11-23T10:00:00Z"),
+        row("d", "finding/y", "auto_reject", "approved", "2026-11-21T10:00:00Z"),
+      ];
+      const iso = (t) => (t ? new Date(t).toISOString() : null);
+      return {
+        newer: iso(api.lastOverride("finding/x", { last_override: "2026-11-01" })),
+        older: iso(api.lastOverride("finding/y", { last_override: "2026-11-22T00:00:00Z" })),
+        none: api.lastOverride("finding/z", { last_override: "none" }),
+      };
+    };`);
+    // Confirmations and escalations don't count; a later override of an auto call wins.
+    assert.equal(out.newer, "2026-11-20T10:00:00.000Z");
+    assert.equal(out.older, "2026-11-22T00:00:00.000Z");
+    assert.equal(out.none, 0);
+  });
+
+  it("counts live calls after counted_through, or after the Calibration's time without it", () => {
+    const out = runConsole(`module.exports = (api) => {
+      const row = (id, at) => ({ id, review: { "class": "finding/x", decision: "escalate", prediction: "approve" }, human: { decision: "approved", at } });
+      api.S.findings = [row("before", "2026-11-17T10:00:00Z"), row("between", "2026-11-19T10:00:00Z"), row("after", "2026-11-21T10:00:00Z")];
+      api.S.reviewer = { at: "2026-11-20T00:00:00Z", counted_through: "2026-11-18T00:00:00Z" };
+      const watermark = api.liveSince("finding/x");
+      api.S.reviewer = { at: "2026-11-20T00:00:00Z" };
+      const fallback = api.liveSince("finding/x");
+      return { watermark, fallback };
+    };`);
+    assert.deepEqual(out.watermark, { calls: 2, agree: 2 });
+    assert.deepEqual(out.fallback, { calls: 1, agree: 1 });
+  });
+
+  it("flags a Calibration whose agree isn't a whole count instead of guessing", () => {
+    const out = runConsole(`module.exports = (api) => [
+      api.dirStats({ n: 10, agree: 9 }, "finding/x"),
+      api.dirStats({ n: 10, agree: 0.9 }, "finding/x"),
+      api.dirStats({ n: 10, agree: "many" }, "finding/x"),
+    ];`);
+    assert.deepEqual(out[0], { n: 10, k: 9, share: 0.9 });
+    assert.equal(out[1].bad, true);
+    assert.equal(out[2].bad, true);
+  });
+
+  it("lists what each allowed direction needs and then the cap, and names malformed data", () => {
+    const out = runConsole(`module.exports = (api) => {
+      api.S.config = {
+        values: { "ladder.ceiling": 3, "ladder.stage1_calls": 10, "ladder.stage1_agreement": 0.9,
+          "ladder.stage2_approve_calls": 20, "ladder.stage2_agreement": 0.9 },
+        class_ceilings: { "finding/capped1": 1, "finding/shadow": 0, "finding/capped2": 2 },
+      };
+      api.S.reviewer = { at: "2026-11-20T00:00:00Z", stage_by_class: {
+        "finding/capped1": { stage: 0, reject: { n: 4, agree: 4 }, approve: { n: 2, agree: 2 } },
+        "finding/shadow": { stage: 0, reject: { n: 4, agree: 4 } },
+        "finding/capped2": { stage: 2, auto_reject: true, auto_approve: true, approve: { n: 30, agree: 29 } },
+        "finding/bad": { stage: 0, reject: { n: 12, agree: 0.95 }, approve: { n: 25, agree: "many" } },
+      } };
+      const w = (c) => api.classStatus(c).wait;
+      return { capped1: w("finding/capped1"), shadow: w("finding/shadow"), capped2: w("finding/capped2"), bad: w("finding/bad") };
+    };`);
+    assert.deepEqual(out.capped1, ["6 more reject predictions", "Capped at stage 1 in Settings"]);
+    assert.deepEqual(out.shadow, ["Held in shadow in Settings"]);
+    assert.deepEqual(out.capped2, ["Capped at stage 2 in Settings"]);
+    // A malformed count is never read as an accuracy shortfall, and is named once.
+    assert.deepEqual(out.bad, ["Calibration data malformed"]);
+  });
+});
+
+describe("the Console's Inbox writes", () => {
+  const FAKE_ROWS_DB = String.raw`
+${TICKS}
+function rowsDb(docs, failCode) {
+  const calls = [], gates = [];
+  const doc = (path) => ({
+    get: () => Promise.resolve({ exists: path in docs, data: () => docs[path] }),
+    update: (change) => {
+      calls.push({ path, change });
+      if (failCode) { const e = new Error("write failed"); e.code = failCode; return Promise.reject(e); }
+      return new Promise((resolve) => gates.push(() => { Object.assign(docs[path] || {}, change); resolve(); }));
+    },
+  });
+  return { doc, calls, open: () => { while (gates.length) gates.shift()(); } };
+}
+`;
+
+  it("calls a row blind only when there was a prediction, and reveals it only once the write landed", () => {
+    const out = runConsole(
+      FAKE_ROWS_DB +
+        `module.exports = async (api) => {
+      const blindRow = { id: "r1", type: "finding", status: "escalated", review: { "class": "finding/x", decision: "escalate", prediction: "approve", confidence: 0.8, stage: 0 } };
+      const bare = { id: "r2", type: "finding", status: "escalated", review: { "class": "finding/x", decision: "escalate", stage: 0 } };
+      const db = rowsDb({ "findings/r1": Object.assign({}, blindRow), "findings/r2": Object.assign({}, bare) });
+      api.S.db = db; api.S.readOnly = false;
+      api.decide(blindRow, "approved");
+      await ticks(2);
+      const pending = api.S.done.r1.text;
+      db.open(); await ticks(10);
+      const landed = api.S.done.r1.text;
+      api.decide(bare, "approved"); await ticks(2); db.open(); await ticks(10);
+      return { pending, landed, blindChange: db.calls[0].change, bareChange: db.calls[1].change };
+    };`
+    );
+    assert.equal(out.pending, "Approved.");
+    assert.match(out.landed, /^Approved\. The reviewer predicted approve at 80%: you agreed\.$/);
+    assert.equal(out.blindChange.human.blind, true);
+    assert.equal(out.blindChange.revealed, true);
+    assert.equal(out.bareChange.human.blind, false);
+    assert.ok(!("revealed" in out.bareChange));
+  });
+
+  it("deciding a left-open conflict clears left_open, and undo puts it back", () => {
+    const out = runConsole(
+      FAKE_ROWS_DB +
+        `module.exports = async (api) => {
+      const lo = { revisit: "2099-01-01", note: "", at: "2026-11-01T00:00:00Z" };
+      const row = { id: "c1", type: "conflict", status: "escalated", left_open: lo, review: { decision: "escalate", prediction: "approve" } };
+      const db = rowsDb({ "findings/c1": Object.assign({}, row) });
+      api.S.db = db; api.S.readOnly = false;
+      api.decide(row, "approved", { resolution: "a", msg: "Resolved: A stands." });
+      await ticks(2); db.open(); await ticks(10);
+      api.undoDone("c1"); await ticks(5); db.open(); await ticks(10);
+      return db.calls.map((c) => c.change);
+    };`
+    );
+    assert.equal(out[0].left_open, null);
+    assert.deepEqual(out[1].left_open, {
+      revisit: "2099-01-01",
+      note: "",
+      at: "2026-11-01T00:00:00Z",
+    });
+    assert.ok(!("revealed" in out[1]), "undo leaves revealed set");
+  });
+
+  it("a failed decision brings back the typed note, open sections and revisit date", () => {
+    const out = runConsole(
+      FAKE_ROWS_DB +
+        `module.exports = async (api) => {
+      const row = { id: "f1", type: "conflict", status: "escalated", review: { decision: "escalate" } };
+      api.S.db = rowsDb({ "findings/f1": Object.assign({}, row) }, "internal");
+      api.S.readOnly = false; api.S.busy = {};
+      api.S.drafts["note-f1"] = "typed"; api.S.drafts["revisit-f1"] = "2099-01-01";
+      api.S.ui.f1 = { note: true, open: true };
+      api.decide(row, "approved", { resolution: "a", msg: "Resolved: A stands." });
+      const cleared = !("note-f1" in api.S.drafts) && !api.S.ui.f1;
+      await ticks(10);
+      return { cleared, drafts: api.S.drafts, ui: api.S.ui.f1, done: "f1" in api.S.done };
+    };`
+    );
+    assert.equal(out.cleared, true, "the card's drafts clear while the write is in flight");
+    assert.equal(out.drafts["note-f1"], "typed");
+    assert.equal(out.drafts["revisit-f1"], "2099-01-01");
+    assert.deepEqual(out.ui, { note: true, open: true });
+    assert.equal(out.done, false);
+  });
+
+  it("sorts parked conflicts last, and undo returns each card to where it was", () => {
+    const out = runConsole(
+      FAKE_ROWS_DB +
+        `module.exports = async (api) => {
+      const lo = { revisit: "2099-01-01", note: "", at: "2026-11-01T00:00:00Z" };
+      const parked = { id: "p1", type: "conflict", status: "escalated", left_open: lo, review: { decision: "escalate" } };
+      const due = { id: "d1", type: "conflict", status: "escalated", review: { decision: "escalate" } };
+      const call = { id: "k1", type: "finding", status: "escalated", significance: 2, review: { "class": "finding/x", decision: "escalate" } };
+      const docs = { "findings/p1": Object.assign({}, parked), "findings/d1": Object.assign({}, due), "findings/k1": Object.assign({}, call) };
+      const db = rowsDb(docs);
+      api.S.db = db; api.S.readOnly = false; api.S.busy = {};
+      api.S.findings = [docs["findings/p1"], docs["findings/d1"], docs["findings/k1"]];
+      const view = (id) => (api.inboxItems().find((it) => it.id === id) || {}).view;
+      const order = api.inboxItems().map((it) => it.id);
+      // Decide the parked conflict, then undo: it goes back to parked once the undo lands.
+      api.decide(docs["findings/p1"], "approved", { resolution: "a", msg: "Resolved: A stands." });
+      await ticks(2); db.open(); await ticks(10);
+      api.undoDone("p1"); await ticks(5);
+      const parkedUndoing = view("p1");
+      db.open(); await ticks(10);
+      const parkedBack = view("p1");
+      // Leave the due conflict open, then undo: the card stays shown as undoing, never hidden.
+      api.S.drafts["revisit-d1"] = "2099-02-01";
+      api.leaveOpen(docs["findings/d1"]);
+      await ticks(2); db.open(); await ticks(10);
+      api.undoDone("d1"); await ticks(5);
+      const leftUndoing = view("d1");
+      db.open(); await ticks(10);
+      return { order, parkedUndoing, parkedBack, leftUndoing, leftBack: view("d1") };
+    };`
+    );
+    assert.deepEqual(out.order, ["d1", "k1", "p1"]);
+    assert.equal(out.parkedUndoing, "undoing");
+    assert.equal(out.parkedBack, "parked");
+    assert.equal(out.leftUndoing, "undoing");
+    assert.equal(out.leftBack, "open");
+  });
+
+  it("refuses to leave a conflict open until a past date", () => {
+    const out = runConsole(
+      FAKE_ROWS_DB +
+        `module.exports = async (api) => {
+      const row = { id: "c2", type: "conflict", status: "escalated", review: { decision: "escalate" } };
+      const db = rowsDb({ "findings/c2": Object.assign({}, row) });
+      api.S.db = db; api.S.readOnly = false; api.S.busy = {};
+      for (const d of ["2020-01-01", "not a date"]) { api.S.drafts["revisit-c2"] = d; api.leaveOpen(row); }
+      await ticks(5);
+      api.S.drafts["revisit-c2"] = "2099-01-01"; api.leaveOpen(row);
+      await ticks(2); db.open(); await ticks(10);
+      return db.calls.map((c) => c.change.left_open.revisit);
+    };`
+    );
+    assert.deepEqual(out, ["2099-01-01"]);
+  });
+
+  it("undo refuses a row that is no longer in the Console", () => {
+    const out = runConsole(
+      FAKE_ROWS_DB +
+        `module.exports = async (api) => {
+      const row = { id: "g1", type: "finding", status: "escalated", review: { "class": "finding/x", decision: "escalate" } };
+      const docs = { "findings/g1": Object.assign({}, row) };
+      const db = rowsDb(docs);
+      api.S.db = db; api.S.readOnly = false;
+      api.decide(row, "rejected", { reason: "stale" });
+      await ticks(2); db.open(); await ticks(10);
+      delete docs["findings/g1"];
+      api.undoDone("g1"); await ticks(10); db.open(); await ticks(10);
+      return db.calls.length;
+    };`
+    );
+    assert.equal(out, 1, "no update after the row is gone");
   });
 });
 
@@ -1233,7 +1817,14 @@ describe("pages in a headless browser", () => {
     });
   }
 
-  for (const name of ["reject", "undo", "leave_open", "in_place", "undo_after_commit"]) {
+  for (const name of [
+    "reject",
+    "undo",
+    "leave_open",
+    "leave_open_past",
+    "in_place",
+    "undo_after_commit",
+  ]) {
     it(`the Console's ${name} flow still works`, async (t) => {
       if (!chrome()) {
         t.skip("no Chrome or Chromium (set CHROME)");
@@ -1261,6 +1852,9 @@ describe("pages in a headless browser", () => {
       } else if (name === "leave_open") {
         assert.equal(r.status, "escalated");
         assert.deepEqual(Object.keys(r.left_open).sort(), ["at", "note", "revisit"]);
+      } else if (name === "leave_open_past") {
+        assert.deepEqual([r.left_open, r.writes], [null, 0], "a past revisit date writes nothing");
+        assert.match(r.toast, /from tomorrow on/);
       } else if (name === "in_place") {
         assert.deepEqual(r, { same: true, value: "half typed", focused: true, added: true });
       } else {

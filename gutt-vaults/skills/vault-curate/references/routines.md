@@ -22,8 +22,9 @@ an owner who wants to watch or steer a run.
 
 ## The vault file
 
-One small JSON file per vault in the owner's repo, holding only `slug`, `group_id` and
-`console_url` (`vault-config.md` §What the vault file keeps). Look for it in this order and use
+One small JSON file per vault in the owner's repo, holding only `slug`, `group_id`,
+`console_url` and, optionally, `memory_connector` (`vault-config.md` §What the vault file
+keeps). Look for it in this order and use
 the first one found:
 
 1. `vaults/<slug>.json` (the layout of the `gutt-vault-starter` template repo);
