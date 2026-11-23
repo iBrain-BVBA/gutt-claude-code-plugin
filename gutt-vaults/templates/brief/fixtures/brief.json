@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "vault": {
+    "name": "Example Vault",
+    "slug": "example-vault",
+    "question": "Which open-source coding agents are ready for a team to adopt, and what do they cost?",
+    "graph_url": "https://example.com/graph",
+    "timelapse_url": "https://example.com/timelapse"
+  },
+  "week": "2026-W45",
+  "published_at": "2026-11-06",
+  "headline": "Acme Coder ships 2.0 and a 40-team study halves review time",
+  "intro": "Two findings entered the vault this week, and one price changed before the week was out.",
+  "changes": [
+    {
+      "finding": "Acme Coder 2.0 is generally available",
+      "title": "Acme Coder 2.0 is generally available",
+      "claim": "Acme Labs announced general availability of Acme Coder 2.0 for teams.",
+      "why_it_matters": "The first agent in the vault's releases beat that a team can adopt without a waitlist.",
+      "beat": "releases",
+      "claimant": "Acme Labs",
+      "evidence_grade": "primary_source",
+      "published_date": "2026-11-02",
+      "sources": [
+        {
+          "url": "https://example.com/0",
+          "title": "Acme Coder 2.0 release notes",
+          "publisher": "example.com",
+          "retrieved": "2026-11-03",
+          "source_class": "primary"
+        }
+      ]
+    },
+    {
+      "finding": "Northwind Pilot halves review time in a 40-team study",
+      "title": "Northwind Pilot halves review time in a 40-team study",
+      "claim": "An independent study of 40 teams measured review time falling by half with Northwind Pilot.",
+      "why_it_matters": "A measured result from teams the vendor did not pick.",
+      "beat": "outcomes",
+      "claimant": "Open Agents Foundation",
+      "evidence_grade": "independent",
+      "published_date": "2026-11-03",
+      "sources": [
+        {
+          "url": "https://example.com/1",
+          "title": "Review time with coding agents: a 40-team study",
+          "publisher": "example.com",
+          "retrieved": "2026-11-04",
+          "source_class": "independent"
+        }
+      ]
+    }
+  ],
+  "spotlight": {
+    "label": "Agent of the week",
+    "title": "Acme Coder",
+    "text": "The only agent this week with both a release and a measured outcome behind it."
+  },
+  "conflicts": [
+    {
+      "title": "What the OpenPatch hosted plan costs",
+      "a": {
+        "claim": "$12 per seat a month.",
+        "source": { "url": "https://example.com/2", "title": "OpenPatch pricing, 4 Nov" }
+      },
+      "b": {
+        "claim": "$14 per seat a month.",
+        "source": { "url": "https://example.com/6", "title": "OpenPatch pricing, 6 Nov" }
+      },
+      "status": "open",
+      "note": "The page changed between two reads; the owner asked for a re-check next week."
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://example.com/0",
+      "title": "Acme Coder 2.0 release notes",
+      "publisher": "example.com",
+      "retrieved": "2026-11-03",
+      "source_class": "primary"
+    },
+    {
+      "url": "https://example.com/1",
+      "title": "Review time with coding agents: a 40-team study",
+      "publisher": "example.com",
+      "retrieved": "2026-11-04",
+      "source_class": "independent"
+    }
+  ],
+  "past": [{ "week": "2026-W44", "url": "https://example.com/brief-w44", "headline": "The vault's first week" }]
+}

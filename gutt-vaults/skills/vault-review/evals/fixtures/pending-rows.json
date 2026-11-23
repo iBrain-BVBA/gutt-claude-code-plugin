@@ -1,0 +1,56 @@
+[
+  {
+    "id": "row-pricing",
+    "type": "finding",
+    "title": "Intercom (2026-10-30): Fin priced at $0.99 per resolution",
+    "claim": "Intercom charges $0.99 per resolved conversation for Fin.",
+    "beat": "pricing",
+    "features": { "domain": "intercom.com", "claim_type": "pricing" },
+    "significance": 2,
+    "sources": [
+      { "url": "https://www.intercom.com/pricing", "title": "Pricing", "retrieved": "2026-11-05" }
+    ]
+  },
+  {
+    "id": "row-sig5",
+    "type": "finding",
+    "title": "Klarna (2026-10-28): support agent rolled back after CSAT drop",
+    "claim": "Klarna says it moved part of support back to people after customer satisfaction fell.",
+    "beat": "failures",
+    "features": { "domain": "klarna.com", "claim_type": "outcome" },
+    "significance": 5,
+    "sources": [
+      {
+        "url": "https://www.klarna.com/international/press/",
+        "title": "Press",
+        "retrieved": "2026-11-05"
+      }
+    ]
+  },
+  {
+    "id": "row-conflict",
+    "type": "conflict",
+    "title": "Vendor ROI vs independent study on tier-1 support",
+    "claim": "Vendor claims 80% resolution; an independent study measured 41%.",
+    "beat": "outcomes",
+    "features": { "domain": "example-research.org", "claim_type": "outcome" },
+    "significance": 4,
+    "sources": []
+  },
+  {
+    "id": "row-new-domain",
+    "type": "finding",
+    "title": "Acme AI (2026-11-01): invoice agent cuts close by 3 days",
+    "claim": "Acme AI says its AP agent shortens month-end close by 3 days.",
+    "beat": "launches",
+    "features": { "domain": "never-seen-before.ai", "claim_type": "launch" },
+    "significance": 2,
+    "sources": [
+      {
+        "url": "https://never-seen-before.ai/blog/launch",
+        "title": "Launch",
+        "retrieved": "2026-11-05"
+      }
+    ]
+  }
+]

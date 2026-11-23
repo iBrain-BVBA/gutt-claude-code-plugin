@@ -1,0 +1,226 @@
+<title>Vault Brief</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: a weekly newsletter page. One reading column: the week's headline, what changed (each
+   finding with its sources), open conflicts, then every source. Committed findings only.
+   Data: brief.json next to this page (see the vault-pages skill's page-data reference). */
+:root {
+  --bg: #f6f5f1; --paper: #fffefb; --ink: #16181d; --ink-2: #464c59; --muted: #737a88; --line: #e2e0d8; --chip: #efede6;
+  --accent: #F46C00; --accent-ink: #9a4400; --link: #3a5490; --focus: #4C6CB2;
+  --a-bg: #e8edf5; --a-line: #4C6CB2; --b-bg: #fee8d6; --b-line: #F46C00;
+  --font-read: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --paper: #15181d; --ink: #eceef2; --ink-2: #b6bcc8; --muted: #8b919e; --line: #282c34; --chip: #20242b;
+    --accent: #ff8a2a; --accent-ink: #ffb57a; --link: #9cb3ea; --focus: #9cb3ea;
+    --a-bg: #1a2233; --a-line: #7391dc; --b-bg: #2a1d10; --b-line: #e07a22;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --paper: #15181d; --ink: #eceef2; --ink-2: #b6bcc8; --muted: #8b919e; --line: #282c34; --chip: #20242b;
+  --accent: #ff8a2a; --accent-ink: #ffb57a; --link: #9cb3ea; --focus: #9cb3ea;
+  --a-bg: #1a2233; --a-line: #7391dc; --b-bg: #2a1d10; --b-line: #e07a22;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--font-ui); }
+a { color: var(--link); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.page { max-width: 760px; margin: 0 auto; padding: 32px max(16px, env(safe-area-inset-right, 0px)) 64px max(16px, env(safe-area-inset-left, 0px)); }
+.eyebrow { font: 500 12px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 8px 0 12px; font: 600 clamp(28px, 5vw, 40px)/1.12 var(--font-read); text-wrap: balance; }
+.intro { font: 19px/1.55 var(--font-read); color: var(--ink-2); margin: 0 0 16px; max-width: 65ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 13px var(--font-mono); color: var(--muted); }
+.links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.links a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); text-decoration: none; font-size: 14px; color: var(--ink); }
+.links a:hover { border-color: var(--accent); }
+section { margin-top: 40px; }
+h2 { margin: 0 0 14px; font: 500 12px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+.card h3 { margin: 0 0 8px; font: 600 21px/1.25 var(--font-read); text-wrap: balance; }
+.card .claim { margin: 0 0 8px; font: 17px/1.55 var(--font-read); }
+.card .why { margin: 0 0 10px; color: var(--ink-2); }
+.card .why b { font-weight: 600; color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.chip { font: 12px/1.6 var(--font-mono); padding: 0 8px; border-radius: 6px; background: var(--chip); color: var(--ink-2); }
+.chip.grade { color: var(--accent-ink); }
+.srcs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.srcs li { overflow-wrap: anywhere; }
+.srcs .by { color: var(--muted); }
+.spot { border-left: 3px solid var(--accent); padding: 2px 0 2px 16px; }
+.spot h3 { margin: 0 0 6px; font: 600 21px/1.25 var(--font-read); }
+.spot p { margin: 0 0 8px; font: 17px/1.55 var(--font-read); max-width: 65ch; }
+table.board { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.board th, table.board td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.board th { font: 500 11px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.vs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.side { border-radius: 8px; padding: 10px 12px; font-size: 15px; }
+.side.a { background: var(--a-bg); border-left: 3px solid var(--a-line); }
+.side.b { background: var(--b-bg); border-left: 3px solid var(--b-line); }
+.side .lbl { font: 500 11px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+.side p { margin: 0 0 6px; }
+.status-line { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+ol.all { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-size: 14px; }
+ol.all li { overflow-wrap: anywhere; }
+.past { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.past li { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; font-size: 15px; }
+.past .wk { font: 13px var(--font-mono); color: var(--muted); }
+.empty { color: var(--muted); }
+footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+footer p { margin: 0 0 6px; }
+.status { padding: 64px 16px; text-align: center; color: var(--ink-2); }
+@media (max-width: 560px) {
+  .page { padding-top: 20px; }
+  .card { padding: 14px 14px; }
+  .vs { grid-template-columns: 1fr; }
+  .past li { grid-template-columns: 1fr; gap: 0; }
+}
+</style>
+
+<main class="page" id="page" aria-live="polite">
+  <p class="status" id="status">Loading this week's brief…</p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var page = document.getElementById("page");
+  function h(tag, attrs) {
+    var el = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (v == null || v === false) return;
+      if (k === "class") el.className = v; else if (k === "text") el.textContent = v; else el.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) add(el, arguments[i]);
+    return el;
+  }
+  function add(el, c) {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { add(el, x); }); return; }
+    el.appendChild(typeof c === "object" ? c : document.createTextNode(String(c)));
+  }
+  function safeUrl(u) { return typeof u === "string" && /^https?:\/\//i.test(u) ? u : null; }
+  function link(url, text) {
+    var u = safeUrl(url);
+    return u ? h("a", { href: u, target: "_blank", rel: "noopener noreferrer", text: text || u }) : h("span", { text: text || url || "" });
+  }
+  function host(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } }
+  function fmtDate(s) {
+    var t = Date.parse(s || "");
+    return isFinite(t) ? new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : (s || "");
+  }
+  function grade(g) { return String(g || "").replace(/_/g, " "); }
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  function sourceItem(s) {
+    var by = [s.publisher || host(s.url), s.retrieved ? "retrieved " + fmtDate(s.retrieved) : ""].filter(Boolean).join(" · ");
+    return h("li", null, link(s.url, s.title || host(s.url) || s.url), by ? h("span", { class: "by", text: " · " + by }) : null);
+  }
+
+  function render(d) {
+    page.textContent = "";
+    var v = d.vault || {}, changes = Array.isArray(d.changes) ? d.changes : [], conflicts = Array.isArray(d.conflicts) ? d.conflicts : [];
+    var sources = Array.isArray(d.sources) ? d.sources : [];
+    if (v.name) document.title = v.name + " Brief";
+
+    var head = h("header", null,
+      h("div", { class: "eyebrow", text: [v.name, d.week ? "Week " + d.week.replace(/^\d{4}-W/, "") + ", " + d.week.slice(0, 4) : ""].filter(Boolean).join(" · ") }),
+      h("h1", { text: d.headline || "This week in the vault" }),
+      d.intro ? h("p", { class: "intro", text: d.intro }) : null,
+      h("div", { class: "meta" },
+        d.published_at ? h("span", { text: "Published " + fmtDate(d.published_at) }) : null,
+        h("span", { text: plural(changes.length, "finding", "findings") }),
+        conflicts.length ? h("span", { text: plural(conflicts.length, "open conflict", "open conflicts") }) : null,
+        h("span", { text: plural(sources.length, "source", "sources") })));
+    var links = h("div", { class: "links" });
+    if (safeUrl(v.graph_url)) links.appendChild(link(v.graph_url, "Explore the vault's graph"));
+    if (safeUrl(v.timelapse_url)) links.appendChild(link(v.timelapse_url, "Watch how it was built"));
+    if (links.childNodes.length) head.appendChild(links);
+    page.appendChild(head);
+
+    if (v.question) page.appendChild(h("section", null, h("h2", { text: "The question this vault answers" }), h("p", { class: "intro", text: v.question })));
+
+    var sec = h("section", null, h("h2", { text: "What changed this week" }));
+    if (!changes.length) sec.appendChild(h("p", { class: "empty", text: "No new findings entered the vault this week." }));
+    changes.forEach(function (c) {
+      var chips = h("div", { class: "chips" },
+        c.beat ? h("span", { class: "chip", text: c.beat }) : null,
+        c.evidence_grade ? h("span", { class: "chip grade", text: grade(c.evidence_grade) }) : null,
+        c.claimant ? h("span", { class: "chip", text: "claimed by " + c.claimant }) : null,
+        c.published_date ? h("span", { class: "chip", text: fmtDate(c.published_date) }) : null);
+      sec.appendChild(h("article", { class: "card" },
+        h("h3", { text: c.title || c.finding }),
+        chips.childNodes.length ? chips : null,
+        c.claim ? h("p", { class: "claim", text: c.claim }) : null,
+        c.why_it_matters ? h("p", { class: "why" }, h("b", { text: "Why it matters: " }), c.why_it_matters) : null,
+        h("ul", { class: "srcs", "aria-label": "Sources" }, (c.sources || []).map(sourceItem))));
+    });
+    page.appendChild(sec);
+
+    if (d.spotlight && (d.spotlight.title || d.spotlight.text)) {
+      var sp = h("div", { class: "spot" }, d.spotlight.title ? h("h3", { text: d.spotlight.title }) : null);
+      String(d.spotlight.text || "").split(/\n{2,}/).forEach(function (p) { if (p.trim()) sp.appendChild(h("p", { text: p.trim() })); });
+      page.appendChild(h("section", null, h("h2", { text: d.spotlight.label || "Spotlight" }), sp));
+    }
+
+    if (Array.isArray(d.board) && d.board.length) {
+      page.appendChild(h("section", null, h("h2", { text: "Board movement" }),
+        h("div", { style: "overflow-x:auto" }, h("table", { class: "board" },
+          h("thead", null, h("tr", null, h("th", { text: "Role" }), h("th", { text: "What changed" }), h("th", { text: "Why" }))),
+          h("tbody", null, d.board.map(function (b) {
+            return h("tr", null, h("td", { text: b.role || "" }), h("td", { text: b.change || "" }), h("td", { text: b.note || "" }));
+          }))))));
+    }
+
+    var cs = h("section", null, h("h2", { text: "Open conflicts" }));
+    if (!conflicts.length) cs.appendChild(h("p", { class: "empty", text: "No open conflicts: every committed finding agrees with the others." }));
+    conflicts.forEach(function (c) {
+      function side(x, cls, lbl) {
+        x = x || {};
+        return h("div", { class: "side " + cls }, h("div", { class: "lbl", text: lbl }), h("p", { text: x.claim || "" }),
+          x.source && x.source.url ? h("div", null, link(x.source.url, x.source.title || host(x.source.url))) : null);
+      }
+      cs.appendChild(h("article", { class: "card" }, h("h3", { text: c.title || "Conflict" }),
+        h("div", { class: "vs" }, side(c.a, "a", "One source says"), side(c.b, "b", "Another says")),
+        c.status || c.note ? h("p", { class: "status-line", text: [c.status ? "Status: " + c.status : "", c.note || ""].filter(Boolean).join(". ") }) : null));
+    });
+    page.appendChild(cs);
+
+    if (sources.length) {
+      page.appendChild(h("section", null, h("h2", { text: "Every source this week" }),
+        h("ol", { class: "all" }, sources.map(function (s) {
+          var by = [s.publisher || host(s.url), s.source_class, s.retrieved ? "retrieved " + fmtDate(s.retrieved) : ""].filter(Boolean).join(" · ");
+          return h("li", null, link(s.url, s.title || s.url), by ? h("span", { class: "by", text: " · " + by }) : null);
+        }))));
+    }
+
+    if (Array.isArray(d.past) && d.past.length) {
+      page.appendChild(h("section", null, h("h2", { text: "Earlier briefs" }),
+        h("ul", { class: "past" }, d.past.map(function (p) {
+          return h("li", null, h("span", { class: "wk", text: p.week || "" }), safeUrl(p.url) ? link(p.url, p.headline || p.week) : h("span", { text: p.headline || "" }));
+        }))));
+    }
+
+    page.appendChild(h("footer", null,
+      h("p", { text: "Every finding here was checked against its sources and approved by the vault's owner before it entered the vault. Sources are public; follow them for the full text." }),
+      h("p", { text: "Built with gutt memory." })));
+  }
+
+  fetch("brief.json").then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (d) {
+    if (!d || typeof d !== "object") throw new Error("not a brief");
+    render(d);
+  }).catch(function (e) {
+    page.textContent = "";
+    page.appendChild(h("p", { class: "status", text: "This week's brief didn't load (" + e.message + "). Reload the page to try again." }));
+  });
+})();
+</script>

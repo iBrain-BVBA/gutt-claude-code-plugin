@@ -31,6 +31,12 @@
       "source": "./gutt-product",
       "description": "Product leadership skills for Jira backlogs — story creation and management from meeting and document sources, slice-wide dedupe and consolidation, and memory-backed prioritization with an executive summary — backed by GUTT organizational memory",
       "category": "productivity"
+    },
+    {
+      "name": "gutt-vaults",
+      "source": "./gutt-vaults",
+      "description": "Public research vaults on GUTT memory — daily scouting and verification, an owner Console with a reviewer that earns autonomy from your verdicts, and a weekly brief, graph and timelapse you can share",
+      "category": "productivity"
     }
   ]
 }

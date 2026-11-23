@@ -9,13 +9,13 @@ recorded, searched before work and captured after it. [gutt](https://gutt.pro) k
 memory as a knowledge graph; this marketplace, `gutt-plugins`, holds the plugins that connect
 Claude Code to it.
 
-| Plugin                                     | For                                    | What it adds                                                                         | Install                                             |
-| ------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| [gutt-pro](gutt-core/README.md)            | Everyone; install it first             | Memory search and capture, session hooks, the status bar, the `/gutt-pro:` settings  | `claude plugin install gutt-pro@gutt-plugins`       |
-| [gutt-developer](gutt-developer/README.md) | Developers                             | Ticket research, duplicates, estimates, bug triage, sub-task breakdown, PR review    | `claude plugin install gutt-developer@gutt-plugins` |
-| [gutt-product](gutt-product/README.md)     | Product leads                          | Stories from meetings and documents, backlog dedupe, evidence-backed prioritization  | `claude plugin install gutt-product@gutt-plugins`   |
-| [gutt-mentor](gutt-mentor/README.md)       | New joiners and anyone growing a skill | Onboarding plans and growth programs, tracked in your personal memory                | `claude plugin install gutt-mentor@gutt-plugins`    |
-| gutt-vaults                                | Public research vaults                 | Coming. Curated, reviewed research on a public topic, run on the shared stage server | Not published yet                                   |
+| Plugin                                     | For                                    | What it adds                                                                           | Install                                             |
+| ------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| [gutt-pro](gutt-core/README.md)            | Everyone; install it first             | Memory search and capture, session hooks, the status bar, the `/gutt-pro:` settings    | `claude plugin install gutt-pro@gutt-plugins`       |
+| [gutt-developer](gutt-developer/README.md) | Developers                             | Ticket research, duplicates, estimates, bug triage, sub-task breakdown, PR review      | `claude plugin install gutt-developer@gutt-plugins` |
+| [gutt-product](gutt-product/README.md)     | Product leads                          | Stories from meetings and documents, backlog dedupe, evidence-backed prioritization    | `claude plugin install gutt-product@gutt-plugins`   |
+| [gutt-mentor](gutt-mentor/README.md)       | New joiners and anyone growing a skill | Onboarding plans and growth programs, tracked in your personal memory                  | `claude plugin install gutt-mentor@gutt-plugins`    |
+| [gutt-vaults](gutt-vaults/README.md)       | Public research vaults                 | Curated, reviewed research on a public topic, with a weekly brief, graph and timelapse | `claude plugin install gutt-vaults@gutt-plugins`    |
 
 The role plugins depend on `gutt-pro` and install it with them.
 
@@ -55,6 +55,7 @@ Then add the role plugins that fit your work:
 claude plugin install gutt-developer@gutt-plugins
 claude plugin install gutt-product@gutt-plugins
 claude plugin install gutt-mentor@gutt-plugins
+claude plugin install gutt-vaults@gutt-plugins
 ```
 
 [docs/team-onboarding.md](docs/team-onboarding.md) has the same steps in more detail,
@@ -78,7 +79,8 @@ including a stale catalogue and the admin-managed rollout for teams.
   }
   ```
 
-  Add each role plugin the routine needs to `enabledPlugins` the same way.
+  Add each role plugin the routine needs to `enabledPlugins` the same way; a vault routine
+  needs `"gutt-vaults@gutt-plugins": true`.
 
 In Cowork and cloud routines, the `/gutt-pro:` settings last one session, and the status bar is
 not shown.
@@ -129,6 +131,12 @@ WorkingAgreement wait for you to confirm. `/gutt-pro:mode hitl` makes every capt
 - "I'm joining the payments team next week. Help me get up to speed."
 - "I want to get better at code reviews."
 - "Check in on my onboarding plan."
+
+**gutt-vaults** ([more](gutt-vaults/README.md))
+
+- "Start a vault on open-source coding agents: steer it to releases, pricing and outcomes."
+- "Run the daily research for the coding-agents vault."
+- "Preview the vault's Brief page before it goes out."
 
 ## Settings
 

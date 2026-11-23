@@ -1,0 +1,1826 @@
+<title>Vault Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a reviewer's desk. Sticky masthead with the vault and its last run, a tab rail, then
+   one column of decision cards; each card puts the claim first and the controls last. */
+:root {
+  --bg: #f4f6fa; --surface: #ffffff; --sunken: #eef1f6; --ink: #141a26; --muted: #5b6578;
+  --line: #dce1ea; --accent: #e06400; --accent-ink: #ffffff; --blue: #4c6cb2; --blue-soft: #e8edf5;
+  --good: #1d7f55; --good-soft: #e3f3ea; --warn: #9a6512; --warn-soft: #fbf0dc;
+  --bad: #b8372f; --bad-soft: #fae6e4; --focus: #4c6cb2;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-label: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1117; --surface: #151b24; --sunken: #10151d; --ink: #e6eaf2; --muted: #8e99ad;
+  --line: #273041; --accent: #ff7a1a; --accent-ink: #160b00; --blue: #8aa3dd; --blue-soft: #1b2436;
+  --good: #47c58d; --good-soft: #12291f; --warn: #e3ac4c; --warn-soft: #2d2412;
+  --bad: #f07067; --bad-soft: #321716; --focus: #8aa3dd; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0d1117; --surface: #151b24; --sunken: #10151d; --ink: #e6eaf2; --muted: #8e99ad;
+  --line: #273041; --accent: #ff7a1a; --accent-ink: #160b00; --blue: #8aa3dd; --blue-soft: #1b2436;
+  --good: #47c58d; --good-soft: #12291f; --warn: #e3ac4c; --warn-soft: #2d2412;
+  --bad: #f07067; --bad-soft: #321716; --focus: #8aa3dd; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+a { color: var(--blue); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.mast { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.mast .wrap { padding-block: 14px 0; display: grid; gap: 10px; }
+.mast-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.mast h1 { margin: 0; font: 600 20px/1.2 var(--f-body); text-wrap: balance; }
+.mast .group { font: 12px var(--f-mono); color: var(--muted); }
+.mast .runline { font-size: 13px; color: var(--muted); flex-basis: 100%; }
+nav.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-bottom: -1px; }
+nav.tabs a { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px 10px; text-decoration: none; color: var(--muted); font: 600 13px var(--f-label); letter-spacing: .03em; text-transform: uppercase; border-bottom: 2px solid transparent; }
+nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+.count { min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--sunken); color: var(--muted); font: 500 12px/18px var(--f-mono); text-align: center; }
+.count.hot { background: var(--accent); color: var(--accent-ink); }
+
+main.wrap { padding-block: 20px 48px; display: grid; gap: 18px; }
+.banner { padding: 10px 14px; border-radius: var(--r); background: var(--warn-soft); color: var(--warn); font-size: 14px; }
+.banner.info { background: var(--blue-soft); color: var(--blue); }
+h2 { margin: 6px 0 0; font: 600 13px var(--f-label); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.lede { margin: 0; color: var(--muted); max-width: 68ch; }
+.empty { padding: 28px 20px; border: 1px dashed var(--line); border-radius: var(--r); color: var(--muted); display: grid; gap: 8px; }
+.empty strong { color: var(--ink); font-weight: 600; }
+.empty ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+
+/* summary */
+.strip { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.stat { display: grid; gap: 2px; }
+.stat b { font: 500 24px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.stat span { font: 600 11px var(--f-label); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.todo { display: flex; flex-wrap: wrap; gap: 8px; }
+.todo a { display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); text-decoration: none; font-size: 14px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.panel h3 { margin: 0; font: 600 14px var(--f-body); }
+.list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.list li { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; min-width: 0; }
+.ladder { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; font-size: 13px; }
+.ladder .cls { font-family: var(--f-mono); font-size: 12px; overflow-wrap: anywhere; }
+.rungs { display: inline-flex; gap: 3px; }
+.rungs i { width: 18px; height: 8px; border-radius: 2px; background: var(--sunken); border: 1px solid var(--line); }
+.rungs i.on { background: var(--blue); border-color: var(--blue); }
+.spark { width: 100%; height: 56px; display: block; }
+.note { font-size: 13px; color: var(--muted); }
+
+/* cards */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); display: grid; min-width: 0; }
+.card.flag-sev5 { border-left: 3px solid var(--accent); }
+.card-body { padding: 14px 16px; display: grid; gap: 8px; min-width: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 10px; background: var(--sunken); color: var(--muted); font: 600 11px/18px var(--f-label); letter-spacing: .04em; text-transform: uppercase; }
+.chip.type { background: var(--blue-soft); color: var(--blue); }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.sig { display: inline-flex; gap: 2px; align-items: center; }
+.sig i { width: 7px; height: 12px; border-radius: 1px; background: var(--line); }
+.sig i.on { background: var(--accent); }
+.card h4 { margin: 0; font: 600 16px/1.35 var(--f-body); text-wrap: balance; overflow-wrap: anywhere; }
+.claim { margin: 0; max-width: 72ch; }
+.why { margin: 0; color: var(--muted); max-width: 72ch; font-size: 14px; }
+.sources { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.sources li { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; min-width: 0; }
+.sources a { overflow-wrap: anywhere; }
+.sources time, .mono { font: 12px var(--f-mono); color: var(--muted); }
+.review { background: var(--sunken); border-radius: var(--r); padding: 8px 12px; font-size: 13px; display: grid; gap: 2px; }
+.review b { font-weight: 600; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.side { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; display: grid; gap: 4px; min-width: 0; }
+.side .lbl { font: 600 11px var(--f-label); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.diff { font: 13px/1.5 var(--f-mono); background: var(--sunken); border-radius: var(--r); padding: 8px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.actions { border-top: 1px solid var(--line); padding: 10px 16px; display: grid; gap: 8px; background: var(--surface); border-radius: 0 0 var(--r) var(--r); }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font: 600 13px var(--f-body); padding: 7px 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.good { color: var(--good); border-color: var(--good); }
+button.bad { color: var(--bad); border-color: var(--bad); }
+button.link { border: 0; background: none; padding: 7px 4px; color: var(--blue); }
+textarea, input[type="text"], select { width: 100%; font: 14px/1.4 var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
+textarea { min-height: 64px; resize: vertical; }
+label.small { font: 600 11px var(--f-label); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: grid; gap: 4px; }
+.row2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+details.charter { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+details.charter summary { padding: 10px 14px; cursor: pointer; font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+details.charter pre { margin: 0; padding: 0 14px 14px; font: 13px/1.55 var(--f-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.md { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; max-height: 420px; overflow: auto; background: var(--sunken); border-radius: var(--r); padding: 10px 12px; }
+.md.view { white-space: normal; }
+.md.view > :first-child { margin-top: 0; }
+.md.view > :last-child { margin-bottom: 0; }
+.md.view h1, .md.view h2, .md.view h3, .md.view h4 { font: 600 15px/1.3 var(--f-body); letter-spacing: 0; text-transform: none; color: var(--ink); margin: 14px 0 6px; padding: 0; border: 0; }
+.md.view p, .md.view ul, .md.view ol { margin: 0 0 8px; }
+.md.view ul, .md.view ol { padding-left: 20px; }
+.md.view code { font: 12.5px var(--f-mono); }
+.md.view a { color: var(--blue); }
+.count { font: 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.count.over { color: var(--bad); font-weight: 600; }
+table.runs { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.runs th, table.runs td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.runs th { font: 600 11px var(--f-label); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+table.runs td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+.toast { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 32px); padding: 10px 16px; border-radius: var(--r); background: var(--ink); color: var(--bg); font-size: 14px; }
+@media (prefers-reduced-motion: no-preference) { .card { transition: opacity .15s; } }
+/* settings */
+.settings-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; justify-content: space-between; }
+.sec-top { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 14px 18px; }
+.field { display: grid; gap: 4px; align-content: start; min-width: 0; padding-left: 10px; border-left: 3px solid transparent; }
+.field label { font-size: 13px; font-weight: 600; }
+.field small { font-size: 12px; color: var(--muted); }
+.field.changed { border-left-color: var(--accent); }
+.field.invalid input, .field.invalid textarea { border-color: var(--bad); }
+.field.invalid small b { color: var(--bad); font-weight: 600; }
+.inrow { display: flex; align-items: center; gap: 6px; }
+.inrow input[inputmode="numeric"] { max-width: 7em; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.unit { font-size: 13px; color: var(--muted); }
+input:disabled, textarea:disabled, select:disabled { opacity: .7; cursor: not-allowed; }
+h4.sub { margin: 6px 0 0; font: 600 13px var(--f-body); }
+.savebar { position: sticky; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 4; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.savebar.live { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.changelog li { grid-template-columns: 3em 1fr; font-size: 14px; }
+.changelog .chip { margin-left: 8px; }
+/* inbox */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); text-decoration: none; font-size: 13px; }
+.filters a[aria-current="page"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+kbd { display: inline-block; margin-left: 6px; min-width: 16px; padding: 0 4px; border: 1px solid currentColor; border-radius: 3px; font: 500 10px/14px var(--f-mono); opacity: .55; text-align: center; }
+@media (hover: none) { kbd, .keys { display: none; } }
+.card:focus { outline: none; }
+.card.cur { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card.hl { box-shadow: 0 0 0 3px var(--accent); }
+.card.done .card-body { padding: 10px 16px; gap: 2px; }
+.card.done .actions { padding: 4px 16px 8px; border-top: 0; }
+.done-title { color: var(--ink); font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.review.blind { background: transparent; border: 1px dashed var(--line); }
+.reasons { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.small-lbl { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+button.reason { border-radius: 16px; padding: 5px 12px; font-weight: 500; }
+.btns.end { align-self: end; }
+details.fold summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 2px 0 6px; }
+.toast { display: flex; gap: 14px; align-items: center; }
+.toast[hidden] { display: none; }
+.toast button.link { color: inherit; text-decoration: underline; padding: 0 2px; }
+@media (max-width: 640px) {
+  .card .actions { position: sticky; bottom: env(safe-area-inset-bottom, 0px); z-index: 2; box-shadow: 0 -6px 12px -8px rgba(0, 0, 0, .25); }
+  .actions .btns > button { flex: 1 1 auto; }
+}
+/* reviewer */
+.classes { display: grid; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
+.crow { display: grid; grid-template-columns: minmax(140px, 1.1fr) 110px minmax(220px, 2fr) minmax(110px, .8fr) minmax(130px, 1fr); gap: 8px 16px; padding: 12px 16px; border-top: 1px solid var(--line); align-items: start; font-size: 13px; min-width: 0; }
+.crow:first-child { border-top: 0; }
+.crow.head { padding-block: 8px; font: 600 11px var(--f-label); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.crow > div { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.c-name b { font-weight: 600; overflow-wrap: anywhere; }
+.c-stage .chip { justify-self: start; }
+.c-wide { grid-column: 3 / -1; color: var(--muted); }
+.lbl-m { display: none; }
+.needs { display: grid; gap: 10px; }
+.need { display: grid; gap: 3px; }
+.need-top { display: flex; justify-content: space-between; gap: 8px; }
+.need small { color: var(--muted); }
+.bar { height: 6px; overflow: hidden; border-radius: 3px; background: var(--sunken); border: 1px solid var(--line); }
+.bar i { display: block; height: 100%; background: var(--blue); }
+.need.earned .bar i { background: var(--good); }
+b.ok { color: var(--good); font-weight: 600; }
+b.short { color: var(--bad); font-weight: 600; }
+.spark.small { height: 28px; max-width: 160px; }
+.dis small { display: inline; }
+@media (max-width: 760px) {
+  .crow { grid-template-columns: minmax(0, 1fr) auto; }
+  .crow.head { display: none; }
+  .c-needs, .c-since, .c-wait, .c-wide { grid-column: 1 / -1; }
+  .c-since, .c-wait { display: block !important; }
+  .lbl-m { display: inline; font-weight: 600; color: var(--muted); }
+}
+</style>
+
+<header class="mast">
+  <div class="wrap">
+    <div class="mast-top">
+      <h1 id="vault-name">Vault Console</h1>
+      <span class="group" id="vault-group"></span>
+      <span class="runline" id="runline">Connecting to the Console data…</span>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="Console sections"></nav>
+  </div>
+</header>
+<main class="wrap" id="main"></main>
+<div class="toast" id="toast" role="status" hidden></div>
+<script type="application/json" id="config-fields">
+{
+ "sections": [
+  {
+   "id": "run",
+   "title": "Research run",
+   "note": "Read by the research run. Applies at the next research run.",
+   "fields": [
+    {
+     "key": "run.pending_cap",
+     "label": "New rows per run",
+     "kind": "int",
+     "default": 25,
+     "min": 5,
+     "max": 50
+    },
+    {
+     "key": "run.significance_floor",
+     "label": "Drop findings below significance",
+     "kind": "int",
+     "default": 2,
+     "min": 1,
+     "max": 4
+    },
+    {
+     "key": "run.scout_max_items",
+     "label": "Items per scout",
+     "kind": "int",
+     "default": 8,
+     "min": 3,
+     "max": 15,
+     "help": "A beat's own max in the charter can be lower, never higher."
+    }
+   ]
+  },
+  {
+   "id": "review",
+   "title": "Reviewer",
+   "note": "Passed to the reviewer by the research run. Applies at the next research run.",
+   "fields": [
+    {
+     "key": "review.precedents_min",
+     "label": "Similar past calls needed",
+     "kind": "int",
+     "default": 5,
+     "min": 3,
+     "max": 20
+    },
+    {
+     "key": "review.precedent_agreement",
+     "label": "Past calls that must agree",
+     "kind": "pct",
+     "default": 0.9,
+     "min": 0.8,
+     "max": 1.0
+    },
+    {
+     "key": "review.precedent_half_life_days",
+     "label": "A past call counts half after",
+     "kind": "days",
+     "default": 60,
+     "min": 14,
+     "max": 365
+    },
+    {
+     "key": "review.override_cooloff_days",
+     "label": "No auto calls after an override for",
+     "kind": "days",
+     "default": 30,
+     "min": 7,
+     "max": 90
+    },
+    {
+     "key": "review.recent_steering_days",
+     "label": "Escalate rows touching steering newer than",
+     "kind": "days",
+     "default": 7,
+     "min": 1,
+     "max": 30
+    },
+    {
+     "key": "review.audit_rate",
+     "label": "Auto decisions sampled for audit",
+     "kind": "pct",
+     "default": 0.1,
+     "min": 0.05,
+     "max": 0.5
+    },
+    {
+     "key": "review.audit_min",
+     "label": "Smallest audit sample",
+     "kind": "int",
+     "default": 2,
+     "min": 1,
+     "max": 10
+    }
+   ]
+  },
+  {
+   "id": "ladder",
+   "title": "Autonomy",
+   "note": "Checked at every research run: a changed threshold can move a class the next morning, and a lower ceiling drops it at once.",
+   "fields": [
+    {
+     "key": "ladder.ceiling",
+     "label": "Highest stage any class may reach",
+     "kind": "int",
+     "default": 3,
+     "min": 0,
+     "max": 3,
+     "help": "0 shadow · 1 auto-reject · 2 auto-approve to significance 3 · 3 steady"
+    },
+    {
+     "key": "ladder.stage1_calls",
+     "label": "Auto-reject: reject predictions in the class",
+     "kind": "int",
+     "default": 10,
+     "min": 10,
+     "max": 100
+    },
+    {
+     "key": "ladder.stage1_agreement",
+     "label": "Auto-reject: share of them right",
+     "kind": "pct",
+     "default": 0.9,
+     "min": 0.8,
+     "max": 1.0
+    },
+    {
+     "key": "ladder.stage2_approve_calls",
+     "label": "Auto-approve: approve predictions in the class",
+     "kind": "int",
+     "default": 20,
+     "min": 5,
+     "max": 50
+    },
+    {
+     "key": "ladder.stage2_agreement",
+     "label": "Auto-approve: share of them right",
+     "kind": "pct",
+     "default": 0.95,
+     "min": 0.8,
+     "max": 1.0
+    },
+    {
+     "key": "ladder.replay_size",
+     "label": "Eval replay: past calls replayed",
+     "kind": "int",
+     "default": 20,
+     "min": 10,
+     "max": 50
+    },
+    {
+     "key": "ladder.replay_pass",
+     "label": "Eval replay: share that must agree",
+     "kind": "pct",
+     "default": 0.85,
+     "min": 0.8,
+     "max": 1.0
+    },
+    {
+     "key": "ladder.stage3_agreement",
+     "label": "Steady: 30-day agreement",
+     "kind": "pct",
+     "default": 0.95,
+     "min": 0.85,
+     "max": 1.0
+    },
+    {
+     "key": "ladder.escalation_target",
+     "label": "Steady: keep escalations under",
+     "kind": "pct",
+     "default": 0.2,
+     "min": 0.05,
+     "max": 0.5
+    }
+   ]
+  },
+  {
+   "id": "brief",
+   "title": "Brief",
+   "note": "Read by the weekly brief. Applies at the next brief.",
+   "fields": [
+    {
+     "key": "brief.min_findings",
+     "label": "Committed findings needed for a brief",
+     "kind": "int",
+     "default": 3,
+     "min": 1,
+     "max": 10
+    },
+    {
+     "key": "brief.pattern_min_verdicts",
+     "label": "Your calls before a pattern counts",
+     "kind": "int",
+     "default": 5,
+     "min": 3,
+     "max": 20
+    },
+    {
+     "key": "brief.pattern_share",
+     "label": "Share one way for a pattern",
+     "kind": "pct",
+     "default": 0.8,
+     "min": 0.6,
+     "max": 1.0
+    },
+    {
+     "key": "brief.steering_after_weeks",
+     "label": "Propose steering after a pattern runs for",
+     "kind": "weeks",
+     "default": 3,
+     "min": 1,
+     "max": 8
+    },
+    {
+     "key": "brief.linkedin_series",
+     "label": "LinkedIn series name",
+     "kind": "text",
+     "default": "",
+     "max": 60,
+     "help": "Empty: the vault's name."
+    },
+    {
+     "key": "brief.linkedin_cta",
+     "label": "LinkedIn offer line",
+     "kind": "text",
+     "default": "",
+     "max": 280,
+     "help": "Empty: no offer line."
+    }
+   ]
+  }
+ ]
+}
+</script>
+<script type="application/json" id="console-labels">
+{
+ "reject_reasons": [
+  {"key": "stale", "label": "Stale"},
+  {"key": "weak_source", "label": "Weak source"},
+  {"key": "off_scope", "label": "Off scope"},
+  {"key": "duplicate", "label": "Duplicate"},
+  {"key": "low_significance", "label": "Not significant"},
+  {"key": "unsupported", "label": "Claim not supported"},
+  {"key": "other", "label": "Other"}
+ ],
+ "class_labels": {
+  "finding/*": "New findings · {beat}",
+  "reverify": "Re-checks",
+  "card_update": "Role Card changes",
+  "conflict": "Conflicts"
+ },
+ "stages": ["Shadow", "Auto-reject", "Auto-approve", "Steady"],
+ "agents": {
+  "vault-scout": "Research scouts",
+  "vault-librarian": "Proposal writer",
+  "vault-reviewer": "Reviewer",
+  "vault-brief": "Weekly brief"
+ },
+ "routines": {
+  "freshness": "Freshness check",
+  "curate": "Research run",
+  "commit": "Commit",
+  "brief": "Weekly brief"
+ }
+}
+</script>
+
+<script>
+(function () {
+  "use strict";
+  var TABS = [["inbox", "Inbox"], ["summary", "Summary"], ["reviewer", "Reviewer"], ["settings", "Settings"], ["steer", "Steer"], ["archive", "Archive"]];
+  // Links saved before the Inbox existed open the Inbox on the matching filter.
+  var LEGACY = { "needs-you": "inbox/calls", audit: "inbox/audit", conflicts: "inbox/conflicts", briefs: "inbox/brief" };
+  var S = {
+    db: null, ready: false, noDb: false, stale: false, readOnly: false,
+    findings: [], steering: [], briefs: [], runs: [], calibrations: [],
+    vault: null, charter: null, reviewer: null, drafts: {}, busy: {},
+    ui: {}, done: {}, acts: {}, order: [], cursor: null, undo: null, focusNext: null,
+    config: null, configChanges: [], cfgDraft: {}, ceilDraft: {}, cfgReset: null,
+    canAdmin: null, me: null, idKnown: false, userNs: null, names: {}
+  };
+  var LABELS = (function () {
+    try { return JSON.parse(document.getElementById("console-labels").textContent) || {}; } catch (e) { return {}; }
+  })();
+  var REASONS = LABELS.reject_reasons || [];
+  var STAGES = LABELS.stages || ["Shadow", "Auto-reject", "Auto-approve", "Steady"];
+
+  // ---------- tiny DOM helper (text only, never innerHTML) ----------
+  function h(tag, attrs) {
+    var el = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      var v = attrs[k];
+      if (v == null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k === "text") el.textContent = v;
+      else if (k.slice(0, 2) === "on") el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? "" : v);
+    }
+    for (var i = 2; i < arguments.length; i++) add(el, arguments[i]);
+    return el;
+  }
+  function add(el, c) {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { add(el, x); }); return; }
+    el.appendChild(typeof c === "object" ? c : document.createTextNode(String(c)));
+  }
+  // ---------- markdown preview (a safe subset, built as DOM; never innerHTML) ----------
+  // Headings, paragraphs, bullet and numbered lists, **bold**, *italic*, `code` and [links](https://…).
+  // Anything else shows as written. Links open only for http(s) URLs.
+  function mdInline(text) {
+    var out = [], re = /\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*|_([^_\s][^_]*)_|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g, last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) out.push(text.slice(last, m.index));
+      if (m[1] != null) out.push(h("strong", { text: m[1] }));
+      else if (m[2] != null || m[3] != null) out.push(h("em", { text: m[2] != null ? m[2] : m[3] }));
+      else if (m[4] != null) out.push(h("code", { text: m[4] }));
+      else if (/^https?:\/\//i.test(m[6])) out.push(h("a", { href: m[6], target: "_blank", rel: "noopener noreferrer", text: m[5] }));
+      else out.push(m[0]);
+      last = re.lastIndex;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  }
+  function mdView(src) {
+    var box = h("div", { class: "md view" }), list = null, para = [];
+    function flush() { if (para.length) { box.appendChild(h("p", null, mdInline(para.join(" ")))); para = []; } }
+    String(src || "").split(/\r?\n/).forEach(function (line) {
+      var hd = line.match(/^(#{1,4})\s+(.*)$/), ul = line.match(/^\s*[-*•]\s+(.*)$/), ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (!line.trim()) { flush(); list = null; return; }
+      if (hd) { flush(); list = null; box.appendChild(h("h" + Math.min(4, hd[1].length + 1), null, mdInline(hd[2]))); return; }
+      if (ul || ol) {
+        flush();
+        var tag = ul ? "ul" : "ol";
+        if (!list || list.tagName.toLowerCase() !== tag) { list = h(tag); box.appendChild(list); }
+        list.appendChild(h("li", null, mdInline((ul || ol)[1])));
+        return;
+      }
+      list = null; para.push(line.trim());
+    });
+    flush();
+    return box;
+  }
+  // LinkedIn counts characters as people see them; emoji and other astral characters count once.
+  var LINKEDIN_MAX = 3000;
+  function charCount(text) { return Array.from(String(text || "")).length; }
+  function linkedinCount(text) {
+    var n = charCount(text), over = n > LINKEDIN_MAX;
+    return h("p", { class: over ? "count over" : "count" },
+      n.toLocaleString("en-US") + " of " + LINKEDIN_MAX.toLocaleString("en-US") + " characters" + (over ? " · " + (n - LINKEDIN_MAX).toLocaleString("en-US") + " over LinkedIn's limit" : ""));
+  }
+  function briefPageSummary(b) {
+    var p = b.page;
+    if (!p || typeof p !== "object") return h("p", { class: "note", text: "No page data in this draft: the Brief page keeps last week's version until the brief is redrafted." });
+    var bits = [];
+    if (Array.isArray(p.changes)) bits.push(p.changes.length + (p.changes.length === 1 ? " finding" : " findings"));
+    if (Array.isArray(p.conflicts)) bits.push(p.conflicts.length + (p.conflicts.length === 1 ? " open conflict" : " open conflicts"));
+    if (Array.isArray(p.sources)) bits.push(p.sources.length + (p.sources.length === 1 ? " source" : " sources"));
+    var url = S.vault && S.vault.brief_url;
+    return h("div", null,
+      p.headline ? h("p", null, h("strong", { text: p.headline })) : null,
+      h("p", { class: "note", text: "The Brief page shows " + (bits.join(", ") || "this week's brief") + ". It is republished from this data after you approve, at the next commit." }),
+      url && /^https?:\/\//.test(url) ? h("p", null, h("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: "Open the published Brief page" })) : null);
+  }
+
+  // Mark an element for in-place updates: same key and same sig keep the element on screen.
+  function keyed(el, key, sig, deep) {
+    el.setAttribute("data-key", key);
+    if (sig !== undefined) el.setAttribute("data-sig", typeof sig === "string" ? sig : JSON.stringify(sig));
+    if (deep) el.setAttribute("data-morph", "");
+    return el;
+  }
+  function syncAttrs(o, n) {
+    Array.prototype.slice.call(o.attributes).forEach(function (a) { if (!n.hasAttribute(a.name)) o.removeAttribute(a.name); });
+    Array.prototype.forEach.call(n.attributes, function (a) { if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value); });
+  }
+  // Update oldEl's children to newEl's: a keyed child with an unchanged sig stays as it is (its
+  // typed text, open sections, focus and scroll stay), a data-morph child is updated inside,
+  // everything else is replaced. Nothing is cleared first, so the page keeps its scroll position.
+  function morph(oldEl, newEl) {
+    var olds = {};
+    Array.prototype.forEach.call(oldEl.children, function (c) { var k = c.getAttribute("data-key"); if (k) olds[k] = c; });
+    var next = Array.prototype.slice.call(newEl.childNodes).map(function (n) {
+      var k = n.nodeType === 1 && n.getAttribute("data-key"), o = k && olds[k];
+      if (!o || o.tagName !== n.tagName) return n;
+      delete olds[k];
+      if (n.hasAttribute("data-sig") && o.getAttribute("data-sig") === n.getAttribute("data-sig")) return o;
+      if (n.hasAttribute("data-morph")) { syncAttrs(o, n); morph(o, n); return o; }
+      return n;
+    });
+    next.forEach(function (n, i) { var at = oldEl.childNodes[i]; if (at !== n) oldEl.insertBefore(n, at || null); });
+    while (oldEl.childNodes.length > next.length) oldEl.removeChild(oldEl.lastChild);
+  }
+  function safeUrl(u) { return /^https?:\/\//i.test(u || "") ? u : null; }
+  function day(iso) { if (!iso) return ""; var d = new Date(iso); return isNaN(d) ? String(iso) : d.toISOString().slice(0, 10); }
+  function localDay(d) { d = d || new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function when(iso) {
+    if (!iso) return ""; var d = new Date(iso); if (isNaN(d)) return String(iso);
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  function shortDay(iso) {
+    if (!iso) return ""; var d = new Date(iso); if (isNaN(d)) return String(iso);
+    return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  }
+  function ms(iso) { var t = iso ? Date.parse(iso) : NaN; return isNaN(t) ? 0 : t; }
+  function pct(x) { return x == null || x === "" || isNaN(Number(x)) ? "–" : Math.round(Number(x) * 100) + "%"; }
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : (many || one + "s")); }
+  function toast(msg, undoFn) {
+    var t = document.getElementById("toast"); t.textContent = "";
+    t.appendChild(h("span", { text: msg }));
+    S.undo = undoFn || null;
+    if (undoFn) t.appendChild(h("button", { class: "link", onclick: runUndo }, "Undo"));
+    t.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(function () { t.hidden = true; S.undo = null; }, undoFn ? 5000 : 3800);
+  }
+  function runUndo() {
+    var f = S.undo; if (!f) return;
+    S.undo = null; clearTimeout(toast.t); document.getElementById("toast").hidden = true; f();
+  }
+
+  // ---------- product words ----------
+  function classLabel(k) {
+    var map = LABELS.class_labels || {};
+    if (map[k]) return map[k];
+    var m = /^finding\/(.+)$/.exec(k || "");
+    return m ? String(map["finding/*"] || "New findings · {beat}").replace("{beat}", m[1]) : String(k || "Unclassified");
+  }
+  function stageName(s) { return STAGES[Number(s) || 0] || STAGES[0]; }
+  function agentLabel(a) { return (LABELS.agents || {})[a] || a; }
+  function routineLabel(r) {
+    var map = LABELS.routines || {}, hit = Object.keys(map).filter(function (k) { return (r || "").indexOf(k) >= 0; })[0];
+    return hit ? map[hit] : (r || "routine");
+  }
+  function reasonLabel(k) { var r = REASONS.filter(function (x) { return x.key === k; })[0]; return r ? r.label : k; }
+
+  // ---------- next commit (U6) ----------
+  // Commit times are the routine's, in the owner's zone (meta/vault.commit_times, .timezone).
+  function commitTimes() {
+    var t = S.vault && Array.isArray(S.vault.commit_times) && S.vault.commit_times.length ? S.vault.commit_times : ["12:10", "19:10"];
+    return t.filter(function (x) { return /^\d{1,2}:\d{2}$/.test(String(x)); });
+  }
+  function tzOffsetMin(tz, date) {
+    if (!tz) return -date.getTimezoneOffset();
+    try {
+      var p = {};
+      new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        .formatToParts(date).forEach(function (x) { p[x.type] = x.value; });
+      return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - Math.floor(date.getTime() / 1000) * 1000) / 60000;
+    } catch (e) { return -date.getTimezoneOffset(); }
+  }
+  function nextCommit() {
+    var tz = S.vault && S.vault.timezone, nowD = new Date(), off = tzOffsetMin(tz, nowD), best = null;
+    var wall = new Date(nowD.getTime() + off * 60000);
+    for (var d = 0; d < 2; d++) commitTimes().forEach(function (t) {
+      var hm = String(t).split(":");
+      var guess = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() + d, +hm[0], +hm[1]);
+      var at = new Date(guess - tzOffsetMin(tz, new Date(guess - off * 60000)) * 60000);
+      if (at > nowD && (!best || at < best)) best = at;
+    });
+    return best;
+  }
+  function clock(d) {
+    var t = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    return localDay(d) === localDay() ? t : d.toLocaleDateString(undefined, { weekday: "short" }) + " " + t;
+  }
+  function commitWhen() { var n = nextCommit(); return n ? "Next commit " + clock(n) + "." : ""; }
+
+  // ---------- rows, classes and the reviewer's calls ----------
+  function byCreatedDesc(a, b) { return String(b.created || "").localeCompare(String(a.created || "")); }
+  function rowClass(r) {
+    var c = r.review && r.review["class"];
+    if (c) return c;
+    return r.type === "finding" || !r.type ? "finding/" + (r.beat || "unclassified") : r.type;
+  }
+  function classStage(cls) { return Number(classRecord(cls).stage) || 0; }
+  // A class's numbers come from the last Calibration; its stage and permissions from the newest
+  // research run when that run is newer, since each run re-checks them against Settings.
+  function classRecord(cls) {
+    var cal = ((S.reviewer && S.reviewer.stage_by_class) || {})[cls];
+    var rec = typeof cal === "object" && cal ? Object.assign({}, cal) : { stage: Number(cal) || 0 };
+    var run = curateRuns()[0], v = run && run.stage_by_class && run.stage_by_class[cls];
+    if (v != null && ms(run.started) > ms(S.reviewer && S.reviewer.at)) {
+      if (typeof v === "object") ["stage", "auto_reject", "auto_approve"].forEach(function (k) { if (v[k] != null) rec[k] = v[k]; });
+      else rec.stage = Number(v) || 0;
+    }
+    return rec;
+  }
+  // approve | reject | null: what the reviewer called on this row.
+  function predicted(r) {
+    var rv = r.review || {}, p = rv.prediction;
+    if (!p) p = rv.decision === "auto_approve" ? "approve" : rv.decision === "auto_reject" ? "reject" : null;
+    return p === "reject" ? "reject" : p ? "approve" : null;
+  }
+  function humanSide(r) { var hu = r.human; if (!hu || !hu.decision || hu.decision === "open") return null; return hu.decision === "rejected" ? "reject" : "approve"; }
+  function agrees(r) { var p = predicted(r), s = humanSide(r); return p && s ? p === s : null; }
+  // U1: in a shadow class the prediction stays hidden until you decide. Conflicts never leave shadow.
+  // Once shown (row.revealed, kept through undo, reopen and reload) it stays shown.
+  function isBlind(r) {
+    if (r.revealed) return false;
+    if (r.type === "conflict") return true;
+    var rv = r.review; if (!rv) return false;
+    if (rv.decision === "auto_approve" || rv.decision === "auto_reject") return false;
+    var st = rv.stage != null && rv.stage !== "" ? Number(rv.stage) : classStage(rowClass(r));
+    return !(st > 0);
+  }
+  function revealText(r) {
+    var p = predicted(r), a = agrees(r); if (!p || a == null) return "";
+    var c = r.review && r.review.confidence;
+    return "The reviewer predicted " + p + (c != null ? " at " + pct(c) : "") + ": you " + (a ? "agreed." : "disagreed.");
+  }
+  function curateRuns() { return S.runs.filter(function (r) { return /curate/.test(r.routine || "") && !/freshness/.test(r.routine || ""); }); }
+  function decided() { return S.findings.filter(function (r) { return ["approved", "rejected", "auto_approved", "auto_rejected", "committed"].indexOf(r.status) >= 0; }); }
+
+  // ---------- the Inbox (U2): one list ordered by urgency ----------
+  var FILTERS = [["all", "All"], ["calls", "Your calls"], ["conflicts", "Conflicts"], ["audit", "Audit"], ["brief", "Brief"], ["steering", "Steering"]];
+  var KIND_FILTER = { call: "calls", conflict: "conflicts", audit: "audit", brief: "brief", steering: "steering" };
+  function isOpen(r) { return r.status === "escalated" || r.status === "pending"; }
+  function revisitDue(r) { var lo = r.left_open; return !lo || !lo.revisit || String(lo.revisit) <= localDay(); }
+  function findingItem(r) {
+    var kind = r.type === "conflict" ? "conflict" : r.audit && !isOpen(r) ? "audit" : "call", state;
+    if (kind === "conflict") state = isOpen(r) ? (revisitDue(r) ? "open" : "parked") : "decided";
+    else if (kind === "audit") state = !r.human && (r.status === "auto_approved" || r.status === "auto_rejected") ? "open" : "decided";
+    else state = isOpen(r) ? "open" : "decided";
+    var sg = Number(r.significance) || 0;
+    var rank = kind === "conflict" ? (r.left_open ? 0 : 1) : kind === "call" ? (sg >= 5 ? 0 : 2) : 3;
+    return { id: r.id, kind: kind, state: state, rank: rank, sig: sg, t: ms(r.created), row: r };
+  }
+  // A row decided here stays in place, marked done, until you leave the tab (no jumping list).
+  function viewState(it) {
+    var d = S.done[it.id];
+    // A conflict left open here comes back on its revisit date, even in the same session.
+    var lo = it.row && it.row.left_open;
+    if (d && d.revisit && lo && lo.revisit === d.revisit && it.state === "open") { delete S.done[it.id]; d = null; }
+    if (d && d.state === "done") return "done";
+    if (d && d.state === "undone") return it.state === "open" ? "open" : "undoing";
+    return it.state;
+  }
+  function inboxItems() {
+    var out = S.findings.map(findingItem);
+    S.briefs.forEach(function (b) { out.push({ id: b.id, kind: "brief", state: b.status === "draft" ? "open" : "decided", rank: 4, sig: 0, t: ms(b.at), brief: b }); });
+    S.steering.forEach(function (s) {
+      if (s.source !== "proposed" && s.source !== "clash") return;
+      out.push({ id: s.id, kind: "steering", state: s.status === "new" ? "open" : "decided", rank: 5, sig: 0, t: ms(s.at), steer: s });
+    });
+    out.forEach(function (it) { it.view = viewState(it); });
+    return out.filter(function (it) { return it.view !== "decided"; })
+      .sort(function (a, b) { return a.rank - b.rank || b.sig - a.sig || a.t - b.t || String(a.id).localeCompare(String(b.id)); });
+  }
+  function openItems() { return inboxItems().filter(function (it) { return it.view === "open"; }); }
+  function inFilter(it, f) {
+    if (f === "all") return it.view !== "parked";
+    return KIND_FILTER[it.kind] === f;
+  }
+
+  // ---------- writes ----------
+  function canAct() { return S.db && !S.readOnly; }
+  function write(key, fn, okMsg, undoFn, onFail) {
+    if (!canAct() || S.busy[key]) return;
+    S.busy[key] = true; render();
+    var attempt = function (retry) {
+      return fn().then(function () { if (okMsg) toast(okMsg, undoFn); }, function (e) {
+        var code = e && e.code;
+        if (code === "unavailable" && retry) return new Promise(function (r) { setTimeout(r, 600 + Math.random() * 800); }).then(function () { return attempt(false); });
+        if (onFail) onFail();
+        if (code === "settings_busy") toast("Someone else is saving settings right now. Try again in a few seconds.");
+        else if (code === "version_taken") toast("Someone else saved a new version first. Check their change in the log, then save again.");
+        else if (code === "invalid_argument") { S.readOnly = true; toast("You can view this Console but not change it."); }
+        else if (code === "quota_exceeded") toast("The Console's storage is full. Archive old rows before adding more.");
+        else if (code === "revoked") { S.readOnly = true; toast("This Console is no longer available to you."); }
+        else if (code === "committed") toast("The commit already put this in the vault, so it can't be undone here.");
+        else toast("That didn't save. Try again in a moment.");
+      });
+    };
+    attempt(true).then(function () { delete S.busy[key]; render(); });
+  }
+  function now() { return new Date().toISOString(); }
+  function draft(id) { return String(S.drafts[id] || "").trim(); }
+  function clearDrafts(id) { delete S.drafts["note-" + id]; delete S.drafts["edit-" + id]; delete S.ui[id]; }
+  // Every Inbox action: write the change, keep the card in place as done, offer Undo for five
+  // seconds (U4). Undo writes back exactly the fields the action changed.
+  function act(id, path, change, before, msg, doneText) {
+    if (!canAct() || S.busy[id]) return;
+    var entry = S.done[id] = { state: "done", text: doneText || msg, path: path, before: before };
+    clearDrafts(id);
+    if (S.cursor === id) moveCursor(1);
+    write(id, function () { return S.db.doc(path).update(change); }, msg, function () { undoDone(id, entry); }, function () { delete S.done[id]; });
+  }
+  // Undo and Reopen re-read the row first and refuse once the commit routine has recorded it.
+  // The db has no transactions, so a commit landing between the read and the write can still
+  // win; vault-commit skips rows that aren't decided, and a committed row is never edited here.
+  function unlessCommitted(path, change) {
+    var ref = S.db.doc(path);
+    return ref.get().then(function (snap) {
+      var cur = snap.exists ? snap.data() : null;
+      if (cur && (cur.status === "committed" || cur.status === "published" || cur.committed_episode)) fail("committed");
+      return ref.update(change);
+    });
+  }
+  function undoDone(id, entry) {
+    var d = entry || S.done[id]; if (!d || d.state !== "done") return;
+    d.state = "undone"; S.done[id] = d;
+    write(id, function () { return unlessCommitted(d.path, d.before); }, "Undone. It's back in your Inbox.", null, function () { d.state = "done"; });
+  }
+  function decide(row, decision, extra) {
+    extra = extra || {};
+    var human = { decision: decision, note: extra.note != null ? extra.note : draft("note-" + row.id), at: now() };
+    if (extra.reason) human.reason = extra.reason;
+    if (extra.edited_claim) human.edited_claim = extra.edited_claim;
+    if (extra.resolution) human.resolution = extra.resolution;
+    if (extra.confirm) human.confirm = true;
+    var blind = isBlind(row);
+    human.blind = blind;
+    var status = decision === "rejected" ? "rejected" : "approved";
+    var after = Object.assign({}, row, { status: status, human: human });
+    var change = { status: status, human: human };
+    // The decision reveals the prediction; a later call on this row is no longer blind.
+    if (blind && predicted(row)) change.revealed = true;
+    var said = extra.msg || (decision === "edited" ? "Approved with your edit." : status === "approved" ? "Approved." : "Rejected" + (extra.reason ? " (" + reasonLabel(extra.reason) + ")." : "."));
+    var reveal = revealText(after);
+    act(row.id, "findings/" + row.id, change, { status: row.status, human: row.human || null },
+      [said, reveal, commitWhen()].filter(Boolean).join(" "), [said, reveal].filter(Boolean).join(" "));
+  }
+  function priorStatus(row) {
+    var d = row.review && row.review.decision;
+    return d === "auto_approve" ? "auto_approved" : d === "auto_reject" ? "auto_rejected" : "escalated";
+  }
+  function reopen(row) {
+    write(row.id, function () { return unlessCommitted("findings/" + row.id, { status: priorStatus(row), human: null }); }, "Reopened. It's back in your Inbox.");
+  }
+  function ui(id) { return S.ui[id] || (S.ui[id] = {}); }
+  function toggle(id, k, focusId) { var u = ui(id); u[k] = !u[k]; if (u[k] && focusId) S.focusNext = focusId; render(); }
+
+  // ---------- pieces ----------
+  function sig(n) {
+    n = Number(n) || 0; var s = h("span", { class: "sig", title: "Significance " + n + " of 5", "aria-label": "Significance " + n + " of 5" });
+    for (var i = 1; i <= 5; i++) s.appendChild(h("i", { class: i <= n ? "on" : "" }));
+    return s;
+  }
+  var TYPE_LABEL = { finding: "New finding", reverify: "Re-check", card_update: "Role Card change", conflict: "Conflict" };
+  var STATUS_CHIP = {
+    pending: ["Awaiting reviewer", "warn"], escalated: ["Your call", "warn"], auto_approved: ["Auto-approved", "good"],
+    auto_rejected: ["Auto-rejected", "bad"], approved: ["Approved", "good"], rejected: ["Rejected", "bad"], committed: ["In the vault", ""]
+  };
+  function statusChip(st) { var c = STATUS_CHIP[st] || [st, ""]; return h("span", { class: "chip " + c[1], text: c[0] }); }
+  function sourcesList(srcs) {
+    if (!srcs || !srcs.length) return h("p", { class: "note", text: "No sources on this row." });
+    return h("ul", { class: "sources" }, srcs.map(function (s) {
+      var u = safeUrl(s.url);
+      return h("li", null,
+        s.source_class ? h("span", { class: "chip", text: s.source_class }) : null,
+        u ? h("a", { href: u, target: "_blank", rel: "noopener", text: s.title || u }) : h("span", { text: s.title || s.url || "untitled" }),
+        s.retrieved ? h("time", { text: "retrieved " + day(s.retrieved) }) : h("span", { class: "chip bad", text: "no retrieved date" }));
+    }));
+  }
+  function reviewBox(r) {
+    var rv = r.review;
+    if (!rv) return r.status === "pending" ? h("div", { class: "review", text: "The reviewer hasn't looked at this row yet." }) : null;
+    var cls = rowClass(r);
+    if (isBlind(r) && !r.human) return h("div", { class: "review blind" },
+      h("b", { text: "The reviewer's call is hidden until you decide." }),
+      h("span", { text: r.type === "conflict" ? "Conflicts always come to you, and your call is what the reviewer is graded on." : "This class is in shadow: your calls grade the reviewer, so it shows its call after yours." }));
+    var p = predicted(r), conf = rv.confidence != null ? " at " + pct(rv.confidence) : "", a = agrees(r);
+    var head = rv.decision === "auto_approve" ? "auto-approved" + conf : rv.decision === "auto_reject" ? "auto-rejected" + conf : p ? "predicted " + p + conf : "no prediction";
+    var n = (rv.precedents || []).length;
+    return h("div", { class: "review" },
+      h("div", null, h("b", { text: "Reviewer: " }), head, a == null ? null : [" ", h("span", { class: "chip " + (a ? "good" : "bad"), text: a ? "you agreed" : "you disagreed" })]),
+      rv.reason ? h("div", { text: "Why: " + rv.reason }) : null,
+      h("div", { class: "note", title: cls }, classLabel(cls) + " · " + stageName(rv.stage) + " · " + (n ? plural(n, "similar past call") : "no similar past calls")));
+  }
+  function rowHead(r) {
+    var f = r.features || {};
+    return h("div", { class: "meta" },
+      h("span", { class: "chip type", text: TYPE_LABEL[r.type] || r.type || "row" }),
+      statusChip(r.status), sig(r.significance),
+      r.beat ? h("span", { text: r.beat }) : null,
+      f.claim_type ? h("span", { text: f.claim_type }) : null,
+      f.domain ? h("span", { class: "mono", text: f.domain }) : null,
+      r.created ? h("span", { text: when(r.created) }) : null);
+  }
+  function humanBox(r) {
+    var hu = r.human; if (!hu || !hu.decision) return null;
+    var what = hu.decision === "edited" ? "approved with an edit" : hu.decision;
+    return h("div", { class: "review" },
+      h("div", null, h("b", { text: "Your call: " }), what + (hu.resolution ? " (" + ({ a: "A stands", b: "B stands", both: "both stand", open: "left open" }[hu.resolution] || hu.resolution) + ")" : "")
+        + (hu.reason ? " · " + reasonLabel(hu.reason) : "") + (hu.confirm ? " · confirmed" : "") + (hu.at ? " · " + when(hu.at) : "")),
+      hu.note ? h("div", { text: hu.note }) : null, hu.edited_claim ? h("div", { text: "Edited claim: " + hu.edited_claim }) : null);
+  }
+  function pairBox(r) {
+    var c = r.conflict || {};
+    return h("div", { class: "pair" },
+      h("div", { class: "side" }, h("span", { class: "lbl", text: "A" }), h("b", { text: c.a_finding || "" }), h("span", { text: c.a_claim || "" })),
+      h("div", { class: "side" }, h("span", { class: "lbl", text: "B" }), h("b", { text: c.b_finding || "" }), h("span", { text: c.b_claim || "" })));
+  }
+  function rowBody(r) {
+    var body = h("div", { class: "card-body" }, rowHead(r), h("h4", { text: r.title || "(untitled)" }));
+    if (r.type === "card_update" && r.card) {
+      body.appendChild(h("p", { class: "claim" }, h("b", { text: (r.card.role || "Role") + " · " + (r.card.section || "section") })));
+      body.appendChild(h("div", { class: "diff", text: r.card.diff || "" }));
+      var flags = [];
+      if (r.card.maturity_change) flags.push(h("span", { class: "chip warn", text: "changes maturity" }));
+      if (r.card.first_independent_evidence) flags.push(h("span", { class: "chip warn", text: "first independent evidence" }));
+      if (flags.length) body.appendChild(h("div", { class: "meta" }, flags));
+    } else if (r.type === "conflict") body.appendChild(pairBox(r));
+    else if (r.claim) body.appendChild(h("p", { class: "claim", text: r.claim }));
+    if (r.why_it_matters) body.appendChild(h("p", { class: "why", text: r.why_it_matters }));
+    body.appendChild(sourcesList(r.sources));
+    if (r.left_open && isOpen(r)) body.appendChild(h("div", { class: "review" },
+      h("b", { text: "Left open" }), " on " + day(r.left_open.at) + ", revisit " + (r.left_open.revisit || "not set") + (r.left_open.note ? ": " + r.left_open.note : "")));
+    add(body, reviewBox(r));
+    add(body, humanBox(r));
+    return body;
+  }
+  function rowCard(r, controls, extraSig) {
+    var card = h("article", { class: "card" + (Number(r.significance) >= 5 ? " flag-sev5" : ""), id: "row-" + r.id, tabindex: "-1" }, rowBody(r));
+    if (controls) card.appendChild(h("div", { class: "actions" }, controls));
+    return keyed(card, "row-" + r.id, [r, extraSig || null, !!S.busy[r.id], !!canAct()]);
+  }
+  function kbd(k) { return h("kbd", { "aria-hidden": "true", text: k }); }
+  function btn(label, key, attrs, onclick) {
+    var a = Object.assign({ onclick: onclick }, attrs || {});
+    if (key) a.title = (a.title ? a.title + " · " : "") + "key " + key;
+    return h("button", a, label, key ? kbd(key) : null);
+  }
+  // Collapsed note (U5): a link until you open it or have typed something.
+  function noteField(id, label, placeholder, open) {
+    var nid = "note-" + id;
+    if (!open && !S.drafts[nid]) return null;
+    return h("label", { class: "small", for: nid }, label,
+      h("textarea", { id: nid, placeholder: placeholder, oninput: function (e) { S.drafts[nid] = e.target.value; syncNeeds(e.target); } }, S.drafts[nid] || ""));
+  }
+  // Buttons that need typed text (data-need) follow the textarea without a redraw.
+  function syncNeeds(from) {
+    var card = from.closest(".card, .panel"); if (!card) return;
+    Array.prototype.forEach.call(card.querySelectorAll("[data-need]"), function (b) {
+      b.disabled = b.getAttribute("data-dis") === "1" || !draft(b.getAttribute("data-need"));
+    });
+  }
+  function needs(attrs, draftId, dis) { attrs["data-need"] = draftId; attrs["data-dis"] = dis ? "1" : "0"; attrs.disabled = dis || !draft(draftId); return attrs; }
+  function reasonChips(r, onPick, label) {
+    var acts = S.acts[r.id] || {};
+    // The reason list comes from the console-labels block; if it is missing, reject without one.
+    var list = REASONS.length ? REASONS : [{ key: "other", label: "Reject" }];
+    var chips = list.map(function (x, i) {
+      var k = String(i + 1); acts[k] = function () { onPick(x.key); };
+      return btn(x.label, k, { class: "reason", id: "why-" + r.id + "-" + x.key, disabled: !canAct() || !!S.busy[r.id] }, acts[k]);
+    });
+    return h("div", { class: "reasons", role: "group", "aria-label": label }, h("span", { class: "small-lbl", text: label }), chips);
+  }
+
+  // ---------- Inbox cards ----------
+  function callCard(r) {
+    var u = ui(r.id), dis = !canAct() || !!S.busy[r.id], editId = "edit-" + r.id, acts = S.acts[r.id] = {};
+    acts.a = function () {
+      if (!u.edit) decide(r, "approved");
+      else if (draft(editId)) decide(r, "edited", { edited_claim: draft(editId) });
+    };
+    acts.r = function () { toggle(r.id, "reject"); };
+    acts.n = function () { u.note = true; S.focusNext = "note-" + r.id; render(); };
+    if (r.type === "finding") acts.e = function () { if (!u.edit) S.drafts[editId] = S.drafts[editId] || r.claim || ""; toggle(r.id, "edit", editId); };
+    var c = [noteField(r.id, "Note for the vault (optional)", "What should the reviewer learn from this call?", u.note)];
+    if (u.edit) c.push(h("label", { class: "small", for: editId }, "Edited claim",
+      h("textarea", { id: editId, oninput: function (e) { S.drafts[editId] = e.target.value; syncNeeds(e.target); } }, S.drafts[editId] || "")));
+    if (u.reject) c.push(reasonChips(r, function (k) { decide(r, "rejected", { reason: k }); }, "Why reject? Pick one to reject; a note is optional."));
+    c.push(h("div", { class: "btns" },
+      u.edit ? btn("Approve with edit", "a", needs({ class: "primary" }, editId, dis), acts.a) : btn("Approve", "a", { class: "primary", disabled: dis }, acts.a),
+      btn(u.reject ? "Cancel reject" : "Reject", "r", { class: u.reject ? "link" : "bad", disabled: dis, "aria-expanded": u.reject ? "true" : "false" }, acts.r),
+      acts.e ? btn(u.edit ? "Cancel edit" : "Edit claim", "e", { class: "link", disabled: dis }, acts.e) : null,
+      u.note || S.drafts["note-" + r.id] ? null : btn("Add a note", "n", { class: "link", disabled: dis }, acts.n)));
+    return rowCard(r, c, [u, isBlind(r)]);
+  }
+  function auditCard(r) {
+    var u = ui(r.id), dis = !canAct() || !!S.busy[r.id], acts = S.acts[r.id] = {};
+    var was = r.status === "auto_approved" ? "approved" : "rejected", flip = was === "approved" ? "rejected" : "approved";
+    var effect = flip === "rejected" ? "The class loses auto-approve at the next research run." : "The class loses auto-reject at the next research run.";
+    acts.a = function () { decide(r, was, { confirm: true, msg: "Confirmed." }); };
+    acts.n = function () { u.note = true; S.focusNext = "note-" + r.id; render(); };
+    // Overriding an auto-approval asks for a reason chip; overriding an auto-rejection asks why in words.
+    acts.o = flip === "rejected" ? function () { toggle(r.id, "reject"); } : function () {
+      if (draft("note-" + r.id)) decide(r, "approved", { msg: "Overridden: approved. " + effect });
+      else { u.note = true; S.focusNext = "note-" + r.id; render(); }
+    };
+    var c = [noteField(r.id, flip === "approved" ? "Why the reviewer got it wrong (needed to override)" : "Note (optional)", "What did the reviewer miss?", u.note)];
+    if (u.reject) c.push(reasonChips(r, function (k) { decide(r, "rejected", { reason: k, msg: "Overridden: rejected (" + reasonLabel(k) + "). " + effect }); }, "Why reject it? Pick one to override."));
+    c.push(h("div", { class: "btns" },
+      btn("Confirm " + (was === "approved" ? "approval" : "rejection"), "a", { class: "good", disabled: dis }, acts.a),
+      btn(flip === "approved" ? "Override: approve" : u.reject ? "Cancel override" : "Override: reject", "o", { class: u.reject ? "link" : "bad", disabled: dis }, acts.o),
+      u.note || S.drafts["note-" + r.id] ? null : btn("Add a note", "n", { class: "link", disabled: dis }, acts.n)));
+    return rowCard(r, c, [u, "audit"]);
+  }
+  function plusDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return localDay(d); }
+  function conflictCard(r) {
+    var u = ui(r.id), dis = !canAct() || !!S.busy[r.id], acts = S.acts[r.id] = {}, rid = "revisit-" + r.id;
+    var settle = function (res, said) { return function () { decide(r, "approved", { resolution: res, msg: said }); }; };
+    acts.a = settle("a", "Resolved: A stands."); acts.b = settle("b", "Resolved: B stands."); acts.t = settle("both", "Resolved: both stand.");
+    acts.n = function () { u.note = true; S.focusNext = "note-" + r.id; render(); };
+    acts.o = function () { if (!S.drafts[rid]) S.drafts[rid] = plusDays(14); toggle(r.id, "open", rid); };
+    var keepOpen = function () {
+      var until = String(S.drafts[rid] || plusDays(14));
+      var lo = { revisit: until, note: draft("note-" + r.id), at: now() };
+      delete S.drafts[rid];
+      act(r.id, "findings/" + r.id, { left_open: lo }, { left_open: r.left_open || null },
+        "Left open until " + until + ". It stays on Summary and comes back here then.", "Left open until " + until + ".");
+      if (S.done[r.id]) S.done[r.id].revisit = until;
+    };
+    var c = [noteField(r.id, "Why this resolution? (optional)", "What decided it?", u.note)];
+    if (u.open) c.push(h("div", { class: "row2" },
+      h("label", { class: "small", for: rid }, "Come back to it on",
+        h("input", { id: rid, type: "date", value: S.drafts[rid] || plusDays(14), min: plusDays(1), oninput: function (e) { S.drafts[rid] = e.target.value; } })),
+      h("div", { class: "btns end" }, h("button", { class: "primary", disabled: dis, onclick: keepOpen }, "Keep open"))));
+    c.push(h("div", { class: "btns" },
+      btn("A stands", "a", { class: "primary", disabled: dis }, acts.a),
+      btn("B stands", "b", { class: "primary", disabled: dis }, acts.b),
+      btn("Both stand", "t", { disabled: dis }, acts.t),
+      btn(u.open ? "Cancel" : "Leave open", "o", { class: "link", disabled: dis }, acts.o),
+      u.note || S.drafts["note-" + r.id] ? null : btn("Add a note", "n", { class: "link", disabled: dis }, acts.n)));
+    return rowCard(r, c, [u, "conflict"]);
+  }
+  function briefCard(b) {
+    var dis = !canAct() || !!S.busy[b.id], nid = "note-" + b.id, acts = S.acts[b.id] = {}, u = ui(b.id);
+    var before = { status: b.status, human_decision: b.human_decision || null, note: b.note || null, at: b.at || null };
+    acts.a = function () {
+      act(b.id, "briefs/" + b.id, { status: "approved", human_decision: "approved", at: now() }, before,
+        ["Approved.", commitWhen(), "The commit records it and republishes the Brief page."].filter(Boolean).join(" "), "Approved.");
+    };
+    acts.c = function () {
+      if (!draft(nid)) { u.note = true; S.focusNext = nid; render(); return; }
+      act(b.id, "briefs/" + b.id, { status: "changes_requested", human_decision: "changes_requested", note: draft(nid), at: now() }, before, "Sent back with your note.", "Sent back with your note.");
+    };
+    var card = h("article", { class: "card", id: "row-" + b.id, tabindex: "-1" }, h("div", { class: "card-body" },
+      h("div", { class: "meta" }, h("span", { class: "chip type", text: "Weekly brief" }), h("span", { text: "Week " + (b.week || "") })),
+      h("h4", { text: "Brief and LinkedIn draft for week " + (b.week || "") }),
+      h("details", { class: "fold", open: true }, h("summary", { text: "Brief" }), mdView(b.body_md),
+        h("details", { class: "fold" }, h("summary", { text: "Markdown" }), h("div", { class: "md", text: b.body_md || "" }))),
+      h("details", { class: "fold" }, h("summary", { text: "LinkedIn draft" }), h("div", { class: "md", text: b.linkedin_md || "" }), linkedinCount(b.linkedin_md)),
+      h("details", { class: "fold" }, h("summary", { text: "Brief page" }), briefPageSummary(b)),
+      b.note ? h("div", { class: "review", text: "Your earlier note: " + b.note }) : null),
+      h("div", { class: "actions" },
+        noteField(b.id, "What to change", "Needed to request changes", u.note),
+        h("div", { class: "btns" },
+          btn("Approve", "a", { class: "primary", disabled: dis }, acts.a),
+          btn("Request changes", "c", { disabled: dis }, acts.c))));
+    return keyed(card, "row-" + b.id, [b, u, !!S.busy[b.id], !!canAct(), (S.vault && S.vault.brief_url) || ""]);
+  }
+  function steerCard(s) {
+    var dis = !canAct() || !!S.busy[s.id], acts = S.acts[s.id] = {};
+    var before = { status: s.status, at: s.at || null };
+    acts.a = function () { act(s.id, "steering/" + s.id, { status: "accepted", at: now() }, before, ["Accepted. It becomes steering at the next commit.", commitWhen()].filter(Boolean).join(" "), "Accepted."); };
+    acts.d = function () { act(s.id, "steering/" + s.id, { status: "dismissed", at: now() }, before, "Dismissed.", "Dismissed."); };
+    var card = h("article", { class: "card", id: "row-" + s.id, tabindex: "-1" }, h("div", { class: "card-body" },
+      h("div", { class: "meta" }, h("span", { class: "chip " + (s.source === "clash" ? "warn" : "type"), text: s.source === "clash" ? "Charter clash" : "Proposed steering" }),
+        h("span", { text: s.applies_to || "" }), s.at ? h("span", { text: when(s.at) }) : null),
+      h("p", { class: "claim", text: s.text || "" }),
+      h("p", { class: "note", text: s.source === "clash" ? "Two charter instructions disagree. Accept keeps this one." : "Proposed from a rejection pattern that kept repeating." })),
+      h("div", { class: "actions" }, h("div", { class: "btns" },
+        btn("Accept", "a", { class: "primary", disabled: dis }, acts.a),
+        btn("Dismiss", "d", { class: "link", disabled: dis }, acts.d))));
+    return keyed(card, "row-" + s.id, [s, !!S.busy[s.id], !!canAct()]);
+  }
+  function doneCard(it) {
+    var d = S.done[it.id] || {}, r = it.row, title = r ? r.title : it.brief ? "Brief for week " + it.brief.week : it.steer ? it.steer.text : "";
+    var committed = r && r.status === "committed", undoing = it.view === "undoing";
+    var acts = S.acts[it.id] = {};
+    if (!committed && !undoing) acts.u = function () { undoDone(it.id); };
+    var card = h("article", { class: "card done", id: "row-" + it.id, tabindex: "-1" }, h("div", { class: "card-body" },
+      h("div", { class: "meta" }, h("span", { class: "chip good", text: undoing ? "Undoing…" : committed ? "In the vault" : "Done" }), h("span", { class: "done-title", text: title || "" })),
+      h("p", { class: "note", text: d.text || "" })),
+      acts.u ? h("div", { class: "actions" }, h("div", { class: "btns" }, btn("Undo", null, { class: "link", disabled: !canAct() || !!S.busy[it.id] }, acts.u))) : null);
+    return keyed(card, "row-" + it.id, ["done", d.text, d.state, it.view, committed, !!S.busy[it.id], !!canAct()]);
+  }
+  function itemCard(it) {
+    if (it.view === "done" || it.view === "undoing") return doneCard(it);
+    if (it.kind === "brief") return briefCard(it.brief);
+    if (it.kind === "steering") return steerCard(it.steer);
+    if (it.kind === "conflict") return conflictCard(it.row);
+    if (it.kind === "audit") return auditCard(it.row);
+    return callCard(it.row);
+  }
+
+  // ---------- keyboard (U5) ----------
+  function moveCursor(step, quiet) {
+    var ids = S.order.filter(function (id) { return !S.done[id] || S.done[id].state !== "done"; });
+    if (!ids.length) { S.cursor = null; return; }
+    var all = S.order, i = all.indexOf(S.cursor), next = null;
+    for (var j = i + step; j >= 0 && j < all.length; j += step) if (ids.indexOf(all[j]) >= 0) { next = all[j]; break; }
+    if (next == null) next = i < 0 ? ids[0] : S.cursor && ids.indexOf(S.cursor) >= 0 ? S.cursor : ids[0];
+    S.cursor = next;
+    if (quiet) return;
+    Array.prototype.forEach.call(document.querySelectorAll(".card.cur"), function (c) { c.classList.remove("cur"); });
+    var el = document.getElementById("row-" + next);
+    if (el) { el.classList.add("cur"); el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest", behavior: "auto" }); }
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    var t = e.target, tag = t && t.tagName;
+    if (e.key === "Escape" && S.cursor && S.ui[S.cursor]) { S.ui[S.cursor] = {}; if (tag === "TEXTAREA" || tag === "INPUT") t.blur(); render(); return; }
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
+    if (route().tab !== "inbox") return;
+    if (e.key === "j" || e.key === "k") { e.preventDefault(); moveCursor(e.key === "j" ? 1 : -1); return; }
+    if (e.key === "u" && S.undo) { e.preventDefault(); runUndo(); return; }
+    if (!S.cursor) return;
+    var fn = (S.acts[S.cursor] || {})[e.key];
+    if (fn && canAct()) { e.preventDefault(); fn(); }
+  });
+
+  // ---------- tabs ----------
+  function emptyState(title, lines) {
+    return h("div", { class: "empty" }, h("strong", { text: title }), lines ? h("div", null, lines) : null);
+  }
+  function firstRunState() {
+    return keyed(h("div", { class: "empty" },
+      h("strong", { text: "This Console fills after the vault's first research run." }),
+      h("ol", null,
+        h("li", { text: "The vault's charter is written with /vault-steer." }),
+        h("li", { text: "The research run looks into each beat, checks the sources and adds rows here." }),
+        h("li", { text: "Rows the reviewer can't decide come to your Inbox. The commit routine turns your calls into vault knowledge." }))), "first-run", "1");
+  }
+
+  function viewInbox(m, arg) {
+    var f = FILTERS.some(function (x) { return x[0] === arg; }) ? arg : "all";
+    var items = inboxItems(), open = items.filter(function (it) { return it.view === "open"; });
+    if (!S.findings.length && !S.runs.length && !S.briefs.length) { m.appendChild(firstRunState()); return; }
+    var counts = {}; open.forEach(function (it) { var k = KIND_FILTER[it.kind]; counts[k] = (counts[k] || 0) + 1; }); counts.all = open.length;
+    m.appendChild(keyed(h("nav", { class: "filters", "aria-label": "Inbox filters" }, FILTERS.map(function (x) {
+      return h("a", { href: "#inbox" + (x[0] === "all" ? "" : "/" + x[0]), "aria-current": f === x[0] ? "page" : null }, x[1], counts[x[0]] ? h("span", { class: "count" + (x[0] === "all" ? " hot" : ""), text: counts[x[0]] }) : null);
+    })), "filters", [f, counts]));
+    m.appendChild(keyed(h("p", { class: "lede" }, "Most urgent first: conflicts and significance-5 rows, then your calls, audit samples, the brief and proposed steering. ",
+      h("span", { class: "keys" }, "Keys: j and k move, a approves, r rejects then 1 to 7 picks the reason, n adds a note, u undoes.")), "lede", "1"));
+    var list = items.filter(function (it) { return inFilter(it, f); });
+    S.order = list.map(function (it) { return it.id; });
+    if (S.cursor && S.order.indexOf(S.cursor) < 0) S.cursor = null;
+    if (!list.length) {
+      m.appendChild(keyed(emptyState(f === "all" ? "Nothing waiting for you." : "Nothing here right now.",
+        "New rows arrive after the next research run. " + (commitWhen() || "")), "empty-" + f, f));
+      return;
+    }
+    list.forEach(function (it) {
+      var card = it.view === "parked" ? parkedCard(it.row) : itemCard(it);
+      if (S.cursor === it.id) card.classList.add("cur");
+      m.appendChild(card);
+    });
+  }
+  function parkedCard(r) {
+    var u = ui(r.id), acts = S.acts[r.id] = {};
+    acts.o = function () { toggle(r.id, "decide"); };
+    if (u.decide) return conflictCard(r);
+    return rowCard(r, h("div", { class: "btns" }, btn("Decide now", "o", { class: "link", disabled: !canAct() }, acts.o)), [u, "parked"]);
+  }
+
+  function viewSummary(m) {
+    if (!S.findings.length && !S.runs.length) m.appendChild(firstRunState());
+    var last = curateRuns()[0];
+    if (last) {
+      var c = last.counts || {};
+      m.appendChild(h("h2", { text: "Last research run · " + when(last.started) }));
+      m.appendChild(h("div", { class: "strip" }, [
+        ["found", c.found], ["dropped", c.dropped], ["awaiting reviewer", c.pending], ["auto-approved", c.auto_approved],
+        ["auto-rejected", c.auto_rejected], ["for you", c.escalated]
+      ].map(function (p) { return h("div", { class: "stat" }, h("b", { text: p[1] == null ? "–" : p[1] }), h("span", { text: p[0] })); })));
+    }
+    var open = openItems(), by = {};
+    open.forEach(function (it) { by[it.kind] = (by[it.kind] || 0) + 1; });
+    var todos = [["calls", by.call, "need your call"], ["conflicts", by.conflict, "open conflicts"], ["audit", by.audit, "auto decisions to audit"],
+      ["brief", by.brief, "brief to approve"], ["steering", by.steering, "proposed steering"]].filter(function (t) { return t[1] > 0; });
+    m.appendChild(h("h2", { text: "Waiting for you" }));
+    m.appendChild(todos.length ? h("div", { class: "todo" }, todos.map(function (t) {
+      return h("a", { href: "#inbox/" + t[0] }, h("span", { class: "count hot", text: t[1] }), t[2]);
+    })) : h("p", { class: "lede", text: "Nothing is waiting for you." }));
+
+    var cols = h("div", { class: "cols" });
+    var parked = S.findings.filter(function (r) { return r.type === "conflict" && isOpen(r) && r.left_open; })
+      .sort(function (a, b) { return String(a.left_open.revisit || "").localeCompare(String(b.left_open.revisit || "")); });
+    if (parked.length) cols.appendChild(h("section", { class: "panel" }, h("h3", { text: "Conflicts left open" }),
+      h("ul", { class: "list" }, parked.map(function (r) {
+        var due = revisitDue(r);
+        return h("li", null, h("span", { class: "chip " + (due ? "warn" : ""), text: due ? "due" : r.left_open.revisit || "open" }),
+          h("a", { href: "#inbox/conflicts", text: r.title || "(untitled)" }));
+      })),
+      h("p", { class: "note", text: "Each comes back to your Inbox on its revisit date." })));
+
+    var top = S.findings.filter(function (r) { return r.type !== "conflict" && ["approved", "auto_approved", "committed"].indexOf(r.status) >= 0; })
+      .sort(function (a, b) { return (Number(b.significance) || 0) - (Number(a.significance) || 0) || byCreatedDesc(a, b); }).slice(0, 5);
+    cols.appendChild(h("section", { class: "panel" }, h("h3", { text: "Top findings" }),
+      top.length ? h("ol", { class: "list" }, top.map(function (r) { return h("li", null, sig(r.significance), h("span", { text: r.title })); }))
+        : h("p", { class: "note", text: "Approved findings appear here." })));
+
+    var stages = (S.reviewer && S.reviewer.stage_by_class) || (last && last.stage_by_class) || {};
+    var keys = Object.keys(stages).filter(function (k) { return k !== "conflict"; });
+    var ladder = h("div", { class: "ladder" });
+    keys.slice(0, 12).forEach(function (k) {
+      var v = stages[k], st = typeof v === "object" && v ? Number(v.stage) || 0 : Number(v) || 0;
+      var rungs = h("span", { class: "rungs", title: stageName(st), "aria-label": stageName(st) });
+      for (var i = 1; i <= 3; i++) rungs.appendChild(h("i", { class: i <= st ? "on" : "" }));
+      ladder.appendChild(h("span", { class: "cls", title: k, text: classLabel(k) })); ladder.appendChild(rungs);
+    });
+    cols.appendChild(h("section", { class: "panel" }, h("h3", { text: "Reviewer by class" }),
+      keys.length ? ladder : h("p", { class: "note", text: "Every class starts in shadow: the reviewer predicts and you decide." }),
+      h("p", { class: "note" }, "Shadow · auto-reject · auto-approve · steady. ", h("a", { href: "#reviewer", text: "What each class needs next" }))));
+
+    var runs = curateRuns().slice(0, 14).reverse();
+    var pts = runs.map(function (r) {
+      var c = r.counts || {}; var tot = (c.auto_approved || 0) + (c.auto_rejected || 0) + (c.escalated || 0);
+      return tot ? (c.escalated || 0) / tot : null;
+    }).filter(function (v) { return v != null; });
+    cols.appendChild(h("section", { class: "panel" }, h("h3", { text: "Rows sent to you" }),
+      pts.length > 1 ? spark(pts, { target: cfgNum("ladder.escalation_target"), label: "Share of reviewed rows sent to you over the last " + pts.length + " runs" }) : h("p", { class: "note", text: "The trend appears after two reviewed runs." }),
+      pts.length ? h("p", { class: "note", text: "Latest " + pct(pts[pts.length - 1]) + " of reviewed rows. Target under " + pct(cfgNum("ladder.escalation_target")) + " once classes are steady." }) : null));
+
+    var flagged = (last && last.flagged_beats) || [];
+    var byBeat = (last && last.counts && last.counts.by_beat) || {};
+    cols.appendChild(h("section", { class: "panel" }, h("h3", { text: "Beat health" }),
+      Object.keys(byBeat).length ? h("ul", { class: "list" }, Object.keys(byBeat).map(function (b) {
+        var bad = flagged.indexOf(b) >= 0;
+        return h("li", null, h("span", { class: "mono", text: String(byBeat[b]) }), h("span", null, b, bad ? h("span", { class: "chip bad", text: " no results 3 runs" }) : null));
+      })) : h("p", { class: "note", text: flagged.length ? "Flagged: " + flagged.join(", ") : "Per-beat counts appear after the first run." })));
+    m.appendChild(cols);
+  }
+  function spark(pts, o) {
+    o = o || {};
+    var W = 300, H = o.h || 56, P = 4, n = pts.length, lo = o.lo != null ? o.lo : 0, hi = 1;
+    var x = function (i) { return P + i * (W - 2 * P) / Math.max(1, n - 1); }, y = function (v) { return H - P - (v - lo) / (hi - lo) * (H - 2 * P); };
+    var d = pts.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); }).join(" ");
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg"); svg.setAttribute("viewBox", "0 0 " + W + " " + H); svg.setAttribute("class", "spark" + (o.small ? " small" : ""));
+    svg.setAttribute("role", "img"); svg.setAttribute("aria-label", o.label || "Trend");
+    function el(t, a) { var e = document.createElementNS(ns, t); for (var k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; }
+    if (o.target != null) el("line", { x1: P, x2: W - P, y1: y(o.target), y2: y(o.target), stroke: "var(--muted)", "stroke-dasharray": "3 3", fill: "none", "vector-effect": "non-scaling-stroke" });
+    el("path", { d: d + " L" + x(n - 1) + " " + (H - P) + " L" + x(0) + " " + (H - P) + " Z", fill: "var(--blue-soft)", stroke: "none" });
+    el("path", { d: d, fill: "none", stroke: "var(--blue)", "stroke-width": 2, "vector-effect": "non-scaling-stroke" });
+    el("circle", { cx: x(n - 1), cy: y(pts[n - 1]), r: 3.5, fill: "var(--accent)" });
+    return svg;
+  }
+
+  // ---------- Reviewer tab (S4) ----------
+  function dirStats(d) {
+    d = d || {}; var n = Number(d.n) || 0, k = Number(d.agree) || 0;
+    if (k > 0 && k < 1 && n > 1) k = Math.round(k * n); // a share written as a fraction
+    return { n: n, k: Math.min(k, n), share: n ? Math.min(k, n) / n : null };
+  }
+  function ceilingOf(cls) {
+    var c = cfgNum("ladder.ceiling"), own = savedCeilings()[cls];
+    if (own != null && own !== "" && !isNaN(Number(own))) c = Math.min(c, Number(own));
+    return c;
+  }
+  function liveSince(cls) {
+    var since = ms(S.reviewer && S.reviewer.at), out = { calls: 0, agree: 0 };
+    S.findings.forEach(function (r) {
+      if (!r.human || !r.human.decision || rowClass(r) !== cls || ms(r.human.at) <= since) return;
+      var a = agrees(r); if (a == null) return;
+      out.calls++; if (a) out.agree++;
+    });
+    return out;
+  }
+  function reviewerClasses() {
+    var set = {};
+    knownClasses().forEach(function (k) { set[k] = 1; });
+    S.findings.forEach(function (r) { if (r.review && predicted(r)) set[rowClass(r)] = 1; });
+    delete set.conflict;
+    return Object.keys(set).sort(function (a, b) { return (/^finding\//.test(b) - /^finding\//.test(a)) || classLabel(a).localeCompare(classLabel(b)); });
+  }
+  function meter(title, have, need, line, earned) {
+    var frac = earned ? 1 : need ? Math.min(1, have / need) : 0;
+    return h("div", { class: "need" + (earned ? " earned" : "") },
+      h("div", { class: "need-top" }, h("span", { text: title }), h("span", { class: "mono", text: earned ? "on" : have + " of " + need })),
+      h("div", { class: "bar", role: "progressbar", "aria-label": title, "aria-valuemin": "0", "aria-valuemax": String(need), "aria-valuenow": String(Math.min(have, need)) },
+        h("i", { style: "width:" + (frac * 100).toFixed(1) + "%" })),
+      line ? h("small", null, line) : null);
+  }
+  function rightLine(st, needShare) {
+    if (st.share == null) return "no calls scored yet, needs " + pct(needShare) + " right";
+    return [h("b", { class: st.share >= needShare ? "ok" : "short", text: pct(st.share) + " right" }), ", needs " + pct(needShare)];
+  }
+  function classRow(cls, trend) {
+    var rec = classRecord(cls), st = Number(rec.stage) || 0, cap = ceilingOf(cls), live = liveSince(cls);
+    var rej = dirStats(rec.reject), apr = dirStats(rec.approve), rolling = rec.rolling_30d != null ? Number(rec.rolling_30d) : rec.agreement != null ? Number(rec.agreement) : null;
+    var n1 = cfgNum("ladder.stage1_calls"), a1 = cfgNum("ladder.stage1_agreement"), n2 = cfgNum("ladder.stage2_approve_calls"), a2 = cfgNum("ladder.stage2_agreement"), a3 = cfgNum("ladder.stage3_agreement");
+    var replay = (S.reviewer && S.reviewer.replay) || {}, rk = Number(replay.k) || 0, rn = Number(replay.n) || 0;
+    var cool = cfgNum("review.override_cooloff_days"), lastOv = rec.last_override && rec.last_override !== "none" ? ms(rec.last_override) : 0;
+    var coolUntil = lastOv ? new Date(lastOv + cool * 864e5) : null, cooling = coolUntil && coolUntil > new Date();
+    var needsEl = h("div", { class: "needs" }), wait = [];
+    needsEl.appendChild(meter("Auto-reject: reject predictions", rej.n, n1, rightLine(rej, a1), !!rec.auto_reject));
+    needsEl.appendChild(meter("Auto-approve: approve predictions", apr.n, n2, [rightLine(apr, a2), " · replay " + (rn ? rk + "/" + rn : "not run")], !!rec.auto_approve));
+    if (rec.auto_approve) needsEl.appendChild(meter("Steady: 30-day agreement", Math.round((rolling || 0) * 100), Math.round(a3 * 100), "needs " + pct(a3), st >= 3));
+    if (cap <= st && st < 3) wait.push(cap === 0 ? "Held in shadow in Settings" : "Capped at stage " + cap + " in Settings");
+    else {
+      if (!rec.auto_reject && cap >= 1) {
+        if (rej.n < n1) wait.push(plural(n1 - rej.n, "more reject prediction"));
+        else if (rej.share < a1) wait.push("Reject accuracy; see disagreements");
+        else wait.push("Auto-reject at the next research run");
+      }
+      if (!rec.auto_approve && cap >= 2) {
+        if (apr.n < n2) wait.push(plural(n2 - apr.n, "more approve prediction"));
+        else if (apr.share < a2) wait.push("Approve accuracy; see disagreements");
+        else if (cooling) wait.push("No overrides until " + shortDay(coolUntil.toISOString()));
+        else if (!rn || rn < cfgNum("ladder.replay_size") || rk / rn < cfgNum("ladder.replay_pass")) wait.push("A passing eval replay");
+        else wait.push("Auto-approve at the next research run");
+      }
+      if (rec.auto_approve && st < 3 && cap >= 3) wait.push(rolling != null && rolling >= a3 ? "Steady at the next research run" : "30-day agreement of " + pct(a3));
+      if (!wait.length) wait.push(st >= 3 ? "Nothing: steady" : "Nothing");
+    }
+    var pts = trend.map(function (c) { var v = ((c.by_class || {})[cls] || {}); return v.agreement != null ? Number(v.agreement) : null; }).filter(function (v) { return v != null && !isNaN(v); });
+    var row = h("div", { class: "crow", role: "row" },
+      h("div", { class: "c-name", role: "cell" }, h("b", { title: cls, text: classLabel(cls) }),
+        pts.length > 1 ? spark(pts, { small: true, h: 28, lo: Math.min(0.5, Math.min.apply(null, pts) - 0.05), label: classLabel(cls) + " agreement over " + pts.length + " weeks, latest " + pct(pts[pts.length - 1]) }) : null,
+        pts.length > 1 ? h("small", { class: "note", text: "agreement, " + pts.length + " weeks" }) : null),
+      h("div", { class: "c-stage", role: "cell" }, h("span", { class: "chip " + (st ? "good" : ""), text: stageName(st) }),
+        cap < 3 ? h("small", { class: "note", text: "ceiling " + stageName(cap).toLowerCase() }) : null),
+      h("div", { class: "c-needs", role: "cell" }, needsEl),
+      h("div", { class: "c-since", role: "cell" }, h("span", { class: "lbl-m", text: "Since calibration " }),
+        live.calls ? "+" + plural(live.calls, "call") + ", " + live.agree + " agree" : "no calls yet"),
+      h("div", { class: "c-wait", role: "cell" }, h("span", { class: "lbl-m", text: "Waiting for " }), wait.slice(0, 2).join("; ")));
+    return row;
+  }
+  function disagreements() {
+    return S.findings.filter(function (r) { return r.human && agrees(r) === false; })
+      .sort(function (a, b) { return ms(b.human.at) - ms(a.human.at); }).slice(0, 8);
+  }
+  function viewReviewer(m) {
+    var rv = S.reviewer, classes = reviewerClasses(), since = ms(rv && rv.at);
+    var liveCalls = S.findings.filter(function (r) { return r.human && r.human.decision && ms(r.human.at) > since; }).length;
+    var total = rv && rv.owner_verdicts != null ? Number(rv.owner_verdicts) + liveCalls : S.findings.filter(function (r) { return r.human && r.human.decision; }).length;
+    var week = curateRuns().filter(function (r) { return ms(r.started) > Date.now() - 7 * 864e5; });
+    var tot = 0, esc = 0; week.forEach(function (r) { var c = r.counts || {}; tot += (c.auto_approved || 0) + (c.auto_rejected || 0) + (c.escalated || 0); esc += c.escalated || 0; });
+    var escRate = tot ? esc / tot : rv && rv.escalation_rate;
+    var rp = (rv && rv.replay) || {};
+    m.appendChild(h("p", { class: "lede", text: "How far the reviewer has been trained in each class, what each class still needs, and where it disagrees with you. The targets come from Settings, so a changed threshold moves them here at once and moves the class at the next research run." }));
+    m.appendChild(h("div", { class: "strip" }, [
+      [String(total), "your calls to date"], [pct(rv && rv.rolling_agreement), "30-day agreement"], [pct(escRate), "sent to you this week"],
+      [rp.n ? rp.k + "/" + rp.n : "–", "eval replay"], [rv && rv.at ? shortDay(rv.at) : "none yet", "last calibration"]
+    ].map(function (p) { return h("div", { class: "stat" }, h("b", { text: p[0] }), h("span", { text: p[1] })); })));
+    if (!rv && !S.findings.some(function (r) { return r.human && predicted(r); })) {
+      m.appendChild(emptyState("Every class starts in shadow.", [
+        "The reviewer predicts each row and you decide. A class earns auto-reject after " + cfgNum("ladder.stage1_calls") + " reject predictions at " + pct(cfgNum("ladder.stage1_agreement")) +
+        " right, and auto-approve after " + cfgNum("ladder.stage2_approve_calls") + " approve predictions at " + pct(cfgNum("ladder.stage2_agreement")) + " right and a passing eval replay. ",
+        "The first weekly calibration fills this tab; your calls show here the day you make them."]));
+      return;
+    }
+    var trend = S.calibrations.slice().sort(function (a, b) { return String(a.week || a.id).localeCompare(String(b.week || b.id)); }).slice(-12);
+    m.appendChild(h("h2", { text: "By class" }));
+    var grid = h("div", { class: "classes", role: "table", "aria-label": "Reviewer progress by class" },
+      h("div", { class: "crow head", role: "row" }, ["Class", "Stage", "Next stage needs", "Since calibration", "Waiting for"].map(function (t) { return h("div", { role: "columnheader", text: t }); })));
+    classes.forEach(function (k) { grid.appendChild(classRow(k, trend)); });
+    var cf = classRecord("conflict"), cfr = dirStats(cf.approve), cfj = dirStats(cf.reject), cfn = cfr.n + cfj.n;
+    grid.appendChild(h("div", { class: "crow", role: "row" },
+      h("div", { class: "c-name", role: "cell" }, h("b", { title: "conflict", text: classLabel("conflict") })),
+      h("div", { class: "c-stage", role: "cell" }, h("span", { class: "chip warn", text: "Always yours" })),
+      h("div", { class: "c-wide", role: "cell" }, "Conflicts always come to you. The reviewer predicts, and its agreement is shown, but the class never advances." +
+        (cfn ? " Agreement " + pct((cfr.k + cfj.k) / cfn) + " over " + plural(cfn, "call") + "." : ""))));
+    m.appendChild(grid);
+    m.appendChild(h("p", { class: "note", text: "Numbers per class are from the last calibration; \"since calibration\" counts your calls live. Auto-reject and auto-approve are earned separately; a class can hold either." }));
+
+    var dis = disagreements();
+    m.appendChild(h("h2", { text: "Recent disagreements" }));
+    if (!dis.length) m.appendChild(h("p", { class: "lede", text: "None yet. When your call differs from the reviewer's, it shows here." }));
+    else m.appendChild(h("ul", { class: "list dis" }, dis.map(function (r) {
+      var hu = r.human, p = predicted(r), auto = r.review && /^auto_/.test(r.review.decision || "");
+      var head = auto ? "You overrode an " + (r.review.decision === "auto_approve" ? "auto-approval" : "auto-rejection") + " · the class loses that until the next calibration"
+        : "You " + (hu.decision === "edited" ? "approved with an edit" : hu.decision) + (hu.reason ? " (" + reasonLabel(hu.reason).toLowerCase() + ")" : "") + " · reviewer predicted " + p + (r.review.confidence != null ? " at " + pct(r.review.confidence) : "");
+      var why = r.review.reason ? "reason it gave: “" + r.review.reason + "”" : hu.note ? "“" + hu.note + "”" : "";
+      return h("li", null, h("span", { class: "chip bad", text: "differs" }),
+        h("span", null, h("a", { href: "#archive/row-" + encodeURIComponent(r.id), text: head }),
+          h("small", { class: "note", text: " " + [classLabel(rowClass(r)), shortDay(hu.at), why].filter(Boolean).join(" · ") })));
+    })));
+  }
+
+  // ---------- Steer ----------
+  var APPLIES = [["scope", "Scope"], ["sources", "Sources"], ["review", "Review policy"], ["brief", "Brief"], ["roles", "Role taxonomy"]];
+  function viewSteer(m) {
+    var beats = (S.vault && S.vault.beats) || [];
+    var opts = APPLIES.concat(beats.map(function (b) { return ["beat:" + b, "Beat: " + b]; }));
+    var dis = !canAct() || !!S.busy.steer, text = S.drafts["steer-text"] || "";
+    m.appendChild(h("h2", { text: "Give the vault an instruction" }));
+    var addIt = function () {
+      var t = draft("steer-text"); if (!t) return;
+      var doc = { vault: (S.vault && S.vault.slug) || "", text: t, applies_to: S.drafts["steer-applies"] || "scope",
+        target_agent: S.drafts["steer-agent"] || null, supersedes: null, source: "typed", status: "new", at: now() };
+      write("steer", function () { return S.db.collection("steering").add(doc); }, ["Saved. It becomes steering at the next commit.", commitWhen()].filter(Boolean).join(" "));
+      delete S.drafts["steer-text"];
+      var ta = document.getElementById("steer-text"); if (ta) ta.value = "";
+    };
+    m.appendChild(keyed(h("section", { class: "panel" },
+      h("label", { class: "small", for: "steer-text" }, "Instruction",
+        h("textarea", { id: "steer-text", placeholder: "For example: never use vendor webinars as a source", oninput: function (e) { S.drafts["steer-text"] = e.target.value; syncNeeds(e.target); } }, text)),
+      h("div", { class: "row2" },
+        h("label", { class: "small", for: "steer-applies" }, "Applies to",
+          h("select", { id: "steer-applies", onchange: function (e) { S.drafts["steer-applies"] = e.target.value; } },
+            opts.map(function (o) { var el = h("option", { value: o[0], text: o[1] }); if ((S.drafts["steer-applies"] || "scope") === o[0]) el.selected = true; return el; }))),
+        h("label", { class: "small", for: "steer-agent" }, "Only for one part of the vault (optional)",
+          h("select", { id: "steer-agent", onchange: function (e) { S.drafts["steer-agent"] = e.target.value; } },
+            ["", "vault-scout", "vault-librarian", "vault-reviewer", "vault-brief"].map(function (a) {
+              var el = h("option", { value: a, text: a ? agentLabel(a) : "Everything" }); if ((S.drafts["steer-agent"] || "") === a) el.selected = true; return el; })))),
+      h("div", { class: "btns" }, h("button", needs({ class: "primary", onclick: addIt }, "steer-text", dis), "Add instruction"))),
+      "steer-form", [dis, beats]));
+
+    var prop = openItems().filter(function (it) { return it.kind === "steering"; }).length;
+    m.appendChild(h("p", { class: "note" }, prop ? [h("a", { href: "#inbox/steering", text: plural(prop, "proposed instruction") }), " from your rejections " + (prop === 1 ? "waits" : "wait") + " in the Inbox."]
+      : "Rejection patterns that repeat for " + cfgNum("brief.steering_after_weeks") + " weeks are proposed in the Inbox."));
+
+    var mine = S.steering.filter(function (s) { return s.source === "typed"; }).slice(0, 10);
+    if (mine.length) {
+      m.appendChild(h("h2", { text: "Your recent instructions" }));
+      m.appendChild(h("ul", { class: "list" }, mine.map(function (s) {
+        return h("li", null, h("span", { class: "chip " + (s.status === "committed" ? "good" : ""), text: s.status === "committed" ? "in force" : "waiting for commit" }),
+          h("span", { text: s.text + " (" + (s.applies_to || "") + (s.target_agent ? ", " + agentLabel(s.target_agent) : "") + ")" }));
+      })));
+    }
+
+    var ch = S.charter;
+    m.appendChild(h("h2", { text: "Effective charter" }));
+    if (!ch || !ch.sections || !ch.sections.length) { m.appendChild(h("p", { class: "lede", text: "Appears after the research run assembles it from the charter and steering in memory." })); return; }
+    m.appendChild(h("p", { class: "note" }, (ch.status === "draft" ? "Draft, not yet written to memory. " : "Assembled ") + (ch.assembled_at ? when(ch.assembled_at) : "") +
+      (ch.episode_ids && ch.episode_ids.length ? " from " + plural(ch.episode_ids.length, "memory entry", "memory entries") + "." : "")));
+    ch.sections.forEach(function (s, i) {
+      m.appendChild(keyed(h("details", { class: "charter", open: i === 0 },
+        h("summary", null, h("span", { class: "chip type", text: s.applies_to || "" }), s.title || ""), h("pre", { text: s.text || "" })), "charter-" + i, [s.applies_to, s.title, s.text]));
+    });
+  }
+
+  // ---------- Archive ----------
+  function viewArchive(m, arg) {
+    var target = /^row-/.test(arg || "") ? arg.slice(4) : null;
+    var rows = decided().sort(byCreatedDesc);
+    var waiting = rows.filter(function (r) { return r.status !== "committed"; }), done = rows.filter(function (r) { return r.status === "committed"; });
+    var nc = nextCommit();
+    m.appendChild(h("h2", { text: "Waiting for the next commit" + (nc ? ", " + clock(nc) : "") + " (" + waiting.length + ")" }));
+    if (!waiting.length) m.appendChild(h("p", { class: "lede", text: "Nothing waiting." }));
+    waiting.forEach(function (r) {
+      // An auto decision nobody has checked gets the same Confirm and Override as an audit sample.
+      if ((r.status === "auto_approved" || r.status === "auto_rejected") && !r.human) { m.appendChild(auditCard(r)); return; }
+      var d = !canAct() || !!S.busy[r.id];
+      m.appendChild(rowCard(r, h("div", { class: "btns" }, h("button", { class: "link", disabled: d, onclick: function () { reopen(r); } }, "Reopen")), "archive"));
+    });
+    m.appendChild(h("h2", { text: "In the vault (" + done.length + ")" }));
+    if (!done.length) m.appendChild(h("p", { class: "lede", text: "Committed rows are in the vault's memory and can't be changed here." }));
+    done.filter(function (r, i) { return i < 50 || r.id === target; }).forEach(function (r) { m.appendChild(rowCard(r, null)); });
+
+    var past = S.briefs.filter(function (b) { return b.status !== "draft"; });
+    if (past.length) {
+      m.appendChild(h("h2", { text: "Briefs" }));
+      past.forEach(function (b) {
+        m.appendChild(keyed(h("details", { class: "charter" },
+          h("summary", null, statusChip(b.status === "changes_requested" ? "escalated" : "approved"), "Week " + (b.week || "") + " · " + (b.status || "").replace("_", " ")),
+          h("div", { class: "card-body" },
+            b.note ? h("div", { class: "review", text: "Your note: " + b.note }) : null,
+            b.published_at ? h("p", { class: "note", text: "Brief page published " + String(b.published_at).slice(0, 10) + "." }) : null,
+            h("h4", { text: "Brief" }), mdView(b.body_md),
+            h("h4", { text: "LinkedIn draft" }), h("div", { class: "md", text: b.linkedin_md || "" }), linkedinCount(b.linkedin_md))), "brief-" + b.id, b));
+      });
+    }
+    m.appendChild(h("h2", { text: "Runs" }));
+    if (!S.runs.length) { m.appendChild(h("p", { class: "lede", text: "One line per routine run appears here." })); return; }
+    var tbody = h("tbody", null, S.runs.slice(0, 40).map(function (r) {
+      var c = r.counts || {};
+      return h("tr", null, h("td", { text: when(r.started) }), h("td", { text: routineLabel(r.routine) }),
+        h("td", { class: "num", text: c.found != null ? c.found : "" }), h("td", { class: "num", text: c.escalated != null ? c.escalated : "" }),
+        h("td", { text: [(r.errors || []).length ? plural(r.errors.length, "error") : "", (r.injection_attempts || []).length ? plural(r.injection_attempts.length, "injection attempt") : "", r.notes || ""].filter(Boolean).join(" · ") }));
+    }));
+    m.appendChild(keyed(h("div", { class: "scroll" }, h("table", { class: "runs" },
+      h("thead", null, h("tr", null, ["Started", "Routine", "Found", "For you", "Notes"].map(function (t) { return h("th", { text: t }); }))), tbody)), "runs", S.runs.slice(0, 40)));
+  }
+  // ---------- settings (meta/config) ----------
+  // Keys, defaults and ranges: the config-fields block above, kept in step with
+  // skills/vault-curate/references/vault-config.md by the plugin repository's tests/vaults.test.cjs.
+  // The page's checks are a convenience; every skill checks the values again.
+  var FIELDS = (function () {
+    try { return JSON.parse(document.getElementById("config-fields").textContent).sections || []; }
+    catch (e) { return []; }
+  })();
+  var FIELD = {};
+  FIELDS.forEach(function (s) { s.fields.forEach(function (f) { f.section = s.id; FIELD[f.key] = f; }); });
+  function savedValues() { return (S.config && S.config.values) || {}; }
+  function savedCeilings() { return (S.config && S.config.class_ceilings) || {}; }
+  function cfgVersion() { return (S.config && Number(S.config.config_version)) || 0; }
+  function cfgSaved(key) { var v = savedValues()[key]; return v === undefined ? null : v; }
+  // A review charter written before Settings existed may still state four of the numbers. The
+  // skills use them until a value is saved here (vault-config.md), so the page shows them too.
+  var CHARTER_NUMBERS = [
+    ["ladder.ceiling", /Stage ceiling:\s*([0-3])\b/i, 1],
+    ["review.precedents_min", /Precedents needed \(N\):\s*(\d+)/i, 1],
+    ["review.precedent_agreement", /Agreement threshold:\s*(\d+)\s*%/i, 0.01],
+    ["review.override_cooloff_days", /override of the reviewer in the class within (\d+) days/i, 1]
+  ];
+  function charterNumber(key) {
+    var rule = CHARTER_NUMBERS.filter(function (r) { return r[0] === key; })[0]; if (!rule) return null;
+    var text = ((S.charter && S.charter.sections) || []).filter(function (x) { return x.applies_to === "review"; })
+      .map(function (x) { return x.text || ""; }).join("\n");
+    var m = rule[1].exec(text); return m ? Number((Number(m[1]) * rule[2]).toFixed(4)) : null;
+  }
+  function cfgInherited(key) { var c = charterNumber(key); return c == null ? FIELD[key]["default"] : c; }
+  function cfgValue(key) { var v = cfgSaved(key); return v == null ? cfgInherited(key) : v; }
+  function cfgNum(key) { var v = Number(cfgValue(key)); return isNaN(v) ? Number(FIELD[key]["default"]) : v; }
+  function unit(f) { return f.kind === "pct" ? "%" : f.kind === "days" ? " days" : f.kind === "weeks" ? " weeks" : ""; }
+  function shown(f, v) {
+    if (f.kind === "text") return v ? String(v) : (f.key === "brief.linkedin_series" ? "the vault's name" : "none");
+    if (f.kind === "pct") return Math.round(Number(v) * 100) + "%";
+    return String(v) + unit(f);
+  }
+  function toInput(f, v) { return f.kind === "pct" ? String(Math.round(Number(v) * 100)) : f.kind === "text" ? String(v || "") : String(v); }
+  // Parse what the viewer typed: {ok, value} or {ok: false, msg}.
+  function parseField(f, raw) {
+    if (f.kind === "text") {
+      var t = String(raw || "").trim();
+      return t.length > f.max ? { ok: false, msg: "At most " + f.max + " characters." } : { ok: true, value: t };
+    }
+    var s = String(raw == null ? "" : raw).trim();
+    var lo = f.kind === "pct" ? Math.round(f.min * 100) : f.min, hi = f.kind === "pct" ? Math.round(f.max * 100) : f.max;
+    var msg = "Enter a whole number from " + lo + " to " + hi + (f.kind === "pct" ? "%" : unit(f)) + ".";
+    if (!/^\d+$/.test(s)) return { ok: false, msg: msg };
+    var n = Number(s);
+    if (n < lo || n > hi) return { ok: false, msg: msg };
+    return { ok: true, value: f.kind === "pct" ? Number((n / 100).toFixed(4)) : n };
+  }
+  function sameValue(a, b) { return String(a == null ? "" : a) === String(b == null ? "" : b); }
+  // Draft state: S.cfgDraft[key] = typed text, or null to unset the key (Reset: it inherits the
+  // default, or an older review charter's number, again); S.ceilDraft[class] = "" or "0".."3".
+  // A saved value stays saved even when it equals the default, so it overrides a charter number.
+  function cfgEdit(key) {
+    var f = FIELD[key], d = S.cfgDraft[key], saved = cfgSaved(key);
+    if (!f || !(key in S.cfgDraft)) return null;
+    if (d === null) return saved == null ? null : { key: key, value: null };
+    var p = parseField(f, d);
+    if (!p.ok) return { key: key, invalid: true };
+    return sameValue(p.value, saved == null ? cfgInherited(key) : saved) ? null : { key: key, value: p.value };
+  }
+  function cfgEdits() {
+    var edits = [], invalid = 0;
+    Object.keys(S.cfgDraft).forEach(function (key) {
+      var x = cfgEdit(key); if (!x) return;
+      if (x.invalid) invalid++; else edits.push(x);
+    });
+    var ceil = [];
+    Object.keys(S.ceilDraft).forEach(function (k) {
+      var was = savedCeilings()[k], now = S.ceilDraft[k] === "" ? null : Number(S.ceilDraft[k]);
+      if (!sameValue(was == null ? null : was, now)) ceil.push({ cls: k, old: was == null ? null : was, now: now });
+    });
+    return { edits: edits, ceil: ceil, invalid: invalid };
+  }
+  function knownClasses() {
+    var set = {};
+    ((S.vault && S.vault.beats) || []).forEach(function (b) { set["finding/" + b] = 1; });
+    set.reverify = 1;
+    // Role Card changes exist only in a vault whose charter has a role taxonomy.
+    if (((S.charter && S.charter.sections) || []).some(function (s) { return s.applies_to === "roles"; })) set.card_update = 1;
+    Object.keys((S.reviewer && S.reviewer.stage_by_class) || {}).forEach(function (k) { set[k] = 1; });
+    Object.keys(savedCeilings()).forEach(function (k) { set[k] = 1; });
+    delete set.conflict;
+    return Object.keys(set).sort();
+  }
+  function canSettings() { return canAct() && S.canAdmin !== false; }
+  function fail(code) { var err = new Error(code); err.code = code; throw err; }
+  function saveSettings() {
+    var e = cfgEdits(); if (e.invalid || (!e.edits.length && !e.ceil.length) || !S.me) return;
+    var base = cfgVersion(), v = base + 1, values = Object.assign({}, savedValues()), ceilings = Object.assign({}, savedCeilings());
+    var changes = e.edits.map(function (x) {
+      var old = cfgSaved(x.key);
+      if (x.value == null) delete values[x.key]; else values[x.key] = x.value;
+      return { key: x.key, old: old, "new": x.value };
+    });
+    e.ceil.forEach(function (c) { if (c.now == null) delete ceilings[c.cls]; else ceilings[c.cls] = c.now; });
+    var at = now(), entry = {
+      version: v, at: at, by: S.me, changes: changes,
+      class_ceilings: e.ceil.length ? { old: savedCeilings(), "new": ceilings } : null,
+      reset: S.cfgReset || null, committed_episode: null
+    };
+    var logRef = S.db.doc("config_changes/v" + v), cfgRef = S.db.doc("meta/config"), lock = S.db.doc("meta/config_lock");
+    // No transactions in the db: every Settings save takes a short lease on meta/config_lock, then
+    // checks that nobody saved since this page read the config, so two saves can't both land.
+    write("settings", function () {
+      var held = typeof lock.acquire === "function" ? lock.acquire({ holder: S.me, ttlMs: 15000 }) : Promise.resolve({ acquired: true });
+      return held.then(function (l) {
+        if (!l || !l.acquired) fail("settings_busy");
+        return cfgRef.get();
+      }).then(function (snap) {
+        var cur = snap.exists ? Number(snap.data().config_version) || 0 : 0;
+        if (cur !== base) fail("version_taken");
+        return logRef.get();
+      }).then(function (snap) {
+        if (snap.exists) fail("version_taken");
+        return logRef.set(entry);
+      }).then(function () {
+        return cfgRef.set({ config_version: v, values: values, class_ceilings: ceilings, saved_at: at, saved_by: S.me })
+          .then(null, function (err) { return logRef["delete"]().then(function () { throw err; }, function () { throw err; }); });
+      }).then(function () { S.cfgDraft = {}; S.ceilDraft = {}; S.cfgReset = null; });
+    }, "Saved as version " + v + ". It applies at the next research run.");
+  }
+  function changeText(c) {
+    var f = FIELD[c.key];
+    var side = function (x) { return x == null ? "unset" : f ? shown(f, x) : String(x); };
+    return (f ? f.label.toLowerCase() : c.key) + " " + side(c.old) + " → " + side(c["new"]);
+  }
+  function resolveNames(ids) {
+    if (!S.userNs) return;
+    var want = ids.filter(function (id) { return id && !(id in S.names); });
+    if (!want.length) return;
+    want.forEach(function (id) { S.names[id] = ""; });
+    S.userNs.profiles(want).then(function (ps) {
+      want.forEach(function (id) { S.names[id] = (ps && ps[id] && ps[id].name) || ""; });
+      render();
+    }, function () {});
+  }
+  function viewSettings(m) {
+    var ro = !canSettings(), busy = !!S.busy.settings, e = cfgEdits();
+    m.appendChild(h("div", { class: "settings-head" },
+      h("p", { class: "lede", text: "Every number the vault's routines use, grouped by who reads it, with its default and allowed range. Changes apply at the next research run (the Brief section at the next brief)." }),
+      h("span", { class: "mono", text: "meta/config · " + (cfgVersion() ? "version " + cfgVersion() : "defaults, never saved") })));
+    if (ro) m.appendChild(h("div", { class: "banner info", text: "You can see these settings but not change them. The vault's owner and Editors can." }));
+    FIELDS.forEach(function (sec) {
+      var panel = keyed(h("section", { class: "panel settings", "aria-labelledby": "sec-" + sec.id },
+        h("div", { class: "sec-top" }, h("h3", { id: "sec-" + sec.id, text: sec.title }),
+          h("button", { class: "link", disabled: ro || busy, onclick: function () {
+            sec.fields.forEach(function (f) { S.cfgDraft[f.key] = null; });
+            if (sec.id === "ladder") knownClasses().forEach(function (k) { S.ceilDraft[k] = ""; });
+            S.cfgReset = sec.id; render();
+          } }, "Reset section to defaults")),
+        sec.note ? h("p", { class: "note", text: sec.note }) : null), "sec-" + sec.id, undefined, true);
+      var grid = keyed(h("div", { class: "fields" }), "grid-" + sec.id, undefined, true);
+      sec.fields.forEach(function (f) {
+        var id = "cf-" + f.key.replace(/\./g, "-"), hasDraft = f.key in S.cfgDraft;
+        var unsetting = hasDraft && S.cfgDraft[f.key] === null;
+        var raw = !hasDraft ? toInput(f, cfgValue(f.key)) : unsetting ? toInput(f, cfgInherited(f.key)) : S.cfgDraft[f.key];
+        var p = parseField(f, raw), edit = cfgEdit(f.key), changed = !!(edit && !edit.invalid);
+        var source = cfgSaved(f.key) == null && !hasDraft && charterNumber(f.key) != null ? " · from the review charter until saved here" : "";
+        var range = f.kind === "text" ? "up to " + f.max + " characters" : shown(f, f.min) + " to " + shown(f, f.max);
+        var input = f.kind === "text" && f.max > 80
+          ? h("textarea", { id: id, maxlength: f.max, disabled: ro || busy, "aria-invalid": p.ok ? null : "true", "aria-describedby": id + "-d",
+              oninput: function (ev) { S.cfgDraft[f.key] = ev.target.value; render.soft(); } }, raw)
+          : h("input", { id: id, type: "text", inputmode: f.kind === "text" ? null : "numeric", value: raw, maxlength: f.kind === "text" ? f.max : 3,
+              disabled: ro || busy, "aria-invalid": p.ok ? null : "true", "aria-describedby": id + "-d",
+              oninput: function (ev) { S.cfgDraft[f.key] = ev.target.value; render.soft(); } });
+        // Typing doesn't rebuild the field; it is rebuilt only when its state flips (valid, changed).
+        grid.appendChild(keyed(h("div", { class: "field" + (changed ? " changed" : "") + (p.ok ? "" : " invalid") },
+          h("label", { for: id, text: f.label }),
+          h("div", { class: "inrow" }, input, f.kind === "text" ? null : h("span", { class: "unit", text: unit(f).trim() })),
+          h("small", { id: id + "-d" }, p.ok ? null : h("b", { text: p.msg + " " }),
+            "default " + shown(f, f["default"]) + " · " + range + source + (changed ? (unsetting ? " · reset, not saved" : " · changed, not saved") : "") + (f.help ? " · " + f.help : ""))),
+          "f-" + f.key, [hasDraft && !unsetting ? "draft" : raw, p.ok, p.msg || "", changed, unsetting, ro, busy, source]));
+      });
+      panel.appendChild(grid);
+      if (sec.id === "ladder") {
+        var classes = knownClasses(), cgrid = keyed(h("div", { class: "fields" }), "ceil-grid", undefined, true);
+        classes.forEach(function (k) {
+          var id = "ceil-" + k.replace(/[^a-z0-9]/gi, "-"), saved = savedCeilings()[k];
+          var cur = k in S.ceilDraft ? S.ceilDraft[k] : (saved == null ? "" : String(saved));
+          var changed = k in S.ceilDraft && !sameValue(saved == null ? "" : String(saved), cur);
+          cgrid.appendChild(keyed(h("div", { class: "field" + (changed ? " changed" : "") },
+            h("label", { for: id, text: classLabel(k) }),
+            h("select", { id: id, disabled: ro || busy, onchange: function (ev) { S.ceilDraft[k] = ev.target.value; render(); } },
+              [["", "No own ceiling"], ["0", "0 · " + stageName(0)], ["1", "1 · " + stageName(1)], ["2", "2 · " + stageName(2)], ["3", "3 · " + stageName(3)]].map(function (o) {
+                var el = h("option", { value: o[0], text: o[1] }); if (cur === o[0]) el.selected = true; return el; })),
+            h("small", { title: k, text: "highest stage for this class" + (changed ? " · changed, not saved" : "") })), "ceil-" + k, [cur, changed, ro, busy]));
+        });
+        panel.appendChild(h("h4", { class: "sub", text: "Highest stage per class" }));
+        panel.appendChild(classes.length ? cgrid : h("p", { class: "note", text: "Classes appear once the vault has beats." }));
+        panel.appendChild(h("p", { class: "note", text: "Conflicts always come to you and take no ceiling." }));
+      }
+      m.appendChild(panel);
+    });
+    var slug = (S.vault && S.vault.slug) || "<slug>";
+    var nc = nextCommit();
+    m.appendChild(h("section", { class: "panel settings" }, h("h3", { text: "Schedule · read only" }),
+      h("p", { class: "note", text: (S.vault && S.vault.schedule) ? String(S.vault.schedule)
+        : "Default times: research run daily 02:40 · commit " + commitTimes().join(" and ") + " · brief Fri 13:20 · freshness check Sun 03:10." }),
+      nc ? h("p", { class: "note", text: "Next commit: " + clock(nc) + " your time." }) : null,
+      h("p", { class: "note", text: "Times are set on the vault's routines (vault-" + slug + "-curate and the others), not on this page." })));
+    var n = e.edits.length + e.ceil.length;
+    // The change log records who saved; wait for the viewer's id rather than save an anonymous change.
+    var who = S.me ? "" : S.idKnown ? "This Console can't tell who you are, so it can't record a change. Republish it with the user capability (console-data.md)."
+      : "Checking who you are…";
+    var barText = e.invalid ? e.invalid + " field" + (e.invalid > 1 ? "s need" : " needs") + " fixing before you can save."
+        : n && who ? who : n ? n + " change" + (n > 1 ? "s" : "") + " not saved." : "No changes.";
+    if (!ro) m.appendChild(keyed(h("div", { class: "savebar" + (n || e.invalid ? " live" : "") },
+      h("span", { class: "note", text: barText }),
+      h("div", { class: "btns" },
+        h("button", { class: "link", disabled: busy || (!n && !e.invalid && !Object.keys(S.cfgDraft).length), onclick: function () { S.cfgDraft = {}; S.ceilDraft = {}; S.cfgReset = null; render(); } }, "Discard"),
+        h("button", { class: "primary", disabled: busy || !!e.invalid || !n || !S.me, onclick: saveSettings }, "Save as version " + (cfgVersion() + 1)))),
+      "savebar", [barText, n, e.invalid, busy, !!S.me, cfgVersion(), Object.keys(S.cfgDraft).length]));
+    m.appendChild(h("h2", { text: "Change log" }));
+    var log = S.configChanges.slice().sort(function (a, b) { return (Number(b.version) || 0) - (Number(a.version) || 0); });
+    if (!log.length) { m.appendChild(h("p", { class: "lede", text: "Each save adds a line here and a Config episode in the vault's memory at the next commit." })); return; }
+    resolveNames(log.map(function (c) { return c.by; }));
+    m.appendChild(keyed(h("ul", { class: "list changelog" }, log.slice(0, 30).map(function (c) {
+      var parts = (c.changes || []).map(changeText);
+      if (c.class_ceilings) parts.push("class ceilings changed");
+      if (c.reset) parts.push("reset " + c.reset + " to defaults");
+      return h("li", null, h("span", { class: "mono", text: "v" + (c.version || "?") }),
+        h("span", null, (c.at ? day(c.at) + " · " : "") + (parts.join("; ") || "no changes") + " · " + ((c.by && S.names[c.by]) || "someone with edit access"),
+          c.committed_episode ? h("span", { class: "chip good", text: "in memory" }) : h("span", { class: "chip", text: "waiting for commit" })));
+    })), "changelog", [log.slice(0, 30), S.names]));
+  }
+
+  // ---------- render ----------
+  var VIEWS = { inbox: viewInbox, summary: viewSummary, reviewer: viewReviewer, settings: viewSettings, steer: viewSteer, archive: viewArchive };
+  function route() {
+    var raw = (location.hash || "").slice(1);
+    try { raw = decodeURIComponent(raw); } catch (e) {}
+    if (LEGACY[raw]) raw = LEGACY[raw];
+    var cut = raw.indexOf("/"), tab = cut < 0 ? raw : raw.slice(0, cut), arg = cut < 0 ? "" : raw.slice(cut + 1);
+    return VIEWS[tab] ? { tab: tab, arg: arg } : { tab: "inbox", arg: "" };
+  }
+  function renderTabs() {
+    var counts = { inbox: openItems().length }, cur = route().tab;
+    var nav = document.getElementById("tabs"), next = document.createElement("nav");
+    TABS.forEach(function (t) {
+      var n = counts[t[0]];
+      next.appendChild(keyed(h("a", { href: "#" + t[0], "aria-current": cur === t[0] ? "page" : null }, t[1], n ? h("span", { class: "count hot", text: n }) : null),
+        "tab-" + t[0], [n || 0, cur === t[0]]));
+    });
+    morph(nav, next);
+  }
+  function renderMast() {
+    var v = S.vault || {}, nc = S.ready ? nextCommit() : null;
+    document.getElementById("vault-name").textContent = v.name ? v.name + " · Console" : "Vault Console";
+    document.getElementById("vault-group").textContent = v.group_id || "";
+    var last = S.runs[0];
+    document.getElementById("runline").textContent = S.noDb ? "This view can't reach the Console data."
+      : !S.ready ? "Connecting to the Console data…"
+      : (last ? "Last run: " + routineLabel(last.routine) + " · " + when(last.started) : "No routine has run yet.") + (nc ? " · Next commit " + clock(nc) : "");
+  }
+  function render() {
+    var active = document.activeElement, aid = active && active.id, sel = null;
+    if (aid && typeof active.selectionStart === "number") try { sel = [active.selectionStart, active.selectionEnd]; } catch (e) {}
+    renderMast(); renderTabs();
+    var m = document.getElementById("main"), next = document.createElement("main"), r = route();
+    if (S.stale) next.appendChild(keyed(h("div", { class: "banner", text: "The Console data can't be reached right now. What you see may be out of date." }), "stale", "1"));
+    if (S.readOnly) next.appendChild(keyed(h("div", { class: "banner info", text: "You can view this Console but not change it." }), "readonly", "1"));
+    if (S.noDb) next.appendChild(keyed(emptyState("The Console data isn't available in this view.", "Open the Console from claude.ai while signed in to review rows."), "nodb", "1"));
+    else VIEWS[r.tab](next, r.arg);
+    morph(m, next);
+    var want = S.focusNext; S.focusNext = null;
+    if (want) { var w = document.getElementById(want); if (w) { w.focus(); return; } }
+    if (aid && document.activeElement !== active) {
+      var el = document.getElementById(aid);
+      if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) {} }
+    }
+  }
+  // Settings fields update their own state while you type, a quarter second after the last key.
+  render.soft = function () {
+    clearTimeout(render.soft.t);
+    render.soft.t = setTimeout(render, 250);
+  };
+  var lastTab = route().tab;
+  window.addEventListener("hashchange", function () {
+    var r = route();
+    // Changing tabs lets cards you decided go; their Undo stays in the toast for its five seconds.
+    if (r.tab !== lastTab) Object.keys(S.done).forEach(function (id) { if (!S.busy[id]) delete S.done[id]; });
+    lastTab = r.tab;
+    render();
+    var target = /^row-/.test(r.arg) ? document.getElementById(r.arg) : null;
+    if (target) {
+      target.scrollIntoView({ block: "center" }); target.classList.add("hl");
+      setTimeout(function () { target.classList.remove("hl"); }, 2400);
+    } else window.scrollTo(0, 0);
+  });
+  // Once a minute: the next commit time, and Inbox rows whose revisit date has come.
+  setInterval(render, 60000);
+
+  // ---------- data ----------
+  function subscribe(db) {
+    var pending = 10, timer = setTimeout(function () { if (!S.ready) { S.stale = true; render(); } }, 10000);
+    function landed(meta) {
+      if (meta && meta.fromCache) return;
+      if (!S.ready && --pending <= 0) { S.ready = true; S.stale = false; clearTimeout(timer); }
+    }
+    function fail(e) { if (e && e.code === "revoked") S.readOnly = true; S.stale = true; clearTimeout(timer); render(); }
+    function rows(snap) { return snap.docs.map(function (d) { var o = Object.assign({}, d.data()); o.id = d.id; return o; }); }
+    var seen = {};
+    // Snapshots arrive together on load; one redraw for a burst of them is enough.
+    var queued = false;
+    function soon() { if (queued) return; queued = true; setTimeout(function () { queued = false; render(); }, 16); }
+    function q(name, query, key) {
+      query.onSnapshot(function (snap) { S[key] = rows(snap); if (!seen[name] && !snap.metadata.fromCache) { seen[name] = 1; landed(snap.metadata); } soon(); }, fail);
+    }
+    function d(path, key) {
+      db.doc(path).onSnapshot(function (snap) { S[key] = snap.exists ? snap.data() : null; if (!seen[path] && !snap.metadata.fromCache) { seen[path] = 1; landed(snap.metadata); } soon(); }, fail);
+    }
+    q("findings", db.collection("findings").orderBy("created", "desc").limit(600), "findings");
+    q("steering", db.collection("steering").orderBy("at", "desc").limit(200), "steering");
+    q("briefs", db.collection("briefs").orderBy("week", "desc").limit(26), "briefs");
+    q("runs", db.collection("runs").orderBy("started", "desc").limit(120), "runs");
+    q("config_changes", db.collection("config_changes").orderBy("version", "desc").limit(30), "configChanges");
+    q("calibrations", db.collection("calibrations").orderBy("week", "desc").limit(26), "calibrations");
+    d("meta/vault", "vault"); d("meta/charter", "charter"); d("meta/reviewer", "reviewer"); d("meta/config", "config");
+  }
+
+  render();
+  var cl = window.claude;
+  if (!cl || typeof cl.use !== "function") { S.noDb = true; render(); return; }
+  cl.use("db").then(function (db) {
+    if (!db) { S.noDb = true; render(); return; }
+    S.db = db; subscribe(db);
+    return cl.use("user").then(function (u) {
+      if (!u || typeof u.can !== "function") { S.idKnown = true; render(); return; }
+      S.userNs = u;
+      // Settings live under meta, which only the owner and Editors (admin) may write.
+      if (typeof u.canEdit === "function") u.canEdit().then(function (ok) { S.canAdmin = ok; render(); }, function () {});
+      if (typeof u.id === "function") u.id().then(function (id) { S.me = id || null; S.idKnown = true; render(); }, function () { S.idKnown = true; render(); });
+      else S.idKnown = true;
+      return u.can("data.write").then(function (ok) { if (ok === false) { S.readOnly = true; render(); } });
+    }, function () { S.idKnown = true; render(); });
+  }, function () { S.noDb = true; render(); });
+})();
+</script>

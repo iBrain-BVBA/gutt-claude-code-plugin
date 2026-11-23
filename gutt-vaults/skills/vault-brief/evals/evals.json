@@ -1,0 +1,59 @@
+{
+  "skill_name": "vault-brief",
+  "note": "These evals run against an example vault, next-agent-to-hire, whose group holds real verdicts to replay; any vault with enough history can stand in for it.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "dry-run-committed-only",
+      "prompt": "/gutt-vaults:vault-brief next-agent-to-hire --dry-run",
+      "expected_output": "Uses only committed Findings, cites every claim, drafts the brief and a research-line LinkedIn post (title, image prompt, alt text) offering the vault's CTA, computes Calibration from human vs reviewer calls, and prints the Insights and proposed steering it would write. No writes; nothing published.",
+      "files": [],
+      "assertions": [
+        "No add_memory*, ArtifactData write or Artifact publish call",
+        "Every claim line in the brief has a link",
+        "The LinkedIn draft's first line is 'Next Agent to Hire E<nn>. <one word>.'",
+        "The LinkedIn draft offers the board with brief.linkedin_cta from the Console's meta/config and asks for no comment keyword",
+        "The LinkedIn draft has a 'Sources:' line and no URLs",
+        "linkedin_md includes title candidates, an image prompt and alt text",
+        "No stage in the Calibration exceeds ladder.ceiling or a class ceiling from meta/config",
+        "The Calibration names the config version it used"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "thin-week-skips-brief",
+      "prompt": "/gutt-vaults:vault-brief next-agent-to-hire --dry-run for a week with 2 committed findings.",
+      "expected_output": "Skips the brief, still computes Calibration and Insights, and says why.",
+      "files": [],
+      "assertions": [
+        "No brief draft is produced",
+        "The output says fewer than brief.min_findings (3 by default) committed findings"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "no-slug-stops",
+      "prompt": "/gutt-vaults:vault-brief --dry-run",
+      "expected_output": "Stops before any read with the missing-slug message from vault-curate/references/routines.md, listing the vault files in the repo. Doesn't pick next-agent-to-hire even though it is the only vault file.",
+      "files": [],
+      "assertions": [
+        "No memory or ArtifactData call",
+        "The reply asks for the slug and lists next-agent-to-hire as a vault file",
+        "No brief is drafted"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "brief-page-data-committed-only",
+      "prompt": "/gutt-vaults:vault-brief next-agent-to-hire --dry-run. One of this week's candidate findings is still escalated on the Console and has no Finding episode.",
+      "expected_output": "Prints the brief, the LinkedIn draft and the page data (brief.json) it would write to the briefs row. The page data's changes hold only committed Findings; the escalated one is in none of the three. Prints the Graph and Timelapse exports it would publish, and publishes nothing.",
+      "files": [],
+      "assertions": [
+        "The printed page data has week, headline, changes, conflicts and sources",
+        "Every entry in changes names a Finding that has a Finding episode in the vault group",
+        "The escalated row appears in neither the brief, the page data nor the LinkedIn draft",
+        "No Artifact publish call and no ArtifactData write"
+      ]
+    }
+  ]
+}

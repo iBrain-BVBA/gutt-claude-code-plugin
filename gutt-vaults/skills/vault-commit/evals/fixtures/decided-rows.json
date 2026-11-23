@@ -1,0 +1,92 @@
+[
+  {
+    "id": "curate-2026-11-06-1",
+    "type": "finding",
+    "status": "approved",
+    "title": "Intercom (2026-10-30): Fin at $0.99 per resolution",
+    "claim": "Intercom charges $0.99 per resolved conversation for Fin.",
+    "beat": "pricing",
+    "significance": 3,
+    "features": { "domain": "intercom.com", "claim_type": "pricing", "source_class": "vendor" },
+    "sources": [
+      {
+        "url": "https://www.intercom.com/pricing",
+        "title": "Intercom pricing",
+        "retrieved": "2026-11-06",
+        "source_class": "vendor"
+      }
+    ],
+    "review": { "decision": "escalate", "prediction": "approve", "confidence": 0.7, "stage": 0 },
+    "human": { "decision": "approved", "note": "", "at": "2026-11-06T09:12:00Z" }
+  },
+  {
+    "id": "curate-2026-11-06-2",
+    "type": "finding",
+    "status": "approved",
+    "title": "Zendesk (2026-11-02): AI agents resolve 60% of tickets",
+    "claim": "Zendesk says its AI agents resolve 60% of tickets for customers on the new plan.",
+    "beat": "outcomes",
+    "significance": 3,
+    "features": { "domain": "zendesk.com", "claim_type": "outcome", "source_class": "vendor" },
+    "sources": [
+      {
+        "url": "https://www.zendesk.com/newsroom/",
+        "title": "Newsroom",
+        "retrieved": "2026-11-06",
+        "source_class": "vendor"
+      }
+    ],
+    "review": {
+      "decision": "auto_reject",
+      "prediction": "reject",
+      "confidence": 0.93,
+      "stage": 1,
+      "reason": "vendor outcome claim, no independent source"
+    },
+    "human": {
+      "decision": "approved",
+      "note": "Keep vendor outcome claims when graded vendor_claim",
+      "at": "2026-11-06T09:15:00Z"
+    }
+  },
+  {
+    "id": "curate-2026-11-06-3",
+    "type": "conflict",
+    "status": "approved",
+    "title": "Vendor ROI vs independent study on tier-1 support",
+    "conflict": {
+      "a_finding": "Sierra (2026-09-10): agents resolve 70% of support cases",
+      "b_finding": "Stanford HAI (2026-10-01): tier-1 agents resolve 41% of cases",
+      "a_claim": "70% resolution",
+      "b_claim": "41% resolution"
+    },
+    "beat": "outcomes",
+    "significance": 4,
+    "features": {
+      "domain": "stanford.edu",
+      "claim_type": "outcome",
+      "source_class": "independent"
+    },
+    "sources": [
+      { "url": "https://hai.stanford.edu/", "title": "Study", "retrieved": "2026-11-06" }
+    ],
+    "human": {
+      "decision": "approved",
+      "resolution": "both",
+      "note": "Different populations",
+      "at": "2026-11-06T09:20:00Z"
+    }
+  },
+  {
+    "id": "curate-2026-11-06-4",
+    "type": "finding",
+    "status": "approved",
+    "title": "Acme (2026-11-01): AP agent at $0.10 per invoice",
+    "claim": "Acme prices its AP agent at $0.10 per invoice.",
+    "beat": "pricing",
+    "significance": 2,
+    "features": { "domain": "acme.example", "claim_type": "pricing" },
+    "sources": [{ "url": "https://acme.example/pricing", "title": "Pricing" }],
+    "human": { "decision": "approved", "at": "2026-11-06T09:25:00Z" }
+  }
+]

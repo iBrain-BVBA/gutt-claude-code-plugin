@@ -12,7 +12,7 @@ This is a Claude Code plugin that integrates gutt (Graph-based Unified Thinking 
 
 ```
 gutt-plugins/               # marketplace repo (root is NOT a plugin)
-├── .claude-plugin/         # marketplace.json — lists gutt-core + gutt-mentor + gutt-developer + gutt-product
+├── .claude-plugin/         # marketplace.json — lists gutt-core + gutt-mentor + gutt-developer + gutt-product + gutt-vaults
 ├── gutt-core/              # core plugin (name + displayName: gutt-pro; dir name kept)
 │   ├── .claude-plugin/     # plugin.json
 │   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
@@ -21,6 +21,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 ├── gutt-mentor/            # mentor plugin (depends on gutt-pro) — onboarding + mentor skills, personal-scope program design/tracking
 ├── gutt-developer/         # developer plugin (depends on gutt-pro) — six ticket, bug, breakdown, and review skills; no agents or hooks
 ├── gutt-product/           # product plugin (depends on gutt-pro) — story-creation, backlog-dedupe, backlog-prioritization for product leadership; no hooks
+├── gutt-vaults/            # public research vaults (depends on gutt-pro) — six vault-* skills, scout + reviewer agents, page templates (Console, Brief, Graph, Timelapse) and the vault-pages script; no hooks
 ├── .claude/                # repo-dev tooling (agents, commands, settings) — not shipped
 ├── templates/              # role-plugin scaffold + its review gates — not shipped
 ├── tests/                  # Unit and E2E tests

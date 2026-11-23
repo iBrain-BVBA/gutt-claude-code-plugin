@@ -22,6 +22,9 @@ export default [
     },
   },
   {
-    ignores: ["node_modules/", "dist/", "coverage/", ".claude/"],
+    // gutt-vaults/templates/ holds browser pages published as artifacts and the stand-in
+    // runtime their tests load; they are written for the page, not for Node, like the
+    // inline scripts in the same templates.
+    ignores: ["node_modules/", "dist/", "coverage/", ".claude/", "gutt-vaults/templates/"],
   },
 ];
