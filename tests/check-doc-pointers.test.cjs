@@ -385,6 +385,28 @@ describe("the README drift check", () => {
     assert.match(out, /lists `\/p2:setup`, but the plugin is p1 — write `\/p1:setup`/);
   });
 
+  it("fails a command row that drops the plugin namespace", () => {
+    const t = tempTree();
+    t.file("p1/README.md", PLUGIN_README.replace("`/p1:on`", "`/on`"));
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /lists command `\/on` without its plugin — write `\/p1:on`/);
+  });
+
+  it("keeps a longer fence open across a ``` block it shows", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      PLUGIN_README.replace("| `/p1:on`                  | x      |\n", "") +
+        "\n````markdown\n```\n## Commands\n\n| Command | Effect |\n| --- | --- |\n| `/p1:on` | x |\n| `/p1:gone` | x |\n```\n````\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /ships command `on`, but its commands table does not list it/);
+    assert.doesNotMatch(out, /lists command `gone`/);
+    assert.doesNotMatch(out, /lists `\/p1:/);
+  });
+
   it("checks a reference that carries arguments", () => {
     const t = tempTree();
     t.prose("Snooze with `/p2:on 30`, or `/p1:nope auto\\|hitl`.\n");

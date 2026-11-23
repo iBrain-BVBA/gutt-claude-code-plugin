@@ -192,17 +192,29 @@ function checkRequiredDocs() {
 /**
  * A document's lines outside fenced code blocks. A table or heading shown as an example
  * inside a fence is not one, so neither table check may read it as a listing.
+ *
+ * Fences follow CommonMark: an opening run of three or more backticks or tildes (up to
+ * three spaces of indent) is closed only by a run of the same character at least as long
+ * with nothing after it. So a ```` fence that shows a ``` block stays open across it.
  */
 function unfencedLines(text) {
   const lines = [];
-  let fenced = false;
+  let open = null;
   for (const line of text.split(/\r?\n/)) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced;
-      continue;
-    }
-    if (!fenced) {
+    const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (open === null) {
+      if (fence && !(fence[1][0] === "`" && fence[2].includes("`"))) {
+        open = fence[1];
+        continue;
+      }
       lines.push(line);
+    } else if (
+      fence &&
+      fence[1][0] === open[0] &&
+      fence[1].length >= open.length &&
+      fence[2].trim() === ""
+    ) {
+      open = null;
     }
   }
   return lines;
@@ -218,6 +230,7 @@ function unfencedLines(text) {
 function tableListings(text) {
   const listed = { skills: [], commands: [], agents: [] };
   const prefixes = [];
+  const bareCommands = [];
   let kind = null;
   for (const line of unfencedLines(text)) {
     const heading = line.match(/^(#+)\s+(.+?)\s*$/);
@@ -237,10 +250,12 @@ function tableListings(text) {
       listed[kind].push(name);
       if (colon > 0) {
         prefixes.push({ prefix: word.slice(0, colon), name });
+      } else if (kind === "commands") {
+        bareCommands.push(name);
       }
     }
   }
-  return { listed, prefixes };
+  return { listed, prefixes, bareCommands };
 }
 
 function checkPluginReadmes(plugins) {
@@ -253,7 +268,14 @@ function checkPluginReadmes(plugins) {
       continue;
     }
     const shipped = componentsOf(dir);
-    const { listed, prefixes } = tableListings(fs.readFileSync(readme, "utf8"));
+    const { listed, prefixes, bareCommands } = tableListings(fs.readFileSync(readme, "utf8"));
+    // A plugin command only runs namespaced; a bare `/config` opens the host's own command.
+    // Skills and agents may be listed by bare name.
+    for (const component of bareCommands) {
+      problems.push(
+        `${rel}: lists command \`/${component}\` without its plugin — write \`/${name}:${component}\``
+      );
+    }
     for (const { prefix, name: component } of prefixes) {
       if (prefix !== name) {
         problems.push(
