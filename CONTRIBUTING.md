@@ -51,11 +51,13 @@ npm run test:all       # unit tests, hook smoke tests and every guard below
 
 `npm run check:doc-pointers` fails CI when:
 
-- a plugin in `marketplace.json` is not in the main README's plugin table, or has no
-  `README.md` in its directory;
-- a skill directory, command file or agent file is not named, in backticks, in its plugin's
-  README or the main README;
-- a `claude plugin` install or marketplace command in a README is not written the same way in
+- a plugin in `marketplace.json` has no `README.md` in its directory, no row in the main
+  README's plugin table linking that file, or no install command for it in the main README;
+- the plugin table links a plugin the marketplace does not list;
+- a skill directory, command file or agent file is not listed in the first column of its
+  plugin README's `## Skills`, `## Commands` or `## Agents` table;
+- one of those tables lists a skill, command or agent the plugin no longer ships;
+- a `claude plugin` command in a README or in this file is not written the same way in
   `docs/team-onboarding.md`;
 - a backticked slash command in the docs or in a skill resolves to nothing the plugins ship.
 

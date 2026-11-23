@@ -295,4 +295,24 @@ describe("the README drift check", () => {
     const { code, out } = t.run();
     assert.equal(code, 0, out);
   });
+
+  it("reports drift in the same run as a broken slash reference", () => {
+    const t = tempTree();
+    t.file("README.md", `${ROOT_README}\nThen run \`/p1:no-such-thing\`.\n`);
+    t.file("p1/skills/new-skill/SKILL.md", "# new\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /resolves to nothing shipped/);
+    assert.match(out, /ships skill `new-skill`/);
+  });
+
+  it("ignores table rows and headings inside a fenced code block", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      `${PLUGIN_README}\n\`\`\`\n## Skills\n| \`gone-skill\` | an example, not a listing |\n\`\`\`\n`
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
+  });
 });

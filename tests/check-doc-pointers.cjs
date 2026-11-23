@@ -169,12 +169,20 @@ function filesToScan(plugins) {
 /**
  * The names a README table lists, per section. Only the first cell of a row counts, and
  * only its first backticked token, reduced to the bare name: `/gutt-pro:mode auto|hitl`
- * lists `mode`.
+ * lists `mode`. Lines inside a fenced code block are neither headings nor rows.
  */
 function tableListings(text) {
   const listed = { skills: [], commands: [], agents: [] };
   let kind = null;
+  let fenced = false;
   for (const line of text.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) {
+      continue;
+    }
     const heading = line.match(/^##\s+(.+?)\s*$/);
     if (heading) {
       kind = SECTION_KIND[heading[1]] || null;
@@ -351,6 +359,14 @@ function main() {
     }
   }
 
+  // Both halves run before either reports, so one failing run lists everything to fix
+  // rather than revealing the drift only after the slash references are clean.
+  const drift = [
+    ...checkRootReadme(marketplace, plugins),
+    ...checkPluginReadmes(plugins),
+    ...checkInstallCommands(plugins),
+  ];
+
   if (problems.length) {
     console.error(
       "Doc-pointer check FAILED — prose tells the reader to type these, and they do nothing:\n"
@@ -359,20 +375,17 @@ function main() {
       console.error(`  ${p}`);
     }
     console.error(`\n${problems.length} unreachable reference(s) across ${files.length} file(s).`);
-    process.exit(1);
   }
-
-  const drift = [
-    ...checkRootReadme(marketplace, plugins),
-    ...checkPluginReadmes(plugins),
-    ...checkInstallCommands(plugins),
-  ];
   if (drift.length) {
-    console.error("Doc-pointer check FAILED — the READMEs have drifted from what ships:\n");
+    console.error(
+      `${problems.length ? "\n" : ""}Doc-pointer check FAILED — the READMEs have drifted from what ships:\n`
+    );
     for (const p of drift) {
       console.error(`  ${p}`);
     }
     console.error(`\n${drift.length} drift problem(s). Update the README in the same change.`);
+  }
+  if (problems.length || drift.length) {
     process.exit(1);
   }
 

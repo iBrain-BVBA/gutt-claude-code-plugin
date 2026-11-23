@@ -42,8 +42,9 @@ The role plugins depend on `gutt-pro` and install it with them.
    ```
 
 3. **Sign in and take the tour.** Restart Claude Code, or run `/reload-plugins`. Open the
-   connector list (`/mcp` in the terminal) and click **Authorise** on the gutt connector,
-   `gutt-mcp-remote`. Then run `/gutt-pro:onboard`.
+   connector list and click **Authorise** on the gutt connector, `gutt-mcp-remote`. In the
+   terminal the list is `/mcp`: pick `gutt-mcp-remote` and choose Authenticate. Then run
+   `/gutt-pro:onboard`.
 
 The connector points at the gutt shared stage server. The first time you authorise it, that
 creates your login there; there is nothing to sign up for first.
