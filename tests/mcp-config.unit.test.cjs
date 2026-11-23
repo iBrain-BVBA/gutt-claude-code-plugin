@@ -15,6 +15,7 @@
 const assert = require("assert");
 const {
   findGuttServerConfig,
+  findGuttServerConfigs,
   resolveEnvVars,
   resolveUserConfig,
   extractUrlFromConfig,
@@ -489,6 +490,54 @@ test("a local entry at the plugin URL does not hide a differently named user ent
     projects: { [project]: { mcpServers: { "gutt-mcp-remote": { type: "http", url: STAGE } } } },
   }));
   assert.match(diag.warning, /claude mcp remove gutt-pro-memory --scope user/);
+});
+
+test("a local stdio entry overrides a same-named user HTTP entry (plugin URL is used)", () => {
+  const diag = diagnoseIn((project) => ({
+    mcpServers: { "gutt-mcp-remote": { type: "http", url: ORG } },
+    projects: {
+      [project]: { mcpServers: { "gutt-mcp-remote": { command: "npx", args: ["gutt"] } } },
+    },
+  }));
+  assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.source, "plugin-default");
+  assert.strictEqual(diag.warning, null, "the overridden user entry does not run");
+});
+
+test("every gutt server in one scope is checked, not only the first", () => {
+  const diag = diagnoseIn(() => ({
+    mcpServers: {
+      "gutt-mcp-remote": { type: "http", url: STAGE },
+      "gutt-pro-memory": { type: "http", url: ORG },
+    },
+  }));
+  assert.strictEqual(diag.url, STAGE);
+  assert.match(diag.warning, /claude mcp remove gutt-pro-memory --scope user/);
+  assert.ok(!/remove gutt-mcp-remote/.test(diag.warning));
+});
+
+test("with the saved option passed in, a registration at the stage default is flagged", () => {
+  const diag = diagnoseIn(
+    () => ({ mcpServers: { "gutt-mcp-remote": { type: "http", url: STAGE } } }),
+    { pluginRoot: null, option: ORG }
+  );
+  assert.strictEqual(diag.url, STAGE);
+  assert.match(diag.warning, /--scope user/);
+  assert.ok(diag.warning.includes(ORG), "the comparison uses the saved option, not the default");
+});
+
+test("findGuttServerConfigs returns every gutt entry, known names first", () => {
+  const found = findGuttServerConfigs({
+    claude_ai_gutt: { url: "https://a" },
+    other: { url: "https://b" },
+    "gutt-pro-memory": { url: "https://c" },
+    "GUTT-MCP-REMOTE": { url: "https://d" },
+  });
+  assert.deepStrictEqual(
+    found.map((f) => f.name),
+    ["gutt-pro-memory", "GUTT-MCP-REMOTE", "claude_ai_gutt"]
+  );
+  assert.deepStrictEqual(findGuttServerConfigs(null), []);
 });
 
 test("an unreadable ~/.claude.json falls back to the plugin default and says so", () => {
