@@ -386,7 +386,7 @@ gutt-plugins/                       # marketplace repo (name: gutt-plugins)
 │   ├── agents/                     # gutt-pro-memory only
 │   ├── commands/                   # setup, start, health
 │   ├── rules/gutt-memory.mdc       # Cursor rule for memory-first workflow
-│   ├── mcp.json                    # MCP config template
+│   ├── .mcp.json                   # plugin MCP server; URL from userConfig.mcp_url (default: stage)
 │   └── config.json.example
 ├── gutt-mentor/                    # mentor plugin — onboarding, mentoring, personal program design/tracking (no hooks)
 │   └── skills/                     # onboarding-guide, mentor, individual-program-design, progress-tracking

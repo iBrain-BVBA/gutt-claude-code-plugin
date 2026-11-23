@@ -17,7 +17,7 @@ gutt-plugins/               # marketplace repo (root is NOT a plugin)
 │   ├── .claude-plugin/     # plugin.json
 │   ├── hooks/              # Claude Code hooks (.cjs); hooks/lib/* are real files, owned here
 │   ├── skills/ agents/ commands/ # gutt-pro-memory is the sole shipped agent
-│   └── rules/ mcp.json config.json.example
+│   └── rules/ .mcp.json config.json.example   # .mcp.json: plugin MCP server, URL = userConfig.mcp_url
 ├── gutt-mentor/            # mentor plugin (depends on gutt-pro) — onboarding + mentor skills, personal-scope program design/tracking
 ├── gutt-developer/         # developer plugin (depends on gutt-pro) — six ticket, bug, breakdown, and review skills; no agents or hooks
 ├── gutt-product/           # product plugin (depends on gutt-pro) — story-creation, backlog-dedupe, backlog-prioritization for product leadership; no hooks

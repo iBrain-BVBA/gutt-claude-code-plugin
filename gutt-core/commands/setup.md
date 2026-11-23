@@ -40,6 +40,11 @@ leaves it unset rather than contradicting it.
 
 Check if `gutt-mcp-remote` is already configured by attempting to list MCP resources.
 
+In Claude Code the plugin ships this server itself (`gutt-core/.mcp.json`). Its URL is the
+plugin option `mcp_url`, which defaults to the gutt shared stage server,
+`https://mcp.stage.gutt.pro/mcp`. So it is normally present; the question is which endpoint
+it points at.
+
 If found, show the configured endpoint and ask: "Reconfigure?" / "Test connection?" / "Exit"
 
 ### Step 2: Get MCP Endpoint URL
@@ -60,13 +65,23 @@ Validate:
 
 #### Claude Code
 
-Run the `claude mcp add` command:
+Set the plugin's `mcp_url` option. Do not add a second server with `claude mcp add`: a
+user-scope server at a different URL runs alongside the plugin's one, and memory tools from
+two endpoints are then both live.
+
+Tell the user to run `/plugin`, open **gutt-pro**, choose **Configure**, and enter the URL. From
+a shell the same option can be set when installing:
 
 ```bash
-claude mcp add gutt-mcp-remote --transport http --scope user "[USER_PROVIDED_URL]"
+claude plugin install gutt-pro@gutt-plugins --config mcp_url="[USER_PROVIDED_URL]"
 ```
 
-This registers the MCP server in Claude Code's user settings.
+If an older user-scope `gutt-mcp-remote` exists from a previous setup, remove it so only the
+plugin's server is left:
+
+```bash
+claude mcp remove gutt-mcp-remote --scope user
+```
 
 #### Cursor
 
@@ -135,5 +150,5 @@ After authentication, memory features will be active.
 - Do NOT open browsers manually (OAuth popup opens automatically)
 - Do NOT ask about group_id
 - Do NOT use AskUserQuestion for the URL - just ask as plain text
-- In Claude Code: Do NOT write `.mcp.json` files - use `claude mcp add` instead
+- In Claude Code: Do NOT write `.mcp.json` files or run `claude mcp add` - set the plugin's `mcp_url` option instead
 - In Cursor: Do NOT use `claude mcp add` - edit `~/.cursor/mcp.json` directly

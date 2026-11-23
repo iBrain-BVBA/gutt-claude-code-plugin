@@ -16,8 +16,13 @@ const assert = require("assert");
 const {
   findGuttServerConfig,
   resolveEnvVars,
+  resolveUserConfig,
   extractUrlFromConfig,
 } = require("../gutt-core/hooks/lib/mcp-config.cjs");
+const fs = require("fs");
+const path = require("path");
+
+const CORE_ROOT = path.resolve(__dirname, "..", "gutt-core");
 
 // ---------------------------------------------------------------------------
 // Test runner (minimal hand-rolled harness, no framework)
@@ -230,6 +235,80 @@ test("resolves env vars in url field", () => {
   const result = extractUrlFromConfig(config);
   assert.strictEqual(result, "https://env-resolved.ai");
   delete process.env._TEST_CFG_URL;
+});
+
+// ---------------------------------------------------------------------------
+// Plugin-shipped server: ${user_config.mcp_url} and ${VAR:-default}
+// ---------------------------------------------------------------------------
+
+console.log("\nplugin MCP server (userConfig):\n");
+
+test("${VAR:-default} uses the env var when set", () => {
+  process.env._TEST_DEFAULTED = "https://from-env.ai/mcp";
+  assert.strictEqual(
+    resolveEnvVars("${_TEST_DEFAULTED:-https://fallback/mcp}"),
+    "https://from-env.ai/mcp"
+  );
+  delete process.env._TEST_DEFAULTED;
+});
+
+test("${VAR:-default} falls back to the default when unset", () => {
+  assert.strictEqual(
+    resolveEnvVars("${_TEST_UNSET_X:-https://fallback/mcp}"),
+    "https://fallback/mcp"
+  );
+});
+
+test("${user_config.mcp_url} prefers CLAUDE_PLUGIN_OPTION_MCP_URL", () => {
+  process.env.CLAUDE_PLUGIN_OPTION_MCP_URL = "https://org.example/mcp";
+  assert.strictEqual(
+    resolveEnvVars("${user_config.mcp_url}", CORE_ROOT),
+    "https://org.example/mcp"
+  );
+  delete process.env.CLAUDE_PLUGIN_OPTION_MCP_URL;
+});
+
+test("${user_config.mcp_url} falls back to the manifest default (stage)", () => {
+  delete process.env.CLAUDE_PLUGIN_OPTION_MCP_URL;
+  assert.strictEqual(
+    resolveEnvVars("${user_config.mcp_url}", CORE_ROOT),
+    "https://mcp.stage.gutt.pro/mcp"
+  );
+});
+
+test("${user_config.*} with no plugin root and no env resolves to empty", () => {
+  assert.strictEqual(resolveUserConfig("mcp_url", null), "");
+  assert.strictEqual(resolveEnvVars("${user_config.mcp_url}", null), "");
+});
+
+test("unknown userConfig key resolves to empty", () => {
+  assert.strictEqual(resolveUserConfig("no_such_key", CORE_ROOT), "");
+});
+
+test("shipped .mcp.json declares an http gutt server bound to userConfig.mcp_url", () => {
+  const mcp = JSON.parse(fs.readFileSync(path.join(CORE_ROOT, ".mcp.json"), "utf8"));
+  const found = findGuttServerConfig(mcp.mcpServers);
+  assert.ok(found, "no gutt server in gutt-core/.mcp.json");
+  // Claude Code skips a remote entry that has a url but no type
+  assert.strictEqual(found.config.type, "http");
+  assert.strictEqual(found.config.url, "${user_config.mcp_url}");
+});
+
+test("every ${user_config.KEY} in .mcp.json is declared in plugin.json", () => {
+  const raw = fs.readFileSync(path.join(CORE_ROOT, ".mcp.json"), "utf8");
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(CORE_ROOT, ".claude-plugin", "plugin.json"), "utf8")
+  );
+  const keys = [...raw.matchAll(/\$\{user_config\.([A-Za-z0-9_]+)\}/g)].map((m) => m[1]);
+  assert.ok(keys.length > 0);
+  for (const key of keys) {
+    assert.ok(manifest.userConfig && manifest.userConfig[key], `userConfig.${key} missing`);
+    assert.ok(manifest.userConfig[key].default, `userConfig.${key} has no default`);
+  }
+});
+
+test("no legacy gutt-core/mcp.json (Claude Code only loads the dotted name)", () => {
+  assert.ok(!fs.existsSync(path.join(CORE_ROOT, "mcp.json")));
 });
 
 // ---------------------------------------------------------------------------

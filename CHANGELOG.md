@@ -1,5 +1,35 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **gutt-pro ships its own MCP server, pointed at the gutt shared stage by default.**
+  `gutt-core/.mcp.json` declares `gutt-mcp-remote` (`type: http`) with its URL taken from the
+  new plugin option `userConfig.mcp_url`, default `https://mcp.stage.gutt.pro/mcp`. Set your
+  organization's endpoint in `/plugin` → gutt-pro → Configure, or with
+  `claude plugin install gutt-pro@gutt-plugins --config mcp_url=…`.
+
+### Changed
+
+- `/gutt-pro:setup` sets the `mcp_url` option in Claude Code instead of running
+  `claude mcp add`. Hooks resolve `${user_config.KEY}` (from `CLAUDE_PLUGIN_OPTION_<KEY>`, else
+  the manifest default) and `${VAR:-default}`, and read the plugin's own `.mcp.json`.
+
+### Fixed
+
+- `gutt-core/mcp.json` was never loaded: Claude Code reads only a root `.mcp.json`, and skips a
+  remote entry without `type`. Replaced by `gutt-core/.mcp.json`.
+
+### Upgrade note
+
+- If you added `gutt-mcp-remote` at user scope with an earlier `/gutt-pro:setup`, remove it
+  (`claude mcp remove gutt-mcp-remote --scope user`) and set `mcp_url` instead. A user-scope
+  server at a different URL runs alongside the plugin's server, so memory tools from two
+  endpoints are both live. A claude.ai connector at the same URL is replaced by the plugin's
+  server, and its tools are renamed `mcp__plugin_gutt-pro_gutt-mcp-remote__*`; anything that
+  hard-codes `mcp__claude_ai_…` tool names needs to discover them at runtime.
+
 ## [3.1.0] - 2026-09-14
 
 ### Changed

@@ -66,8 +66,12 @@ or immediately after `/reload-plugins`.
 
 ## Step 3 — Connect to memory
 
+The plugin brings its own MCP server, `gutt-mcp-remote`. Its URL is the plugin option
+`mcp_url`, which defaults to the gutt shared stage server (`https://mcp.stage.gutt.pro/mcp`).
+To use your organization's endpoint instead, run `/gutt-pro:setup`, or set it at install time:
+
 ```
-/gutt-pro:setup
+claude plugin install gutt-pro@gutt-plugins --config mcp_url=https://your-org.example/mcp
 ```
 
 Then restart and authenticate: `/mcp` → `gutt-mcp-remote` → Authenticate.
@@ -99,7 +103,8 @@ person to run the steps above:
 - `extraKnownMarketplaces` — register the gutt marketplace as a `github` source entry, so
   relative plugin paths resolve the same way the `owner/repo` form makes them resolve
 - `enabledPlugins` — auto-install `gutt-pro`, plus whichever role plugins that team needs
-- the memory endpoint can be pre-set in organization settings
+- the memory endpoint is the `gutt-pro` plugin option `mcp_url` (default: the gutt shared stage
+  server); set it per machine with `claude plugin install … --config mcp_url=…`
 
 The status bar cannot be pre-configured this way: it writes to each person's own settings, so
 each person runs `/gutt-pro:statusline` themselves.
