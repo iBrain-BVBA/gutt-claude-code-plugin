@@ -3,7 +3,7 @@
  * SessionStart (async) — MCP connectivity probe and cache reset (GP-863, S3.2).
  *
  * Split out of session-start.cjs to keep the synchronous lifecycle path inside
- * the ≤50ms budget (R25): diagnosing the MCP config walks up to five settings
+ * the ≤50ms budget (R25): diagnosing the MCP config walks up to seven config
  * files plus the plugin cache directory, which is by far the most expensive
  * thing SessionStart used to do. hooks.json runs this with `async: true`, so it
  * never delays the session.

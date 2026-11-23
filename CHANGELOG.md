@@ -15,6 +15,10 @@
 - `/gutt-pro:setup` sets the `mcp_url` option in Claude Code instead of running
   `claude mcp add`. Hooks resolve `${user_config.KEY}` (from `CLAUDE_PLUGIN_OPTION_<KEY>`, else
   the manifest default) and `${VAR:-default}`, and read the plugin's own `.mcp.json`.
+- Hooks now read the servers `claude mcp add` stores in `~/.claude.json` (local scope for the
+  current project, then user scope) before the plugin's default, so the session record and
+  `/gutt-pro:health` show the endpoint an upgrading user registered. `/gutt-pro:health` warns
+  when that registration points somewhere other than the plugin's own server.
 
 ### Fixed
 
@@ -24,7 +28,9 @@
 ### Upgrade note
 
 - If you added `gutt-mcp-remote` at user scope with an earlier `/gutt-pro:setup`, remove it
-  (`claude mcp remove gutt-mcp-remote --scope user`) and set `mcp_url` instead. A user-scope
+  (`claude mcp remove gutt-mcp-remote --scope user`) and set `mcp_url` instead, in `/plugin` →
+  gutt-pro → Configure or with
+  `echo '{"mcp_url":"https://…/mcp"}' | claude plugin configure gutt-pro@gutt-plugins --values-stdin`. A user-scope
   server at a different URL runs alongside the plugin's server, so memory tools from two
   endpoints are both live. A claude.ai connector at the same URL is replaced by the plugin's
   server, and its tools are renamed `mcp__plugin_gutt-pro_gutt-mcp-remote__*`; anything that

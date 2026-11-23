@@ -70,14 +70,21 @@ user-scope server at a different URL runs alongside the plugin's one, and memory
 two endpoints are then both live.
 
 Tell the user to run `/plugin`, open **gutt-pro**, choose **Configure**, and enter the URL. From
-a shell the same option can be set when installing:
+a shell, set it on the installed plugin:
+
+```bash
+echo '{"mcp_url":"[USER_PROVIDED_URL]"}' | claude plugin configure gutt-pro@gutt-plugins --values-stdin
+```
+
+or when installing for the first time:
 
 ```bash
 claude plugin install gutt-pro@gutt-plugins --config mcp_url="[USER_PROVIDED_URL]"
 ```
 
-If an older user-scope `gutt-mcp-remote` exists from a previous setup, remove it so only the
-plugin's server is left:
+An earlier setup registered `gutt-mcp-remote` with `claude mcp add`, which stores it in
+`~/.claude.json`. Check with `claude mcp get gutt-mcp-remote`: if it lists a scope of user or
+local, remove it so only the plugin's server is left (use the scope it shows):
 
 ```bash
 claude mcp remove gutt-mcp-remote --scope user

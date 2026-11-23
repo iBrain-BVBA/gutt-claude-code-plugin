@@ -23,6 +23,9 @@ Report:
 - **configured**: whether gutt MCP server is found in settings
 - **url**: the resolved HTTP URL (or "N/A — stdio transport")
 - **error**: any configuration error message
+- **warning**: set when a gutt server registered outside the plugin (for example by an
+  older `claude mcp add --scope user`) points at a different URL than the plugin's own
+  server; both run. Show the warning as given, since it names the command that fixes it.
 
 ### 2. List Registered Hooks
 
