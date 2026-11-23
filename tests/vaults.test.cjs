@@ -288,9 +288,13 @@ describe("vault-agnostic", () => {
     const hits = [];
     for (const dir of fs.readdirSync(SKILLS)) {
       const file = path.join(SKILLS, dir, "SKILL.md");
-      if (!fs.existsSync(file)) continue;
+      if (!fs.existsSync(file)) {
+        continue;
+      }
       const desc = read(file).match(/^description:\s*(.*)$/m);
-      if (desc && /[<>]/.test(desc[1])) hits.push(dir);
+      if (desc && /[<>]/.test(desc[1])) {
+        hits.push(dir);
+      }
     }
     assert.deepEqual(hits, []);
   });
