@@ -9,6 +9,14 @@
   new plugin option `userConfig.mcp_url`, default `https://mcp.stage.gutt.pro/mcp`. Set your
   organization's endpoint in `/plugin` → gutt-pro → Configure, or with
   `claude plugin install gutt-pro@gutt-plugins --config mcp_url=…`.
+- **One README per plugin, and a rewritten marketplace README.** The main README opens with the
+  plugin table, a three-step start whose commands match `docs/team-onboarding.md`, the surfaces
+  gutt runs on, what each hook does and does not do, and what works in Cursor. Each plugin has
+  its own README listing its skills, commands and agents. The hook and status bar reference
+  moved to `docs/hooks.md` and `docs/statusline.md`; contributor notes to `CONTRIBUTING.md`.
+- **`npm run check:doc-pointers` is now a drift check.** It fails when a plugin, skill, command
+  or agent ships without being listed in its README, when a README lists one that no longer
+  ships, or when a README's `claude plugin` command differs from the onboarding guide.
 
 ### Changed
 
