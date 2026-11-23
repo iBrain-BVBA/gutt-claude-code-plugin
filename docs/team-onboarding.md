@@ -132,6 +132,9 @@ Cursor has no `claude mcp add` CLI; the setup wizard registers the server by wri
 - **Install says the plugin is not in the marketplace** — stale catalogue. Run
   `claude plugin marketplace update gutt-plugins` and retry.
 - **Commands missing right after installing** — run `/reload-plugins`, or restart.
+- **Still on the old version after a release** — refreshing the catalogue does not update an
+  installed copy. Run `claude plugin marketplace update gutt-plugins`, then
+  `claude plugin update gutt-pro@gutt-plugins` (and each role plugin you use), and restart.
 - **"MCP server not found"** — restart the IDE after installing.
 - **Authentication fails** — the endpoint URL must start with `https://` and end with `/mcp`.
 - **Memory tools not showing** — check the server is connected: `/mcp` in Claude Code,

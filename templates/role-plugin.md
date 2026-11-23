@@ -43,6 +43,9 @@ Then, in the copy:
 5. Delete `ATTRIBUTION.md` if nothing was borrowed. Keep it, filled in, if anything was.
 6. Add the plugin to `.claude-plugin/marketplace.json` — `name`, `source`, `description`,
    `category`. No `version` there; the manifest is the single source of truth for that.
+   Then fill in the plugin's `README.md`, give it a row in the main README's plugin table
+   linked to that file, and add its install command to `docs/team-onboarding.md`.
+   `npm run check:doc-pointers` fails until the READMEs list exactly what the plugin ships.
 7. Run the review step:
 
 ```bash

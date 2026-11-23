@@ -34,15 +34,68 @@ function write(file, contents) {
  * the real repository and pass.
  *
  * `opts.ships` controls whether the plugin ships anything invocable, which is what the
- * scanned-nothing floor turns on.
+ * scanned-nothing floor turns on. The tree starts in sync — a main README with the plugin
+ * table, a plugin README listing what ships, an onboarding guide holding the install
+ * commands, and the root docs the READMEs link to — so each case breaks only what it names.
  */
+const ONBOARDING = [
+  "# Onboarding",
+  "",
+  "```",
+  "claude plugin marketplace add example/repo",
+  "claude plugin install p1@m1   # the core",
+  "```",
+  "",
+].join("\n");
+
+const ROOT_README = [
+  "# Plugins",
+  "",
+  "| Plugin                 | Install                          |",
+  "| ---------------------- | -------------------------------- |",
+  "| [p1](p1/README.md)     | `claude plugin install p1@m1`    |",
+  "| p2                     | Coming                           |",
+  "",
+  "```",
+  "claude plugin marketplace add example/repo",
+  "```",
+  "",
+].join("\n");
+
+const PLUGIN_README = [
+  "# p1",
+  "",
+  "## Skills",
+  "",
+  "| Skill           | What |",
+  "| --------------- | ---- |",
+  "| `memory-search` | x    |",
+  "",
+  "## Commands",
+  "",
+  "| Command                   | Effect |",
+  "| ------------------------- | ------ |",
+  "| `/p1:setup [url\\|none]` | x      |",
+  "| `/p1:on`                  | x      |",
+  "",
+  "## Agents",
+  "",
+  "| Agent         | What |",
+  "| ------------- | ---- |",
+  "| `placeholder` | x    |",
+  "",
+].join("\n");
+
+// Required by the guard alongside the onboarding guide; each starts empty of references.
+const ROOT_DOCS = ["CONTRIBUTING.md", "docs/hooks.md", "docs/statusline.md"];
+
 function tempTree(opts = {}) {
   const { ships = true } = opts;
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "doc-pointer-guard-")));
 
   write(
     path.join(dir, ".claude-plugin", "marketplace.json"),
-    JSON.stringify({ plugins: [{ name: "p1", source: "./p1" }] })
+    JSON.stringify({ name: "m1", plugins: [{ name: "p1", source: "./p1" }] })
   );
   write(
     path.join(dir, "p1", ".claude-plugin", "plugin.json"),
@@ -59,13 +112,22 @@ function tempTree(opts = {}) {
   // reason and a case would pass without exercising what it names.
   write(path.join(dir, "p1", "agents", "placeholder.md"), "# an agent\n");
 
+  write(path.join(dir, "README.md"), ROOT_README);
+  write(path.join(dir, "p1", "README.md"), PLUGIN_README);
+  write(path.join(dir, "docs", "team-onboarding.md"), ONBOARDING);
+  for (const doc of ROOT_DOCS) {
+    write(path.join(dir, doc), "# doc\n");
+  }
+
   fs.mkdirSync(path.join(dir, "tests"), { recursive: true });
   fs.copyFileSync(GUARD, path.join(dir, "tests", "check-doc-pointers.cjs"));
 
   return {
     dir,
     prose: (text) => write(path.join(dir, "p1", "skills", "memory-search", "SKILL.md"), text),
-    docs: (text) => write(path.join(dir, "docs", "team-onboarding.md"), text),
+    docs: (text) => write(path.join(dir, "docs", "team-onboarding.md"), `${ONBOARDING}${text}`),
+    file: (rel, text) => write(path.join(dir, rel), text),
+    remove: (rel) => fs.rmSync(path.join(dir, rel), { recursive: true, force: true }),
     run: () => {
       const r = spawnSync(process.execPath, [path.join(dir, "tests", "check-doc-pointers.cjs")], {
         encoding: "utf8",
@@ -131,6 +193,307 @@ describe("the doc-pointer guard's red paths", () => {
     // `/tmp` is a filesystem path and `/mcp` is the host's. Flagging these produced
     // four false positives and no real findings, so the guard deliberately does not.
     t.prose("On macOS `/tmp` is a link, and `/mcp` is Claude Code's. `/p1:setup` works.\n");
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
+  });
+});
+
+describe("the README drift check", () => {
+  it("passes when the READMEs list exactly what ships", () => {
+    const t = tempTree();
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
+    assert.match(out, /READMEs match what ships/);
+  });
+
+  it("fails when a skill directory is removed but its README still lists it", () => {
+    const t = tempTree();
+    t.file("p1/skills/old-skill/SKILL.md", "# old\n");
+    t.file(
+      "p1/README.md",
+      PLUGIN_README.replace(
+        "| `memory-search` | x    |",
+        "| `memory-search` | x |\n| `old-skill` | x |"
+      )
+    );
+    assert.equal(t.run().code, 0, "the tree with the extra skill starts in sync");
+    t.remove("p1/skills/old-skill");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /lists skill `old-skill`, which p1 does not ship/);
+  });
+
+  it("fails when a shipped skill is missing from its README", () => {
+    const t = tempTree();
+    t.file("p1/skills/new-skill/SKILL.md", "# new\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /p1 ships skill `new-skill`, but its skills table does not list it/);
+  });
+
+  it("fails when a shipped command or agent is missing from its README", () => {
+    const t = tempTree();
+    t.file("p1/commands/health.md", "# health\n");
+    t.file("p1/agents/explorer.md", "# explorer\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /ships command `health`/);
+    assert.match(out, /ships agent `explorer`/);
+  });
+
+  it("fails when a plugin has no README of its own", () => {
+    const t = tempTree();
+    t.remove("p1/README.md");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /p1[\\/]README\.md: missing/);
+  });
+
+  it("fails when the main README's plugin table leaves a plugin out", () => {
+    const t = tempTree();
+    t.file("README.md", ROOT_README.replace("[p1](p1/README.md)", "p1"));
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /plugin table has no row linking \[p1\]\(p1\/README\.md\)/);
+  });
+
+  it("fails when the plugin table links a plugin the marketplace does not list", () => {
+    const t = tempTree();
+    t.file("README.md", `${ROOT_README}\n| [gone](gone/README.md) | x |\n`);
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /links gone\/README\.md, which the marketplace does not list/);
+  });
+
+  it("fails when the main README does not give a plugin's install command", () => {
+    const t = tempTree();
+    t.file("README.md", ROOT_README.replace("`claude plugin install p1@m1`", "see below"));
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /the plugin table's p1 row does not give `claude plugin install p1@m1`/);
+  });
+
+  it("fails when the install command is only outside the plugin table's row", () => {
+    const t = tempTree();
+    t.file(
+      "README.md",
+      `${ROOT_README.replace("`claude plugin install p1@m1`", "see below")}` +
+        "\n```\nclaude plugin install p1@m1\n```\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /the plugin table's p1 row does not give `claude plugin install p1@m1`/);
+  });
+
+  it("fails when two plugins' Install cells are swapped", () => {
+    const t = tempTree();
+    t.file(
+      ".claude-plugin/marketplace.json",
+      JSON.stringify({
+        name: "m1",
+        plugins: [
+          { name: "p1", source: "./p1" },
+          { name: "p2", source: "./p2" },
+        ],
+      })
+    );
+    t.file("p2/.claude-plugin/plugin.json", JSON.stringify({ name: "p2", version: "1.0.0" }));
+    t.file("p2/README.md", "# p2\n");
+    t.file("docs/team-onboarding.md", `${ONBOARDING}\n\`claude plugin install p2@m1\`\n`);
+    t.file(
+      "README.md",
+      ROOT_README.replace(
+        "| p2                     | Coming                           |",
+        "| [p2](p2/README.md)     | `claude plugin install p2@m1`    |"
+      )
+    );
+    assert.equal(t.run().code, 0, "the two-plugin tree starts in sync");
+    t.file(
+      "README.md",
+      ROOT_README.replace("`claude plugin install p1@m1`", "`claude plugin install p2@m1`").replace(
+        "| p2                     | Coming                           |",
+        "| [p2](p2/README.md)     | `claude plugin install p1@m1`    |"
+      )
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /p1 row does not give `claude plugin install p1@m1`/);
+    assert.match(out, /p2 row does not give `claude plugin install p2@m1`/);
+  });
+
+  it("does not take an example row in a fenced block as the plugin's row", () => {
+    const t = tempTree();
+    t.file(
+      "README.md",
+      `${ROOT_README.replace("[p1](p1/README.md)", "p1")}` +
+        "\n```markdown\n| [p1](p1/README.md) | `claude plugin install p1@m1` |\n```\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /plugin table has no row linking \[p1\]\(p1\/README\.md\)/);
+  });
+
+  it("does not report a plugin that only a fenced example row links", () => {
+    const t = tempTree();
+    t.file("README.md", `${ROOT_README}\n\`\`\`markdown\n| [gone](gone/README.md) | x |\n\`\`\`\n`);
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /gone/);
+  });
+
+  it("reads a plugin-table link with an anchor or a title", () => {
+    const t = tempTree();
+    t.file(
+      "README.md",
+      `${ROOT_README.replace("[p1](p1/README.md)", '[p1](p1/README.md#skills "p1")')}` +
+        "\n| [gone](gone/README.md#skills) | x |\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.doesNotMatch(out, /no row linking/);
+    assert.match(out, /links gone\/README\.md, which the marketplace does not list/);
+  });
+
+  it("fails when a README writes an install command differently from onboarding", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      `${PLUGIN_README}\nRun \`claude plugin add p1@m1\`, or \`claude plugin install p1\`.\n`
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /`claude plugin add p1@m1` is not written this way in docs/);
+    assert.match(out, /`claude plugin install p1` is not written this way in docs/);
+  });
+
+  it("scans the READMEs for slash references too", () => {
+    const t = tempTree();
+    t.file("README.md", `${ROOT_README}\nThen run \`/p1:no-such-thing\`.\n`);
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /README\.md: `\/p1:no-such-thing` resolves to nothing shipped/);
+  });
+
+  it("fails a table row whose command carries the wrong plugin name", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      PLUGIN_README.replace("`/p1:setup [url\\|none]`", "`/p2:setup [url\\|none]`")
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /lists `\/p2:setup`, but the plugin is p1 — write `\/p1:setup`/);
+  });
+
+  it("fails a command row that drops the plugin namespace", () => {
+    const t = tempTree();
+    t.file("p1/README.md", PLUGIN_README.replace("`/p1:on`", "`/on`"));
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /lists command `\/on` without its plugin — write `\/p1:on`/);
+  });
+
+  it("keeps a longer fence open across a ``` block it shows", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      PLUGIN_README.replace("| `/p1:on`                  | x      |\n", "") +
+        "\n````markdown\n```\n## Commands\n\n| Command | Effect |\n| --- | --- |\n| `/p1:on` | x |\n| `/p1:gone` | x |\n```\n````\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /ships command `on`, but its commands table does not list it/);
+    assert.doesNotMatch(out, /lists command `gone`/);
+    assert.doesNotMatch(out, /lists `\/p1:/);
+  });
+
+  it("checks a reference that carries arguments", () => {
+    const t = tempTree();
+    t.prose("Snooze with `/p2:on 30`, or `/p1:nope auto\\|hitl`.\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /`\/p2:on` resolves to nothing shipped/);
+    assert.match(out, /`\/p1:nope` resolves to nothing shipped/);
+  });
+
+  for (const doc of ROOT_DOCS) {
+    it(`scans ${doc} for slash references`, () => {
+      const t = tempTree();
+      t.file(doc, "Run `/p1:no-such-thing`.\n");
+      const { code, out } = t.run();
+      assert.equal(code, 1, out);
+      const shown = doc.split("/").join("[\\\\/]").replace(".", "\\.");
+      assert.match(out, new RegExp(`${shown}: \`/p1:no-such-thing\` resolves to nothing shipped`));
+    });
+  }
+
+  it("scans a doc under docs/ that is not on any list", () => {
+    const t = tempTree();
+    t.file("docs/hooks-renamed.md", "Run `/p1:no-such-thing`.\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /hooks-renamed\.md: `\/p1:no-such-thing` resolves to nothing shipped/);
+  });
+
+  it("fails when a doc the READMEs link to is missing", () => {
+    const t = tempTree();
+    t.remove("docs/hooks.md");
+    t.remove("CONTRIBUTING.md");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /docs\/hooks\.md: missing/);
+    assert.match(out, /CONTRIBUTING\.md: missing/);
+  });
+
+  it("reads a singular `## Agent` heading as the agents table", () => {
+    const t = tempTree();
+    t.file("p1/README.md", PLUGIN_README.replace("## Agents", "## Agent"));
+    assert.equal(t.run().code, 0, "the singular heading lists the agent");
+    t.remove("p1/agents/placeholder.md");
+    t.file("p1/agents/other.md", "# other\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /lists agent `placeholder`, which p1 does not ship/);
+  });
+
+  it("does not read a `###` subsection's table as a listing", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      PLUGIN_README.replace(
+        "| `/p1:on`                  | x      |\n",
+        "| `/p1:on`                  | x      |\n\n### Settings keys\n\n| Key | x |\n| --- | - |\n| `recall_minutes` | x |\n"
+      )
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
+  });
+
+  it("lets a bare host command share a stem with a shipped one", () => {
+    const t = tempTree();
+    t.file("p1/commands/config.md", "# config\n");
+    t.file("p1/README.md", PLUGIN_README.replace("| `/p1:on`", "| `/p1:config` | x |\n| `/p1:on`"));
+    t.file("README.md", `${ROOT_README}\nBare \`/config\` is Claude Code's own.\n`);
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
+  });
+
+  it("reports drift in the same run as a broken slash reference", () => {
+    const t = tempTree();
+    t.file("README.md", `${ROOT_README}\nThen run \`/p1:no-such-thing\`.\n`);
+    t.file("p1/skills/new-skill/SKILL.md", "# new\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /resolves to nothing shipped/);
+    assert.match(out, /ships skill `new-skill`/);
+  });
+
+  it("ignores table rows and headings inside a fenced code block", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      `${PLUGIN_README}\n\`\`\`\n## Skills\n| \`gone-skill\` | an example, not a listing |\n\`\`\`\n`
+    );
     const { code, out } = t.run();
     assert.equal(code, 0, out);
   });
