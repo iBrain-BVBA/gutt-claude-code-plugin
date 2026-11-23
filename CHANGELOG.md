@@ -7,8 +7,9 @@
 - **gutt-pro ships its own MCP server, pointed at the gutt shared stage by default.**
   `gutt-core/.mcp.json` declares `gutt-mcp-remote` (`type: http`) with its URL taken from the
   new plugin option `userConfig.mcp_url`, default `https://mcp.stage.gutt.pro/mcp`. Set your
-  organization's endpoint in `/plugin` → gutt-pro → Configure, or with
-  `claude plugin install gutt-pro@gutt-plugins --config mcp_url=…`.
+  organization's endpoint in `/plugin` → gutt-pro → Configure, with
+  `claude plugin configure gutt-pro@gutt-plugins --values-stdin` on an installed plugin, or with
+  `claude plugin install gutt-pro@gutt-plugins --config mcp_url=…` on a first install.
 - **One README per plugin, and a rewritten marketplace README.** The main README opens with the
   plugin table, a three-step start whose commands match `docs/team-onboarding.md`, the surfaces
   gutt runs on, what each hook does and does not do, and what works in Cursor. Each plugin has
@@ -23,14 +24,27 @@
 - `/gutt-pro:setup` sets the `mcp_url` option in Claude Code instead of running
   `claude mcp add`. Hooks resolve `${user_config.KEY}` (from `CLAUDE_PLUGIN_OPTION_<KEY>`, else
   the manifest default) and `${VAR:-default}`, and read the plugin's own `.mcp.json`.
-- Hooks now read the servers `claude mcp add` stores in `~/.claude.json` (local scope for the
-  current project, then user scope) before the plugin's default, so the session record and
-  `/gutt-pro:health` show the endpoint an upgrading user registered. `/gutt-pro:health` warns
-  when that registration points somewhere other than the plugin's own server.
+- Under Claude Code, hooks now read the servers `claude mcp add` stores in `~/.claude.json` and
+  the project `.mcp.json`, in Claude Code's order (local, project, user), before the plugin's
+  default, so the session record and `/gutt-pro:health` show the endpoint an upgrading user
+  registered. `~/.cursor/mcp.json` is read only under Cursor, and `~/.claude.json` only under
+  Claude Code. When such a registration points somewhere other than the plugin's own server
+  (or a config file cannot be read), the SessionStart note shows a warning instead of
+  "connected", the session record stores it as `mcpWarning`, and `/gutt-pro:health` reports
+  it. `/gutt-pro:health` now finds the plugin root without `CLAUDE_PLUGIN_ROOT` and says
+  when the URL shown is the manifest default.
+- `/gutt-pro:setup` reads the current endpoint (`claude plugin configure … --json`,
+  `claude mcp list`) instead of assuming it, verifies the saved `mcp_url`, and removes every
+  leftover gutt registration. The onboard skill no longer writes `.claude/settings.json`.
+
+### Removed
+
+- `gutt-core/.mcp.json.template`, which contradicted the shipped `gutt-core/.mcp.json`.
 
 ### Fixed
 
-- `gutt-core/mcp.json` was never loaded: Claude Code reads only a root `.mcp.json`, and skips a
+- `gutt-core/mcp.json` was never loaded: Claude Code loads plugin MCP servers from `.mcp.json`
+  at the plugin root or from `mcpServers` in plugin.json, not from `mcp.json`, and skips a
   remote entry without `type`. Replaced by `gutt-core/.mcp.json`.
 
 ### Upgrade note

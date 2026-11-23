@@ -11,21 +11,35 @@ Run a quick diagnostic of the gutt-pro plugin and display a status report.
 
 ### 1. Check MCP Connectivity
 
-Use the `diagnoseGuttMcp()` function from `hooks/lib/mcp-config.cjs`:
+Run `diagnoseGuttMcp()` from the plugin's `hooks/lib/mcp-config.cjs`, by absolute path:
 
-```javascript
-const { diagnoseGuttMcp } = require("./hooks/lib/mcp-config.cjs");
-const diag = diagnoseGuttMcp();
+```bash
+node -e 'console.log(JSON.stringify(require(process.argv[1]).diagnoseGuttMcp(), null, 2))' \
+  "${CLAUDE_PLUGIN_ROOT}/hooks/lib/mcp-config.cjs"
 ```
+
+`${CLAUDE_PLUGIN_ROOT}` is this plugin's root, the directory that holds this command's
+`commands/` folder; if the shell leaves it empty, use that directory's absolute path. The
+module finds its own plugin root, so it does not need `CLAUDE_PLUGIN_ROOT` exported. The
+plugin option `mcp_url` is exported to hooks; the Bash tool may not see it, which `source`
+below accounts for.
 
 Report:
 
 - **configured**: whether gutt MCP server is found in settings
 - **url**: the resolved HTTP URL (or "N/A — stdio transport")
+- **source**: where the URL came from: a config file path, `plugin-option`, or
+  `plugin-default`. `plugin-default` means no `mcp_url` value was visible to this process,
+  so the URL shown is the manifest default (the gutt shared stage server). Run
+  `claude plugin configure gutt-pro@gutt-plugins --json` and, if it lists a value for
+  `mcp_url`, report that value as the URL instead.
 - **error**: any configuration error message
 - **warning**: set when a gutt server registered outside the plugin (for example by an
   older `claude mcp add --scope user`) points at a different URL than the plugin's own
-  server; both run. Show the warning as given, since it names the command that fixes it.
+  server, so both run, or when a config file could not be read. Show the warning as
+  given, since it names the command that fixes it. When `source` is `plugin-default` and
+  the configured `mcp_url` differs, the comparison was made against the default: compare
+  any registration named in the warning against the configured value yourself.
 
 ### 2. List Registered Hooks
 
@@ -74,7 +88,9 @@ Output a clean status report:
 MCP Connectivity
   Status:     [configured / not configured]
   URL:        [url or N/A]
+  Source:     [source]
   Error:      [error or none]
+  Warning:    [warning or none]
 
 Registered Hooks
   SessionStart:      [N] hook(s)

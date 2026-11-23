@@ -53,7 +53,7 @@ work, so GP-873 closed as not needed and the file was removed from the sweep, fr
 | `compacted`                                      | SessionStart (`compact`)                                                        | UserPromptSubmit row 3 — consumed on read     |
 | `turnsSinceSearch`                               | PostToolUse resets to 0; UserPromptSubmit and a compaction each advance it      | UserPromptSubmit row 4 — see below            |
 | `mcpConfigured`, `mcpUrl`, `connectionCheckedAt` | `session-connectivity.cjs` (async)                                              | `statusline.cjs`, read-only                   |
-| `mcpError`                                       | `session-connectivity.cjs` (async)                                              | nobody — written for a human reading the file |
+| `mcpError`, `mcpWarning`                         | `session-connectivity.cjs` (async)                                              | nobody — written for a human reading the file |
 | `connectionStatus`, `connectionObservedAt`       | `noteConnection()` from PostToolUse — only an observed round trip               | `statusline.cjs`, read-only                   |
 | `mcpToolsAvailable`, `mcpToolsAvailableAt`       | UserPromptSubmit every prompt; PostToolUse when stale; SessionStart if known    | `statusline.cjs`, and PostToolUse's debounce  |
 | `statuslineReassert`                             | `session-connectivity.cjs` (async), every repair — `null` when it succeeded     | `/gutt-pro:statusline status`                 |
