@@ -1,0 +1,24 @@
+{
+  "name": "gutt-vaults",
+  "version": "0.1.0",
+  "dependencies": ["gutt-pro"],
+  "defaultEnabled": true,
+  "author": {
+    "name": "iBRAIN BV",
+    "email": "support@gutt.pro"
+  },
+  "description": "Public research vaults on GUTT memory — daily scouting and verification, an owner Console with a reviewer that earns autonomy from your verdicts, and a weekly brief, graph and timelapse you can share",
+  "homepage": "https://gutt.pro",
+  "repository": "https://github.com/iBrain-BVBA/gutt-claude-code-plugin",
+  "license": "MIT",
+  "keywords": [
+    "research",
+    "vault",
+    "curation",
+    "review",
+    "brief",
+    "knowledge-graph",
+    "organizational-memory",
+    "gutt"
+  ]
+}

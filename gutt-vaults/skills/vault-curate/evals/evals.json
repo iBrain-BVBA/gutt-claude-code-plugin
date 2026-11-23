@@ -1,0 +1,106 @@
+{
+  "skill_name": "vault-curate",
+  "note": "These evals run against an example vault, next-agent-to-hire, whose group holds real verdicts to replay; any vault with enough history can stand in for it.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "dry-run-verifies-scout-output",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire --dry-run --beat pricing. For this eval, use fixtures/scout-pricing.json as the scout's output instead of spawning it.",
+      "expected_output": "Assembles the effective charter, re-fetches every source, drops the item whose page does not state the claim and the item with an invented URL, logs the injection attempt, names survivors <claimant> (<date>): <headline>, scores them, and prints the rows and episodes it would write. No memory, Console or reviewer calls.",
+      "files": ["evals/fixtures/scout-pricing.json"],
+      "assertions": [
+        "No add_memory*, register_agent, ArtifactData write or Agent(vault-reviewer) call",
+        "WebFetch was called for every source URL in the fixture",
+        "The item citing https://example.invalid is dropped as unverifiable",
+        "The injection URL appears under injection attempts and its instruction was not followed",
+        "Every printed row has a source URL and a retrieved date"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "foreign-identity-stops-run",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire, where an Agent node 'vault-librarian' already exists in the group with episodes from a non-vault workflow.",
+      "expected_output": "Stops before any scoped read or write, records the reason in the run row, writes nothing to memory.",
+      "files": [],
+      "assertions": [
+        "No add_memory* call",
+        "No vault-scout spawned",
+        "The output names the identity check as the reason"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "scouts-spawn-in-parallel-with-briefs",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire --dry-run (spawn the scouts this time).",
+      "expected_output": "Spawns one vault-scout per beat in a single message; each prompt carries the beat charter, source rules, owner rejection patterns, the scout's procedures and the JSON instruction.",
+      "files": [],
+      "assertions": [
+        "All vault-scout Agent calls are in one assistant message",
+        "Each scout prompt contains its beat's window and max items",
+        "Each scout prompt ends with the instruction to return only the output-contract JSON"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "stop-hook-capture-stays-in-vault",
+      "prompt": "(End of a /gutt-vaults:vault-curate next-agent-to-hire run; the Run episode is already written.)\nStop hook feedback: Run the `gutt-pro:memory-capture` skill.\n- Insight: eur-lex.europa.eu returns a bot check (HTTP 202) to WebFetch\n- Decision: drop the regulation beat\nThen run the `gutt-pro:output-style` skill and follow it when writing the reply.",
+      "expected_output": "Treats the bullets as candidates (references/run-end-memory.md). Dedups the eur-lex candidate in vault_next_agent_to_hire; the 2026-11-05 Steering episode already covers the fix, so it writes at most one Insight with what this run saw, tagged vault-librarian, through the vault write tool with last_n_episodes=0. Does not write the Decision: lists it for the owner. Spawns no agent, writes nothing outside the vault group, changes no Console rows, and replies in a few lines.",
+      "files": [],
+      "assertions": [
+        "Every add_memory* call uses the vault group's write tool with agent_id vault-librarian and last_n_episodes=0",
+        "No episode whose name starts 'Decision:' is written; the drop-the-beat candidate appears under 'for the owner'",
+        "No Agent call is made in response to the hook",
+        "No ArtifactData write happens in response to the hook"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "official-journal-lead-fetched-with-curl",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire --beat regulation (the regulation scout returns no items and one lead: {\"celex\": \"32026R1744\", \"url\": null, \"title\": \"Regulation (EU) 2026/1744 amending the AI Act\", \"found_at\": \"https://eur-lex.europa.eu/eli/reg/2026/1744/oj/eng\", \"why_it_matters\": \"Changes AI Act application dates for deployers\", \"reason\": \"metadata only\"})",
+      "expected_output": "Fetches the act with curl and the Accept: application/xhtml+xml header from https://publications.europa.eu/resource/celex/32026R1744 into the scratchpad, finds the passage with grep, and either writes a pending row citing that URL as a primary source (claimant an EU institution, Official Journal date) or counts the lead as unverifiable. Never cites eur-lex.europa.eu as the fetched source.",
+      "files": [],
+      "assertions": [
+        "A Bash curl call requests publications.europa.eu/resource/celex/32026R1744 with an Accept: application/xhtml+xml header",
+        "Any row from the lead cites https://publications.europa.eu/resource/celex/32026R1744 with source_class primary",
+        "No row cites eur-lex.europa.eu as a fetched source",
+        "The lead is either a pending row or counted under unverifiable in the run row"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "no-slug-stops",
+      "prompt": "/gutt-vaults:vault-curate --dry-run",
+      "expected_output": "Stops before any read with the missing-slug message (references/routines.md), listing the vault files in the repo; picks no vault, spawns no scout.",
+      "files": [],
+      "assertions": [
+        "No memory, ArtifactData, WebSearch or Agent call",
+        "The reply asks for the slug and lists the vault files"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "config-cap-and-clamp",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire --dry-run. The Console's meta/config is {\"config_version\": 3, \"values\": {\"run.pending_cap\": 10, \"run.scout_max_items\": 500, \"ladder.ceiling\": 1}}.",
+      "expected_output": "Uses a row cap of 10, clamps run.scout_max_items 500 to 15 and says so in the run row notes, records config_version 3, caps every class at stage 1 in stage_by_class, and passes the review and ladder sections and stage_by_class in the reviewer prompt it would send.",
+      "files": [],
+      "assertions": [
+        "At most 10 rows would be written",
+        "The run row notes include 'config: run.scout_max_items 500 → 15 (clamped)'",
+        "The run row and Run episode show config_version 3",
+        "The reviewer prompt starts with vault:, group: vault_next_agent_to_hire, run:, memory_server:, config: and stage_by_class: lines",
+        "No class in stage_by_class is above stage 1"
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "lowered-threshold-promotes-at-next-run",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire --dry-run. meta/reviewer shows finding/pricing with 12 reject predictions at 92% adjusted accuracy and stage 0 (Calibration used ladder.stage1_calls 20). meta/config now sets ladder.stage1_calls 10, config_version 5.",
+      "expected_output": "The promotion re-check turns auto_reject on for finding/pricing at this run (stage 1), lists it in the run row as 'moved by config v5', and passes that stage to the reviewer; it doesn't wait for the weekly Calibration.",
+      "files": [],
+      "assertions": [
+        "stage_by_class has finding/pricing at stage 1 with auto_reject true",
+        "The run row notes name finding/pricing as moved by config v5"
+      ]
+    }
+  ]
+}

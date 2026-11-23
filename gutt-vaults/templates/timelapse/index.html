@@ -1,0 +1,512 @@
+<title>Vault Timelapse</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: a night-sky instrument. The graph fills the screen; a header with the clock floats top left,
+   the crew (agents) top right, the newest facts and the transport bar along the bottom.
+   One deliberate dark look: agents read as light sources over a dim graph.
+   Data: timeline.json next to this page (see the vault-pages skill's page-data reference). */
+:root {
+  color-scheme: dark;
+  --void: #0a0d13; --void-2: #10141d; --panel: rgba(16, 20, 29, 0.78); --line: rgba(196, 206, 228, 0.12);
+  --ink: #e8ebf2; --ink-2: #aab2c2; --muted: #727b8d; --focus: #9db4ff;
+  --g-subject: #5f7ecb; --g-evidence: #c06a31; --g-vault: #2e9873; --g-other: #6a717e;
+  --a-charter: #eef2f7; --a-scout: #ffd166; --a-librarian: #c48bff; --a-reviewer: #2fd6ea; --a-curate: #ff7b9c; --a-brief: #a6e23e;
+  --a-extra-1: #ff9f43; --a-extra-2: #54a0ff; --a-extra-3: #1dd1a1; --a-extra-4: #f368e0;
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--void); color: var(--ink); font: 14px/1.45 var(--font-ui); overflow: hidden; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.app { position: relative; height: 100%; }
+#sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: radial-gradient(ellipse at 50% 45%, var(--void-2), var(--void) 70%); }
+.hud { position: absolute; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+
+.head { top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); max-width: min(440px, calc(100% - 32px)); display: grid; gap: 4px; }
+.eyebrow { font: 500 11px/1.2 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font: 600 26px/1.1 var(--font-display); text-wrap: balance; }
+.clock { margin-top: 6px; font: 500 20px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; }
+.clock small { font-size: 12px; color: var(--muted); margin-left: 6px; }
+.counts { font: 12px/1.4 var(--font-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.crew { top: 14px; right: max(16px, env(safe-area-inset-right, 0px)); width: 236px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; backdrop-filter: blur(6px); }
+.crew h2 { margin: 0 0 2px; font: 500 11px/1.2 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+#agents { display: grid; gap: 6px; }
+.agent { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+.agent i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.agent .nm { overflow-wrap: anywhere; }
+.agent .nm em { font-style: normal; color: var(--muted); font-size: 11px; margin-left: 4px; }
+.agent .n { font: 12px var(--font-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.agent[data-busy="true"] .nm em { color: var(--c); }
+.types { display: flex; flex-wrap: wrap; gap: 4px 10px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); }
+.types span { display: inline-flex; align-items: center; gap: 5px; }
+.types b { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+details.how { font-size: 12px; color: var(--ink-2); }
+details.how summary { cursor: pointer; color: var(--ink-2); }
+details.how p { margin: 6px 0 0; }
+
+.ticker { left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); width: min(560px, calc(100% - 32px)); display: grid; gap: 4px; }
+.tick { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--ink-2); text-shadow: 0 1px 6px var(--void); }
+.tick b { font: 500 11px var(--font-mono); color: var(--c); white-space: nowrap; }
+.tick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tick:first-child { color: var(--ink); }
+
+.bar { left: 0; right: 0; bottom: 0; padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: linear-gradient(to top, var(--void) 55%, transparent); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.btn:hover { border-color: var(--ink-2); }
+.btn.play { width: 44px; height: 36px; padding: 0; font-size: 15px; }
+.track { display: grid; gap: 4px; min-width: 0; }
+input[type=range] { width: 100%; accent-color: var(--a-librarian); margin: 0; }
+.days { position: relative; height: 14px; font: 10.5px var(--font-mono); color: var(--muted); }
+.days span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.days span:first-child { transform: none; }
+.speed { display: flex; gap: 2px; }
+.speed button { border: 1px solid var(--line); background: transparent; border-radius: 6px; padding: 4px 7px; font: 12px var(--font-mono); color: var(--ink-2); cursor: pointer; }
+.speed button[aria-pressed="true"] { background: var(--ink); color: var(--void); border-color: var(--ink); }
+.right { display: flex; gap: 8px; align-items: center; }
+
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px; max-width: 280px; backdrop-filter: blur(6px); }
+.tip .t { color: var(--muted); font-size: 11px; }
+.status { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--ink-2); font-size: 14px; pointer-events: none; }
+
+@media (max-width: 760px) {
+  h1 { font-size: 21px; }
+  .clock { font-size: 16px; }
+  .crew { top: auto; right: auto; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(156px + env(safe-area-inset-bottom, 0px)); width: calc(100% - 32px); padding: 8px 10px; }
+  #agents { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; }
+  .crew h2, .types, details.how { display: none; }
+  .agent { grid-template-columns: 10px minmax(0, 1fr); font-size: 11.5px; }
+  .agent .n, .agent .nm em { display: none; }
+  .ticker { bottom: calc(128px + env(safe-area-inset-bottom, 0px)); }
+  .tick:not(:first-child) { display: none; }
+  .bar { grid-template-columns: auto minmax(0, 1fr); }
+  .right { grid-column: 1 / -1; justify-content: space-between; }
+}
+</style>
+
+<div class="app">
+  <canvas id="sky" aria-label="Animated graph of the vault being built by its agents over time"></canvas>
+  <div class="status" id="status">Loading the vault's timeline…</div>
+
+  <header class="hud head">
+    <span class="eyebrow" id="eyebrow">Public research vault · gutt memory</span>
+    <h1 id="title">Vault timelapse</h1>
+    <div class="clock" id="clock">—</div>
+    <div class="counts" id="counts">—</div>
+  </header>
+
+  <aside class="hud crew" aria-label="Agents">
+    <h2>Agents · facts made</h2>
+    <div id="agents"></div>
+    <div class="types" id="types"></div>
+    <details class="how">
+      <summary>How the timeline is worked out</summary>
+      <p id="howText"></p>
+    </details>
+  </aside>
+
+  <div class="hud ticker" id="ticker" aria-live="off"></div>
+
+  <div class="hud bar">
+    <button class="btn play" id="play" type="button" aria-label="Pause">❚❚</button>
+    <div class="track">
+      <input type="range" id="scrub" min="0" max="10000" step="1" value="0" aria-label="Position in time">
+      <div class="days" id="days"></div>
+    </div>
+    <div class="right">
+      <div class="speed" id="speed" role="group" aria-label="Speed">
+        <button type="button" data-s="0.5" aria-pressed="false">½×</button>
+        <button type="button" data-s="1" aria-pressed="true">1×</button>
+        <button type="button" data-s="2" aria-pressed="false">2×</button>
+        <button type="button" data-s="4" aria-pressed="false">4×</button>
+      </div>
+      <button class="btn" id="restart" type="button">Restart</button>
+    </div>
+  </div>
+  <div class="tip" id="tip" hidden></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var css = getComputedStyle(document.documentElement);
+  function tok(n) { return css.getPropertyValue(n).trim(); }
+  var GROUP = { AgentRole: "subject", Organization: "subject", Product: "subject", Concept: "subject",
+    Finding: "evidence", SourceDocument: "evidence", Verdict: "evidence", Thesis: "evidence", Conflict: "evidence",
+    Beat: "vault", Insight: "vault", Procedure: "vault", Agent: "vault" };
+  var GCOL = { subject: tok("--g-subject"), evidence: tok("--g-evidence"), vault: tok("--g-vault"), other: tok("--g-other") };
+  var GLABEL = { subject: "What the research is about", evidence: "Evidence and decisions", vault: "How the vault works", other: "Other" };
+  var ACOL = { "vault-charter": tok("--a-charter"), "vault-scout": tok("--a-scout"), "vault-librarian": tok("--a-librarian"),
+    "vault-reviewer": tok("--a-reviewer"), "vault-curate": tok("--a-curate"), "vault-brief": tok("--a-brief") };
+  var EXTRA = [tok("--a-extra-1"), tok("--a-extra-2"), tok("--a-extra-3"), tok("--a-extra-4")];
+  var ROLE = { "vault-charter": "sets beats", "vault-scout": "finds sources", "vault-librarian": "records findings",
+    "vault-reviewer": "judges rows", "vault-curate": "ran research (legacy)", "vault-brief": "writes the brief" };
+  var FONT_MONO = tok("--font-mono"), FONT_UI = tok("--font-ui"), INK = tok("--ink");
+  var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var canvas = document.getElementById("sky"), ctx = canvas.getContext("2d");
+  var base = document.createElement("canvas"), bctx = base.getContext("2d");
+  var W = 0, H = 0, dpr = 1, S = 1, CX = 0, CY = 0;
+  var D, N = [], F = [], AG = [], EV = [], dayMarks = [], total = 0;
+  var story = 0, playing = !reduced, speed = 1, cursor = 0, lastNow = 0;
+  var fx = [], counts = [], tickerItems = [], tickerDirty = true;
+
+  function hexA(hex, a) {
+    var h = hex.replace("#", ""); if (h.length === 3) h = h.split("").map(function (c) { return c + c; }).join("");
+    var n = parseInt(h, 16); return "rgba(" + (n >> 16 & 255) + "," + (n >> 8 & 255) + "," + (n & 255) + "," + a + ")";
+  }
+  var START = 0;
+  function fmtClock(min) {
+    var d = new Date(START + min * 60000);
+    var day = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+    var hm = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+    return { day: day, hm: hm };
+  }
+  function fmtN(n) { return n.toLocaleString("en-US"); }
+  function short(name) { return String(name).replace(/^vault-/, ""); }
+  function fail(text) { var s = document.getElementById("status"); s.hidden = false; s.textContent = text; }
+
+  // ---------- data ----------
+  // A failed fetch can be retried; a data file the page can't replay needs a new export.
+  fetch("timeline.json").then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (data) {
+    try { init(data); } catch (e) {
+      console.error("timeline.json could not be replayed", e);
+      fail("This page's data is malformed (" + e.message + "). The vault's owner needs to export it again.");
+    }
+  }).catch(function (e) {
+    console.error("timeline.json did not load", e);
+    fail("The timeline didn't load (" + e.message + "). Reload the page to try again.");
+  });
+
+  function init(data) {
+    if (!data || !Array.isArray(data.agents) || !Array.isArray(data.nodes) || !Array.isArray(data.facts) || (!data.nodes.length && !data.facts.length)) {
+      fail("This vault's timeline has nothing to replay yet. It fills in after the vault's first runs.");
+      return;
+    }
+    D = data; START = Date.parse(D.start);
+    var vname = D.vault && D.vault.name;
+    if (vname) {
+      document.getElementById("eyebrow").textContent = vname + " · gutt memory";
+      canvas.setAttribute("aria-label", "Animated graph of the " + vname + " vault being built by its agents over time");
+    }
+    var extra = 0;
+    AG = D.agents.map(function (a, i) {
+      var c = ACOL[a.name] || EXTRA[extra++ % EXTRA.length];
+      return { i: i, name: a.name, about: a.about || "", color: c, x: 0, y: 0, vx: 0, vy: 0, trail: [], tethers: [], next: 0, evs: [], label: null };
+    });
+    N = D.nodes.map(function (n, i) {
+      var type = D.types[n[2]], g = GROUP[type] || "other";
+      return { i: i, x: n[0] / 1000, y: n[1] / 1000, type: type, g: g, name: n[3], t: n[4], a: n[5], r: Math.min(6.5, 1.6 + Math.sqrt(n[6]) * 0.75), on: false };
+    });
+    F = D.facts.map(function (f, i) {
+      return { i: i, s: f[0], t: f[1], rel: D.rels[f[2]], time: f[3], a: f[4], inv: f[5], text: f[6], on: false };
+    });
+    // one timeline of node and fact events; a node shows just before its first fact
+    N.forEach(function (n) { EV.push({ t: n.t, k: 0, i: n.i, a: n.a }); });
+    F.forEach(function (f) { EV.push({ t: f.time, k: 1, i: f.i, a: f.a }); });
+    EV.sort(function (a, b) { return a.t - b.t || a.k - b.k; });
+    // story time: bursts play quickly, idle hours shrink to a short pause, a new day pauses a little longer
+    var s = 0, prev = EV[0].t, prevDay = Math.floor(EV[0].t / 1440);
+    EV.forEach(function (e, j) {
+      var dt = e.t - prev, day = Math.floor(e.t / 1440);
+      if (j) s += dt >= 30 ? 0.8 + (day !== prevDay ? 0.6 : 0) : Math.min(0.3, Math.max(e.k ? 0.022 : 0.006, dt * 0.03));
+      e.s = s; prev = e.t;
+      if (j === 0 || day !== prevDay) dayMarks.push({ s: s, day: day });
+      prevDay = day;
+      AG[e.a].evs.push(j);
+      e.loc = locOf(e);
+    });
+    // a long history plays in about 110 s; a young vault with few events in less, so idle gaps stay short
+    var scale = Math.min(110, 24 + EV.length * 0.1) / Math.max(s, 1e-6); EV.forEach(function (e) { e.s *= scale; }); dayMarks.forEach(function (d) { d.s *= scale; });
+    total = EV[EV.length - 1].s + 1.5;
+    renderStatic(); resize(); new ResizeObserver(resize).observe(canvas);
+    document.getElementById("status").hidden = true;
+    if (reduced) seek(total); else seek(0);
+    lastNow = performance.now(); requestAnimationFrame(frame);
+  }
+  function locOf(e) {
+    if (e.k === 0) return e.i;
+    var f = F[e.i];
+    if (f.s < 0 && f.t < 0) return -1; // a fact between two agents
+    if (f.s < 0) return f.t; if (f.t < 0) return f.s;
+    return N[f.t].t > N[f.s].t ? f.t : f.s;
+  }
+
+  // ---------- static UI ----------
+  function renderStatic() {
+    var box = document.getElementById("agents");
+    AG.forEach(function (a) {
+      var row = document.createElement("div"); row.className = "agent"; row.style.setProperty("--c", a.color);
+      var dot = document.createElement("i");
+      var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = short(a.name);
+      var em = document.createElement("em"); em.textContent = ROLE[a.name] || ""; nm.appendChild(em);
+      var n = document.createElement("span"); n.className = "n"; n.textContent = "0";
+      row.append(dot, nm, n); box.appendChild(row); a.row = row; a.countEl = n;
+    });
+    var types = document.getElementById("types");
+    ["subject", "evidence", "vault", "other"].forEach(function (g) {
+      var s = document.createElement("span"); s.style.setProperty("--c", GCOL[g]);
+      s.append(document.createElement("b"), document.createTextNode(GLABEL[g])); types.appendChild(s);
+    });
+    var st = D.stats || {}, saved = st.exportedAt || st.savedAt;
+    document.getElementById("howText").textContent =
+      "Built from the vault's memory" + (saved ? " as exported on " + new Date(saved).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "") +
+      (st.episodes ? " (" + fmtN(st.episodes) + " episodes)" : "") + ". " +
+      "A fact's time is when memory recorded it, and its agent is the one that wrote the episode it came from. " +
+      "A node appears with its first fact. Facts that tie a node to an agent follow that agent as it moves. " +
+      "Times are UTC. Facts a newer one superseded are drawn fainter.";
+    var days = document.getElementById("days");
+    dayMarks.forEach(function (m, k) {
+      var sp = document.createElement("span"); sp.style.left = (m.s / total * 100) + "%";
+      var d = fmtClock(m.day * 1440);
+      sp.textContent = k === 0 ? d.day.replace(/^\w+ /, "") : d.day.split(" ")[1];
+      sp.dataset.k = k; days.appendChild(sp);
+    });
+  }
+
+  // ---------- geometry ----------
+  function resize() {
+    var r = canvas.getBoundingClientRect();
+    W = r.width; H = r.height; dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    base.width = canvas.width; base.height = canvas.height;
+    var narrow = W < 760, top = narrow ? 120 : 40, bottom = narrow ? 230 : 120, side = narrow ? 16 : 270;
+    var aw = W - (narrow ? 32 : side * 2), ah = H - top - bottom;
+    S = Math.max(60, Math.min(aw, ah) / 2.1); CX = W / 2; CY = top + ah / 2;
+    var labels = document.querySelectorAll("#days span"), every = W < 520 ? 3 : W < 900 ? 2 : 1;
+    labels.forEach(function (el) { el.hidden = (+el.dataset.k % every) !== 0; });
+    AG.forEach(function (a) { var p = perch(a, 0); if (!a.x && !a.y) { a.x = p.x; a.y = p.y; } });
+    redrawBase();
+  }
+  function sx(x) { return CX + x * S; }
+  function sy(y) { return CY + y * S; }
+  function perch(a, t) {
+    var ang = -Math.PI / 2 + (a.i / AG.length) * Math.PI * 2 + t * 0.00004;
+    var rx = Math.min(1.12, (W / 2 - 40) / S), ry = Math.min(1.08, (H / 2 - 60) / S);
+    return { x: Math.cos(ang) * rx + Math.sin(t * 0.0007 + a.i) * 0.02, y: Math.sin(ang) * ry + Math.cos(t * 0.0009 + a.i) * 0.02 };
+  }
+
+  // ---------- base layer: blueprint of the final graph, plus what is built so far ----------
+  function redrawBase() {
+    bctx.setTransform(dpr, 0, 0, dpr, 0, 0); bctx.clearRect(0, 0, W, H);
+    bctx.lineWidth = 0.6; bctx.strokeStyle = "rgba(170,182,205,0.035)"; bctx.beginPath();
+    F.forEach(function (f) { if (f.s >= 0 && f.t >= 0) { bctx.moveTo(sx(N[f.s].x), sy(N[f.s].y)); bctx.lineTo(sx(N[f.t].x), sy(N[f.t].y)); } });
+    bctx.stroke();
+    bctx.fillStyle = "rgba(170,182,205,0.07)";
+    N.forEach(function (n) { bctx.beginPath(); bctx.arc(sx(n.x), sy(n.y), Math.max(1, n.r * 0.6), 0, 6.283); bctx.fill(); });
+    F.forEach(function (f) { if (f.on) drawFact(f); });
+    N.forEach(function (n) { if (n.on) drawNode(n); });
+  }
+  function drawFact(f) {
+    if (f.s < 0 || f.t < 0) return;
+    bctx.lineWidth = 0.8; bctx.strokeStyle = f.inv ? "rgba(170,182,205,0.07)" : "rgba(190,200,222,0.16)";
+    bctx.beginPath(); bctx.moveTo(sx(N[f.s].x), sy(N[f.s].y)); bctx.lineTo(sx(N[f.t].x), sy(N[f.t].y)); bctx.stroke();
+  }
+  function drawNode(n) {
+    bctx.fillStyle = GCOL[n.g]; bctx.beginPath(); bctx.arc(sx(n.x), sy(n.y), n.r, 0, 6.283); bctx.fill();
+  }
+
+  // ---------- timeline ----------
+  function fire(e, live, now) {
+    var a = AG[e.a];
+    if (e.k === 0) {
+      var n = N[e.i]; if (n.on) return; n.on = true; drawNode(n);
+      if (live) { fx.push({ k: "pop", n: n, c: a.color, t0: now }); a.label = { text: n.name, t0: now, n: n }; }
+    } else {
+      var f = F[e.i]; f.on = true; counts[e.a]++; drawFact(f);
+      if (e.loc < 0) { if (live) fx.push({ k: "link", a: AG[-1 - f.s], b: AG[-1 - f.t], t0: now }); }
+      else if (f.s < 0 || f.t < 0) a.tethers.push({ n: e.loc, t0: now });
+      if (live) {
+        if (e.loc >= 0) fx.push({ k: "beam", a: a, n: e.loc, t0: now });
+        if (f.s >= 0 && f.t >= 0) fx.push({ k: "edge", f: f, c: a.color, t0: now });
+        tickerItems.unshift({ a: a, t: f.time, text: f.text }); if (tickerItems.length > 3) tickerItems.length = 3; tickerDirty = true;
+      }
+    }
+  }
+  function seek(s) {
+    story = Math.max(0, Math.min(total, s));
+    N.forEach(function (n) { n.on = false; }); F.forEach(function (f) { f.on = false; });
+    counts = AG.map(function () { return 0; }); AG.forEach(function (a) { a.tethers = []; a.trail = []; a.label = null; });
+    fx = []; tickerItems = [];
+    cursor = 0;
+    while (cursor < EV.length && EV[cursor].s <= story) { fire(EV[cursor], false, 0); cursor++; }
+    for (var j = cursor - 1; j >= 0 && tickerItems.length < 3; j--) {
+      var e = EV[j]; if (e.k === 1) tickerItems.push({ a: AG[e.a], t: F[e.i].time, text: F[e.i].text });
+    }
+    AG.forEach(function (a) {
+      var last = null; for (var k = a.evs.length - 1; k >= 0; k--) if (a.evs[k] < cursor) { last = EV[a.evs[k]]; break; }
+      var p = last && last.loc >= 0 ? N[last.loc] : perch(a, 0); a.x = p.x; a.y = p.y; a.vx = a.vy = 0;
+      a.next = 0; while (a.next < a.evs.length && a.evs[a.next] < cursor) a.next++;
+    });
+    tickerDirty = true; redrawBase(); updateHud();
+  }
+
+  // ---------- frame ----------
+  function frame(now) {
+    var dt = Math.min(0.05, (now - lastNow) / 1000); lastNow = now;
+    if (playing) {
+      story += dt * speed;
+      while (cursor < EV.length && EV[cursor].s <= story) { fire(EV[cursor], true, now); cursor++; }
+      if (story >= total) { story = total; setPlaying(false); }
+    }
+    AG.forEach(function (a) { while (a.next < a.evs.length && a.evs[a.next] < cursor) a.next++; steer(a, dt, now); });
+    draw(now);
+    updateHud();
+    requestAnimationFrame(frame);
+  }
+  function steer(a, dt, now) {
+    var tgt, look = 1.1 * Math.max(1, speed * 0.7);
+    var ne = a.next < a.evs.length ? EV[a.evs[a.next]] : null;
+    if (ne && ne.loc >= 0 && ne.s - story < look && (playing || ne.s - story < 0.05)) tgt = N[ne.loc];
+    else if (a.label && now - a.label.t0 < 900) tgt = a.label.n;
+    else tgt = perch(a, now);
+    var k = 70 * Math.max(1, Math.sqrt(speed)), c = 2 * Math.sqrt(k);
+    a.vx += ((tgt.x - a.x) * k - a.vx * c) * dt; a.vy += ((tgt.y - a.y) * k - a.vy * c) * dt;
+    a.x += a.vx * dt; a.y += a.vy * dt;
+    if (!reduced) { a.trail.push(sx(a.x), sy(a.y)); if (a.trail.length > 44) a.trail.splice(0, 2); }
+  }
+  function draw(now) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(base, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // tethers: every fact that links a node to an agent stays tied to the moving agent
+    AG.forEach(function (a) {
+      var ax = sx(a.x), ay = sy(a.y);
+      ctx.lineWidth = 0.6; ctx.strokeStyle = hexA(a.color, 0.05); ctx.beginPath();
+      a.tethers.forEach(function (t) { ctx.moveTo(ax, ay); ctx.lineTo(sx(N[t.n].x), sy(N[t.n].y)); }); ctx.stroke();
+      a.tethers.forEach(function (t) {
+        var age = (now - t.t0) / 1000; if (age > 2.5 || !t.t0) return;
+        ctx.strokeStyle = hexA(a.color, 0.5 * (1 - age / 2.5)); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(sx(N[t.n].x), sy(N[t.n].y)); ctx.stroke();
+      });
+    });
+    // effects
+    fx = fx.filter(function (e) {
+      var age = (now - e.t0) / 1000;
+      if (e.k === "pop") {
+        if (age > 1.2) return false;
+        var n = e.n, p = age / 1.2, r = n.r + 3 + p * 14;
+        ctx.strokeStyle = hexA(e.c, 0.8 * (1 - p)); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx(n.x), sy(n.y), r, 0, 6.283); ctx.stroke();
+        ctx.fillStyle = hexA(e.c, 0.9 * (1 - p)); ctx.beginPath(); ctx.arc(sx(n.x), sy(n.y), n.r + 1, 0, 6.283); ctx.fill();
+      } else if (e.k === "edge") {
+        if (age > 1.6) return false;
+        var f = e.f, grow = Math.min(1, age / 0.3), x0 = sx(N[f.s].x), y0 = sy(N[f.s].y), x1 = sx(N[f.t].x), y1 = sy(N[f.t].y);
+        ctx.strokeStyle = hexA(e.c, 0.9 * (1 - age / 1.6)); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + (x1 - x0) * grow, y0 + (y1 - y0) * grow); ctx.stroke();
+      } else if (e.k === "link") {
+        if (age > 1.2) return false;
+        var g2 = ctx.createLinearGradient(sx(e.a.x), sy(e.a.y), sx(e.b.x), sy(e.b.y));
+        g2.addColorStop(0, hexA(e.a.color, 0.8 * (1 - age / 1.2))); g2.addColorStop(1, hexA(e.b.color, 0.8 * (1 - age / 1.2)));
+        ctx.strokeStyle = g2; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(sx(e.a.x), sy(e.a.y)); ctx.lineTo(sx(e.b.x), sy(e.b.y)); ctx.stroke();
+      } else if (e.k === "beam") {
+        if (age > 0.7) return false;
+        var nb = N[e.n]; ctx.strokeStyle = hexA(e.a.color, 0.75 * (1 - age / 0.7)); ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(sx(e.a.x), sy(e.a.y)); ctx.lineTo(sx(nb.x), sy(nb.y)); ctx.stroke();
+      }
+      return true;
+    });
+    // agents
+    AG.forEach(function (a) {
+      var x = sx(a.x), y = sy(a.y);
+      if (a.trail.length > 4) {
+        for (var k = 2; k < a.trail.length; k += 2) {
+          ctx.strokeStyle = hexA(a.color, 0.35 * k / a.trail.length); ctx.lineWidth = 2 * k / a.trail.length + 0.5;
+          ctx.beginPath(); ctx.moveTo(a.trail[k - 2], a.trail[k - 1]); ctx.lineTo(a.trail[k], a.trail[k + 1]); ctx.stroke();
+        }
+      }
+      var g = ctx.createRadialGradient(x, y, 0, x, y, 20);
+      g.addColorStop(0, hexA(a.color, 0.55)); g.addColorStop(1, hexA(a.color, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 20, 0, 6.283); ctx.fill();
+      ctx.fillStyle = a.color; ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = "rgba(10,13,19,0.9)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.font = "500 11px " + FONT_MONO; ctx.textBaseline = "middle";
+      ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(10,13,19,0.85)";
+      var flip = x > W - 120, ox = flip ? -9 : 9; ctx.textAlign = flip ? "right" : "left"; // keep labels inside the frame
+      var nm = short(a.name); ctx.strokeText(nm, x + ox, y - 1); ctx.fillStyle = a.color; ctx.fillText(nm, x + ox, y - 1);
+      if (a.label && now - a.label.t0 < 1500) {
+        var al = 1 - (now - a.label.t0) / 1500, txt = a.label.text.length > 42 ? a.label.text.slice(0, 41) + "…" : a.label.text;
+        ctx.font = "12px " + FONT_UI; ctx.globalAlpha = al;
+        ctx.strokeText(txt, x + ox, y + 13); ctx.fillStyle = INK; ctx.fillText(txt, x + ox, y + 13); ctx.globalAlpha = 1;
+      }
+      ctx.textAlign = "left";
+    });
+  }
+
+  // ---------- HUD ----------
+  var clockEl = document.getElementById("clock"), countsEl = document.getElementById("counts"), scrub = document.getElementById("scrub");
+  var tickerEl = document.getElementById("ticker"), lastHud = 0, dragging = false;
+  function clockAt(s) {
+    if (!EV.length) return 0;
+    var lo = 0, hi = EV.length - 1;
+    if (s <= EV[0].s) return EV[0].t; if (s >= EV[hi].s) return EV[hi].t;
+    while (hi - lo > 1) { var m = (lo + hi) >> 1; if (EV[m].s <= s) lo = m; else hi = m; }
+    var a = EV[lo], b = EV[hi]; return a.t + (b.t - a.t) * ((s - a.s) / Math.max(1e-6, b.s - a.s));
+  }
+  function updateHud() {
+    var now = performance.now(); if (now - lastHud < 90 && !tickerDirty) return; lastHud = now;
+    var c = fmtClock(clockAt(story)); clockEl.textContent = c.day + " · " + c.hm;
+    var sm = document.createElement("small"); sm.textContent = "UTC"; clockEl.appendChild(sm);
+    var nOn = 0, fOn = 0; for (var j = 0; j < cursor; j++) { if (EV[j].k) fOn++; else nOn++; }
+    countsEl.textContent = fmtN(nOn) + " of " + fmtN(N.length) + " nodes · " + fmtN(fOn) + " of " + fmtN(F.length) + " facts";
+    if (!dragging) scrub.value = Math.round(story / total * 10000);
+    AG.forEach(function (a, i) {
+      a.countEl.textContent = fmtN(counts[i] || 0);
+      var ne = a.next < a.evs.length ? EV[a.evs[a.next]] : null;
+      a.row.dataset.busy = String(!!(playing && ne && ne.s - story < 0.6));
+    });
+    if (tickerDirty) {
+      tickerDirty = false; tickerEl.textContent = "";
+      tickerItems.forEach(function (it) {
+        var row = document.createElement("div"); row.className = "tick"; row.style.setProperty("--c", it.a.color);
+        var b = document.createElement("b"); var cl = fmtClock(it.t); b.textContent = cl.hm + " " + short(it.a.name);
+        var sp = document.createElement("span"); sp.textContent = it.text;
+        row.append(b, sp); tickerEl.appendChild(row);
+      });
+    }
+  }
+
+  // ---------- controls ----------
+  var playBtn = document.getElementById("play");
+  function setPlaying(p) {
+    playing = p; playBtn.textContent = p ? "❚❚" : "▶"; playBtn.setAttribute("aria-label", p ? "Pause" : "Play");
+  }
+  setPlaying(playing);
+  playBtn.onclick = function () { if (!EV.length) return; if (!playing && story >= total) seek(0); setPlaying(!playing); };
+  document.getElementById("restart").onclick = function () { if (!EV.length) return; seek(0); setPlaying(true); };
+  var wasPlaying = false;
+  scrub.addEventListener("pointerdown", function () { dragging = true; wasPlaying = playing; setPlaying(false); });
+  scrub.addEventListener("input", function () { if (EV.length) seek(scrub.value / 10000 * total); });
+  scrub.addEventListener("change", function () { dragging = false; if (wasPlaying) setPlaying(true); wasPlaying = false; });
+  document.getElementById("speed").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return; speed = +b.dataset.s;
+    this.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === " " && e.target === document.body) { e.preventDefault(); playBtn.click(); }
+  });
+
+  // ---------- hover ----------
+  var tip = document.getElementById("tip");
+  canvas.addEventListener("mousemove", function (e) {
+    if (!N.length) return;
+    var r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, best = null, bd = 144, kind = "";
+    AG.forEach(function (a) { var d = Math.pow(sx(a.x) - mx, 2) + Math.pow(sy(a.y) - my, 2); if (d < 196 && d < bd) { bd = d; best = a; kind = "a"; } });
+    if (!best) N.forEach(function (n) { if (!n.on) return; var d = Math.pow(sx(n.x) - mx, 2) + Math.pow(sy(n.y) - my, 2); if (d < bd) { bd = d; best = n; kind = "n"; } });
+    if (!best) { tip.hidden = true; return; }
+    tip.textContent = "";
+    var a1 = document.createElement("div"), b1 = document.createElement("div"); b1.className = "t";
+    if (kind === "a") { a1.textContent = best.name; b1.textContent = best.about; }
+    else { var c = fmtClock(best.t); a1.textContent = best.name; b1.textContent = best.type + " · appeared " + c.day + " " + c.hm + " · by " + AG[best.a].name; }
+    tip.append(a1, b1); tip.hidden = false;
+    tip.style.left = Math.min(mx + 14, W - tip.offsetWidth - 8) + "px"; tip.style.top = Math.min(my + 14, H - tip.offsetHeight - 8) + "px";
+  });
+  canvas.addEventListener("mouseleave", function () { tip.hidden = true; });
+})();
+</script>

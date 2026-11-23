@@ -4,6 +4,25 @@
 
 ### Added
 
+- **New `gutt-vaults` plugin (0.1.0): public research vaults.** Six skills (`vault-steer`,
+  `vault-curate`, `vault-review`, `vault-commit`, `vault-brief`, `vault-pages`) and two agents
+  (`vault-scout`, `vault-reviewer`) run a vault in its own memory group, `vault_<slug>`: daily
+  scouting and source verification, an owner Console where the reviewer earns autonomy per
+  class from the owner's verdicts, and a weekly brief. Memory tool names are found at run time;
+  the reviewer's read-only allowlist covers the gutt-pro plugin's server and the known
+  connector prefixes. Every vault skill takes the slug; there is no default vault.
+- **Vault pages from templates.** `gutt-vaults/templates/` holds the Console, a Brief page fed
+  by `brief.json` (committed findings only, republished when the owner approves), and Graph
+  and Timelapse pages fed by `graph.json` and `timeline.json`. `vault-pages.cjs` exports a
+  vault group's episodes, nodes and facts into those two files with a seeded layout that keeps
+  last week's nodes in place, checks every data file against its contract, and previews any
+  page on localhost. The Console now previews a brief's Markdown and counts the LinkedIn
+  draft's characters.
+- **The role-plugin check knows vault identities.** A workflow that registers only into
+  `vault_<slug>` uses bare `vault-*` names there (the group is the scope), and an agent's
+  `tools:` allowlist may name prefixed memory tools while its prompt still may not.
+  `tests/vaults.test.cjs` keeps the vault rules, Console, templates and script in step.
+
 - **gutt-pro ships its own MCP server, pointed at the gutt shared stage by default.**
   `gutt-core/.mcp.json` declares `gutt-mcp-remote` (`type: http`) with its URL taken from the
   new plugin option `userConfig.mcp_url`, default `https://mcp.stage.gutt.pro/mcp`. Set your

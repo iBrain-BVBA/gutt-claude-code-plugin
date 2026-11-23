@@ -1,0 +1,81 @@
+{
+  "skill_name": "vault-commit",
+  "note": "These evals run against an example vault, next-agent-to-hire, whose group holds real verdicts to replay; any vault with enough history can stand in for it.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "dry-run-episode-shapes",
+      "prompt": "/gutt-vaults:vault-commit next-agent-to-hire --dry-run, with the Console rows in fixtures/decided-rows.json.",
+      "expected_output": "Prints a Finding and a human Verdict for the approved row, an override Verdict tagged vault-reviewer for the overridden auto_rejected row, a conflict Verdict with 'conflict resolution' that says both stand, and skips the row with no retrieved date. Changes nothing.",
+      "files": ["evals/fixtures/decided-rows.json"],
+      "assertions": [
+        "No add_memory*, register_agent or ArtifactData write call",
+        "The approved row yields 'Finding: <claimant> (<date>): <headline>' tagged vault-librarian with every source URL and retrieved date in the body",
+        "The overridden row yields one episode named 'Verdict: override …' tagged vault-reviewer, and no separate plain Verdict for it",
+        "The conflict Verdict names the first Finding, says 'conflict resolution', decision approved, and states both stand",
+        "The row missing a retrieved date is listed as skipped with that reason",
+        "Every printed episode has last_n_episodes=0"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "pending-rows-untouched",
+      "prompt": "/gutt-vaults:vault-commit next-agent-to-hire --dry-run where the only rows are pending or escalated.",
+      "expected_output": "Reports nothing to commit and writes no Run.",
+      "files": [],
+      "assertions": ["No episode is printed", "Output says nothing to commit"]
+    },
+    {
+      "id": 2,
+      "eval_name": "config-change-becomes-episode",
+      "prompt": "/gutt-vaults:vault-commit next-agent-to-hire --dry-run. The Console has config_changes/v9 {version: 9, at: 2026-11-23T09:12:00Z, by: <viewer id>, changes: [{key: ladder.ceiling, old: 3, new: 2}, {key: run.pending_cap, old: null, new: 20}]} with no committed_episode.",
+      "expected_output": "Prints one 'Config: Next Agent to Hire v9' episode tagged vault-charter, naming both changes (pending cap unset → 20) and that it applies from the next curate run, and would mark the config_changes row committed.",
+      "files": [],
+      "assertions": [
+        "Exactly one Config: episode, named with v9",
+        "agent_id is vault-charter",
+        "The episode lists ladder.ceiling 3 → 2 and run.pending_cap unset → 20",
+        "No settings value is changed"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "brief-with-uncommitted-finding-is-held",
+      "prompt": "/gutt-vaults:vault-commit next-agent-to-hire --dry-run. The Console has briefs/brief-2026-W47 with status approved, no committed_episode, and a page field whose changes list three findings; one of them has no Finding episode in the vault group.",
+      "expected_output": "Checks all three findings before writing anything for the brief. One has no Finding episode, so it writes no 'Brief: 2026-W47' episode, publishes nothing, and would set the row to changes_requested (not its note), naming the uncommitted finding under errors so vault-brief redrafts it and the owner approves again. Changes nothing.",
+      "files": [],
+      "assertions": [
+        "No Brief: 2026-W47 episode is printed",
+        "No brief.json is published, and none is published with that change silently dropped",
+        "It would set the row's status to changes_requested and leave note and human_decision untouched",
+        "The errors line names the finding that has no Finding episode",
+        "No add_memory*, ArtifactData write or Artifact publish call"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "brief-publish-fails-stays-approved",
+      "prompt": "/gutt-vaults:vault-commit next-agent-to-hire. The Console has briefs/brief-2026-W47 with status approved, no committed_episode, and a page field whose findings are all committed Finding episodes. This environment has no Artifact tool.",
+      "expected_output": "Writes one 'Brief: 2026-W47' episode tagged vault-brief and sets committed_episode on the row, but publishes no page: the row stays approved with no published_at, and the output's brief line reads 'not republished (no Artifact tool in this run)'.",
+      "files": [],
+      "assertions": [
+        "Exactly one Brief: 2026-W47 episode is written, tagged vault-brief",
+        "The row gets committed_episode but keeps status approved and no published_at",
+        "The brief line says not republished with the reason",
+        "No other episode kind is written for the brief"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "brief-retry-republishes-without-second-episode",
+      "prompt": "/gutt-vaults:vault-commit next-agent-to-hire. briefs/brief-2026-W47 has status approved, committed_episode set from last run, and no published_at; the Artifact tool is available and meta/vault.brief_url is set.",
+      "expected_output": "Writes no second Brief: episode. Reads the Brief page's URL, republishes it from the row's page field, then sets status published and published_at.",
+      "files": [],
+      "assertions": [
+        "No Brief: episode is written",
+        "The Brief page is read and then published to meta/vault.brief_url",
+        "The row ends with status published and a published_at date, set only after the publish succeeded"
+      ]
+    }
+  ]
+}

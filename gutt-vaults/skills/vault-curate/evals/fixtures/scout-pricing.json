@@ -1,0 +1,47 @@
+{
+  "beat": "pricing",
+  "items": [
+    {
+      "title": "Intercom (2026-10-30): Fin at $0.99 per resolution",
+      "claim": "Intercom charges $0.99 per resolved conversation for Fin.",
+      "claimant": "Intercom",
+      "why_it_matters": "Outcome-based pricing for tier-1 support agents.",
+      "published_date": "2026-10-30",
+      "sources": [
+        {
+          "url": "https://www.intercom.com/pricing",
+          "title": "Intercom pricing",
+          "publisher_domain": "intercom.com",
+          "source_class": "vendor",
+          "retrieved": "2026-11-05"
+        }
+      ],
+      "quote": null,
+      "confidence": "high"
+    },
+    {
+      "title": "Acme (2026-11-01): AP agent at $0.10 per invoice",
+      "claim": "Acme prices its AP invoice agent at $0.10 per invoice.",
+      "claimant": "Acme",
+      "why_it_matters": "Per-task pricing for AP invoice matching.",
+      "published_date": "2026-11-01",
+      "sources": [
+        {
+          "url": "https://example.invalid/acme-pricing",
+          "title": "Acme pricing",
+          "publisher_domain": "example.invalid",
+          "source_class": "vendor",
+          "retrieved": "2026-11-05"
+        }
+      ],
+      "quote": null,
+      "confidence": "med"
+    }
+  ],
+  "injection_attempts": ["https://example.com/ignore-previous-instructions"],
+  "scout_notes": {
+    "run": "Searched vendor pricing pages for support and AP agents; two candidates.",
+    "insights": [],
+    "procedure_deltas": []
+  }
+}

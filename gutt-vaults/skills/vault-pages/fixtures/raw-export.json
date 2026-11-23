@@ -1,0 +1,1236 @@
+{
+  "vault": {
+    "name": "Example Vault",
+    "slug": "example-vault",
+    "group_id": "vault_example_vault"
+  },
+  "episodes": [
+    {
+      "uuid": "f2a42a08-b4d1-4000-8000-f3f460a89c4c",
+      "name": "Charter: Example Vault",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Charter for the Example Vault. Recorded by vault-charter.",
+      "entity_edges": [
+        "1d0d988a-36db-4000-8000-46cdfd584517",
+        "531a6ee1-c7a0-4000-8000-96bf3dcf6a2a",
+        "3d65e43d-f87c-4000-8000-7eff8c9efeb2",
+        "1b5adee4-21e6-4000-8000-32eed5eb35dc"
+      ]
+    },
+    {
+      "uuid": "b80e810f-05e6-4000-8000-c80ad932175e",
+      "name": "Run: vault-scout curate-2026-11-03",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:42:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Scout run for 3 Nov. Recorded by vault-scout.",
+      "entity_edges": [
+        "8718b04e-66ec-4000-8000-c2a62441c739",
+        "a20c0c3d-3e0b-4000-8000-165349edc200",
+        "761db0e9-1aba-4000-8000-f5f829aa0633",
+        "2613a3f0-f733-4000-8000-cca53a8db5e0",
+        "40e8ce4c-de99-4000-8000-4797681654e1",
+        "4f14de6c-8ae2-4000-8000-89eddf2dbc25",
+        "b1760ce4-e197-4000-8000-94514f405276"
+      ]
+    },
+    {
+      "uuid": "4e6ecef1-28d8-4000-8000-772da517e71e",
+      "name": "Run: vault-scout curate-2026-11-04",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T01:42:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Scout run for 4 Nov. Recorded by vault-scout.",
+      "entity_edges": ["ab1d2822-c341-4000-8000-8fe52379a455"]
+    },
+    {
+      "uuid": "c977c38f-ee2a-4000-8000-240d6009de25",
+      "name": "Run: vault-scout curate-2026-11-05",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:42:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Scout run for 5 Nov. Recorded by vault-scout.",
+      "entity_edges": ["0f5a19da-2e6b-4000-8000-02df39adc425"]
+    },
+    {
+      "uuid": "bb5dc613-312f-4000-8000-98668ec044d0",
+      "name": "Run: vault-scout curate-2026-11-06",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T01:42:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Scout run for 6 Nov. Recorded by vault-scout.",
+      "entity_edges": ["93c265e9-439d-4000-8000-bf3da72e8c99"]
+    },
+    {
+      "uuid": "cbe931ed-0bc0-4000-8000-7402d8692053",
+      "name": "Finding: Acme Coder 2.0 is generally available",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:47:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Acme Coder 2.0 is generally available. Recorded by vault-librarian.",
+      "entity_edges": [
+        "63d529a5-23c6-4000-8000-63943eb9c9d0",
+        "7036d1fb-ca8b-4000-8000-a5f377fcd3f3",
+        "f503a328-8395-4000-8000-fbf39b643119",
+        "7f99bdf2-cb5f-4000-8000-1398d8c78bc3"
+      ]
+    },
+    {
+      "uuid": "5feac9ea-3896-4000-8000-6eefd42bf16d",
+      "name": "Verdict: Acme Coder 2.0 is generally available",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T12:10:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Owner approved 'Acme Coder 2.0 is generally available'. Recorded by vault-librarian.",
+      "entity_edges": [
+        "cf4b1f02-1a1d-4000-8000-e4bf4dd853f8",
+        "ef39bdb3-595a-4000-8000-bb8243ce4b07"
+      ]
+    },
+    {
+      "uuid": "97ead26d-ec2c-4000-8000-8d87a26e9c78",
+      "name": "Finding: Northwind Pilot halves review time in a 40-team study",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T01:47:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Northwind Pilot halves review time in a 40-team study. Recorded by vault-librarian.",
+      "entity_edges": [
+        "67ca65f7-9afa-4000-8000-b7ddd6d1d4e8",
+        "dd089ee9-25ec-4000-8000-8c4c83fff4c0",
+        "88b53de3-43db-4000-8000-08f1083ceef4",
+        "fb19a0a0-32e2-4000-8000-0cb92aeb93cd"
+      ]
+    },
+    {
+      "uuid": "665948ef-4eda-4000-8000-17099fd35af0",
+      "name": "Verdict: Northwind Pilot halves review time in a 40-team study",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T12:10:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Owner approved 'Northwind Pilot halves review time in a 40-team study'. Recorded by vault-librarian.",
+      "entity_edges": [
+        "100832f5-ca75-4000-8000-1585b806ec15",
+        "f3e40e3c-3d54-4000-8000-e60f7a470b82"
+      ]
+    },
+    {
+      "uuid": "723a51b3-4890-4000-8000-3ffd5af20860",
+      "name": "Finding: OpenPatch hosted plan costs $12 per seat",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T01:47:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "OpenPatch hosted plan costs $12 per seat. Recorded by vault-librarian.",
+      "entity_edges": [
+        "2d3dc932-fb93-4000-8000-3097ace83e11",
+        "d1a33931-9544-4000-8000-c04c5fa5a93c",
+        "d0af1564-79a7-4000-8000-9a03feb5efe9",
+        "b0bbc5b5-c4b4-4000-8000-107ceb19f337"
+      ]
+    },
+    {
+      "uuid": "25e96366-cb84-4000-8000-77c6ddc470b0",
+      "name": "Verdict: OpenPatch hosted plan costs $12 per seat",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T12:10:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Owner approved 'OpenPatch hosted plan costs $12 per seat'. Recorded by vault-librarian.",
+      "entity_edges": [
+        "58cffcf9-1cab-4000-8000-a9815c30b845",
+        "36c4ab32-2d9d-4000-8000-46fa998d42fa"
+      ]
+    },
+    {
+      "uuid": "9fb740f2-e118-4000-8000-7ead45356c5b",
+      "name": "Finding: Acme Coder cuts flaky test fixes by a third",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:47:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Acme Coder cuts flaky test fixes by a third. Recorded by vault-librarian.",
+      "entity_edges": [
+        "f9efc07d-04a9-4000-8000-1aa32e105050",
+        "06458e23-3e31-4000-8000-65376e6fb364",
+        "39b0560a-ad9b-4000-8000-8b769703eac9",
+        "ff5a4c3a-56bd-4000-8000-74716f090562"
+      ]
+    },
+    {
+      "uuid": "c6990083-8cc4-4000-8000-6c334ba60c3e",
+      "name": "Verdict: Acme Coder cuts flaky test fixes by a third",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T12:10:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Owner approved 'Acme Coder cuts flaky test fixes by a third'. Recorded by vault-librarian.",
+      "entity_edges": [
+        "e04cc63b-a22c-4000-8000-1f423f3504aa",
+        "571aadc7-2312-4000-8000-8e3e7868b289"
+      ]
+    },
+    {
+      "uuid": "4f8376b4-63b5-4000-8000-99fcb16f0cb9",
+      "name": "Finding: Northwind Pilot hosted plan costs $15 per seat",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T01:47:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Northwind Pilot hosted plan costs $15 per seat. Recorded by vault-librarian.",
+      "entity_edges": [
+        "c233749d-7a24-4000-8000-6ed9c8194ded",
+        "acf76816-8abd-4000-8000-7d86b4510300",
+        "0ce53db9-b620-4000-8000-7e32ec6f03f2",
+        "01c2435b-587c-4000-8000-900512d11ead"
+      ]
+    },
+    {
+      "uuid": "efe96a45-d52c-4000-8000-0a994460bce8",
+      "name": "Verdict: Northwind Pilot hosted plan costs $15 per seat",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T12:10:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Owner approved 'Northwind Pilot hosted plan costs $15 per seat'. Recorded by vault-librarian.",
+      "entity_edges": [
+        "48b71c9e-f5a7-4000-8000-7023d41b4385",
+        "16456eb5-9e5e-4000-8000-c8f217ce770a"
+      ]
+    },
+    {
+      "uuid": "f1b97393-a0d1-4000-8000-9cdf1fe305fe",
+      "name": "Finding: OpenPatch hosted plan now costs $14 per seat",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T01:47:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Price change. Recorded by vault-librarian.",
+      "entity_edges": ["1bb5b7be-5266-4000-8000-1e9d8d4f0f68"]
+    },
+    {
+      "uuid": "a4e11b70-3e3a-4000-8000-dfdc5c4a6535",
+      "name": "Insight: vault-scout pricing pages",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:54:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Insight. Recorded by vault-curate.",
+      "entity_edges": [
+        "4c1e3a67-b652-4000-8000-f6e0523cfd4f",
+        "3f0684c9-7466-4000-8000-c467cff7c28f",
+        "9bf7bf95-4f3e-4000-8000-a4606367f4f2"
+      ]
+    },
+    {
+      "uuid": "70eded83-5494-4000-8000-4fd011615007",
+      "name": "Brief: 2026-W45",
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T12:20:00Z",
+      "source": "text",
+      "source_description": "vault",
+      "content": "Weekly brief. Recorded by vault-brief.",
+      "entity_edges": [
+        "37ac2339-974f-4000-8000-66c4ce65ad81",
+        "88f37905-e43c-4000-8000-a7528a6dcd81"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "vault_example_vault:Agent:vault-charter",
+      "name": "vault-charter",
+      "labels": ["Entity", "Agent"],
+      "summary": "Holds the Example Vault's charter and the owner's steering.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z"
+    },
+    {
+      "id": "vault_example_vault:Agent:vault-scout",
+      "name": "vault-scout",
+      "labels": ["Entity", "Agent"],
+      "summary": "Researches one beat of the Example Vault on the open web.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z"
+    },
+    {
+      "id": "vault_example_vault:Agent:vault-librarian",
+      "name": "vault-librarian",
+      "labels": ["Entity", "Agent"],
+      "summary": "Verifies candidates and records findings for the Example Vault.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z"
+    },
+    {
+      "id": "vault_example_vault:Agent:vault-reviewer",
+      "name": "vault-reviewer",
+      "labels": ["Entity", "Agent"],
+      "summary": "Judges pending rows from the owner's past verdicts.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z"
+    },
+    {
+      "id": "vault_example_vault:Agent:vault-brief",
+      "name": "vault-brief",
+      "labels": ["Entity", "Agent"],
+      "summary": "Writes the Example Vault's weekly brief.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T12:20:00Z"
+    },
+    {
+      "id": "vault_example_vault:Beat:Beat:-releases",
+      "name": "Beat: releases",
+      "labels": ["Entity", "Beat"],
+      "summary": "Generally available releases of open-source coding agents.",
+      "attributes": {
+        "description": "Releases"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z"
+    },
+    {
+      "id": "vault_example_vault:Beat:Beat:-outcomes",
+      "name": "Beat: outcomes",
+      "labels": ["Entity", "Beat"],
+      "summary": "Measured results of coding agents in real teams.",
+      "attributes": {
+        "description": "Outcomes"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z"
+    },
+    {
+      "id": "vault_example_vault:Beat:Beat:-pricing",
+      "name": "Beat: pricing",
+      "labels": ["Entity", "Beat"],
+      "summary": "What hosted versions of the agents cost.",
+      "attributes": {
+        "description": "Pricing"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:00:00Z"
+    },
+    {
+      "id": "vault_example_vault:Organization:Acme-Labs",
+      "name": "Acme Labs",
+      "labels": ["Entity", "Organization"],
+      "summary": "Acme Labs builds coding agents.",
+      "attributes": {
+        "org_type": "company"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:42:00Z"
+    },
+    {
+      "id": "vault_example_vault:Organization:Northwind-Tools",
+      "name": "Northwind Tools",
+      "labels": ["Entity", "Organization"],
+      "summary": "Northwind Tools builds coding agents.",
+      "attributes": {
+        "org_type": "company"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:42:00Z"
+    },
+    {
+      "id": "vault_example_vault:Organization:Open-Agents-Foundation",
+      "name": "Open Agents Foundation",
+      "labels": ["Entity", "Organization"],
+      "summary": "Open Agents Foundation builds coding agents.",
+      "attributes": {
+        "org_type": "other"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:42:00Z"
+    },
+    {
+      "id": "vault_example_vault:Product:Acme-Coder",
+      "name": "Acme Coder",
+      "labels": ["Entity", "Product"],
+      "summary": "Acme Coder is an open-source coding agent.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:43:00Z"
+    },
+    {
+      "id": "vault_example_vault:Product:Northwind-Pilot",
+      "name": "Northwind Pilot",
+      "labels": ["Entity", "Product"],
+      "summary": "Northwind Pilot is an open-source coding agent.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:43:00Z"
+    },
+    {
+      "id": "vault_example_vault:Product:OpenPatch",
+      "name": "OpenPatch",
+      "labels": ["Entity", "Product"],
+      "summary": "OpenPatch is an open-source coding agent.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:43:00Z"
+    },
+    {
+      "id": "vault_example_vault:SourceDocument:Acme-Labs-post:-Acme-Coder-2.0-is-generally-available",
+      "name": "Acme Labs post: Acme Coder 2.0 is generally available",
+      "labels": ["Entity", "SourceDocument"],
+      "summary": "The Acme Labs page that states: Acme Coder 2.0 is generally available.",
+      "attributes": {
+        "source_class": "primary",
+        "url": "https://example.com/0",
+        "published_date": "2026-11-02"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Finding:Acme-Coder-2.0-is-generally-available",
+      "name": "Acme Coder 2.0 is generally available",
+      "labels": ["Entity", "Finding"],
+      "summary": "Acme Coder 2.0 is generally available. Graded primary source.",
+      "attributes": {
+        "claim": "Acme Coder 2.0 is generally available",
+        "evidence_grade": "primary_source",
+        "status": "current"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Verdict:Verdict-(human-approved):-Acme-Coder-2.0-is-generally-available",
+      "name": "Verdict (human approved): Acme Coder 2.0 is generally available",
+      "labels": ["Entity", "Verdict"],
+      "summary": "The owner approved 'Acme Coder 2.0 is generally available'.",
+      "attributes": {
+        "decision": "approved",
+        "decided_by": "human"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-03T12:10:00Z"
+    },
+    {
+      "id": "vault_example_vault:SourceDocument:Northwind-Tools-post:-Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "name": "Northwind Tools post: Northwind Pilot halves review time in a 40-team study",
+      "labels": ["Entity", "SourceDocument"],
+      "summary": "The Northwind Tools page that states: Northwind Pilot halves review time in a 40-team study.",
+      "attributes": {
+        "source_class": "primary",
+        "url": "https://example.com/1",
+        "published_date": "2026-11-03"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Finding:Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "name": "Northwind Pilot halves review time in a 40-team study",
+      "labels": ["Entity", "Finding"],
+      "summary": "Northwind Pilot halves review time in a 40-team study. Graded independent.",
+      "attributes": {
+        "claim": "Northwind Pilot halves review time in a 40-team study",
+        "evidence_grade": "independent",
+        "status": "current"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Verdict:Verdict-(human-approved):-Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "name": "Verdict (human approved): Northwind Pilot halves review time in a 40-team study",
+      "labels": ["Entity", "Verdict"],
+      "summary": "The owner approved 'Northwind Pilot halves review time in a 40-team study'.",
+      "attributes": {
+        "decision": "approved",
+        "decided_by": "human"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T12:10:00Z"
+    },
+    {
+      "id": "vault_example_vault:SourceDocument:Open-Agents-Foundation-post:-OpenPatch-hosted-plan-costs-$12-per-seat",
+      "name": "Open Agents Foundation post: OpenPatch hosted plan costs $12 per seat",
+      "labels": ["Entity", "SourceDocument"],
+      "summary": "The Open Agents Foundation page that states: OpenPatch hosted plan costs $12 per seat.",
+      "attributes": {
+        "source_class": "vendor",
+        "url": "https://example.com/2",
+        "published_date": "2026-11-03"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Finding:OpenPatch-hosted-plan-costs-$12-per-seat",
+      "name": "OpenPatch hosted plan costs $12 per seat",
+      "labels": ["Entity", "Finding"],
+      "summary": "OpenPatch hosted plan costs $12 per seat. Graded vendor claim.",
+      "attributes": {
+        "claim": "OpenPatch hosted plan costs $12 per seat",
+        "evidence_grade": "vendor_claim",
+        "status": "current"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Verdict:Verdict-(human-approved):-OpenPatch-hosted-plan-costs-$12-per-seat",
+      "name": "Verdict (human approved): OpenPatch hosted plan costs $12 per seat",
+      "labels": ["Entity", "Verdict"],
+      "summary": "The owner approved 'OpenPatch hosted plan costs $12 per seat'.",
+      "attributes": {
+        "decision": "approved",
+        "decided_by": "human"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-04T12:10:00Z"
+    },
+    {
+      "id": "vault_example_vault:SourceDocument:Acme-Labs-post:-Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "name": "Acme Labs post: Acme Coder cuts flaky test fixes by a third",
+      "labels": ["Entity", "SourceDocument"],
+      "summary": "The Acme Labs page that states: Acme Coder cuts flaky test fixes by a third.",
+      "attributes": {
+        "source_class": "primary",
+        "url": "https://example.com/3",
+        "published_date": "2026-11-04"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Finding:Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "name": "Acme Coder cuts flaky test fixes by a third",
+      "labels": ["Entity", "Finding"],
+      "summary": "Acme Coder cuts flaky test fixes by a third. Graded customer evidence.",
+      "attributes": {
+        "claim": "Acme Coder cuts flaky test fixes by a third",
+        "evidence_grade": "customer_evidence",
+        "status": "current"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Verdict:Verdict-(human-approved):-Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "name": "Verdict (human approved): Acme Coder cuts flaky test fixes by a third",
+      "labels": ["Entity", "Verdict"],
+      "summary": "The owner approved 'Acme Coder cuts flaky test fixes by a third'.",
+      "attributes": {
+        "decision": "approved",
+        "decided_by": "human"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T12:10:00Z"
+    },
+    {
+      "id": "vault_example_vault:SourceDocument:Northwind-Tools-post:-Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "name": "Northwind Tools post: Northwind Pilot hosted plan costs $15 per seat",
+      "labels": ["Entity", "SourceDocument"],
+      "summary": "The Northwind Tools page that states: Northwind Pilot hosted plan costs $15 per seat.",
+      "attributes": {
+        "source_class": "vendor",
+        "url": "https://example.com/4",
+        "published_date": "2026-11-05"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Finding:Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "name": "Northwind Pilot hosted plan costs $15 per seat",
+      "labels": ["Entity", "Finding"],
+      "summary": "Northwind Pilot hosted plan costs $15 per seat. Graded vendor claim.",
+      "attributes": {
+        "claim": "Northwind Pilot hosted plan costs $15 per seat",
+        "evidence_grade": "vendor_claim",
+        "status": "current"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Verdict:Verdict-(human-approved):-Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "name": "Verdict (human approved): Northwind Pilot hosted plan costs $15 per seat",
+      "labels": ["Entity", "Verdict"],
+      "summary": "The owner approved 'Northwind Pilot hosted plan costs $15 per seat'.",
+      "attributes": {
+        "decision": "approved",
+        "decided_by": "human"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T12:10:00Z"
+    },
+    {
+      "id": "vault_example_vault:Finding:OpenPatch-hosted-plan-now-costs-$14-per-seat",
+      "name": "OpenPatch hosted plan now costs $14 per seat",
+      "labels": ["Entity", "Finding"],
+      "summary": "The hosted plan went from $12 to $14.",
+      "attributes": {
+        "claim": "$14 per seat",
+        "evidence_grade": "vendor_claim",
+        "status": "current"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-06T01:47:00Z"
+    },
+    {
+      "id": "vault_example_vault:Insight:pricing",
+      "name": "Pricing pages change without notice",
+      "labels": ["Entity", "Insight"],
+      "summary": "Pricing pages change without notice; re-check monthly.",
+      "attributes": {
+        "insight_type": "source_quality"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:54:00Z"
+    },
+    {
+      "id": "vault_example_vault:Insight:pricing",
+      "name": "Pricing pages hide seat minimums",
+      "labels": ["Entity", "Insight"],
+      "summary": "Pricing pages hide seat minimums in footnotes.",
+      "attributes": {
+        "insight_type": "source_quality"
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:54:00Z"
+    },
+    {
+      "id": "vault_example_vault:Procedure:vault-scout:-re-check-pricing-pages-monthly",
+      "name": "vault-scout: re-check pricing pages monthly",
+      "labels": ["Entity", "Procedure"],
+      "summary": "Re-check every pricing page monthly.",
+      "attributes": {
+        "instruction": "Re-check pricing pages monthly."
+      },
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-05T01:55:00Z"
+    },
+    {
+      "id": "vault_example_vault:Concept:Agent-harness",
+      "name": "Agent harness",
+      "labels": ["Entity", "Concept"],
+      "summary": "A concept the charter names but no finding uses yet.",
+      "attributes": {},
+      "group_id": "vault_example_vault",
+      "created_at": "2026-11-02T09:02:00Z"
+    }
+  ],
+  "facts": [
+    {
+      "uuid": "1d0d988a-36db-4000-8000-46cdfd584517",
+      "name": "DEFINES",
+      "fact": "vault-charter defines Beat: releases",
+      "source_node_id": "vault_example_vault:Agent:vault-charter",
+      "target_node_id": "vault_example_vault:Beat:Beat:-releases",
+      "valid_at": "2026-11-02T09:00:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-02T09:00:00Z",
+      "episodes": ["f2a42a08-b4d1-4000-8000-f3f460a89c4c"]
+    },
+    {
+      "uuid": "531a6ee1-c7a0-4000-8000-96bf3dcf6a2a",
+      "name": "DEFINES",
+      "fact": "vault-charter defines Beat: outcomes",
+      "source_node_id": "vault_example_vault:Agent:vault-charter",
+      "target_node_id": "vault_example_vault:Beat:Beat:-outcomes",
+      "valid_at": "2026-11-02T09:00:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-02T09:00:00Z",
+      "episodes": ["f2a42a08-b4d1-4000-8000-f3f460a89c4c"]
+    },
+    {
+      "uuid": "3d65e43d-f87c-4000-8000-7eff8c9efeb2",
+      "name": "DEFINES",
+      "fact": "vault-charter defines Beat: pricing",
+      "source_node_id": "vault_example_vault:Agent:vault-charter",
+      "target_node_id": "vault_example_vault:Beat:Beat:-pricing",
+      "valid_at": "2026-11-02T09:00:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-02T09:00:00Z",
+      "episodes": ["f2a42a08-b4d1-4000-8000-f3f460a89c4c"]
+    },
+    {
+      "uuid": "1b5adee4-21e6-4000-8000-32eed5eb35dc",
+      "name": "WORKS_WITH",
+      "fact": "vault-charter hands the beats to vault-scout",
+      "source_node_id": "vault_example_vault:Agent:vault-charter",
+      "target_node_id": "vault_example_vault:Agent:vault-scout",
+      "valid_at": "2026-11-02T09:01:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-02T09:01:00Z",
+      "episodes": ["f2a42a08-b4d1-4000-8000-f3f460a89c4c"]
+    },
+    {
+      "uuid": "8718b04e-66ec-4000-8000-c2a62441c739",
+      "name": "MADE_BY",
+      "fact": "Acme Coder is made by Acme Labs",
+      "source_node_id": "vault_example_vault:Product:Acme-Coder",
+      "target_node_id": "vault_example_vault:Organization:Acme-Labs",
+      "valid_at": "2026-11-03T01:43:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:43:00Z",
+      "episodes": ["b80e810f-05e6-4000-8000-c80ad932175e"]
+    },
+    {
+      "uuid": "a20c0c3d-3e0b-4000-8000-165349edc200",
+      "name": "COVERED_BY",
+      "fact": "Acme Coder is covered by the releases beat",
+      "source_node_id": "vault_example_vault:Product:Acme-Coder",
+      "target_node_id": "vault_example_vault:Beat:Beat:-releases",
+      "valid_at": "2026-11-03T01:44:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:44:00Z",
+      "episodes": ["b80e810f-05e6-4000-8000-c80ad932175e"]
+    },
+    {
+      "uuid": "761db0e9-1aba-4000-8000-f5f829aa0633",
+      "name": "MADE_BY",
+      "fact": "Northwind Pilot is made by Northwind Tools",
+      "source_node_id": "vault_example_vault:Product:Northwind-Pilot",
+      "target_node_id": "vault_example_vault:Organization:Northwind-Tools",
+      "valid_at": "2026-11-03T01:43:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:43:00Z",
+      "episodes": ["b80e810f-05e6-4000-8000-c80ad932175e"]
+    },
+    {
+      "uuid": "2613a3f0-f733-4000-8000-cca53a8db5e0",
+      "name": "COVERED_BY",
+      "fact": "Northwind Pilot is covered by the releases beat",
+      "source_node_id": "vault_example_vault:Product:Northwind-Pilot",
+      "target_node_id": "vault_example_vault:Beat:Beat:-releases",
+      "valid_at": "2026-11-03T01:44:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:44:00Z",
+      "episodes": ["b80e810f-05e6-4000-8000-c80ad932175e"]
+    },
+    {
+      "uuid": "40e8ce4c-de99-4000-8000-4797681654e1",
+      "name": "MADE_BY",
+      "fact": "OpenPatch is made by Open Agents Foundation",
+      "source_node_id": "vault_example_vault:Product:OpenPatch",
+      "target_node_id": "vault_example_vault:Organization:Open-Agents-Foundation",
+      "valid_at": "2026-11-03T01:43:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:43:00Z",
+      "episodes": ["b80e810f-05e6-4000-8000-c80ad932175e"]
+    },
+    {
+      "uuid": "4f14de6c-8ae2-4000-8000-89eddf2dbc25",
+      "name": "COVERED_BY",
+      "fact": "OpenPatch is covered by the releases beat",
+      "source_node_id": "vault_example_vault:Product:OpenPatch",
+      "target_node_id": "vault_example_vault:Beat:Beat:-releases",
+      "valid_at": "2026-11-03T01:44:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:44:00Z",
+      "episodes": ["b80e810f-05e6-4000-8000-c80ad932175e"]
+    },
+    {
+      "uuid": "b1760ce4-e197-4000-8000-94514f405276",
+      "name": "FOUND",
+      "fact": "vault-scout found three products on its first run",
+      "source_node_id": "vault_example_vault:Agent:vault-scout",
+      "target_node_id": "vault_example_vault:Product:Acme-Coder",
+      "valid_at": "2026-11-03T01:45:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:45:00Z",
+      "episodes": ["b80e810f-05e6-4000-8000-c80ad932175e"]
+    },
+    {
+      "uuid": "ab1d2822-c341-4000-8000-8fe52379a455",
+      "name": "SEARCHED",
+      "fact": "vault-scout searched the outcomes beat on 4 Nov",
+      "source_node_id": "vault_example_vault:Agent:vault-scout",
+      "target_node_id": "vault_example_vault:Beat:Beat:-outcomes",
+      "valid_at": "2026-11-04T01:43:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:43:00Z",
+      "episodes": ["4e6ecef1-28d8-4000-8000-772da517e71e"]
+    },
+    {
+      "uuid": "0f5a19da-2e6b-4000-8000-02df39adc425",
+      "name": "SEARCHED",
+      "fact": "vault-scout searched the outcomes beat on 5 Nov",
+      "source_node_id": "vault_example_vault:Agent:vault-scout",
+      "target_node_id": "vault_example_vault:Beat:Beat:-outcomes",
+      "valid_at": "2026-11-05T01:43:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:43:00Z",
+      "episodes": ["c977c38f-ee2a-4000-8000-240d6009de25"]
+    },
+    {
+      "uuid": "93c265e9-439d-4000-8000-bf3da72e8c99",
+      "name": "SEARCHED",
+      "fact": "vault-scout searched the outcomes beat on 6 Nov",
+      "source_node_id": "vault_example_vault:Agent:vault-scout",
+      "target_node_id": "vault_example_vault:Beat:Beat:-outcomes",
+      "valid_at": "2026-11-06T01:43:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T01:43:00Z",
+      "episodes": ["bb5dc613-312f-4000-8000-98668ec044d0"]
+    },
+    {
+      "uuid": "63d529a5-23c6-4000-8000-63943eb9c9d0",
+      "name": "DRAWN_FROM",
+      "fact": "The finding 'Acme Coder 2.0 is generally available' is drawn from the Acme Labs post",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-2.0-is-generally-available",
+      "target_node_id": "vault_example_vault:SourceDocument:Acme-Labs-post:-Acme-Coder-2.0-is-generally-available",
+      "valid_at": "2026-11-03T01:47:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:47:00Z",
+      "episodes": ["cbe931ed-0bc0-4000-8000-7402d8692053"]
+    },
+    {
+      "uuid": "7036d1fb-ca8b-4000-8000-a5f377fcd3f3",
+      "name": "ABOUT",
+      "fact": "The finding 'Acme Coder 2.0 is generally available' is about Acme Coder",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-2.0-is-generally-available",
+      "target_node_id": "vault_example_vault:Product:Acme-Coder",
+      "valid_at": "2026-11-03T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:48:00Z",
+      "episodes": ["cbe931ed-0bc0-4000-8000-7402d8692053"]
+    },
+    {
+      "uuid": "f503a328-8395-4000-8000-fbf39b643119",
+      "name": "PRODUCED_IN",
+      "fact": "The finding 'Acme Coder 2.0 is generally available' was produced in its beat",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-2.0-is-generally-available",
+      "target_node_id": "vault_example_vault:Beat:Beat:-releases",
+      "valid_at": "2026-11-03T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:48:00Z",
+      "episodes": ["cbe931ed-0bc0-4000-8000-7402d8692053"]
+    },
+    {
+      "uuid": "7f99bdf2-cb5f-4000-8000-1398d8c78bc3",
+      "name": "RECORDED_BY",
+      "fact": "The finding 'Acme Coder 2.0 is generally available' was recorded by vault-librarian",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-2.0-is-generally-available",
+      "target_node_id": "vault_example_vault:Agent:vault-librarian",
+      "valid_at": "2026-11-03T01:49:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:49:00Z",
+      "episodes": ["cbe931ed-0bc0-4000-8000-7402d8692053"]
+    },
+    {
+      "uuid": "cf4b1f02-1a1d-4000-8000-e4bf4dd853f8",
+      "name": "DECIDED",
+      "fact": "The verdict approved 'Acme Coder 2.0 is generally available'",
+      "source_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Acme-Coder-2.0-is-generally-available",
+      "target_node_id": "vault_example_vault:Finding:Acme-Coder-2.0-is-generally-available",
+      "valid_at": "2026-11-03T12:10:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T12:10:00Z",
+      "episodes": ["5feac9ea-3896-4000-8000-6eefd42bf16d"]
+    },
+    {
+      "uuid": "ef39bdb3-595a-4000-8000-bb8243ce4b07",
+      "name": "PREDICTED",
+      "fact": "vault-reviewer predicted approve for 'Acme Coder 2.0 is generally available'",
+      "source_node_id": "vault_example_vault:Agent:vault-reviewer",
+      "target_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Acme-Coder-2.0-is-generally-available",
+      "valid_at": "2026-11-03T01:51:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-03T01:51:00Z",
+      "episodes": ["5feac9ea-3896-4000-8000-6eefd42bf16d"]
+    },
+    {
+      "uuid": "67ca65f7-9afa-4000-8000-b7ddd6d1d4e8",
+      "name": "DRAWN_FROM",
+      "fact": "The finding 'Northwind Pilot halves review time in a 40-team study' is drawn from the Northwind Tools post",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "target_node_id": "vault_example_vault:SourceDocument:Northwind-Tools-post:-Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "valid_at": "2026-11-04T01:47:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:47:00Z",
+      "episodes": ["97ead26d-ec2c-4000-8000-8d87a26e9c78"]
+    },
+    {
+      "uuid": "dd089ee9-25ec-4000-8000-8c4c83fff4c0",
+      "name": "ABOUT",
+      "fact": "The finding 'Northwind Pilot halves review time in a 40-team study' is about Northwind Pilot",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "target_node_id": "vault_example_vault:Product:Northwind-Pilot",
+      "valid_at": "2026-11-04T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:48:00Z",
+      "episodes": ["97ead26d-ec2c-4000-8000-8d87a26e9c78"]
+    },
+    {
+      "uuid": "88b53de3-43db-4000-8000-08f1083ceef4",
+      "name": "PRODUCED_IN",
+      "fact": "The finding 'Northwind Pilot halves review time in a 40-team study' was produced in its beat",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "target_node_id": "vault_example_vault:Beat:Beat:-outcomes",
+      "valid_at": "2026-11-04T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:48:00Z",
+      "episodes": ["97ead26d-ec2c-4000-8000-8d87a26e9c78"]
+    },
+    {
+      "uuid": "fb19a0a0-32e2-4000-8000-0cb92aeb93cd",
+      "name": "RECORDED_BY",
+      "fact": "The finding 'Northwind Pilot halves review time in a 40-team study' was recorded by vault-librarian",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "target_node_id": "vault_example_vault:Agent:vault-librarian",
+      "valid_at": "2026-11-04T01:49:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:49:00Z",
+      "episodes": ["97ead26d-ec2c-4000-8000-8d87a26e9c78"]
+    },
+    {
+      "uuid": "100832f5-ca75-4000-8000-1585b806ec15",
+      "name": "DECIDED",
+      "fact": "The verdict approved 'Northwind Pilot halves review time in a 40-team study'",
+      "source_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "target_node_id": "vault_example_vault:Finding:Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "valid_at": "2026-11-04T12:10:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T12:10:00Z",
+      "episodes": ["665948ef-4eda-4000-8000-17099fd35af0"]
+    },
+    {
+      "uuid": "f3e40e3c-3d54-4000-8000-e60f7a470b82",
+      "name": "PREDICTED",
+      "fact": "vault-reviewer predicted approve for 'Northwind Pilot halves review time in a 40-team study'",
+      "source_node_id": "vault_example_vault:Agent:vault-reviewer",
+      "target_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Northwind-Pilot-halves-review-time-in-a-40-team-study",
+      "valid_at": "2026-11-04T01:51:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:51:00Z",
+      "episodes": ["665948ef-4eda-4000-8000-17099fd35af0"]
+    },
+    {
+      "uuid": "2d3dc932-fb93-4000-8000-3097ace83e11",
+      "name": "DRAWN_FROM",
+      "fact": "The finding 'OpenPatch hosted plan costs $12 per seat' is drawn from the Open Agents Foundation post",
+      "source_node_id": "vault_example_vault:Finding:OpenPatch-hosted-plan-costs-$12-per-seat",
+      "target_node_id": "vault_example_vault:SourceDocument:Open-Agents-Foundation-post:-OpenPatch-hosted-plan-costs-$12-per-seat",
+      "valid_at": "2026-11-04T01:47:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:47:00Z",
+      "episodes": ["723a51b3-4890-4000-8000-3ffd5af20860"]
+    },
+    {
+      "uuid": "d1a33931-9544-4000-8000-c04c5fa5a93c",
+      "name": "ABOUT",
+      "fact": "The finding 'OpenPatch hosted plan costs $12 per seat' is about OpenPatch",
+      "source_node_id": "vault_example_vault:Finding:OpenPatch-hosted-plan-costs-$12-per-seat",
+      "target_node_id": "vault_example_vault:Product:OpenPatch",
+      "valid_at": "2026-11-04T01:48:00Z",
+      "invalid_at": "2026-11-06T01:48:00Z",
+      "expired_at": null,
+      "created_at": "2026-11-04T01:48:00Z",
+      "episodes": ["723a51b3-4890-4000-8000-3ffd5af20860"]
+    },
+    {
+      "uuid": "d0af1564-79a7-4000-8000-9a03feb5efe9",
+      "name": "PRODUCED_IN",
+      "fact": "The finding 'OpenPatch hosted plan costs $12 per seat' was produced in its beat",
+      "source_node_id": "vault_example_vault:Finding:OpenPatch-hosted-plan-costs-$12-per-seat",
+      "target_node_id": "vault_example_vault:Beat:Beat:-pricing",
+      "valid_at": "2026-11-04T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:48:00Z",
+      "episodes": ["723a51b3-4890-4000-8000-3ffd5af20860"]
+    },
+    {
+      "uuid": "b0bbc5b5-c4b4-4000-8000-107ceb19f337",
+      "name": "RECORDED_BY",
+      "fact": "The finding 'OpenPatch hosted plan costs $12 per seat' was recorded by vault-librarian",
+      "source_node_id": "vault_example_vault:Finding:OpenPatch-hosted-plan-costs-$12-per-seat",
+      "target_node_id": "vault_example_vault:Agent:vault-librarian",
+      "valid_at": "2026-11-04T01:49:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:49:00Z",
+      "episodes": ["723a51b3-4890-4000-8000-3ffd5af20860"]
+    },
+    {
+      "uuid": "58cffcf9-1cab-4000-8000-a9815c30b845",
+      "name": "DECIDED",
+      "fact": "The verdict approved 'OpenPatch hosted plan costs $12 per seat'",
+      "source_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-OpenPatch-hosted-plan-costs-$12-per-seat",
+      "target_node_id": "vault_example_vault:Finding:OpenPatch-hosted-plan-costs-$12-per-seat",
+      "valid_at": "2026-11-04T12:10:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T12:10:00Z",
+      "episodes": ["25e96366-cb84-4000-8000-77c6ddc470b0"]
+    },
+    {
+      "uuid": "36c4ab32-2d9d-4000-8000-46fa998d42fa",
+      "name": "PREDICTED",
+      "fact": "vault-reviewer predicted approve for 'OpenPatch hosted plan costs $12 per seat'",
+      "source_node_id": "vault_example_vault:Agent:vault-reviewer",
+      "target_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-OpenPatch-hosted-plan-costs-$12-per-seat",
+      "valid_at": "2026-11-04T01:51:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-04T01:51:00Z",
+      "episodes": ["25e96366-cb84-4000-8000-77c6ddc470b0"]
+    },
+    {
+      "uuid": "f9efc07d-04a9-4000-8000-1aa32e105050",
+      "name": "DRAWN_FROM",
+      "fact": "The finding 'Acme Coder cuts flaky test fixes by a third' is drawn from the Acme Labs post",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "target_node_id": "vault_example_vault:SourceDocument:Acme-Labs-post:-Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "valid_at": "2026-11-05T01:47:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:47:00Z",
+      "episodes": ["9fb740f2-e118-4000-8000-7ead45356c5b"]
+    },
+    {
+      "uuid": "06458e23-3e31-4000-8000-65376e6fb364",
+      "name": "ABOUT",
+      "fact": "The finding 'Acme Coder cuts flaky test fixes by a third' is about Acme Coder",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "target_node_id": "vault_example_vault:Product:Acme-Coder",
+      "valid_at": "2026-11-05T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:48:00Z",
+      "episodes": ["9fb740f2-e118-4000-8000-7ead45356c5b"]
+    },
+    {
+      "uuid": "39b0560a-ad9b-4000-8000-8b769703eac9",
+      "name": "PRODUCED_IN",
+      "fact": "The finding 'Acme Coder cuts flaky test fixes by a third' was produced in its beat",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "target_node_id": "vault_example_vault:Beat:Beat:-outcomes",
+      "valid_at": "2026-11-05T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:48:00Z",
+      "episodes": ["9fb740f2-e118-4000-8000-7ead45356c5b"]
+    },
+    {
+      "uuid": "ff5a4c3a-56bd-4000-8000-74716f090562",
+      "name": "RECORDED_BY",
+      "fact": "The finding 'Acme Coder cuts flaky test fixes by a third' was recorded by vault-librarian",
+      "source_node_id": "vault_example_vault:Finding:Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "target_node_id": "vault_example_vault:Agent:vault-librarian",
+      "valid_at": "2026-11-05T01:49:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:49:00Z",
+      "episodes": ["9fb740f2-e118-4000-8000-7ead45356c5b"]
+    },
+    {
+      "uuid": "e04cc63b-a22c-4000-8000-1f423f3504aa",
+      "name": "DECIDED",
+      "fact": "The verdict approved 'Acme Coder cuts flaky test fixes by a third'",
+      "source_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "target_node_id": "vault_example_vault:Finding:Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "valid_at": "2026-11-05T12:10:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T12:10:00Z",
+      "episodes": ["c6990083-8cc4-4000-8000-6c334ba60c3e"]
+    },
+    {
+      "uuid": "571aadc7-2312-4000-8000-8e3e7868b289",
+      "name": "PREDICTED",
+      "fact": "vault-reviewer predicted approve for 'Acme Coder cuts flaky test fixes by a third'",
+      "source_node_id": "vault_example_vault:Agent:vault-reviewer",
+      "target_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Acme-Coder-cuts-flaky-test-fixes-by-a-third",
+      "valid_at": "2026-11-05T01:51:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:51:00Z",
+      "episodes": ["c6990083-8cc4-4000-8000-6c334ba60c3e"]
+    },
+    {
+      "uuid": "c233749d-7a24-4000-8000-6ed9c8194ded",
+      "name": "DRAWN_FROM",
+      "fact": "The finding 'Northwind Pilot hosted plan costs $15 per seat' is drawn from the Northwind Tools post",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "target_node_id": "vault_example_vault:SourceDocument:Northwind-Tools-post:-Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "valid_at": "2026-11-06T01:47:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T01:47:00Z",
+      "episodes": ["4f8376b4-63b5-4000-8000-99fcb16f0cb9"]
+    },
+    {
+      "uuid": "acf76816-8abd-4000-8000-7d86b4510300",
+      "name": "ABOUT",
+      "fact": "The finding 'Northwind Pilot hosted plan costs $15 per seat' is about Northwind Pilot",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "target_node_id": "vault_example_vault:Product:Northwind-Pilot",
+      "valid_at": "2026-11-06T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T01:48:00Z",
+      "episodes": ["4f8376b4-63b5-4000-8000-99fcb16f0cb9"]
+    },
+    {
+      "uuid": "0ce53db9-b620-4000-8000-7e32ec6f03f2",
+      "name": "PRODUCED_IN",
+      "fact": "The finding 'Northwind Pilot hosted plan costs $15 per seat' was produced in its beat",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "target_node_id": "vault_example_vault:Beat:Beat:-pricing",
+      "valid_at": "2026-11-06T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T01:48:00Z",
+      "episodes": ["4f8376b4-63b5-4000-8000-99fcb16f0cb9"]
+    },
+    {
+      "uuid": "01c2435b-587c-4000-8000-900512d11ead",
+      "name": "RECORDED_BY",
+      "fact": "The finding 'Northwind Pilot hosted plan costs $15 per seat' was recorded by vault-librarian",
+      "source_node_id": "vault_example_vault:Finding:Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "target_node_id": "vault_example_vault:Agent:vault-librarian",
+      "valid_at": "2026-11-06T01:49:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T01:49:00Z",
+      "episodes": ["4f8376b4-63b5-4000-8000-99fcb16f0cb9"]
+    },
+    {
+      "uuid": "48b71c9e-f5a7-4000-8000-7023d41b4385",
+      "name": "DECIDED",
+      "fact": "The verdict approved 'Northwind Pilot hosted plan costs $15 per seat'",
+      "source_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "target_node_id": "vault_example_vault:Finding:Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "valid_at": "2026-11-06T12:10:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T12:10:00Z",
+      "episodes": ["efe96a45-d52c-4000-8000-0a994460bce8"]
+    },
+    {
+      "uuid": "16456eb5-9e5e-4000-8000-c8f217ce770a",
+      "name": "PREDICTED",
+      "fact": "vault-reviewer predicted approve for 'Northwind Pilot hosted plan costs $15 per seat'",
+      "source_node_id": "vault_example_vault:Agent:vault-reviewer",
+      "target_node_id": "vault_example_vault:Verdict:Verdict-(human-approved):-Northwind-Pilot-hosted-plan-costs-$15-per-seat",
+      "valid_at": "2026-11-06T01:51:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T01:51:00Z",
+      "episodes": ["efe96a45-d52c-4000-8000-0a994460bce8"]
+    },
+    {
+      "uuid": "1bb5b7be-5266-4000-8000-1e9d8d4f0f68",
+      "name": "ABOUT",
+      "fact": "The finding 'OpenPatch hosted plan now costs $14 per seat' is about OpenPatch",
+      "source_node_id": "vault_example_vault:Finding:OpenPatch-hosted-plan-now-costs-$14-per-seat",
+      "target_node_id": "vault_example_vault:Product:OpenPatch",
+      "valid_at": "2026-11-06T01:48:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T01:48:00Z",
+      "episodes": ["f1b97393-a0d1-4000-8000-9cdf1fe305fe"]
+    },
+    {
+      "uuid": "4c1e3a67-b652-4000-8000-f6e0523cfd4f",
+      "name": "ABOUT",
+      "fact": "The insight that pricing pages change without notice is about the pricing beat",
+      "source_node_id": "vault_example_vault:Insight:pricing",
+      "target_node_id": "vault_example_vault:Beat:Beat:-pricing",
+      "valid_at": "2026-11-05T01:54:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:54:00Z",
+      "episodes": ["a4e11b70-3e3a-4000-8000-dfdc5c4a6535"]
+    },
+    {
+      "uuid": "3f0684c9-7466-4000-8000-c467cff7c28f",
+      "name": "ABOUT",
+      "fact": "The insight that pricing pages hide seat minimums is about the pricing beat",
+      "source_node_id": "vault_example_vault:Insight:pricing",
+      "target_node_id": "vault_example_vault:Beat:Beat:-pricing",
+      "valid_at": "2026-11-05T01:55:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:55:00Z",
+      "episodes": ["a4e11b70-3e3a-4000-8000-dfdc5c4a6535"]
+    },
+    {
+      "uuid": "9bf7bf95-4f3e-4000-8000-a4606367f4f2",
+      "name": "REFINED_FROM",
+      "fact": "The procedure to re-check pricing pages monthly is refined from the insight that pricing pages change without notice",
+      "source_node_id": "vault_example_vault:Procedure:vault-scout:-re-check-pricing-pages-monthly",
+      "target_node_id": "vault_example_vault:Insight:pricing",
+      "valid_at": "2026-11-05T01:56:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-05T01:56:00Z",
+      "episodes": ["a4e11b70-3e3a-4000-8000-dfdc5c4a6535"]
+    },
+    {
+      "uuid": "37ac2339-974f-4000-8000-66c4ce65ad81",
+      "name": "SUMMARISES",
+      "fact": "The week 45 brief summarises the Acme Coder release",
+      "source_node_id": "vault_example_vault:Agent:vault-brief",
+      "target_node_id": "vault_example_vault:Finding:Acme-Coder-2.0-is-generally-available",
+      "valid_at": "2026-11-06T12:20:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T12:20:00Z",
+      "episodes": ["70eded83-5494-4000-8000-4fd011615007"]
+    },
+    {
+      "uuid": "88f37905-e43c-4000-8000-a7528a6dcd81",
+      "name": "WORKS_WITH",
+      "fact": "vault-brief reads the reviewer's calibration from vault-reviewer",
+      "source_node_id": "vault_example_vault:Agent:vault-brief",
+      "target_node_id": "vault_example_vault:Agent:vault-reviewer",
+      "valid_at": "2026-11-06T12:21:00Z",
+      "invalid_at": null,
+      "expired_at": null,
+      "created_at": "2026-11-06T12:21:00Z",
+      "episodes": ["70eded83-5494-4000-8000-4fd011615007"]
+    }
+  ]
+}

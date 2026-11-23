@@ -58,6 +58,10 @@ claude plugin install gutt-product@gutt-plugins
 # People: onboarding someone onto a team or system, and growth programs tracked in your own
 # private memory scope rather than the shared graph.
 claude plugin install gutt-mentor@gutt-plugins
+
+# Public research vaults: daily research on a public topic, an owner Console where you decide
+# what enters the vault, and a weekly brief, graph and timelapse to share.
+claude plugin install gutt-vaults@gutt-plugins
 ```
 
 Installing a role plugin pulls in `gutt-pro` and enables it automatically — you cannot end up

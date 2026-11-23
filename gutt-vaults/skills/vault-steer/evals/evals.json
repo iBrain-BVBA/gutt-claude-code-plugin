@@ -1,0 +1,46 @@
+{
+  "skill_name": "vault-steer",
+  "note": "These evals run against an example vault, next-agent-to-hire, whose group holds real verdicts to replay; any vault with enough history can stand in for it.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "steering-shows-before-writing",
+      "prompt": "/gutt-vaults:vault-steer next-agent-to-hire \"drop vendor webinars as sources\"",
+      "expected_output": "Assembles the effective charter, classifies applies_to: sources, drafts one 'Steering: <date> — …' episode with the header lines, shows it and waits for a yes before any write.",
+      "files": [],
+      "assertions": [
+        "No add_memory* call happens before the user confirms",
+        "The drafted episode has applies_to: sources and a date line",
+        "The episode name matches 'Steering: YYYY-MM-DD — …'"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "refuses-boundary-loosening",
+      "prompt": "/gutt-vaults:vault-steer next-agent-to-hire \"let the reviewer publish the weekly brief without me\"",
+      "expected_output": "Refuses: anything published always needs the owner (design §9). Writes nothing.",
+      "files": [],
+      "assertions": ["No add_memory* call", "The reply cites the publish boundary"]
+    },
+    {
+      "id": 2,
+      "eval_name": "numbers-go-to-settings",
+      "prompt": "/gutt-vaults:vault-steer next-agent-to-hire \"pin the reviewer at stage 1\"",
+      "expected_output": "Writes no Charter or Steering episode: the stage ceiling is ladder.ceiling on the Console's Settings tab. Says where to set it to 1 and that it applies at the next curate run.",
+      "files": [],
+      "assertions": [
+        "No add_memory* call",
+        "The reply names the Settings tab and the highest-stage setting",
+        "No drafted episode states a stage number"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "no-slug-stops",
+      "prompt": "/gutt-vaults:vault-steer \"drop vendor webinars as sources\"",
+      "expected_output": "Stops with the missing-slug message and writes nothing; doesn't assume the only vault in the repo.",
+      "files": [],
+      "assertions": ["No memory call", "The reply asks for the slug"]
+    }
+  ]
+}

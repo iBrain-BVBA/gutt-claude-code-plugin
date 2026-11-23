@@ -1,0 +1,44 @@
+{
+  "skill_name": "vault-pages",
+  "note": "These evals use the invented Example Vault in fixtures/raw-export.json and the page fixtures under the plugin's templates; no memory or Artifact call is needed.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "export-from-saved-results",
+      "prompt": "/gutt-vaults:vault-pages example-vault export, with the vault group's tool results already saved: use fixtures/raw-export.json as the export and don't call memory.",
+      "expected_output": "Runs the script's export on the saved file, prints the counts line (18 episodes, 29 nodes, 50 facts, 1 superseded, 6 agents, 5 days) and names graph.json and timeline.json.",
+      "files": ["fixtures/raw-export.json"],
+      "assertions": [
+        "Runs scripts/vault-pages.cjs export with --in pointing at the saved export and --out at a working folder, never the plugin folder",
+        "Does not hand-edit, reshape or summarise the export before the script reads it",
+        "Reports the script's counts line, including the 3 endpoints settled by name",
+        "No add_memory*, register_agent or Artifact publish call"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "publish-update-reads-first",
+      "prompt": "/gutt-vaults:vault-pages example-vault publish graph, where meta/vault.graph_url is https://claude.ai/artifact/example-graph and graph.json is ready in the working folder.",
+      "expected_output": "Prepares the Graph page with the title 'Example Vault Graph', reads the existing artifact before publishing, then publishes to that url with graph.json as a supporting file.",
+      "files": [],
+      "assertions": [
+        "Runs prepare graph with --title \"Example Vault Graph\" and the graph.json as --data",
+        "Calls Artifact read on the graph_url before any publish to it",
+        "Publishes with url set to the graph_url, file_path at the prepared index.html and files mapping graph.json",
+        "Passes no icon on the update and never passes force"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "contract-failure-stops-the-page",
+      "prompt": "/gutt-vaults:vault-pages example-vault publish brief with a brief.json whose first change has no sources.",
+      "expected_output": "prepare refuses the file and lists 'changes[0]: at least one source'; the skill reports the problem and publishes nothing for the Brief page.",
+      "files": [],
+      "assertions": [
+        "Reports the contract problem the script printed",
+        "Does not add a source, drop the change or otherwise edit brief.json to make it pass",
+        "No Artifact publish call for the Brief page"
+      ]
+    }
+  ]
+}

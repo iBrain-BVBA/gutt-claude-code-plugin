@@ -306,6 +306,52 @@ function checkManifest(dir, manifest) {
  */
 const SENTINEL_NAMES = new Set(["AGENT_NAME", "SKILL_NAME"]);
 
+/**
+ * A public research vault keeps everything in its own group, `vault_<slug>`: one vault, one
+ * group, and each of its agents is a single named identity there. That group already is the
+ * scope a `--<scope>` suffix would add, so registrations into it use the bare agent name
+ * (`vault-librarian`), and scoped recall passes that same bare name. The exemption holds
+ * only when every register_agent call in the file targets the vault group.
+ */
+const VAULT_GROUP_ARG = /group_id\s*=\s*["']vault_<slug>["']/;
+const VAULT_AGENT_NAME = /^vault-[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** The identity rules for a workflow that writes into one vault's own group. */
+function checkVaultIdentity({ f, text, identity, calls }) {
+  if (!VAULT_AGENT_NAME.test(identity)) {
+    err(
+      f,
+      `a vault workflow's memory identity must be a vault-* name (got ${JSON.stringify(identity)})`
+    );
+  }
+  let registersOwnIdentity = false;
+  for (const call of calls) {
+    const named = call.match(/name\s*=\s*["']([^"']+)["']/);
+    if (!named) {
+      err(f, "a register_agent(...) call has no literal name= argument to check");
+    } else if (!VAULT_AGENT_NAME.test(named[1])) {
+      err(f, `registers "${named[1]}" in a vault group — vault identities are bare vault-* names`);
+    } else if (named[1] === identity) {
+      registersOwnIdentity = true;
+    }
+  }
+  if (!registersOwnIdentity) {
+    err(f, `never registers its declared identity "${identity}" in the vault group`);
+  }
+  const ids = [...text.matchAll(/agent_id\s*=\s*["']([^"']*)["']/g)].map((m) => m[1]);
+  if (!ids.includes(identity)) {
+    err(f, `no call passes agent_id="${identity}" — scoped recall of its own identity is missing`);
+  }
+  for (const id of new Set(ids)) {
+    if (!id.startsWith("<") && !VAULT_AGENT_NAME.test(id)) {
+      err(
+        f,
+        `agent_id="${id}" is not a vault identity — a vault workflow reads only vault-* scopes`
+      );
+    }
+  }
+}
+
 /** Validate the stable provenance contract shared by agents and named skill workflows. */
 function checkMemoryIdentity({ f, text, identity, heading }) {
   if (!/^([a-z0-9]+)(-[a-z0-9]+)*$/.test(identity)) {
@@ -324,6 +370,16 @@ function checkMemoryIdentity({ f, text, identity, heading }) {
   const calls = [...text.matchAll(/register_agent\s*\([\s\S]*?\)/g)].map((m) => m[0]);
   if (!calls.length) {
     err(f, "declares a memory identity but never calls register_agent(...)");
+  }
+  if (!/without\s+`?agent_id`?|[Gg]roup-wide/.test(text)) {
+    err(f, "identity block never states the group-wide recall pass, which is never skipped");
+  }
+  if (!text.includes("agent-memory-protocol")) {
+    err(f, "named memory identity does not reference the agent-memory-protocol owner");
+  }
+  if (calls.length && calls.every((c) => VAULT_GROUP_ARG.test(c))) {
+    checkVaultIdentity({ f, text, identity, calls });
+    return;
   }
   let registersOwnIdentity = false;
   for (const call of calls) {
@@ -377,12 +433,6 @@ function checkMemoryIdentity({ f, text, identity, heading }) {
           `("${identity}--<scope>")`
       );
     }
-  }
-  if (!/without\s+`?agent_id`?|[Gg]roup-wide/.test(text)) {
-    err(f, "identity block never states the group-wide recall pass, which is never skipped");
-  }
-  if (!text.includes("agent-memory-protocol")) {
-    err(f, "named memory identity does not reference the agent-memory-protocol owner");
   }
 }
 
@@ -444,7 +494,11 @@ function checkAgent(file, requireShape = true) {
   }
 
   // The server key varies per install, so a prefixed tool name is wrong everywhere but one.
-  const prefixed = text.match(/mcp__[a-zA-Z0-9_-]+__/);
+  // The frontmatter `tools:` allowlist is the exception: it can only name full tool names, so
+  // an agent that needs memory tools lists each one under every known prefix there. The
+  // prompt itself still names none.
+  const scanned = text.replace(fm.lines.find((l) => /^tools\s*:/.test(l)) || "\u0000", "");
+  const prefixed = scanned.match(/mcp__[a-zA-Z0-9_-]+__/);
   if (prefixed) {
     err(f, `hardcodes the MCP server prefix "${prefixed[0]}" — the server key varies per install`);
   }

@@ -490,6 +490,103 @@ describe("the identity gate", () => {
   });
 });
 
+/**
+ * Turn the scaffolded skill into a vault workflow: one identity, registered by its bare name
+ * in the vault's own group, and recalled under that same name.
+ */
+function toVaultSkill(target, identity = "vault-sample") {
+  const file = skillFile(target);
+  let text = fs.readFileSync(file, "utf8");
+  assert.ok(
+    text.includes("group_id=<the resolved org group>"),
+    "fixture is stale — no org group_id"
+  );
+  text = text.split(`${SKILL}--<scope>`).join(identity);
+  text = text.split("group_id=<the resolved org group>").join('group_id="vault_<slug>"');
+  text = text.replace(`  memory-identity: ${SKILL}`, `  memory-identity: ${identity}`);
+  fs.writeFileSync(file, text);
+}
+
+describe("the identity gate, for a vault's own group", () => {
+  it("accepts a bare vault-* identity registered in vault_<slug>", (t) => {
+    const { dir, out } = withMutation((target) => toVaultSkill(target));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 0, `expected a pass, got:\n${out.stdout}${out.stderr}`);
+  });
+
+  it("catches a vault registration whose name is not a vault-* name", (t) => {
+    const { dir, out } = withMutation((target) => {
+      toVaultSkill(target);
+      patch(skillFile(target), 'name="vault-sample"', 'name="sample-librarian"');
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /vault identities are bare vault-\* names/);
+    assert.match(
+      out.stderr,
+      /never registers its declared identity "vault-sample" in the vault group/
+    );
+  });
+
+  it("catches a vault workflow whose declared identity is not a vault-* name", (t) => {
+    const { dir, out } = withMutation((target) => {
+      toVaultSkill(target);
+      patch(skillFile(target), "  memory-identity: vault-sample", "  memory-identity: sample");
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /a vault workflow's memory identity must be a vault-\* name/);
+  });
+
+  it("catches a vault workflow reading a scope outside the vault", (t) => {
+    const { dir, out } = withMutation((target) => {
+      toVaultSkill(target);
+      const file = skillFile(target);
+      const text = fs.readFileSync(file, "utf8");
+      fs.writeFileSync(file, text.replace('agent_id="vault-sample"', 'agent_id="org-helper"'));
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /agent_id="org-helper" is not a vault identity/);
+  });
+
+  it("applies the org rules when one registration leaves the vault group", (t) => {
+    const { dir, out } = withMutation((target) => {
+      toVaultSkill(target);
+      const file = skillFile(target);
+      fs.appendFileSync(
+        file,
+        '\n```\nregister_agent(name="vault-other", group_id=<the resolved org group>)\n```\n'
+      );
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /must carry a `--<scope>` suffix/);
+  });
+
+  it("lets an agent's tools allowlist name prefixed tools, but not its prompt", (t) => {
+    const tool = "mcp__plugin_gutt-pro_gutt-mcp-remote__search_memory_facts";
+    const listed = withMutation((target) =>
+      patch(agentFile(target), "model: sonnet\n", `model: sonnet\ntools: Read, ${tool}\n`)
+    );
+    t.after(() => fs.rmSync(listed.dir, { recursive: true, force: true }));
+    assert.doesNotMatch(listed.out.stderr, /hardcodes the MCP server prefix/);
+
+    const prompted = withMutation((target) => {
+      patch(agentFile(target), "model: sonnet\n", `model: sonnet\ntools: Read, ${tool}\n`);
+      fs.appendFileSync(agentFile(target), `\nCall ${tool} first.\n`);
+    });
+    t.after(() => fs.rmSync(prompted.dir, { recursive: true, force: true }));
+    assert.equal(prompted.out.status, 1);
+    assert.match(prompted.out.stderr, /hardcodes the MCP server prefix/);
+  });
+});
+
 describe("the frontmatter gate", () => {
   it("catches the unquoted colon-space that silently drops a whole frontmatter block", (t) => {
     const { dir, out } = withMutation((target) => {

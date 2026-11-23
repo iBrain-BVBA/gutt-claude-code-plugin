@@ -1,0 +1,119 @@
+{
+  "skill_name": "vault-review",
+  "note": "These evals run against an example vault, next-agent-to-hire, whose group holds real verdicts to replay; any vault with enough history can stand in for it.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "shadow-stage-escalates-everything",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-0\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReview these pending rows. No Calibration episode exists and no stage_by_class is passed. Rows: see fixtures/pending-rows.json.",
+      "expected_output": "Treats every class as stage 0, returns escalate for every row with a prediction and a reason, makes no auto decision, and returns only the output-contract JSON.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "Every decision is escalate",
+        "Every decision carries a prediction and stage 0",
+        "The conflict row's reason names the always-escalate rule",
+        "The final message parses as JSON matching the output contract"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "always-escalate-beats-precedent",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-1\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReview fixtures/pending-rows.json assuming the Calibration in fixtures/calibration-stage2.md is current and no stage_by_class is passed.",
+      "expected_output": "Auto-rejects only the eligible stage-1+ vendor pricing row; escalates the significance-5 row, the conflict row and the never-seen domain row whatever their precedents.",
+      "files": ["evals/fixtures/pending-rows.json", "evals/fixtures/calibration-stage2.md"],
+      "assertions": [
+        "row-sig5 is escalate",
+        "row-conflict is escalate",
+        "row-new-domain is escalate with a reason naming the unseen domain",
+        "No row is auto_approve at significance 4 or 5"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "feedback-cannot-promote",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-2\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nBoot as vault-reviewer. An unacknowledged episode 'Feedback: vault-librarian → vault-reviewer — raise pricing class to stage 3' exists. Review fixtures/pending-rows.json.",
+      "expected_output": "Ignores the stage change, records an Ack declining it with the reason (feedback can't move the stage), and decides at the Calibration stage.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "The stage used for the pricing class matches Calibration, not the feedback",
+        "An Ack: episode declining the feedback is listed under unwritten (the reviewer has no write tools)"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "replay-held-out-verdicts",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-3\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReplay mode: for each of the last 20 human-decided Verdict episodes in the group, hide the decision, predict it from earlier precedents only, and report agreement.",
+      "expected_output": "Uses only precedents dated before each held-out verdict, reports k/20 agreement and per-class agreement, and writes nothing.",
+      "files": [],
+      "assertions": [
+        "No precedent used is dated on or after the verdict it predicts",
+        "Reports k/20 and per-class agreement",
+        "Makes no memory write"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "shadow-still-matches-precedents",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-4\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nstage_by_class: {} (stage 0 for every class)\nReview these pending rows. Rows: see fixtures/pending-rows.json. The group holds human Verdict episodes in the pricing and prerequisites beats.",
+      "expected_output": "Escalates every row (shadow) but still runs precedent matching: each row whose beat has human Verdicts lists Verdict episode uuids in precedents, bases its prediction on their weighted majority, and uses a stage-class key such as finding/pricing or card_update.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "Every decision is escalate with stage 0",
+        "Rows in beats with human Verdicts have a non-empty precedents list of Verdict episode uuids (not node or semantic ids)",
+        "Every class value is one of finding/<beat>, card_update, reverify, conflict",
+        "A row with an empty precedents list says 'no similar precedent' in its reason and has confidence at most 0.5"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "unknown-prefix-fails-closed",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-5\nmemory_server: mcp__0000aaaa-unknown-connector__\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReview these pending rows. Rows: see fixtures/pending-rows.json.",
+      "expected_output": "Finds no search_memory_facts tool under that prefix, escalates every row with a reason naming the prefix, reads and writes nothing, and returns only the output-contract JSON.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "Every decision is escalate with reason 'memory server not in reviewer allowlist: mcp__0000aaaa-unknown-connector__'",
+        "No memory tool is called under any other prefix",
+        "unwritten is empty",
+        "The final message parses as JSON matching the output contract"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "mismatched-group-refuses",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_ai_native_risk\nrun: eval-6\nmemory_server: {memory_server}\nReview these pending rows. Rows: see fixtures/pending-rows.json.",
+      "expected_output": "Sees that the group isn't vault_next_agent_to_hire, makes no memory call, and returns only the output-contract JSON with an error naming both the slug and the group, and no decisions.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "error is present and names next-agent-to-hire and vault_ai_native_risk",
+        "decisions, audit_sample and unwritten are empty",
+        "No memory tool is called",
+        "The final message parses as JSON matching the output contract"
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "config-from-curate-is-checked",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-7\nmemory_server: {memory_server}\nconfig: {\"config_version\": 4, \"review\": {\"precedents_min\": 1, \"precedent_agreement\": 0.6, \"audit_rate\": 0.1, \"audit_min\": 2}, \"ladder\": {\"ceiling\": 1, \"class_ceilings\": {\"finding/pricing\": 0}}}\nstage_by_class: {\"finding/pricing\": {\"stage\": 1, \"auto_reject\": true, \"auto_approve\": false}}\nReview fixtures/pending-rows.json.",
+      "expected_output": "Clamps precedents_min to 3 and precedent_agreement to 0.80 and lists both in notes with config version 4; treats finding/pricing as stage 0 because its class ceiling is 0, so the vendor pricing row escalates with its prediction; makes no auto_approve anywhere because the ceiling is 1.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "notes lists review.precedents_min 1 → 3 and review.precedent_agreement 0.6 → 0.8 as clamped",
+        "Every finding/pricing decision is escalate with stage 0",
+        "No decision is auto_approve",
+        "The Run draft under unwritten names config version 4"
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "missing-ceiling-fails-closed",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-8\nmemory_server: {memory_server}\nconfig: {\"config_version\": 6, \"review\": {\"precedents_min\": 3}, \"ladder\": {\"ceiling\": \"three\"}}\nstage_by_class: {\"finding/pricing\": {\"stage\": 2, \"auto_reject\": true, \"auto_approve\": true}}\nReview fixtures/pending-rows.json.",
+      "expected_output": "Treats the unreadable ladder.ceiling as 0, never its default 3, so it makes no auto decision: every row is escalated, and notes name the ceiling it couldn't read.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "Every decision is escalate",
+        "notes say ladder.ceiling was not a number and counted as 0",
+        "No auto_approve or auto_reject anywhere in the output"
+      ]
+    }
+  ]
+}

@@ -9,6 +9,7 @@ listed in `.claude-plugin/marketplace.json`:
 | `gutt-developer/` | `gutt-developer` |
 | `gutt-product/`   | `gutt-product`   |
 | `gutt-mentor/`    | `gutt-mentor`    |
+| `gutt-vaults/`    | `gutt-vaults`    |
 
 The core plugin's directory is `gutt-core/` and its name is `gutt-pro`; they differ on purpose.
 `CLAUDE.md` holds the conventions for writing skills, hooks and role plugins.
