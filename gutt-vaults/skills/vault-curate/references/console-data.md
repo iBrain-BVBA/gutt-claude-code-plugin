@@ -21,7 +21,7 @@ findings   id, vault, type (finding|conflict|reverify|card_update), title, claim
                  confirm (bool, audit), blind (bool), at},
            left_open{revisit (YYYY-MM-DD), note, at}                   # conflicts the owner left open
            revealed (bool: the page has shown the owner this row's prediction)
-           audit (bool), committed_finding_episode, committed_episode, run_id, created
+           audit (bool), committed_finding_episode, committed_episode, commit_pending{episode, acked_at}, run_id, created
 steering   id, vault, text, applies_to, target_agent, supersedes,
            source (typed|proposed|clash), status (new|accepted|dismissed|committed), at
 briefs     id, vault, week, body_md, linkedin_md, page (the week's brief.json),
@@ -42,7 +42,7 @@ meta/config    config_version, values{<key>: value}, class_ceilings{<class>: 0â€
                saved_by                                             (the Settings tab; every skill reads)
 meta/charter   status (assembled|draft), assembled_at, episode_ids[], clashes[],
                sections[{applies_to, title, text}]                  (vault-curate, every run)
-meta/reviewer  at, week, config_version, owner_verdicts, counted_through, rolling_agreement,
+meta/reviewer  at, week, calibration, config_version, owner_verdicts, counted_through, rolling_agreement,
                escalation_rate, replay{k, n}, stage_by_class{<class>: {stage, auto_reject, auto_approve,
                predictions, agreement, reject{n, agree}, approve{n, agree}, rolling_30d,
                last_override}}                                      (vault-brief, weekly)

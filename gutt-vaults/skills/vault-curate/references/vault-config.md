@@ -130,11 +130,13 @@ next curate run. vault-curate re-checks each class at boot:
 
 1. Take the latest per-class numbers from `meta/reviewer` (`stage_by_class`: reject and
    approve predictions with their adjusted accuracy, rolling 30-day agreement, last override)
-   and the latest replay (`k` agreeing of `n` replayed); if `meta/reviewer` is missing, or its
-   `week` (`YYYY-Www`) is before the ISO week of the date in the latest
-   `Calibration: <YYYY-MM-DD>` episode's name (the brief's Console write failed), from that
-   episode, and note the mismatch. Compare weeks, never `at` with an episode's creation time:
-   the brief writes the episode before `meta/reviewer`, and ingestion lags. No Calibration yet: every class is stage 0. A
+   and the latest replay (`k` agreeing of `n` replayed); if `meta/reviewer` is missing, has no
+   `calibration`, or its `calibration` isn't the name of the latest `Calibration:` episode
+   (newest by the date and time in its name; the brief's Console write failed, a rerun
+   included), from that episode, and note the mismatch. Compare names, never `at` with an
+   episode's creation time: the brief writes the episode before `meta/reviewer`, and
+   ingestion lags. If the latest Calibration episode can't be read either, every class is
+   stage 0 for the run. No Calibration yet: every class is stage 0. A
    `meta/reviewer` read that fails: every class is stage 0 for the run, listed in the run
    row's errors. A source without per-direction counts (a Calibration written before them):
    keep the Calibration's stage and permissions, capped by step 4, and note `re-check skipped:

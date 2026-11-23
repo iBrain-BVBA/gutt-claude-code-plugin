@@ -107,10 +107,12 @@ on|off)`, and the class's rolling 30-day adjusted agreement, using this run's `l
    `review` settings. Run the vault-review replay eval over the last `ladder.replay_size`
    human verdicts if that many exist, filling `{memory_server}` with this run's discovered
    prefix (`../vault-review/SKILL.md` §Evals; replay not run → no replay score this week).
-   Write `Calibration: <date>` tagged vault-reviewer (with `config_version`, and per class the
+   Write `Calibration: <date>` tagged vault-reviewer (`Calibration: <date> <HH:MM>` when that
+   date's Calibration already exists, so a rerun has its own name) (with `config_version`, and per class the
    per-direction counts and the rolling 30-day adjusted agreement, so vault-curate can
    re-check them). Then write the same numbers to the Console in one batch: `meta/reviewer`
-   (the latest week, with `week`, `owner_verdicts` and `counted_through`) and
+   (the latest week, with `week`, `calibration` = the exact name of the Calibration episode
+   just written, `owner_verdicts` and `counted_through`) and
    `calibrations/<YYYY-Www>` (one document per week, replaced if the brief reruns that week),
    shaped as in `../vault-curate/references/console-data.md`. The per-row fields (`human.at`,
    `human.blind`) come from one inline `query` of Console `findings` with `committed_episode`

@@ -48,8 +48,8 @@ Auto-approve stays capped at significance 1–3 below stage 3, and the audit sam
   (`vault-config.md` §Promotion re-check), so a threshold changed in Settings applies at the
   next curate run, raising or lowering a class, without waiting for Friday. `auto_reject` is
   re-checked from the reject counts even before a qualifying replay exists; only
-  `auto_approve` needs the replay. A `meta/reviewer` whose `week` is before the latest
-  Calibration's week yields to that Calibration; a `meta/reviewer` read that fails holds every class at stage 0 for the
+  `auto_approve` needs the replay. A `meta/reviewer` whose `calibration` isn't the
+  latest Calibration episode's name yields to that Calibration; a `meta/reviewer` read that fails holds every class at stage 0 for the
   run; a Calibration without per-direction counts keeps its own stage (never read as zero).
   New evidence still waits for the Calibration.
 - **The reviewer** reads the stage vault-curate passes; it never sets it, and may only lower a

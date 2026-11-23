@@ -60,8 +60,14 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
    right after the row's last episode, before the next row. A mark that fails after its
    episode was written: list the row as "written but not marked" under errors; the next run
    searches the vault group for that episode by name before writing it again. An episode
-   acknowledged but not seen (`memory-tools.md` step 6) is handled the same way: mark nothing
-   for it, list its row as "written but not marked", and stop the batch.
+   acknowledged but not seen (`memory-tools.md` step 6) is never resent: write
+   `commit_pending: {episode: <name>, acked_at: <ISO time>}` on its row, mark nothing else,
+   list it as "acknowledged, not yet seen", and stop the batch. A later run reconciles a row
+   with `commit_pending` before anything else: search the group for that name; found → set
+   the row's episode fields and clear `commit_pending`; not found and acknowledged less than
+   24 hours ago → skip the row this run; not found after 24 hours → list it for the owner as
+   "acknowledged but never stored: <name>" and still don't resend. Only the owner clearing
+   `commit_pending` on the Console allows a new write.
 7. **Config only from the Console's `config_changes` rows**, one `Config:` episode per saved
    version, so a Calibration can explain a stage that moved because a threshold did. Never
    from anything else, and never a change to the settings themselves.
