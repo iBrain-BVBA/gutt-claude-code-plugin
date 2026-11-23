@@ -46,8 +46,8 @@ The role plugins depend on `gutt-pro` and install it with them.
    terminal the list is `/mcp`: pick `gutt-mcp-remote` and choose Authenticate. Then run
    `/gutt-pro:onboard`.
 
-The connector points at the gutt shared stage server. The first time you authorise it, that
-creates your login there; there is nothing to sign up for first.
+The connector points at the gutt shared stage server. The first time you authorise it, the gutt
+login page opens: click **Sign up** there to create your login.
 
 Then add the role plugins that fit your work:
 
@@ -63,10 +63,19 @@ including a stale catalogue and the admin-managed rollout for teams.
 
 ### Desktop app, Cowork and cloud routines
 
-- **Desktop Code tab and Cowork:** add the marketplace `iBrain-BVBA/gutt-claude-code-plugin`
-  and install `gutt-pro` from the app's plugin settings, then click Authorise on
-  `gutt-mcp-remote` in the app's connector list.
-- **Cloud routines** load the plugins the repository declares in `.claude/settings.json`:
+- **Claude app (claude.ai, the desktop app and Cowork):** open **Customize** → **Plugins** →
+  **+ Add** → **Add marketplace**, pick `iBrain-BVBA/gutt-claude-code-plugin` and click
+  **Sync**, then add `gutt-pro`. Installing the plugin does not add its connector: open
+  gutt-pro under **Plugins** → **Yours**, go to its **Connectors** tab, and add
+  `gutt-mcp-remote` there. That opens the gutt login page.
+- **Desktop Code tab:** same as the terminal; authorise `gutt-mcp-remote` from `/mcp`.
+- **Cloud routines** load only the plugins installed on the routine owner's claude.ai account,
+  under **Customize** → **Plugins**. They ignore the repository's `.claude/settings.json`, so
+  `extraKnownMarketplaces` and `enabledPlugins` there don't reach a routine. Install `gutt-pro`
+  and every role plugin a routine needs on that account, and give the routine the gutt
+  connector. `/gutt-vaults:vault-routines` does this for a vault.
+
+  A repository can still declare the plugins for people who open it in Claude Code:
 
   ```json
   {
@@ -79,8 +88,8 @@ including a stale catalogue and the admin-managed rollout for teams.
   }
   ```
 
-  Add each role plugin the routine needs to `enabledPlugins` the same way; a vault routine
-  needs `"gutt-vaults@gutt-plugins": true`.
+  Add each role plugin to `enabledPlugins` the same way, for example
+  `"gutt-vaults@gutt-plugins": true`.
 
 In Cowork and cloud routines, the `/gutt-pro:` settings last one session, and the status bar is
 not shown.

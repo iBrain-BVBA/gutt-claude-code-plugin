@@ -4,6 +4,14 @@
 
 ### Added
 
+- **`vault-routines` skill: set up a vault's scheduled routines.**
+  `/gutt-vaults:vault-routines <slug>` creates or updates the four routines (curate, commit,
+  brief, freshness) from prompt templates in its `references/`, attaches only the gutt memory
+  connector, converts the owner's times to the routines' UTC cron, records the commit times on
+  the Console, and proves the setup with a disabled read-only preflight routine that checks
+  the vault skills, the memory tools and the Console from the cloud. It also lists, retimes,
+  pauses, resumes and runs them, always on the owner's yes.
+
 - **New `gutt-vaults` plugin (0.1.0): public research vaults.** Six skills (`vault-steer`,
   `vault-curate`, `vault-review`, `vault-commit`, `vault-brief`, `vault-pages`) and two agents
   (`vault-scout`, `vault-reviewer`) run a vault in its own memory group, `vault_<slug>`: daily
@@ -62,6 +70,15 @@
 
 ### Fixed
 
+- Cloud routines load only the plugins installed on the routine owner's claude.ai account,
+  never the repository's `.claude/settings.json`. The root and gutt-vaults READMEs and
+  `vault-curate/references/routines.md` said otherwise.
+- The READMEs now describe the Claude app's current flow: Customize → Plugins → + Add → Add
+  marketplace, then add `gutt-mcp-remote` from the plugin's Connectors tab, since installing
+  the plugin doesn't add its connector; new users click **Sign up** on the gutt login page.
+- claude.ai's Manage marketplaces flagged gutt-vaults "with warnings" because the
+  `vault-curate`, `vault-brief` and `vault-steer` descriptions held `<slug>`-style
+  placeholders. They use braces now, and a test keeps angle brackets out of descriptions.
 - `gutt-core/mcp.json` was never loaded: Claude Code loads plugin MCP servers from `.mcp.json`
   at the plugin root or from `mcpServers` in plugin.json, not from `mcp.json`, and skips a
   remote entry without `type`. Replaced by `gutt-core/.mcp.json`.

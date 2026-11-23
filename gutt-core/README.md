@@ -16,10 +16,14 @@ The plugin brings its own MCP server, `gutt-mcp-remote`, pointed at the gutt sha
 server by default. After installing, open the connector list and click **Authorise** on
 `gutt-mcp-remote`:
 
-- In the terminal: type `/mcp`, pick `gutt-mcp-remote`, choose Authenticate.
-- In the desktop app's Code tab and in Cowork: the connector list in the app.
+- In the terminal and the desktop app's Code tab: type `/mcp`, pick `gutt-mcp-remote`, choose
+  Authenticate.
+- In the Claude app (claude.ai, the desktop app's chat and Cowork): open **Customize** →
+  **Plugins** → **Yours** → gutt-pro, go to its **Connectors** tab and add `gutt-mcp-remote`.
+  Installing the plugin there doesn't add the connector by itself.
 
-The first time, that sign-in creates your personal login on the stage server.
+The first time, the gutt login page opens: click **Sign up** to create your personal login on
+the stage server.
 
 To use your organization's own gutt instead, run `/gutt-pro:setup` and give it your endpoint,
 or set it at install time:

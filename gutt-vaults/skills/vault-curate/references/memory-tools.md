@@ -128,6 +128,7 @@ covers the prefixes below.
 - `mcp__gutt-pro-memory__`
 - `mcp__claude_ai_gutt-pro-memory-stage__`
 - `mcp__gutt-pro-memory-stage__`
+
 <!-- known-prefixes:end -->
 
 vault-curate passes the discovered `memory_server` in the reviewer's prompt, and checks it

@@ -37,7 +37,8 @@ config_changes  id (v<n>), version, at, by (viewer id), changes[{key, old, new}]
                                                                     (the Settings tab; vault-commit)
 meta/vault     name, slug, group_id, owner, question, beats[], brief_url, graph_url,
                timelapse_url, timezone, commit_times[], companion_groups_read_only[],
-               write_tool_hint                     (seeded once; vault-steer and vault-pages update)
+               write_tool_hint             (seeded once; vault-steer, vault-pages, vault-commit
+                                                                    and vault-routines update)
 meta/config    config_version, values{<key>: value}, class_ceilings{<class>: 0–3}, saved_at,
                saved_by                                             (the Settings tab; every skill reads)
 meta/charter   status (assembled|draft), assembled_at, episode_ids[], clashes[],
