@@ -3,13 +3,13 @@
  * SessionStart (async) — MCP connectivity probe and cache reset (GP-863, S3.2).
  *
  * Split out of session-start.cjs to keep the synchronous lifecycle path inside
- * the ≤50ms budget (R25): diagnosing the MCP config walks up to five settings
- * files plus the plugin cache directory, which is by far the most expensive
- * thing SessionStart used to do. hooks.json runs this with `async: true`, so it
+ * the ≤50ms budget (R25): diagnosing the MCP config reads every source in
+ * configSources() (more than once) plus the plugin's .mcp.json and manifest,
+ * which is by far the most expensive thing SessionStart used to do. hooks.json runs this with `async: true`, so it
  * never delays the session.
  *
  * Sole writer of the *configuration* fields of `sessions/<id>.json` — `mcpConfigured`,
- * `mcpUrl`, `mcpError` — which nothing else touches, and which the statusline only
+ * `mcpUrl`, `mcpError`, `mcpWarning` — which nothing else touches, and which the statusline only
  * reads. `mcpToolsAvailable` is shared with `user-prompt-submit.cjs`, the steady-state
  * owner; see the write below for why this hook contributes to it at all and why it
  * abstains rather than writing "unknown".
@@ -91,6 +91,9 @@ process.stdin.on("end", () => {
       // code reader it does not have is what let the flattened `Boolean(...)` above
       // look defensible for as long as it did.
       state.mcpError = diag.error || null;
+      // Two gutt endpoints live at once (a leftover `claude mcp add` next to the plugin's
+      // server), or a config file that could not be read. Same audience as mcpError.
+      state.mcpWarning = diag.warning || null;
       state.connectionCheckedAt = new Date().toISOString();
       return state;
     })
@@ -203,6 +206,9 @@ process.stdin.on("end", () => {
     console.log(
       "💡 gutt memory not configured. Run /gutt-pro:setup or /gutt-pro:onboard to get started."
     );
+  } else if (diag.warning) {
+    // Not a green "connected": the URL shown may not be the only one, or the right one.
+    console.log(`⚠️ gutt memory: ${diag.warning}`);
   } else if (diag.url) {
     const display = diag.url.length > 50 ? `${diag.url.slice(0, 47)}...` : diag.url;
     console.log(`✅ gutt memory connected (${display})`);

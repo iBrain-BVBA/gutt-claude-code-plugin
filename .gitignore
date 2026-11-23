@@ -41,6 +41,8 @@ coverage/
 
 # MCP configuration (contains org-specific URLs)
 .mcp.json
+# ...except the plugin's own server declaration, which ships (URL comes from userConfig)
+!gutt-core/.mcp.json
 
 # GUTT plugin configuration (org-specific group_id)
 config.json

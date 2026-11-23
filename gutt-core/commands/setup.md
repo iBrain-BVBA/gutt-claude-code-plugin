@@ -38,9 +38,29 @@ leaves it unset rather than contradicting it.
 
 ### Step 1: Check Existing Configuration
 
-Check if `gutt-mcp-remote` is already configured by attempting to list MCP resources.
+#### Claude Code
 
-If found, show the configured endpoint and ask: "Reconfigure?" / "Test connection?" / "Exit"
+The plugin ships the `gutt-mcp-remote` server itself (`gutt-core/.mcp.json`). Its URL is the
+plugin option `mcp_url`, which defaults to the gutt shared stage server,
+`https://mcp.stage.gutt.pro/mcp`. So the server is normally present; the question is which
+endpoint it points at. Read it, do not assume it:
+
+1. Run `claude plugin configure gutt-pro@gutt-plugins --json`. If it lists a value for
+   `mcp_url`, that is the plugin's endpoint; if it lists `mcp_url` as unset, the plugin uses
+   the stage default above.
+2. Run `claude mcp list` and look for every server whose name contains `gutt` (other than the
+   plugin's own, which the list attributes to the gutt-pro plugin). For each, `claude mcp get <name>` shows
+   its URL and scope. These are leftovers from an earlier setup and run alongside the plugin's
+   server.
+
+If neither command gives an endpoint, say the endpoint could not be determined; do not show
+the stage default as the configured one.
+
+#### Cursor
+
+Read `~/.cursor/mcp.json` and look for a `gutt-mcp-remote` entry.
+
+If an endpoint is found, show it and ask: "Reconfigure?" / "Test connection?" / "Exit"
 
 ### Step 2: Get MCP Endpoint URL
 
@@ -56,17 +76,44 @@ Validate:
 - Must start with `https://`
 - Must end with `/mcp`
 
-### Step 3: Add MCP Server (IDE-specific)
+### Step 3: Set the Endpoint (IDE-specific)
 
 #### Claude Code
 
-Run the `claude mcp add` command:
+Set the plugin's `mcp_url` option. Do not add a second server with `claude mcp add`: a
+user-scope server at a different URL runs alongside the plugin's one, and memory tools from
+two endpoints are then both live.
+
+Tell the user to run `/plugin`, open **gutt-pro**, choose **Configure**, and enter the URL. From
+a shell, set it on the installed plugin:
 
 ```bash
-claude mcp add gutt-mcp-remote --transport http --scope user "[USER_PROVIDED_URL]"
+echo '{"mcp_url":"[USER_PROVIDED_URL]"}' | claude plugin configure gutt-pro@gutt-plugins --values-stdin
 ```
 
-This registers the MCP server in Claude Code's user settings.
+or when installing for the first time:
+
+```bash
+claude plugin install gutt-pro@gutt-plugins --config mcp_url="[USER_PROVIDED_URL]"
+```
+
+Then verify it was saved: run `claude plugin configure gutt-pro@gutt-plugins --json` and
+confirm `mcp_url` equals the URL the user gave. If the command fails (for example the plugin
+is installed under a different marketplace id; `claude plugin list` shows the id) or the value
+differs, show the error and the manual `/plugin` → gutt-pro → Configure path, and stop: do
+not show the Step 4 message.
+
+An earlier setup may have registered a gutt server with `claude mcp add`, which stores it in
+`~/.claude.json`, usually as `gutt-mcp-remote` but possibly under another name containing
+`gutt`. Remove every one Step 1 found, using the name and scope `claude mcp get` shows, so
+only the plugin's server is left:
+
+```bash
+claude mcp remove gutt-mcp-remote --scope user
+```
+
+After the restart in Step 4, `/gutt-pro:health` reports any registration still running next
+to the plugin's server.
 
 #### Cursor
 
@@ -97,7 +144,7 @@ Use `$HOME/.cursor/mcp.json` on Unix or `%USERPROFILE%\.cursor\mcp.json` on Wind
 Show the user:
 
 ```
-gutt MCP Server Added!
+gutt endpoint set!
 
 Endpoint: [url]
 
@@ -135,5 +182,5 @@ After authentication, memory features will be active.
 - Do NOT open browsers manually (OAuth popup opens automatically)
 - Do NOT ask about group_id
 - Do NOT use AskUserQuestion for the URL - just ask as plain text
-- In Claude Code: Do NOT write `.mcp.json` files - use `claude mcp add` instead
+- In Claude Code: Do NOT write `.mcp.json` files or run `claude mcp add` - set the plugin's `mcp_url` option instead
 - In Cursor: Do NOT use `claude mcp add` - edit `~/.cursor/mcp.json` directly

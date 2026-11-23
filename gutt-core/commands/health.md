@@ -11,18 +11,42 @@ Run a quick diagnostic of the gutt-pro plugin and display a status report.
 
 ### 1. Check MCP Connectivity
 
-Use the `diagnoseGuttMcp()` function from `hooks/lib/mcp-config.cjs`:
+The plugin option `mcp_url` is exported to hooks, but the Bash tool may not see it, and
+without it the diagnostic compares every registration against the manifest default (the
+gutt shared stage server). So read the saved value first, whatever the diagnostic would
+report as its source:
 
-```javascript
-const { diagnoseGuttMcp } = require("./hooks/lib/mcp-config.cjs");
-const diag = diagnoseGuttMcp();
+```bash
+claude plugin configure gutt-pro@gutt-plugins --json
 ```
+
+If that lists a value for `mcp_url`, pass it to the diagnostic as
+`CLAUDE_PLUGIN_OPTION_MCP_URL`, the variable Claude Code gives hooks. Then run
+`diagnoseGuttMcp()` from the plugin's `hooks/lib/mcp-config.cjs`, by absolute path
+(leave the variable out when no value is saved):
+
+```bash
+CLAUDE_PLUGIN_OPTION_MCP_URL='<saved mcp_url>' \
+  node -e 'console.log(JSON.stringify(require(process.argv[1]).diagnoseGuttMcp(), null, 2))' \
+  "${CLAUDE_PLUGIN_ROOT}/hooks/lib/mcp-config.cjs"
+```
+
+`${CLAUDE_PLUGIN_ROOT}` is this plugin's root, the directory that holds this command's
+`commands/` folder; if the shell leaves it empty, use that directory's absolute path. The
+module finds its own plugin root, so it does not need `CLAUDE_PLUGIN_ROOT` exported.
 
 Report:
 
 - **configured**: whether gutt MCP server is found in settings
 - **url**: the resolved HTTP URL (or "N/A — stdio transport")
+- **source**: where the URL came from: a config file path, `plugin-option`, or
+  `plugin-default`. `plugin-default` means no `mcp_url` value was saved, so the URL is
+  the manifest default.
 - **error**: any configuration error message
+- **warning**: set when a gutt server registered outside the plugin (for example by an
+  older `claude mcp add --scope user`) points at a different URL than the plugin's own
+  server, so both run, or when a config file could not be read. Show the warning as
+  given, since it names the command that fixes it.
 
 ### 2. List Registered Hooks
 
@@ -71,7 +95,9 @@ Output a clean status report:
 MCP Connectivity
   Status:     [configured / not configured]
   URL:        [url or N/A]
+  Source:     [source]
   Error:      [error or none]
+  Warning:    [warning or none]
 
 Registered Hooks
   SessionStart:      [N] hook(s)
