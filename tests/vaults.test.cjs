@@ -648,6 +648,31 @@ describe("vault-pages export", () => {
     assert.deepEqual(a, build(raw));
   });
 
+  it("says which saved files it could not read, and when memory held more episodes", (t) => {
+    const raw = rawExport();
+    const dir = tmp(t);
+    fs.writeFileSync(
+      path.join(dir, "episodes.json"),
+      JSON.stringify({ episodes: raw.episodes, has_more: true })
+    );
+    fs.writeFileSync(
+      path.join(dir, "batch-1.json"),
+      JSON.stringify({ nodes: raw.nodes, facts: raw.facts })
+    );
+    fs.writeFileSync(path.join(dir, "batch-2.json"), "Error: the server timed out");
+    const out = spawnSync(
+      process.execPath,
+      [SCRIPT, "export", "--in", dir, "--out", path.join(dir, "out")],
+      {
+        encoding: "utf8",
+      }
+    );
+    assert.equal(out.status, 0, out.stderr);
+    assert.match(out.stdout, /1 files skipped, not a tool result: .*batch-2\.json/);
+    assert.match(out.stdout, /memory holds more episodes than were listed/);
+    assert.equal(JSON.parse(read(path.join(dir, "out", "graph.json"))).stats.more_in_memory, true);
+  });
+
   it("names an episode's writer from the episode itself", () => {
     const cases = [
       [{ name: "Run: vault-scout curate-2026-11-05" }, "vault-scout"],
@@ -733,6 +758,11 @@ describe("vault-pages contracts", () => {
           data: bad,
         }),
       /does not meet the brief contract/
+    );
+    assert.ok(
+      pages
+        .withTitle("<title>x</title>", "Costs $& more $1")
+        .startsWith("<title>Costs $&amp; more $1</title>")
     );
     assert.throws(
       () => pages.prepare("graph", { title: "X Graph", out: path.join(path.dirname(out), "g2") }),

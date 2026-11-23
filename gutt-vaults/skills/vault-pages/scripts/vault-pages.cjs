@@ -108,6 +108,10 @@ function mergeBodies(bodies) {
     if (b.vault && !out.vault) {
       out.vault = b.vault;
     }
+    // get_episodes says has_more when the group holds more than it listed.
+    if (b.has_more === true) {
+      out.has_more = true;
+    }
   }
   return out;
 }
@@ -136,16 +140,20 @@ function readExport(input) {
   const stat = fs.statSync(input);
   const files = stat.isDirectory() ? jsonFiles(input) : [input];
   const bodies = [];
+  const skipped = [];
   for (const f of files) {
     const body = unwrap(fs.readFileSync(f, "utf8"));
     if (body && (body.episodes || body.nodes || body.facts || body.vault)) {
       bodies.push(body);
+    } else {
+      skipped.push(f);
     }
   }
   if (!bodies.length) {
     throw new Error(`${input}: no episodes, nodes or facts found`);
   }
-  return mergeBodies(bodies);
+  // A saved result the script can't read is reported, never silently left out of the pages.
+  return Object.assign(mergeBodies(bodies), { skipped });
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────────
@@ -672,7 +680,7 @@ function buildPages(raw, opts = {}) {
       String(r.f.valid_at || "").slice(0, 10),
       r.f.invalid_at || r.f.expired_at ? 1 : 0,
     ]),
-    stats: { episodes: episodes.length, ambiguous, unresolved },
+    stats: { episodes: episodes.length, ambiguous, unresolved, more_in_memory: !!raw.has_more },
   };
 
   // timeline.json: agents leave the node list and become the actors.
@@ -933,7 +941,8 @@ function withTitle(html, title) {
   if (!/<title>[^<]*<\/title>/.test(html)) {
     throw new Error("template has no <title>");
   }
-  return html.replace(/<title>[^<]*<\/title>/, `<title>${safe}</title>`);
+  // A function replacement, so a "$&" or "$1" in a vault's name stays literal.
+  return html.replace(/<title>[^<]*<\/title>/, () => `<title>${safe}</title>`);
 }
 
 function prepare(page, { title, out, data }) {
@@ -1061,7 +1070,13 @@ function main(argv) {
         (s.unresolved
           ? ` · ${s.unresolved} facts dropped: an endpoint was not in the export`
           : "") +
-        (s.ambiguous ? ` · ${s.ambiguous} endpoints settled by name (shared ids)` : "")
+        (s.ambiguous ? ` · ${s.ambiguous} endpoints settled by name (shared ids)` : "") +
+        (graph.stats.more_in_memory
+          ? " · memory holds more episodes than were listed: the pages cover the newest ones"
+          : "") +
+        (raw.skipped.length
+          ? ` · ${raw.skipped.length} files skipped, not a tool result: ${raw.skipped.join(", ")}`
+          : "")
     );
     return 0;
   }

@@ -122,7 +122,7 @@ Everything the vault group holds, for the Graph page. Written by `vault-pages.cj
       0
     ]
   ],
-  "stats": { "episodes": 18, "ambiguous": 3, "unresolved": 0 }
+  "stats": { "episodes": 18, "ambiguous": 3, "unresolved": 0, "more_in_memory": false }
 }
 ```
 
@@ -137,6 +137,8 @@ Everything the vault group holds, for the Graph page. Written by `vault-pages.cj
   the fact's words against the candidates' names (`stats.ambiguous` counts those), and the
   page marks them "endpoint inferred". Facts whose endpoint isn't in the export are dropped
   (`stats.unresolved`).
+- `stats.more_in_memory` is `true` when `get_episodes` said the group holds more episodes than
+  it listed; the pages then cover the newest ones, and the export's summary line says so.
 
 ## timeline.json
 

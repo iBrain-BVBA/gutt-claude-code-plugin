@@ -113,7 +113,10 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
       and the Findings it used), tagged `vault-brief`, and set `committed_episode`.
    2. **Republish the Brief page** with `../vault-pages/SKILL.md` §Publish a page, page
       `brief`, from the row's `page` field (the `brief.json` vault-brief drafted; hard rule 9
-      applies to its `changes`). The first publish creates the page and writes its URL to
+      applies to its `changes`). Before publishing, fill in only what vault-brief couldn't
+      know: `published_at` (today, in the vault's time zone), `vault.graph_url` and
+      `vault.timelapse_url` from `meta/vault`, and `past` from the earlier rows with
+      `published_at`. The first publish creates the page and writes its URL to
       `meta/vault.brief_url`; later ones update that URL in place.
    3. Mark the row `published` with `published_at` only after the page publish succeeded. A
       row that is approved and committed but not published is retried at the next commit.
