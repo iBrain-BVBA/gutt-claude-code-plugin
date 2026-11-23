@@ -95,8 +95,9 @@ then write nothing and put the episodes in the Console run row's notes.
    `approved` or `published` row, or any row with `committed_episode`, belongs to the owner's
    decision and the commit routine: leave it untouched, skip only this step, say "brief
    <week> already approved, not redrafted" in the Run, and go on with the Calibration and
-   the pages. Console reads are inline `get`s of the documents you write, never with
-   `out_dir` (`../vault-curate/references/console-data.md` §Reads).
+   the pages. Console reads are inline `get`s of the documents you write, plus the open
+   conflicts query (step 2) and the Calibration's query of committed `findings` (step 6),
+   never with `out_dir` (`../vault-curate/references/console-data.md` §Reads).
 6. **Calibration**: compute per-class agreement (stage classes and steering adjustment from
    `../vault-review/references/autonomy-ladder.md` §Stage class, §Agreement), escalation rate,
    the share of predictions that cited precedents, audit outcomes, overrides; per class,
@@ -107,7 +108,9 @@ on|off, auto_approve on|off)`, using this run's `ladder` and `review` settings; 
    per-direction counts per class, so vault-curate can re-check them). Then write the same
    numbers to the Console in one batch: `meta/reviewer` (the latest week, with `week` and
    `owner_verdicts`) and `calibrations/<YYYY-Www>` (one document per week, replaced if the
-   brief reruns that week), shaped as in `../vault-curate/references/console-data.md`. Count
+   brief reruns that week), shaped as in `../vault-curate/references/console-data.md`. The
+   per-row fields (`human.at`, `human.blind`) come from one inline `query` of Console
+   `findings` with `committed_episode` set (§Reads allows it). Count
    per class how many of the owner's calls were blind (`human.blind`, made before the page
    showed the prediction) and record it as `blind`; blind and seen calls count alike. The
    Console's Reviewer tab draws each class's agreement trend from `calibrations`.

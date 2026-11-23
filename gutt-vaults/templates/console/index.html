@@ -1607,7 +1607,7 @@ b.short { color: var(--bad); font-weight: 600; }
     delete set.conflict;
     return Object.keys(set).sort();
   }
-  function canSettings() { return canAct() && S.canAdmin !== false; }
+  function canSettings() { return canAct() && S.canAdmin === true; }
   function fail(code) { var err = new Error(code); err.code = code; throw err; }
   function saveSettings() {
     var e = cfgEdits(); if (e.invalid || (!e.edits.length && !e.ceil.length) || !S.me) return;
@@ -1877,7 +1877,8 @@ b.short { color: var(--bad); font-weight: 600; }
       S.userNs = u;
       // Settings live under meta, which only the owner and Editors (admin) may write.
       // A check that fails counts as "no": Settings stay closed rather than fail on save.
-      if (typeof u.canEdit === "function") u.canEdit().then(function (ok) { S.canAdmin = ok; render(); }, function (e) { console.warn("canEdit failed; Settings stay read-only", e); S.canAdmin = false; render(); });
+      // Settings open only once canEdit() resolves true; until then canAdmin is null (closed).
+      if (typeof u.canEdit === "function") u.canEdit().then(function (ok) { S.canAdmin = ok === true; render(); }, function (e) { console.warn("canEdit failed; Settings stay read-only", e); S.canAdmin = false; render(); });
       if (typeof u.id === "function") u.id().then(function (id) { S.me = id || null; S.idKnown = true; render(); }, function () { S.idKnown = true; render(); });
       else S.idKnown = true;
       return u.can("data.write").then(function (ok) { if (ok === false) { S.readOnly = true; render(); } }, function (e) { console.warn("can(data.write) failed; writes stay enabled and errors will say why", e); });

@@ -111,6 +111,9 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
      resolution `open` is still committed as left open.
    - `reverify` → `Verdict:` with "re-check result" saying what the re-check found.
    - `card_update` approved → `RoleCard:` episode with the diff, then `Verdict:`.
+   - `card_update` rejected or auto_rejected → `Verdict:` only (proposal type `card_update`,
+     "Effect: none"): no `RoleCard:` episode and no change to the card. Then mark the row, so
+     the rejection stays a precedent for the reviewer.
 4. **For each steering row**, write `Steering:` per
    `../vault-steer/references/charter-template.md`, tagged `vault-charter` (or the target
    agent).

@@ -126,7 +126,9 @@ next curate run. vault-curate re-checks each class at boot:
 1. Take the latest per-class numbers from `meta/reviewer` (`stage_by_class`: reject and
    approve predictions with their adjusted accuracy, rolling 30-day agreement, last override)
    and the latest replay (`k` agreeing of `n` replayed); if `meta/reviewer` is missing, from the latest `Calibration:`
-   episode. No Calibration yet: every class is stage 0.
+   episode. No Calibration yet: every class is stage 0. A missing replay never skips the
+   re-check: `auto_reject` is still re-checked on its own, and only `auto_approve` needs a
+   qualifying replay (it stays off without one).
 2. Apply `../../vault-review/references/autonomy-ladder.md` to those numbers with this run's
    config: `auto_reject` on when the reject predictions meet `ladder.stage1_calls` at
    `ladder.stage1_agreement`; `auto_approve` on when the approve predictions meet

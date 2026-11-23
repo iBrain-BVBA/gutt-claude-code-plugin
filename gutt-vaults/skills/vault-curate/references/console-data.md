@@ -173,7 +173,8 @@ note, at}`; it leaves the Inbox, shows on Summary with its revisit date, and com
   - brief: `get` only the documents it reads or writes (`meta/vault`, `meta/config`,
     `briefs/brief-<YYYY-Www>`, `meta/reviewer`, `calibrations/<YYYY-Www>`), plus one `query`
     of `findings` with `type: conflict` and `status: escalated` for the open conflicts (a
-    conflict left open never becomes a `Conflict:` episode);
+    conflict left open never becomes a `Conflict:` episode), and one `query` of `findings`
+    with `committed_episode` set for the Calibration (per-row `human.at`, `human.blind`);
   - every skill at boot: `get` `meta/vault` and `meta/config`; curate also `meta/reviewer` for
     the promotion re-check (`vault-config.md`).
 - **Pin writes to what you read:** every read returns each document's `version`; pass it as

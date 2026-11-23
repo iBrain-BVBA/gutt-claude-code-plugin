@@ -74,6 +74,8 @@ Rules:
   resolution `open` is written as rejected, left open ("Effect: none").
 - A **re-check** verdict says what was found: still holds → "Effect: current"; no longer
   holds → "retired"; rejected re-check → "Effect: none".
+- A rejected or auto_rejected **card_update** gets this Verdict alone, with no `RoleCard:`
+  episode: "Effect: none".
 - An **override** starts "Override (human <decision>, <date>): <Finding name>" and adds:
   "Reverses: Verdict (agent <decision>, <date of the original call>): <Finding name>.
   Why: <the owner's reason label and note>." Tagged vault-reviewer.
