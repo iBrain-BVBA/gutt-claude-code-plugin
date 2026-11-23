@@ -190,6 +190,25 @@ function checkRequiredDocs() {
 }
 
 /**
+ * A document's lines outside fenced code blocks. A table or heading shown as an example
+ * inside a fence is not one, so neither table check may read it as a listing.
+ */
+function unfencedLines(text) {
+  const lines = [];
+  let fenced = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced) {
+      lines.push(line);
+    }
+  }
+  return lines;
+}
+
+/**
  * The names a README table lists, per section. Only the first cell of a row counts, and
  * only its first backticked token, reduced to the bare name: `/gutt-pro:mode auto|hitl`
  * lists `mode`, with prefix `gutt-pro`. Lines inside a fenced code block are neither
@@ -200,15 +219,7 @@ function tableListings(text) {
   const listed = { skills: [], commands: [], agents: [] };
   const prefixes = [];
   let kind = null;
-  let fenced = false;
-  for (const line of text.split(/\r?\n/)) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced;
-      continue;
-    }
-    if (fenced) {
-      continue;
-    }
+  for (const line of unfencedLines(text)) {
     const heading = line.match(/^(#+)\s+(.+?)\s*$/);
     if (heading) {
       kind = heading[1] === "##" ? SECTION_KIND[heading[2]] || null : null;
@@ -305,8 +316,9 @@ function checkRootReadme(marketplace, plugins) {
     return ["README.md: missing"];
   }
   const text = fs.readFileSync(readme, "utf8");
-  const rows = text
-    .split(/\r?\n/)
+  // An example table in a fenced block neither stands in for a missing row nor names a
+  // plugin the marketplace must list.
+  const rows = unfencedLines(text)
     .filter((l) => l.startsWith("|"))
     .map((row) => ({ row, links: readmeLinksIn(row) }));
   const linkedDirs = new Set(rows.flatMap((r) => r.links.map((l) => l.dir)));

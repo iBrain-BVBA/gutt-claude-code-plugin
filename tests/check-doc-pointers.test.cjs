@@ -321,6 +321,26 @@ describe("the README drift check", () => {
     assert.match(out, /p2 row does not give `claude plugin install p2@m1`/);
   });
 
+  it("does not take an example row in a fenced block as the plugin's row", () => {
+    const t = tempTree();
+    t.file(
+      "README.md",
+      `${ROOT_README.replace("[p1](p1/README.md)", "p1")}` +
+        "\n```markdown\n| [p1](p1/README.md) | `claude plugin install p1@m1` |\n```\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /plugin table has no row linking \[p1\]\(p1\/README\.md\)/);
+  });
+
+  it("does not report a plugin that only a fenced example row links", () => {
+    const t = tempTree();
+    t.file("README.md", `${ROOT_README}\n\`\`\`markdown\n| [gone](gone/README.md) | x |\n\`\`\`\n`);
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /gone/);
+  });
+
   it("reads a plugin-table link with an anchor or a title", () => {
     const t = tempTree();
     t.file(
