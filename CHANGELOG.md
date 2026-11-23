@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-24
+
+Plugin versions: gutt-pro 3.2.0, gutt-vaults 0.2.0. gutt-developer, gutt-product and gutt-mentor
+only gained READMEs and keep their versions.
+
 ### Added
 
 - **`vault-routines` skill: set up a vault's scheduled routines.**
@@ -12,7 +17,7 @@
   the vault skills, the memory tools and the Console from the cloud. It also lists, retimes,
   pauses, resumes and runs them, always on the owner's yes.
 
-- **New `gutt-vaults` plugin (0.1.0): public research vaults.** Six skills (`vault-steer`,
+- **New `gutt-vaults` plugin: public research vaults.** Six skills (`vault-steer`,
   `vault-curate`, `vault-review`, `vault-commit`, `vault-brief`, `vault-pages`) and two agents
   (`vault-scout`, `vault-reviewer`) run a vault in its own memory group, `vault_<slug>`: daily
   scouting and source verification, an owner Console where the reviewer earns autonomy per
