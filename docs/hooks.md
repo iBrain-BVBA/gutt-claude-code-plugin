@@ -22,9 +22,12 @@ see [statusline.md](statusline.md).
   whether to follow it. The Stop hook asks; the `memory-capture` skill writes.
 - The pointer to `memory-search` is added on a new session and after a compaction, not before
   every prompt.
-- No hook edits, formats or lints your files.
-- No hook opens a network connection. Whether the server answers is learned from real gutt
-  tool calls and from the tool list in the session transcript.
+- No hook edits, formats or lints your project's files. The only user file a hook touches is
+  `~/.claude/settings.json`, and only to keep the status bar you opted into
+  ([statusline.md](statusline.md)).
+- No hook connects to the gutt server. Whether it answers is learned from real gutt tool calls
+  and from the tool list in the session transcript. The Stop hook's `claude -p` judge is the
+  only model call a hook makes.
 
 ## The end-of-turn capture judge
 
@@ -35,19 +38,23 @@ Lesson, Decision and WorkingAgreement wait for your confirmation.
 
 - `/gutt-pro:off` and `/gutt-pro:disable` stop the judge as well as recall; no subprocess is
   spawned while either is in force.
-- `/gutt-pro:mode hitl` makes every capture wait for your confirmation, whatever its type.
+- `/gutt-pro:mode hitl` makes every capture the judge proposes wait for your confirmation,
+  whatever its type. A capture you ask for yourself follows `memory-capture`'s own rules.
 - The judge waits while background agents are still working. A turn that ends with subagents
   in flight is not finished, so the Stop that runs once the last agent is done judges the whole
   turn. Background shell commands and MCP monitors do not make it wait.
 - The judge needs a `claude` login on the machine it runs on. In Cowork's local agent mode,
   someone who has only used the desktop app and never signed in to the CLI on that machine gets
-  no verdict; the turn ends normally.
+  no verdict; the turn ends normally. The failure is logged as a `judge` line in
+  `hook-errors.log`; run `claude` once in a terminal to sign in.
 
 ## Errors
 
-Hooks never block a turn on their own failure. Errors go to `hook-errors.log` in the plugin's
-data directory (`${CLAUDE_PLUGIN_DATA}`), described in
-[runtime-state-convention.md](runtime-state-convention.md).
+Hooks never block a turn on their own failure. Most failures are logged to `hook-errors.log`
+in the plugin's data directory (`${CLAUDE_PLUGIN_DATA}`), described in
+[runtime-state-convention.md](runtime-state-convention.md). Two are not: an unreadable hook
+payload in the session-start, session-end, connectivity and post-tool hooks, and anything at
+all when `CLAUDE_PLUGIN_DATA` is unset. An empty log is not proof the hooks are healthy.
 
 ## Where the platform details live
 

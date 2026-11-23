@@ -65,22 +65,23 @@ Skills run when Claude judges them relevant, or by name: `/gutt-pro:memory-searc
 
 ## Commands
 
-| Command                     | Effect                                                                                      |
-| --------------------------- | ------------------------------------------------------------------------------------------- |
-| `/gutt-pro:setup`           | Point the plugin at a different gutt MCP endpoint                                           |
-| `/gutt-pro:start`           | Same as `/gutt-pro:setup`                                                                   |
-| `/gutt-pro:health`          | What registered, and whether memory is reachable                                            |
-| `/gutt-pro:config`          | Show the stored settings and the state they add up to                                       |
-| `/gutt-pro:off`             | Turn recall off for the rest of this session; `/gutt-pro:off 30` for 30 minutes (1–10080)   |
-| `/gutt-pro:disable`         | Turn recall off until `/gutt-pro:on`, across restarts                                       |
-| `/gutt-pro:on`              | Clear an off, a snooze and a disable                                                        |
-| `/gutt-pro:mode auto\|hitl` | `auto` writes captures directly; `hitl` asks you to confirm each one                        |
-| `/gutt-pro:statusline`      | Add the status bar to your `~/.claude/settings.json` (`off` removes it, `status` checks it) |
-| `/gutt-pro:agent-scope`     | Bind the memory scope named workflows use in this directory                                 |
+| Command                     | Effect                                                                                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/gutt-pro:setup`           | Point the plugin at a different gutt MCP endpoint                                                                                             |
+| `/gutt-pro:start`           | Same as `/gutt-pro:setup`                                                                                                                     |
+| `/gutt-pro:health`          | What registered, and whether memory is reachable                                                                                              |
+| `/gutt-pro:config`          | Show the stored settings and the state they add up to                                                                                         |
+| `/gutt-pro:off`             | Turn recall off for the rest of this session; `/gutt-pro:off 30` for 30 minutes (1–10080)                                                     |
+| `/gutt-pro:disable`         | Turn recall off until `/gutt-pro:on`, across restarts                                                                                         |
+| `/gutt-pro:on`              | Clear an off, a snooze and a disable                                                                                                          |
+| `/gutt-pro:mode auto\|hitl` | `auto`: Insight and Incident written directly, the rest after you confirm; `hitl`: every capture the end-of-turn judge proposes waits for you |
+| `/gutt-pro:statusline`      | Add the status bar to your `~/.claude/settings.json` (`off` removes it, `status` checks it)                                                   |
+| `/gutt-pro:agent-scope`     | Bind the memory scope named workflows use in this directory                                                                                   |
 
 The settings commands (`config`, `off`, `disable`, `on`, `mode`, `statusline`, `agent-scope`)
 are applied by the prompt hook before Claude reads anything, and stored in the plugin's data
-directory. A few things worth knowing:
+directory, except `statusline`, which writes your `~/.claude/settings.json`. A few things worth
+knowing:
 
 - **`off` is temporary, `disable` is durable.** Both silence recall and the end-of-turn capture
   judge. An out-of-range minute count changes nothing rather than being clamped.

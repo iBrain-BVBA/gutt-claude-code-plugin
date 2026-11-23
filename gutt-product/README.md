@@ -8,7 +8,9 @@ history, overlap with neighbours) so a backlog is not re-decided from ticket fie
 claude plugin install gutt-product@gutt-plugins
 ```
 
-It depends on `gutt-pro`, which installs and enables with it. It needs a Jira connector.
+It depends on `gutt-pro`, which installs and enables with it. It reads and writes Jira through
+whatever Atlassian connector your session has. Without one, paste the backlog or source text,
+and drafts come back as ready-to-paste markdown.
 
 ## Try it
 
@@ -31,9 +33,11 @@ transitions and link names at run time, so they work on any team's Jira configur
 ## What it writes
 
 - **Jira:** `story-creation` and `backlog-dedupe` write only what you approve, per action or as
-  a batch whose text names every key. `backlog-prioritization` never writes a rank or priority.
+  a batch whose text names every key. `backlog-prioritization` never changes a ticket field (no
+  rank, priority, sprint or status); its one permitted write is a comment, posted only after
+  you approve the exact text.
 - **Memory:** once you have decided, `story-creation` and `backlog-dedupe` offer the outcome to
   `memory-capture`, into the engagement's group, so the next run starts from it.
-  `backlog-prioritization` writes nothing anywhere.
+  `backlog-prioritization` writes nothing to memory.
 
 No hooks and no agents.

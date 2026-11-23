@@ -72,11 +72,15 @@ or immediately after `/reload-plugins`.
 
 The plugin brings its own MCP server, `gutt-mcp-remote`. Its URL is the plugin option
 `mcp_url`, which defaults to the gutt shared stage server (`https://mcp.stage.gutt.pro/mcp`).
-To use your organization's endpoint instead, run `/gutt-pro:setup`, or set it at install time:
+To use your organization's endpoint instead, run `/gutt-pro:setup`, or use `/plugin` →
+gutt-pro → Configure, or set it on the installed plugin from a shell:
 
 ```
-claude plugin install gutt-pro@gutt-plugins --config mcp_url=https://your-org.example/mcp
+echo '{"mcp_url":"https://your-org.example/mcp"}' | claude plugin configure gutt-pro@gutt-plugins --values-stdin
 ```
+
+If you have not installed gutt-pro yet, you can instead pass the URL in Step 2 with
+`claude plugin install gutt-pro@gutt-plugins --config mcp_url=https://your-org.example/mcp`.
 
 Then restart and authenticate: `/mcp` → `gutt-mcp-remote` → Authenticate.
 
@@ -108,7 +112,8 @@ person to run the steps above:
   relative plugin paths resolve the same way the `owner/repo` form makes them resolve
 - `enabledPlugins` — auto-install `gutt-pro`, plus whichever role plugins that team needs
 - the memory endpoint is the `gutt-pro` plugin option `mcp_url` (default: the gutt shared stage
-  server); set it per machine with `claude plugin install … --config mcp_url=…`
+  server); once `enabledPlugins` has installed it, set it per machine with
+  `echo '{"mcp_url":"…"}' | claude plugin configure gutt-pro@gutt-plugins --values-stdin`
 
 The status bar cannot be pre-configured this way: it writes to each person's own settings, so
 each person runs `/gutt-pro:statusline` themselves.
@@ -131,6 +136,9 @@ Cursor has no `claude mcp add` CLI; the setup wizard registers the server by wri
 - **Install says the plugin is not in the marketplace** — stale catalogue. Run
   `claude plugin marketplace update gutt-plugins` and retry.
 - **Commands missing right after installing** — run `/reload-plugins`, or restart.
+- **Still on the old version after a release** — refreshing the catalogue does not update an
+  installed copy. Run `claude plugin marketplace update gutt-plugins`, then
+  `claude plugin update gutt-pro@gutt-plugins` (and each role plugin you use), and restart.
 - **"MCP server not found"** — restart the IDE after installing.
 - **Authentication fails** — the endpoint URL must start with `https://` and end with `/mcp`.
 - **Memory tools not showing** — check the server is connected: `/mcp` in Claude Code,

@@ -19,6 +19,7 @@ const {
   resolveUserConfig,
   extractUrlFromConfig,
   shadowWarning,
+  normalizeUrl,
 } = require("../gutt-core/hooks/lib/mcp-config.cjs");
 const fs = require("fs");
 const os = require("os");
@@ -333,20 +334,49 @@ const STAGE = "https://mcp.stage.gutt.pro/mcp";
 const ORG = "https://org.example/mcp";
 
 /**
- * Run diagnoseGuttMcp() in a child whose HOME, project dir and plugin root are a
- * scratch layout, since env.cjs reads them once at load time.
+ * Run diagnoseGuttMcp() in a child whose HOME and project dir are a scratch layout and
+ * whose plugin root is the real gutt-core (so the shipped .mcp.json and manifest default
+ * are exercised), since env.cjs reads them once at load time.
+ * @param {((project: string) => Object)|string|null} claudeJson - ~/.claude.json content
+ *   (a string is written as is, to test unreadable files)
+ * @param {{ pluginRoot?: null, option?: string, projectMcp?: Object, cursorMcp?: Object,
+ *   cursor?: boolean }} [opts] - `pluginRoot: null` leaves CLAUDE_PLUGIN_ROOT unset, as in
+ *   the Bash tool where /gutt-pro:health runs; `option` sets CLAUDE_PLUGIN_OPTION_MCP_URL
  */
-function diagnoseIn(claudeJson) {
+function diagnoseIn(claudeJson, opts = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-mcp-config-"));
   const project = path.join(home, "project");
   fs.mkdirSync(project);
-  if (claudeJson) {
+  if (typeof claudeJson === "string") {
+    fs.writeFileSync(path.join(home, ".claude.json"), claudeJson);
+  } else if (claudeJson) {
     fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify(claudeJson(project)));
   }
+  if (opts.projectMcp) {
+    fs.writeFileSync(path.join(project, ".mcp.json"), JSON.stringify(opts.projectMcp));
+  }
+  if (opts.cursorMcp) {
+    fs.mkdirSync(path.join(home, ".cursor"));
+    fs.writeFileSync(path.join(home, ".cursor", "mcp.json"), JSON.stringify(opts.cursorMcp));
+  }
   const env = { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PROJECT_DIR: project };
-  env.CLAUDE_PLUGIN_ROOT = CORE_ROOT;
-  for (const key of ["CLAUDE_PLUGIN_OPTION_MCP_URL", "CURSOR_PROJECT_DIR", "CURSOR_VERSION"]) {
+  for (const key of [
+    "CLAUDE_PLUGIN_ROOT",
+    "CLAUDE_PLUGIN_DATA",
+    "CLAUDE_PLUGIN_OPTION_MCP_URL",
+    "CURSOR_PROJECT_DIR",
+    "CURSOR_VERSION",
+  ]) {
     delete env[key];
+  }
+  if (opts.pluginRoot !== null) {
+    env.CLAUDE_PLUGIN_ROOT = CORE_ROOT;
+  }
+  if (opts.option) {
+    env.CLAUDE_PLUGIN_OPTION_MCP_URL = opts.option;
+  }
+  if (opts.cursor) {
+    env.CURSOR_PROJECT_DIR = project;
   }
   try {
     const out = execFileSync(
@@ -401,6 +431,112 @@ test("a user-scope registration at the plugin's own URL raises no warning", () =
   }));
   assert.strictEqual(diag.url, STAGE);
   assert.strictEqual(diag.warning, null);
+});
+
+test("without CLAUDE_PLUGIN_ROOT (health's Bash context) the plugin default is still found", () => {
+  const diag = diagnoseIn(null, { pluginRoot: null });
+  assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.source, "plugin-default");
+  assert.strictEqual(diag.error, null);
+});
+
+test("without CLAUDE_PLUGIN_ROOT a user-scope registration still raises the warning", () => {
+  const diag = diagnoseIn(
+    () => ({ mcpServers: { "gutt-mcp-remote": { type: "http", url: ORG } } }),
+    { pluginRoot: null }
+  );
+  assert.strictEqual(diag.url, ORG);
+  assert.match(diag.warning, /--scope user/);
+});
+
+test("project .mcp.json wins over user scope (Claude Code: local, project, user)", () => {
+  const diag = diagnoseIn(
+    () => ({
+      mcpServers: { "gutt-mcp-remote": { type: "http", url: "https://user.example/mcp" } },
+    }),
+    { projectMcp: { mcpServers: { "gutt-mcp-remote": { type: "http", url: ORG } } } }
+  );
+  assert.strictEqual(diag.url, ORG);
+  assert.match(diag.warning, /remove it from .*\.mcp\.json/);
+  assert.ok(!/--scope user/.test(diag.warning), "the overridden user entry does not run");
+});
+
+test("the mcp_url option is the plugin's URL, with no warning", () => {
+  const diag = diagnoseIn(null, { option: ORG });
+  assert.strictEqual(diag.url, ORG);
+  assert.strictEqual(diag.source, "plugin-option");
+  assert.strictEqual(diag.warning, null);
+});
+
+test("a leftover user-scope entry at the option's URL raises no warning", () => {
+  const diag = diagnoseIn(
+    () => ({ mcpServers: { "gutt-mcp-remote": { type: "http", url: ORG } } }),
+    { option: ORG }
+  );
+  assert.strictEqual(diag.warning, null);
+});
+
+test("a trailing slash or host case difference is the same endpoint", () => {
+  const diag = diagnoseIn(() => ({
+    mcpServers: { "gutt-mcp-remote": { type: "http", url: "https://MCP.stage.gutt.pro/mcp/" } },
+  }));
+  assert.strictEqual(diag.warning, null);
+});
+
+test("a local entry at the plugin URL does not hide a differently named user entry", () => {
+  const diag = diagnoseIn((project) => ({
+    mcpServers: { "gutt-pro-memory": { type: "http", url: ORG } },
+    projects: { [project]: { mcpServers: { "gutt-mcp-remote": { type: "http", url: STAGE } } } },
+  }));
+  assert.match(diag.warning, /claude mcp remove gutt-pro-memory --scope user/);
+});
+
+test("an unreadable ~/.claude.json falls back to the plugin default and says so", () => {
+  const diag = diagnoseIn("{bad");
+  assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.error, null);
+  assert.match(diag.warning, /could not read .*\.claude\.json/);
+});
+
+test("odd ~/.claude.json shapes (no project servers, null mcpServers) are not errors", () => {
+  const diag = diagnoseIn((project) => ({ projects: { [project]: {} }, mcpServers: null }));
+  assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.error, null);
+  assert.strictEqual(diag.warning, null);
+});
+
+test("under Claude Code, ~/.cursor/mcp.json is ignored", () => {
+  const diag = diagnoseIn(null, {
+    cursorMcp: { mcpServers: { "gutt-mcp-remote": { url: ORG } } },
+  });
+  assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.warning, null);
+});
+
+test("under Cursor, ~/.claude.json is ignored and ~/.cursor/mcp.json is used", () => {
+  const diag = diagnoseIn(
+    () => ({
+      mcpServers: { "gutt-mcp-remote": { type: "http", url: "https://user.example/mcp" } },
+    }),
+    {
+      cursor: true,
+      pluginRoot: null,
+      cursorMcp: { mcpServers: { "gutt-mcp-remote": { url: ORG } } },
+    }
+  );
+  assert.strictEqual(diag.url, ORG);
+  assert.strictEqual(diag.warning, null);
+});
+
+test("normalizeUrl ignores host case and a trailing slash", () => {
+  assert.strictEqual(
+    normalizeUrl("https://MCP.Example/mcp/"),
+    normalizeUrl("https://mcp.example/mcp")
+  );
+  assert.notStrictEqual(
+    normalizeUrl("https://a.example/mcp"),
+    normalizeUrl("https://b.example/mcp")
+  );
 });
 
 test("shadowWarning points at the file when the scope has no remove command", () => {
