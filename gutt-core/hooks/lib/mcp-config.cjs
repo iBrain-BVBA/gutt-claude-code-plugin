@@ -18,30 +18,30 @@ const GUTT_SERVER_NAMES = [
 ];
 
 /**
- * Find gutt MCP server config object within an mcpServers map.
- * Tries known server names and pattern matches.
+ * Every gutt MCP server config within an mcpServers map: known names first (in key
+ * order, case-insensitive), then any other name containing "gutt" (claude_ai_gutt*,
+ * Gutt-interactive and future variants).
+ * @param {Object} mcpServers - The mcpServers object from config
+ * @returns {Array<{ name: string, config: Object }>}
+ */
+function findGuttServerConfigs(mcpServers) {
+  if (!mcpServers || typeof mcpServers !== "object") {
+    return [];
+  }
+  const keys = Object.keys(mcpServers);
+  const known = keys.filter((key) => GUTT_SERVER_NAMES.includes(key.toLowerCase()));
+  const other = keys.filter((key) => !known.includes(key) && key.toLowerCase().includes("gutt"));
+  return [...known, ...other].map((name) => ({ name, config: mcpServers[name] }));
+}
+
+/**
+ * Find the gutt MCP server config object within an mcpServers map: the first of
+ * findGuttServerConfigs().
  * @param {Object} mcpServers - The mcpServers object from config
  * @returns {{ name: string, config: Object }|null}
  */
 function findGuttServerConfig(mcpServers) {
-  if (!mcpServers || typeof mcpServers !== "object") {
-    return null;
-  }
-  // Known-name match first (case-insensitive)
-  for (const key of Object.keys(mcpServers)) {
-    const lower = key.toLowerCase();
-    if (GUTT_SERVER_NAMES.includes(lower)) {
-      return { name: key, config: mcpServers[key] };
-    }
-  }
-  // Catch-all: any server name containing "gutt" (case-insensitive)
-  // Handles claude_ai_gutt*, Gutt-interactive, and any future variants
-  for (const name of Object.keys(mcpServers)) {
-    if (name.toLowerCase().includes("gutt")) {
-      return { name, config: mcpServers[name] };
-    }
-  }
-  return null;
+  return findGuttServerConfigs(mcpServers)[0] || null;
 }
 
 /**
@@ -199,28 +199,69 @@ function configSources() {
 }
 
 /**
- * Find the gutt server entry in one config file. A missing file is normal; a file that
+ * Every gutt server entry in one config file. A missing file is normal; a file that
  * exists but cannot be read or parsed is logged and, when `problems` is given, recorded
  * there so the caller can say its answer may be incomplete.
  * @param {string} filePath
  * @param {(json: Object) => Object} [pickServers] - selects the mcpServers map
  * @param {string[]|null} [problems]
- * @returns {{ name: string, config: Object }|null}
+ * @returns {Array<{ name: string, config: Object }>}
  */
-function readGuttServer(filePath, pickServers = (json) => json.mcpServers, problems = null) {
+function readGuttServers(filePath, pickServers = (json) => json.mcpServers, problems = null) {
   try {
     const json = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return findGuttServerConfig(json && pickServers(json));
+    return findGuttServerConfigs(json && pickServers(json));
   } catch (err) {
     if (err.code === "ENOENT" || err.code === "ENOTDIR") {
-      return null;
+      return [];
     }
     debugLog("mcp-config", { message: `${filePath}: ${err.message}`, stack: err.stack });
     if (problems) {
       problems.push(`could not read ${filePath} (${err.message})`);
     }
-    return null;
+    return [];
   }
+}
+
+/**
+ * The first gutt server entry in one config file (see readGuttServers()).
+ * @param {string} filePath
+ * @param {(json: Object) => Object} [pickServers]
+ * @param {string[]|null} [problems]
+ * @returns {{ name: string, config: Object }|null}
+ */
+function readGuttServer(filePath, pickServers, problems = null) {
+  return readGuttServers(filePath, pickServers, problems)[0] || null;
+}
+
+/**
+ * The gutt servers registered outside the plugin that the host actually runs, in
+ * configSources() order. A name registered in a higher scope overrides the same name
+ * lower down, whatever its transport, so only the first entry per name (case-insensitive)
+ * is kept, and only then is its URL resolved: a local stdio `gutt-mcp-remote` hides a
+ * user-scope HTTP one rather than letting it through.
+ * @param {string[]|null} [problems] - collects config files that could not be read
+ * @returns {Array<{ url: string|null, name: string, source: string, scope: string|null }>}
+ */
+function activeRegistrations(problems = null) {
+  const seen = new Set();
+  const active = [];
+  for (const source of configSources()) {
+    for (const found of readGuttServers(source.path, source.servers, problems)) {
+      const key = found.name.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      active.push({
+        url: extractUrlFromConfig(found.config),
+        name: found.name,
+        source: source.path,
+        scope: source.scope,
+      });
+    }
+  }
+  return active;
 }
 
 /**
@@ -256,17 +297,15 @@ function pluginServer() {
 }
 
 /**
- * First gutt server found in configSources() order, else the plugin's own.
+ * The first active registration (see activeRegistrations()) with an HTTP URL, else the
+ * plugin's own server.
  * @param {string[]|null} [problems] - collects config files that could not be read
  * @returns {{ url: string, name: string|null, source: string, scope: string|null }|null}
  */
 function locateGuttMcp(problems = null) {
-  for (const source of configSources()) {
-    const found = readGuttServer(source.path, source.servers, problems);
-    const url = found && extractUrlFromConfig(found.config);
-    if (url) {
-      return { url, name: found.name, source: source.path, scope: source.scope };
-    }
+  const registered = activeRegistrations(problems).find((reg) => reg.url);
+  if (registered) {
+    return registered;
   }
 
   const plugin = pluginServer();
@@ -343,8 +382,8 @@ function shadowWarning(located, pluginUrl) {
 
 /**
  * Every Claude Code registration (local, project, user) that runs next to the plugin's
- * server at a different URL. A same-named server in a lower scope is overridden by the
- * higher one, so only the first entry per name counts.
+ * server at a different URL: each active registration (see activeRegistrations()), so
+ * several gutt servers in one scope are each checked and an overridden one is not.
  * @param {string|null} pluginUrl
  * @returns {string[]}
  */
@@ -352,26 +391,10 @@ function shadowWarnings(pluginUrl) {
   if (!pluginUrl || IDE !== "claude") {
     return [];
   }
-  const seen = new Set();
-  const warnings = [];
-  for (const source of configSources()) {
-    if (!source.scope) {
-      continue;
-    }
-    const found = readGuttServer(source.path, source.servers);
-    if (!found || seen.has(found.name.toLowerCase())) {
-      continue;
-    }
-    seen.add(found.name.toLowerCase());
-    const url = extractUrlFromConfig(found.config);
-    const warning =
-      url &&
-      shadowWarning({ url, name: found.name, source: source.path, scope: source.scope }, pluginUrl);
-    if (warning) {
-      warnings.push(warning);
-    }
-  }
-  return warnings;
+  return activeRegistrations()
+    .filter((reg) => reg.scope && reg.url)
+    .map((reg) => shadowWarning(reg, pluginUrl))
+    .filter(Boolean);
 }
 
 /**
@@ -434,6 +457,7 @@ module.exports = {
   diagnoseGuttMcp,
   // Exported for unit testing
   findGuttServerConfig,
+  findGuttServerConfigs,
   resolveEnvVars,
   resolveUserConfig,
   extractUrlFromConfig,
