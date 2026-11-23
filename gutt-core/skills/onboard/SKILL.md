@@ -13,18 +13,17 @@ Walk the user through first-use setup and verification of the gutt memory integr
 
 ### Step 1: Detect MCP
 
-Check if the gutt MCP server is configured in the project's settings.
+In Claude Code the gutt-pro plugin ships the `gutt-mcp-remote` server itself. Its URL is the
+plugin option `mcp_url`, which defaults to the gutt shared stage server
+(`https://mcp.stage.gutt.pro/mcp`), so there is nothing to add to a settings file.
 
-```bash
-# Check for gutt MCP configuration in settings
-cat .claude/settings.json 2>/dev/null | grep -q "gutt"
-```
-
-- **If configured:** Announce "gutt MCP server found in settings." and proceed to Step 2.
-- **If NOT configured:** Ask the user for their MCP server URL and guide them through setup:
-  1. Ask: "What is your gutt MCP server URL? (e.g., https://your-instance.gutt.io/mcp)"
-  2. Explain they can also run `/gutt-pro:setup` to configure it.
-  3. Once URL is provided, help add it to `.claude/settings.json`.
+- **Claude Code:** Announce "gutt MCP server ships with the gutt-pro plugin." If the user wants
+  their organization's endpoint instead of the stage default, send them to `/gutt-pro:setup`,
+  which sets `mcp_url`. Do not write `.claude/settings.json` or `.mcp.json`, and do not run
+  `claude mcp add`: a second registration runs alongside the plugin's server. Proceed to
+  Step 2.
+- **Cursor:** Check `~/.cursor/mcp.json` for a `gutt-mcp-remote` entry. If there is none, run
+  `/gutt-pro:setup` first.
 
 ### Step 2: Verify Connectivity
 

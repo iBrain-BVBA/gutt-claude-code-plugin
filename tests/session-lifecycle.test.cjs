@@ -58,9 +58,9 @@ function readSession(dir, sessionId) {
  * files on disk, because every such arrangement is something the probe knows how to
  * report on.
  *
- * @param {{dataDir: string, home: string, preload?: string}} env
+ * @param {{dataDir: string, home: string, preload?: string, env?: Object}} opts - `env` adds or overrides variables
  */
-function runHook(name, payload, { dataDir, home, preload }) {
+function runHook(name, payload, { dataDir, home, preload, env = {} }) {
   return spawnSync("node", [...(preload ? ["--require", preload] : []), path.join(HOOKS, name)], {
     input: JSON.stringify(payload),
     encoding: "utf8",
@@ -70,6 +70,7 @@ function runHook(name, payload, { dataDir, home, preload }) {
       HOME: home,
       USERPROFILE: home,
       CLAUDE_PROJECT_DIR: home,
+      ...env,
     },
   });
 }
@@ -1358,12 +1359,16 @@ describe("session lifecycle: hooks end to end", () => {
     // The other side of the same distinction, and the reason it cannot be collapsed:
     // a real negative has to stay a real negative, or the HUD loses the `!` that tells
     // an unconfigured user to run setup.
+    //
+    // Run as Cursor: under Claude Code the plugin ships its own server (gutt-core/.mcp.json),
+    // which the probe finds even without CLAUDE_PLUGIN_ROOT, so "nothing configured" can
+    // only happen in Cursor, which does not load plugin servers.
     const bareHome = path.join(dir, "bare-home");
     fs.mkdirSync(path.join(bareHome, ".claude"), { recursive: true });
     const r = runHook(
       "session-connectivity.cjs",
       { session_id: "e2e-really-absent" },
-      { dataDir: dir, home: bareHome }
+      { dataDir: dir, home: bareHome, env: { CURSOR_VERSION: "test", CLAUDE_PLUGIN_ROOT: "" } }
     );
     assert.equal(r.status, 0);
     assert.strictEqual(readSession(dir, "e2e-really-absent").mcpConfigured, false);

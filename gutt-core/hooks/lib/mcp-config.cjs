@@ -5,7 +5,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const { PROJECT_DIR, HOME_DIR, PLUGIN_ROOT } = require("./env.cjs");
+const { PROJECT_DIR, HOME_DIR, PLUGIN_ROOT, IDE } = require("./env.cjs");
+const { debugLog } = require("./debug.cjs");
 
 /** Known short server names for gutt MCP (case-insensitive match) */
 const GUTT_SERVER_NAMES = [
@@ -44,17 +45,28 @@ function findGuttServerConfig(mcpServers) {
 }
 
 /**
+ * The plugin root. Claude Code sets CLAUDE_PLUGIN_ROOT for hooks but not for the Bash
+ * tool, where `/gutt-pro:health` loads this module, so fall back to the root that holds
+ * this file (`<root>/hooks/lib`). Cursor does not load the plugin's own servers, so it
+ * has no plugin root to consult.
+ */
+const ROOT = PLUGIN_ROOT || (IDE === "claude" ? path.resolve(__dirname, "..", "..") : null);
+
+/**
  * Read a plugin `userConfig` value the way Claude Code would substitute it.
  *
  * Claude Code exports every option to hook processes as
- * `CLAUDE_PLUGIN_OPTION_<KEY>` (key uppercased). When the user never set the option
- * that variable may be absent, and the manifest's `default` is what Claude Code
- * itself falls back to, so read it from `<pluginRoot>/.claude-plugin/plugin.json`.
+ * `CLAUDE_PLUGIN_OPTION_<KEY>` (key uppercased). When that variable is absent, either
+ * because the user never set the option or because this process is not a hook (the
+ * Bash tool does not get it), fall back to the manifest's `default` in
+ * `<pluginRoot>/.claude-plugin/plugin.json`. This assumes Claude Code substitutes the
+ * same default when the option is unset (unverified; see the PR #103 test plan).
+ * `diagnoseGuttMcp()` reports `source: "plugin-default"` when this fallback was used.
  * @param {string} key - option key as written in `${user_config.<key>}`
- * @param {string|null} [pluginRoot] - plugin root; defaults to CLAUDE_PLUGIN_ROOT
+ * @param {string|null} [pluginRoot] - plugin root; defaults to the plugin holding this file
  * @returns {string}
  */
-function resolveUserConfig(key, pluginRoot = PLUGIN_ROOT) {
+function resolveUserConfig(key, pluginRoot = ROOT) {
   const fromEnv = process.env[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`];
   if (fromEnv) {
     return fromEnv;
@@ -62,25 +74,26 @@ function resolveUserConfig(key, pluginRoot = PLUGIN_ROOT) {
   if (!pluginRoot) {
     return "";
   }
+  const manifestPath = path.join(pluginRoot, ".claude-plugin", "plugin.json");
   try {
-    const manifest = JSON.parse(
-      fs.readFileSync(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8")
-    );
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
     const option = manifest.userConfig && manifest.userConfig[key];
     return option && typeof option.default === "string" ? option.default : "";
-  } catch {
+  } catch (err) {
+    debugLog("mcp-config", { message: `${manifestPath}: ${err.message}`, stack: err.stack });
     return "";
   }
 }
 
 /**
- * Resolve interpolation in a URL string, as Claude Code does for MCP configs.
- * Handles `${user_config.KEY}`, `${VAR}`, `${VAR:-default}` and `$VAR`.
+ * Resolve interpolation in a URL string. Mirrors Claude Code's `${user_config.KEY}`,
+ * `${VAR}` and `${VAR:-default}`; bare `$VAR` is also accepted for older hand-written
+ * configs (Claude Code itself does not expand it).
  * @param {string} url
  * @param {string|null} [pluginRoot] - plugin root for `${user_config.*}` defaults
  * @returns {string}
  */
-function resolveEnvVars(url, pluginRoot = PLUGIN_ROOT) {
+function resolveEnvVars(url, pluginRoot = ROOT) {
   // One pass, so a substituted value (a userConfig URL, an env default) is never
   // itself scanned for `$NAME`.
   const resolved = url.replace(/\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g, (_, expr, bare) => {
@@ -122,28 +135,56 @@ function extractUrlFromConfig(config) {
   }
 
   // stdio transport (command + args) — can't use for HTTP calls
-  if (config.command) {
-    return null;
-  }
-
   return null;
 }
 
 /**
- * Places a gutt server can be registered, in the order hooks consult them.
+ * Compare two endpoint URLs the way a person would: host case and a trailing slash do
+ * not make a different server.
+ * @param {string} url
+ * @returns {string}
+ */
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, "")}${u.search}`;
+  } catch {
+    return String(url).trim().replace(/\/+$/, "");
+  }
+}
+
+/**
+ * Places a gutt server can be registered outside the plugin, in the order hooks consult
+ * them. The list depends on the host IDE, since each runs only its own registrations.
  *
- * `claude mcp add` does not write settings.json: it stores local-scope servers (the CLI
- * default) under `projects[<dir>].mcpServers` in `~/.claude.json`, and user-scope ones
- * under that file's top-level `mcpServers`. Earlier versions of `/gutt-pro:setup` ran
+ * Claude Code: `claude mcp add` does not write settings.json. It stores local-scope
+ * servers (the CLI default) under `projects[<dir>].mcpServers` in `~/.claude.json`, and
+ * user-scope ones under that file's top-level `mcpServers`; project scope is
+ * `<project>/.mcp.json`. Earlier versions of `/gutt-pro:setup` ran
  * `claude mcp add --scope user`, so an upgrading user's organization endpoint lives
- * there; without these entries the lookup fell through to the plugin's stage default.
- * Claude Code ranks local, project and user servers above plugin servers, so all of
- * them come before the plugin's own declaration.
+ * there. The order is Claude Code's precedence for same-named servers: local, project,
+ * user. The settings.json files and `~/.mcp.json` are legacy places older setups wrote
+ * to; they come last and carry no scope.
+ *
+ * Cursor: `~/.cursor/mcp.json` first (what `/gutt-pro:setup` writes there), then the
+ * same legacy files as before; never `~/.claude.json`, which Cursor does not load.
  * @returns {Array<{ path: string, scope: string|null, servers: (json: Object) => Object }>}
  */
 function configSources() {
   const claudeJson = path.join(HOME_DIR, ".claude.json");
   const top = (json) => json.mcpServers;
+  const legacy = [
+    { path: path.join(HOME_DIR, ".claude", "settings.json"), scope: null, servers: top },
+    { path: path.join(PROJECT_DIR, ".claude", "settings.json"), scope: null, servers: top },
+    { path: path.join(HOME_DIR, ".mcp.json"), scope: null, servers: top },
+  ];
+  if (IDE === "cursor") {
+    return [
+      { path: path.join(HOME_DIR, ".cursor", "mcp.json"), scope: null, servers: top },
+      ...legacy,
+      { path: path.join(PROJECT_DIR, ".mcp.json"), scope: null, servers: top },
+    ];
+  }
   return [
     {
       path: claudeJson,
@@ -151,30 +192,33 @@ function configSources() {
       servers: (json) =>
         json.projects && json.projects[PROJECT_DIR] && json.projects[PROJECT_DIR].mcpServers,
     },
-    { path: path.join(HOME_DIR, ".claude", "settings.json"), scope: null, servers: top },
-    { path: claudeJson, scope: "user", servers: top },
-    { path: path.join(HOME_DIR, ".mcp.json"), scope: null, servers: top },
-    { path: path.join(HOME_DIR, ".cursor", "mcp.json"), scope: null, servers: top },
-    { path: path.join(PROJECT_DIR, ".claude", "settings.json"), scope: null, servers: top },
     { path: path.join(PROJECT_DIR, ".mcp.json"), scope: "project", servers: top },
+    { path: claudeJson, scope: "user", servers: top },
+    ...legacy,
   ];
 }
 
 /**
- * Find the gutt server entry in one config file.
+ * Find the gutt server entry in one config file. A missing file is normal; a file that
+ * exists but cannot be read or parsed is logged and, when `problems` is given, recorded
+ * there so the caller can say its answer may be incomplete.
  * @param {string} filePath
  * @param {(json: Object) => Object} [pickServers] - selects the mcpServers map
+ * @param {string[]|null} [problems]
  * @returns {{ name: string, config: Object }|null}
  */
-function readGuttServer(filePath, pickServers = (json) => json.mcpServers) {
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
+function readGuttServer(filePath, pickServers = (json) => json.mcpServers, problems = null) {
   try {
     const json = JSON.parse(fs.readFileSync(filePath, "utf8"));
     return findGuttServerConfig(json && pickServers(json));
-  } catch {
-    // Ignore read and parse errors
+  } catch (err) {
+    if (err.code === "ENOENT" || err.code === "ENOTDIR") {
+      return null;
+    }
+    debugLog("mcp-config", { message: `${filePath}: ${err.message}`, stack: err.stack });
+    if (problems) {
+      problems.push(`could not read ${filePath} (${err.message})`);
+    }
     return null;
   }
 }
@@ -190,53 +234,53 @@ function extractUrlFromMcpFile(mcpPath) {
 }
 
 /**
- * URL of the plugin's own server (gutt-core/.mcp.json, URL from userConfig.mcp_url).
- * @returns {string|null}
+ * The plugin's own server (gutt-core/.mcp.json, URL from userConfig.mcp_url), and
+ * whether its URL came from the manifest default because no `CLAUDE_PLUGIN_OPTION_*`
+ * value was visible to this process.
+ * @returns {{ url: string, fromDefault: boolean }|null}
  */
-function pluginServerUrl() {
-  return PLUGIN_ROOT ? extractUrlFromMcpFile(path.join(PLUGIN_ROOT, ".mcp.json")) : null;
+function pluginServer() {
+  if (!ROOT) {
+    return null;
+  }
+  const found = readGuttServer(path.join(ROOT, ".mcp.json"));
+  const url = found && extractUrlFromConfig(found.config);
+  if (!url) {
+    return null;
+  }
+  const raw = String(found.config.url);
+  const fromDefault = [...raw.matchAll(/\$\{user_config\.([A-Za-z0-9_]+)\}/g)].some(
+    (m) => !process.env[`CLAUDE_PLUGIN_OPTION_${m[1].toUpperCase()}`]
+  );
+  return { url, fromDefault };
 }
 
 /**
- * Locate the gutt server Claude Code (or Cursor) will treat as primary.
+ * First gutt server found in configSources() order, else the plugin's own.
+ * @param {string[]|null} [problems] - collects config files that could not be read
  * @returns {{ url: string, name: string|null, source: string, scope: string|null }|null}
  */
-function locateGuttMcp() {
+function locateGuttMcp(problems = null) {
   for (const source of configSources()) {
-    const found = readGuttServer(source.path, source.servers);
+    const found = readGuttServer(source.path, source.servers, problems);
     const url = found && extractUrlFromConfig(found.config);
     if (url) {
       return { url, name: found.name, source: source.path, scope: source.scope };
     }
   }
 
-  const fromPlugin = pluginServerUrl();
-  if (fromPlugin) {
-    return { url: fromPlugin, name: null, source: "plugin", scope: "plugin" };
-  }
-
-  // Check plugin cache directories
-  const pluginCachePath = path.join(HOME_DIR, ".claude", "plugins", "cache");
-  if (fs.existsSync(pluginCachePath)) {
-    try {
-      for (const entry of fs.readdirSync(pluginCachePath)) {
-        const mcpPath = path.join(pluginCachePath, entry, ".mcp.json");
-        const url = extractUrlFromMcpFile(mcpPath);
-        if (url) {
-          return { url, name: null, source: mcpPath, scope: "plugin" };
-        }
-      }
-    } catch {
-      // Ignore read errors
-    }
+  const plugin = pluginServer();
+  if (plugin) {
+    return { url: plugin.url, name: null, source: "plugin", scope: "plugin" };
   }
 
   return null;
 }
 
 /**
- * Extract the gutt MCP URL from Claude Code and Cursor config files.
- * Searches the same places as isGuttMcpConfigured() in the same order.
+ * The gutt MCP URL: the first registration in configSources(), else the plugin's own.
+ * Same sources as isGuttMcpConfigured(); unlike it, a bare marketplace checkout does not
+ * count.
  * @returns {string|null} The MCP base URL, or null if not found
  */
 function getGuttMcpUrl() {
@@ -245,61 +289,51 @@ function getGuttMcpUrl() {
 }
 
 /**
- * Check if gutt-mcp-remote MCP server is configured in settings
- * Checks local, user and project scope for both Claude Code and Cursor.
- * @returns {boolean} true if gutt-mcp-remote is configured
+ * Check whether a gutt MCP server is configured: in any configSources() entry for the
+ * host IDE, in the plugin's own `.mcp.json`, or (legacy) because the gutt marketplace is
+ * checked out.
+ * @param {string[]|null} [problems] - collects config files that could not be read
+ * @returns {boolean}
  */
-function isGuttMcpConfigured() {
+function isGuttMcpConfigured(problems = null) {
   for (const source of configSources()) {
-    if (readGuttServer(source.path, source.servers)) {
+    if (readGuttServer(source.path, source.servers, problems)) {
       return true;
     }
   }
 
   // The plugin ships its own server declaration
-  if (PLUGIN_ROOT && readGuttServer(path.join(PLUGIN_ROOT, ".mcp.json"))) {
+  if (ROOT && readGuttServer(path.join(ROOT, ".mcp.json"))) {
     return true;
   }
 
   // Check if gutt plugin is installed (plugin provides MCP at runtime)
   const pluginPath = path.join(HOME_DIR, ".claude", "plugins", "marketplaces", "gutt-plugins");
-  if (fs.existsSync(pluginPath)) {
-    return true;
-  }
-
-  // Check plugin cache directories for the gutt-pro plugin
-  const pluginCachePath = path.join(HOME_DIR, ".claude", "plugins", "cache");
-  if (fs.existsSync(pluginCachePath)) {
-    try {
-      for (const entry of fs.readdirSync(pluginCachePath)) {
-        if (readGuttServer(path.join(pluginCachePath, entry, ".mcp.json"))) {
-          return true;
-        }
-      }
-    } catch {
-      // Ignore read errors
-    }
-  }
-
-  return false;
+  return fs.existsSync(pluginPath);
 }
 
 /**
- * Warn when a gutt server registered outside the plugin points somewhere other than
- * the plugin's own server. Claude Code namespaces plugin servers, so both run and the
+ * Warn when a gutt server registered outside the plugin (local, project or user scope:
+ * the scopes Claude Code runs next to plugin servers) points somewhere other than the
+ * plugin's own server. Claude Code namespaces plugin servers, so both run and the
  * memory tools of two endpoints are live at once.
  * @param {{ url: string, name: string|null, source: string, scope: string|null }|null} located
  * @param {string|null} pluginUrl
  * @returns {string|null}
  */
 function shadowWarning(located, pluginUrl) {
-  if (!located || located.scope === "plugin" || !pluginUrl || located.url === pluginUrl) {
+  if (
+    !located ||
+    !pluginUrl ||
+    !["local", "project", "user"].includes(located.scope) ||
+    normalizeUrl(located.url) === normalizeUrl(pluginUrl)
+  ) {
     return null;
   }
-  const scope = located.scope === "local" || located.scope === "user" ? located.scope : null;
-  const remove = scope
-    ? `run \`claude mcp remove ${located.name} --scope ${scope}\``
-    : `remove it from ${located.source}`;
+  const remove =
+    located.scope === "project"
+      ? `remove it from ${located.source}`
+      : `run \`claude mcp remove ${located.name} --scope ${located.scope}\``;
   return (
     `A gutt MCP server at ${located.url} is registered outside the plugin, so it runs ` +
     `alongside the plugin's own server at ${pluginUrl}. To keep one endpoint, ${remove} ` +
@@ -308,37 +342,89 @@ function shadowWarning(located, pluginUrl) {
 }
 
 /**
+ * Every Claude Code registration (local, project, user) that runs next to the plugin's
+ * server at a different URL. A same-named server in a lower scope is overridden by the
+ * higher one, so only the first entry per name counts.
+ * @param {string|null} pluginUrl
+ * @returns {string[]}
+ */
+function shadowWarnings(pluginUrl) {
+  if (!pluginUrl || IDE !== "claude") {
+    return [];
+  }
+  const seen = new Set();
+  const warnings = [];
+  for (const source of configSources()) {
+    if (!source.scope) {
+      continue;
+    }
+    const found = readGuttServer(source.path, source.servers);
+    if (!found || seen.has(found.name.toLowerCase())) {
+      continue;
+    }
+    seen.add(found.name.toLowerCase());
+    const url = extractUrlFromConfig(found.config);
+    const warning =
+      url &&
+      shadowWarning({ url, name: found.name, source: source.path, scope: source.scope }, pluginUrl);
+    if (warning) {
+      warnings.push(warning);
+    }
+  }
+  return warnings;
+}
+
+/**
  * Diagnose gutt MCP configuration status.
- * Returns a structured result with config status and URL.
  * Note: Cannot test reachability from a hook (no async HTTP).
- * @returns {{ configured: boolean, url: string|null, error: string|null, warning: string|null }}
+ *
+ * `source` is the config file the URL came from, or `plugin-option` / `plugin-default`
+ * for the plugin's own server. `plugin-default` means no `mcp_url` option value was
+ * visible to this process (the Bash tool never gets one), so the URL is the manifest
+ * default and the user's configured value, if any, has to be read another way.
+ * @returns {{ configured: boolean, url: string|null, source: string|null, error: string|null, warning: string|null }}
  */
 function diagnoseGuttMcp() {
-  const configured = isGuttMcpConfigured();
+  const problems = [];
+  const configured = isGuttMcpConfigured(problems);
+  const located = configured ? locateGuttMcp(problems) : null;
+  const unreadable = [...new Set(problems)].map(
+    (p) => `gutt ${p}, so the URL shown may not be the one in use.`
+  );
+
   if (!configured) {
     return {
       configured: false,
       url: null,
+      source: null,
       error: "gutt MCP server not found in any settings file",
-      warning: null,
+      warning: unreadable.join(" ") || null,
     };
   }
 
-  const located = locateGuttMcp();
   if (!located) {
     return {
       configured: true,
       url: null,
-      error: "gutt MCP configured but no HTTP URL found (may be stdio transport)",
-      warning: null,
+      source: null,
+      error:
+        "gutt MCP configured but no URL resolved (a stdio transport, or a ${...} variable that is not set)",
+      warning: unreadable.join(" ") || null,
     };
   }
 
+  const plugin = pluginServer();
+  let source = located.source;
+  if (located.scope === "plugin") {
+    source = plugin && plugin.fromDefault ? "plugin-default" : "plugin-option";
+  }
+  const warnings = [...unreadable, ...shadowWarnings(plugin && plugin.url)];
   return {
     configured: true,
     url: located.url,
+    source,
     error: null,
-    warning: shadowWarning(located, pluginServerUrl()),
+    warning: warnings.join(" ") || null,
   };
 }
 
@@ -353,4 +439,5 @@ module.exports = {
   extractUrlFromConfig,
   extractUrlFromMcpFile,
   shadowWarning,
+  normalizeUrl,
 };

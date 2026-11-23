@@ -38,14 +38,29 @@ leaves it unset rather than contradicting it.
 
 ### Step 1: Check Existing Configuration
 
-Check if `gutt-mcp-remote` is already configured by attempting to list MCP resources.
+#### Claude Code
 
-In Claude Code the plugin ships this server itself (`gutt-core/.mcp.json`). Its URL is the
+The plugin ships the `gutt-mcp-remote` server itself (`gutt-core/.mcp.json`). Its URL is the
 plugin option `mcp_url`, which defaults to the gutt shared stage server,
-`https://mcp.stage.gutt.pro/mcp`. So it is normally present; the question is which endpoint
-it points at.
+`https://mcp.stage.gutt.pro/mcp`. So the server is normally present; the question is which
+endpoint it points at. Read it, do not assume it:
 
-If found, show the configured endpoint and ask: "Reconfigure?" / "Test connection?" / "Exit"
+1. Run `claude plugin configure gutt-pro@gutt-plugins --json`. If it lists a value for
+   `mcp_url`, that is the plugin's endpoint; if it lists `mcp_url` as unset, the plugin uses
+   the stage default above.
+2. Run `claude mcp list` and look for every server whose name contains `gutt` (other than the
+   plugin's own, which the list attributes to the gutt-pro plugin). For each, `claude mcp get <name>` shows
+   its URL and scope. These are leftovers from an earlier setup and run alongside the plugin's
+   server.
+
+If neither command gives an endpoint, say the endpoint could not be determined; do not show
+the stage default as the configured one.
+
+#### Cursor
+
+Read `~/.cursor/mcp.json` and look for a `gutt-mcp-remote` entry.
+
+If an endpoint is found, show it and ask: "Reconfigure?" / "Test connection?" / "Exit"
 
 ### Step 2: Get MCP Endpoint URL
 
@@ -61,7 +76,7 @@ Validate:
 - Must start with `https://`
 - Must end with `/mcp`
 
-### Step 3: Add MCP Server (IDE-specific)
+### Step 3: Set the Endpoint (IDE-specific)
 
 #### Claude Code
 
@@ -82,13 +97,23 @@ or when installing for the first time:
 claude plugin install gutt-pro@gutt-plugins --config mcp_url="[USER_PROVIDED_URL]"
 ```
 
-An earlier setup registered `gutt-mcp-remote` with `claude mcp add`, which stores it in
-`~/.claude.json`. Check with `claude mcp get gutt-mcp-remote`: if it lists a scope of user or
-local, remove it so only the plugin's server is left (use the scope it shows):
+Then verify it was saved: run `claude plugin configure gutt-pro@gutt-plugins --json` and
+confirm `mcp_url` equals the URL the user gave. If the command fails (for example the plugin
+is installed under a different marketplace id; `claude plugin list` shows the id) or the value
+differs, show the error and the manual `/plugin` → gutt-pro → Configure path, and stop: do
+not show the Step 4 message.
+
+An earlier setup may have registered a gutt server with `claude mcp add`, which stores it in
+`~/.claude.json`, usually as `gutt-mcp-remote` but possibly under another name containing
+`gutt`. Remove every one Step 1 found, using the name and scope `claude mcp get` shows, so
+only the plugin's server is left:
 
 ```bash
 claude mcp remove gutt-mcp-remote --scope user
 ```
+
+After the restart in Step 4, `/gutt-pro:health` reports any registration still running next
+to the plugin's server.
 
 #### Cursor
 
@@ -119,7 +144,7 @@ Use `$HOME/.cursor/mcp.json` on Unix or `%USERPROFILE%\.cursor\mcp.json` on Wind
 Show the user:
 
 ```
-gutt MCP Server Added!
+gutt endpoint set!
 
 Endpoint: [url]
 
