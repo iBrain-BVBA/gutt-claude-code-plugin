@@ -265,7 +265,13 @@ describe("vault-agnostic", () => {
     assert.deepEqual(hits, []);
   });
 
-  for (const skill of ["vault-curate", "vault-commit", "vault-brief", "vault-steer"]) {
+  for (const skill of [
+    "vault-curate",
+    "vault-commit",
+    "vault-brief",
+    "vault-steer",
+    "vault-routines",
+  ]) {
     it(`${skill} requires a slug and has no default vault`, () => {
       const text = read(path.join(SKILLS, skill, "SKILL.md"));
       const hint = text.match(/^argument-hint:\s*(["'])(.*)\1\s*$/m);
@@ -277,6 +283,17 @@ describe("vault-agnostic", () => {
       assert.ok(text.toLowerCase().includes("no default vault"), "say there is no default vault");
     });
   }
+
+  it("skill descriptions have no angle brackets (claude.ai strips them and flags a sync warning)", () => {
+    const hits = [];
+    for (const dir of fs.readdirSync(SKILLS)) {
+      const file = path.join(SKILLS, dir, "SKILL.md");
+      if (!fs.existsSync(file)) continue;
+      const desc = read(file).match(/^description:\s*(.*)$/m);
+      if (desc && /[<>]/.test(desc[1])) hits.push(dir);
+    }
+    assert.deepEqual(hits, []);
+  });
 
   it("prompts call the plugin's own skills by their namespaced names", () => {
     const bare = [];

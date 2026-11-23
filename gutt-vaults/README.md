@@ -25,14 +25,15 @@ Every skill that runs a vault takes the vault's slug first; there is no default 
 
 ## Skills
 
-| Skill          | What it does                                                                                                                                                                         |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `vault-steer`  | Creates a vault's charter (scope, beats, source rules, review policy) and its Console, and turns your instructions into steering                                                     |
-| `vault-curate` | The daily run: assembles the charter, sends one scout per beat, verifies every source, writes rows to the Console, runs the reviewer                                                 |
-| `vault-review` | The reviewer's policy: precedent matching against your past verdicts, and the autonomy ladder it climbs per class                                                                    |
-| `vault-commit` | The only writer of vault knowledge: your decided rows become Finding, Conflict, RoleCard, Verdict, Steering, Config and Brief episodes; an approved brief republishes the Brief page |
-| `vault-brief`  | The weekly brief and LinkedIn draft from committed findings only, the reviewer's calibration, and the republished Graph and Timelapse                                                |
-| `vault-pages`  | Exports the vault's memory to the Graph and Timelapse data, checks every page's data, publishes and previews the pages                                                               |
+| Skill            | What it does                                                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vault-steer`    | Creates a vault's charter (scope, beats, source rules, review policy) and its Console, and turns your instructions into steering                                                     |
+| `vault-curate`   | The daily run: assembles the charter, sends one scout per beat, verifies every source, writes rows to the Console, runs the reviewer                                                 |
+| `vault-review`   | The reviewer's policy: precedent matching against your past verdicts, and the autonomy ladder it climbs per class                                                                    |
+| `vault-commit`   | The only writer of vault knowledge: your decided rows become Finding, Conflict, RoleCard, Verdict, Steering, Config and Brief episodes; an approved brief republishes the Brief page |
+| `vault-brief`    | The weekly brief and LinkedIn draft from committed findings only, the reviewer's calibration, and the republished Graph and Timelapse                                                |
+| `vault-pages`    | Exports the vault's memory to the Graph and Timelapse data, checks every page's data, publishes and previews the pages                                                               |
+| `vault-routines` | Sets up the four scheduled routines that run a vault, attaching only the gutt connector, and proves them with a read-only preflight; also lists, retimes, pauses and runs them       |
 
 ## Agents
 
@@ -69,5 +70,7 @@ No hooks.
 ## Where it runs
 
 Claude Code in the terminal, the desktop app's Code tab, Cowork and cloud routines. A routine
-needs `gutt-vaults@gutt-plugins` in the repository's `enabledPlugins` (see the main README),
-the gutt connector authorised, and the vault's slug in its prompt.
+sees only the plugins installed on its owner's claude.ai account, not the repository's
+`enabledPlugins`: install `gutt-pro` and `gutt-vaults` there, give the routine the gutt
+connector, and put the vault's slug in its prompt. `/gutt-vaults:vault-routines` sets up the
+four routines and checks them.

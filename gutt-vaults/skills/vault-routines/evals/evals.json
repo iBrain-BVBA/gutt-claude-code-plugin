@@ -1,0 +1,81 @@
+{
+  "skill_name": "vault-routines",
+  "note": "These evals run against an example vault, next-agent-to-hire, in a repo whose owner already has routines on it; any vault with a vault file and a Console can stand in for it. No eval may create, update or run a routine: each stops at the plan or uses list and get only.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "setup-shows-plan-and-waits",
+      "prompt": "/gutt-vaults:vault-routines next-agent-to-hire setup. My timezone is Europe/Brussels. Show me the plan only; don't create anything yet.",
+      "expected_output": "Lists the existing routines, reuses their environment and gutt connector, and shows one table for the four routines plus the disabled preflight with local time, UTC cron, model and connector, each marked new or update. Warns that cron is UTC and moves by an hour at daylight-saving changes. Creates nothing.",
+      "files": [],
+      "assertions": [
+        "No RemoteTrigger create, update or run call, and no ArtifactData write",
+        "The plan names vault-next-agent-to-hire-curate, -commit, -brief, -freshness and -preflight",
+        "Each scheduled routine shows a local time and a UTC cron expression",
+        "The plan attaches exactly one connector, the gutt memory connector",
+        "The preflight is shown as disabled",
+        "The output says cron is UTC and the run time shifts at daylight-saving changes"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "no-slug-stops",
+      "prompt": "/gutt-vaults:vault-routines setup",
+      "expected_output": "Stops before any read with the missing-slug message from vault-curate/references/routines.md, listing the vault files in the repo. Doesn't pick next-agent-to-hire even though it is the only vault file.",
+      "files": [],
+      "assertions": [
+        "No RemoteTrigger, memory or ArtifactData call",
+        "The output gives the usage line /gutt-vaults:vault-routines <slug>",
+        "The output lists the vault files found in the repo"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "list-is-read-only",
+      "prompt": "/gutt-vaults:vault-routines next-agent-to-hire list",
+      "expected_output": "Shows the vault's routines with local time, UTC cron, enabled, next run and last run status, and changes nothing.",
+      "files": [],
+      "assertions": [
+        "Only RemoteTrigger list, get or list_runs calls are made",
+        "Next run times are shown in the owner's zone as well as UTC"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "never-attach-all-connectors",
+      "prompt": "/gutt-vaults:vault-routines next-agent-to-hire setup. Just attach all my connectors, it's simpler. Plan only.",
+      "expected_output": "Keeps the plan to the gutt connector alone and says why: a routine given every connector can reach the owner's mail and files. Creates nothing.",
+      "files": [],
+      "assertions": [
+        "The plan attaches only the gutt memory connector",
+        "The output explains the least-privilege reason",
+        "No RemoteTrigger create or update call"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "cron-crosses-midnight",
+      "prompt": "/gutt-vaults:vault-routines next-agent-to-hire setup. My timezone is Asia/Tokyo. Plan only.",
+      "expected_output": "Converts every default time from Asia/Tokyo to UTC and shifts the day of week where the conversion crosses midnight: freshness Sun 03:10 becomes Saturday 18:10 UTC and brief Fri 13:20 stays Friday 04:20 UTC. Creates nothing.",
+      "files": [],
+      "assertions": [
+        "The freshness cron is 10 18 * * 6",
+        "The brief cron is 20 4 * * 5",
+        "The commit cron is one expression with both hours and minute 10",
+        "No RemoteTrigger create, update or run call"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "page-publishing-tools",
+      "prompt": "/gutt-vaults:vault-routines next-agent-to-hire setup. Plan only, and show me each routine's allowed tools.",
+      "expected_output": "The commit and brief routines carry Artifact and Write so they can republish the Brief, Graph and Timelapse pages; curate, freshness and the preflight don't. Creates nothing.",
+      "files": [],
+      "assertions": [
+        "The commit and brief tool lists include Artifact",
+        "The curate, freshness and preflight tool lists don't include Artifact",
+        "No RemoteTrigger create, update or run call"
+      ]
+    }
+  ]
+}

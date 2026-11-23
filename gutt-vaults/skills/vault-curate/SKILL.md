@@ -1,6 +1,6 @@
 ---
 name: vault-curate
-description: "The daily librarian run for a public research vault: assembles the effective charter, sends one vault-scout per beat, re-fetches and verifies every claim, dedupes, scores, detects conflicts, writes pending rows to the Vault Console, and has vault-reviewer judge them. With --freshness it re-verifies facts past their freshness window instead. Use for the scheduled curate or freshness routine, or when the owner says 'curate the vault', 'curate <slug>', 'research the beats now', 'refresh stale vault facts'. Always takes the vault's slug; there is no default vault. Not for steering (vault-steer), committing decisions (vault-commit) or the weekly brief (vault-brief)."
+description: "The daily librarian run for a public research vault: assembles the effective charter, sends one vault-scout per beat, re-fetches and verifies every claim, dedupes, scores, detects conflicts, writes pending rows to the Vault Console, and has vault-reviewer judge them. With --freshness it re-verifies facts past their freshness window instead. Use for the scheduled curate or freshness routine, or when the owner says 'curate the vault', 'curate {slug}', 'research the beats now', 'refresh stale vault facts'. Always takes the vault's slug; there is no default vault. Not for steering (vault-steer), committing decisions (vault-commit) or the weekly brief (vault-brief)."
 argument-hint: "<slug> [--freshness] [--beat <name>] [--dry-run]"
 model: opus
 metadata:

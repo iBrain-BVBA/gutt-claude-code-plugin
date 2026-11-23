@@ -4,17 +4,20 @@ Every vault skill takes the vault's slug as its first argument and stops without
 no default vault, even when the repo holds only one vault file. A routine's prompt therefore
 names the vault on every line it runs.
 
-| Routine                  | Default time (owner's zone) | Prompt line                                    |
+| Routine                  | Default time (owner's zone) | Runs                                           |
 | ------------------------ | --------------------------- | ---------------------------------------------- |
 | `vault-<slug>-curate`    | Daily 02:40                 | `/gutt-vaults:vault-curate <slug>`             |
 | `vault-<slug>-commit`    | 12:10 and 19:10             | `/gutt-vaults:vault-commit <slug>`             |
 | `vault-<slug>-brief`     | Fri 13:20                   | `/gutt-vaults:vault-brief <slug>`              |
 | `vault-<slug>-freshness` | Sun 03:10                   | `/gutt-vaults:vault-curate <slug> --freshness` |
 
-Each routine runs against the owner's repo, which holds the vault file (below) and enables the
-`gutt-pro` and `gutt-vaults` plugins in its `.claude/settings.json`, with the gutt memory
-connector granted. Times are set on the routine, not on the Console: the Console's Settings tab
-shows them read-only. An owner with several vaults staggers the curate routines about 20
+Each routine runs against the owner's repo, which holds the vault file (below), with the gutt
+memory connector granted. The routine loads only the plugins installed on the owner's
+claude.ai account, so `gutt-pro` and `gutt-vaults` must be installed there; the repo's
+`.claude/settings.json` `enabledPlugins` don't reach a routine.
+`/gutt-vaults:vault-routines <slug>` creates the four routines and runs a preflight that
+checks all of this. Times are set on the routine, not on the Console: the Console's Settings
+tab shows them read-only. An owner with several vaults staggers the curate routines about 20
 minutes apart so runs don't overlap.
 
 The same skills run in Claude Code in the terminal, the desktop app's Code tab and Cowork, for
@@ -47,5 +50,7 @@ slug disagree about where the vault lives.
 
 ## Example
 
-For a vault with slug `example-vault`, the curate routine's prompt is
-`/gutt-vaults:vault-curate example-vault` and its group is `vault_example_vault`.
+For a vault with slug `example-vault`, the curate routine runs
+`/gutt-vaults:vault-curate example-vault` and its group is `vault_example_vault`. The routine's
+full prompt, which calls the skill with the Skill tool and adds the routine context, is in
+`../../vault-routines/references/routine-prompts.md`.
