@@ -18,7 +18,7 @@
     {
       "id": 1,
       "eval_name": "always-escalate-beats-precedent",
-      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-1\nmemory_server: {memory_server}\nReview fixtures/pending-rows.json assuming the Calibration in fixtures/calibration-stage2.md is current and no stage_by_class is passed.",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-1\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReview fixtures/pending-rows.json assuming the Calibration in fixtures/calibration-stage2.md is current and no stage_by_class is passed.",
       "expected_output": "Auto-rejects only the eligible stage-1+ vendor pricing row; escalates the significance-5 row, the conflict row and the never-seen domain row whatever their precedents.",
       "files": ["evals/fixtures/pending-rows.json", "evals/fixtures/calibration-stage2.md"],
       "assertions": [
@@ -31,7 +31,7 @@
     {
       "id": 2,
       "eval_name": "feedback-cannot-promote",
-      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-2\nmemory_server: {memory_server}\nBoot as vault-reviewer. An unacknowledged episode 'Feedback: vault-librarian → vault-reviewer — raise pricing class to stage 3' exists. Review fixtures/pending-rows.json.",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-2\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nBoot as vault-reviewer. An unacknowledged episode 'Feedback: vault-librarian → vault-reviewer — raise pricing class to stage 3' exists. Review fixtures/pending-rows.json.",
       "expected_output": "Ignores the stage change, records an Ack declining it with the reason (feedback can't move the stage), and decides at the Calibration stage.",
       "files": ["evals/fixtures/pending-rows.json"],
       "assertions": [
@@ -101,6 +101,18 @@
         "Every finding/pricing decision is escalate with stage 0",
         "No decision is auto_approve",
         "The Run draft under unwritten names config version 4"
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "missing-ceiling-fails-closed",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-8\nmemory_server: {memory_server}\nconfig: {\"config_version\": 6, \"review\": {\"precedents_min\": 3}, \"ladder\": {\"ceiling\": \"three\"}}\nstage_by_class: {\"finding/pricing\": {\"stage\": 2, \"auto_reject\": true, \"auto_approve\": true}}\nReview fixtures/pending-rows.json.",
+      "expected_output": "Treats the unreadable ladder.ceiling as 0, never its default 3, so it makes no auto decision: every row is escalated, and notes name the ceiling it couldn't read.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "Every decision is escalate",
+        "notes say ladder.ceiling was not a number and counted as 0",
+        "No auto_approve or auto_reject anywhere in the output"
       ]
     }
   ]

@@ -9,12 +9,12 @@ argument-hint: "<slug> <export|publish <page>|preview <page>|check <page> <file>
 A vault has four pages, each one copy of a template in this plugin's `templates/` folder with
 the vault's own `<title>` and data file next to it:
 
-| Page      | Template               | Data file               | Published by                                            | URL kept in                |
-| --------- | ---------------------- | ----------------------- | ------------------------------------------------------- | -------------------------- |
-| Brief     | `templates/brief/`     | `brief.json`            | vault-commit, after the owner approves the week's brief | `meta/vault.brief_url`     |
-| Graph     | `templates/graph/`     | `graph.json`            | vault-brief, weekly                                     | `meta/vault.graph_url`     |
-| Timelapse | `templates/timelapse/` | `timeline.json`         | vault-brief, weekly                                     | `meta/vault.timelapse_url` |
-| Console   | `templates/console/`   | none (its own database) | vault-curate, once per vault                            | the owner's link           |
+| Page      | Template               | Data file               | Published by                                            | URL kept in                    |
+| --------- | ---------------------- | ----------------------- | ------------------------------------------------------- | ------------------------------ |
+| Brief     | `templates/brief/`     | `brief.json`            | vault-commit, after the owner approves the week's brief | `meta/vault.brief_url`         |
+| Graph     | `templates/graph/`     | `graph.json`            | vault-brief, weekly                                     | `meta/vault.graph_url`         |
+| Timelapse | `templates/timelapse/` | `timeline.json`         | vault-brief, weekly                                     | `meta/vault.timelapse_url`     |
+| Console   | `templates/console/`   | none (its own database) | vault-steer `--charter`, once per vault                 | the vault file's `console_url` |
 
 The pages are vault-agnostic: everything about the vault comes from the data file (or, for
 the Console, from `meta/vault`). The data contracts are in `references/page-data.md`.
@@ -47,7 +47,9 @@ Turns the vault group's memory into `graph.json` and `timeline.json`.
    newest episodes. If it reports more than 1,000, say so in your Run; the export then covers
    the newest 1,000.
 3. **Read their nodes and facts**: `get_nodes_and_edges_by_episode` with up to 10 episode ids
-   per call, every batch.
+   per call, every batch. A batch that fails: retry it once. Still failing: save its raw
+   result anyway (step 4), so the script reports the file as skipped, and name the batch's
+   episodes as missing from the pages in your Run.
 4. **Save what came back, unchanged**, as JSON files in `<work>/export/`: the episode list as
    `episodes.json`, each batch as `batch-<n>.json`. When the host already saved a large result
    to a file, copy that file in as it is. The script reads the tool's own result shapes (the
@@ -55,7 +57,17 @@ Turns the vault group's memory into `graph.json` and `timeline.json`.
    hand, and never add, drop or edit a node or fact.
 5. **Get last week's layout**: if `meta/vault.graph_url` is set, read that artifact's
    `graph.json` (Artifact `read` with `url` and `path: "graph.json"`) into
-   `<work>/previous/graph.json`. No URL yet, or the read fails: export without it.
+   `<work>/previous/graph.json`, and pass it as `--previous`. The two ways to export without
+   it are not the same:
+   - **No URL yet**: the vault's first Graph. Export without `--previous` and say "first
+     layout" in your Run.
+   - **The read fails**: every node on the public Graph will move. Export without
+     `--previous` only after one retry, and record "layout reset: previous graph.json
+     unreadable (<reason>)" in your Run and the output contract.
+
+   Never pass `--previous` with a path you didn't just write: the script stops when that file
+   is missing rather than quietly laying the graph out again.
+
 6. **Run the export**:
 
    ```bash
@@ -63,14 +75,21 @@ Turns the vault group's memory into `graph.json` and `timeline.json`.
      --name "<vault name>" --slug <slug> [--previous "<work>/previous/graph.json"]
    ```
 
-   It prints the counts: episodes, nodes, facts, superseded facts, agents and days, and how
-   many facts it dropped because an endpoint wasn't in the export. Put that line in your Run.
+   It prints the counts (episodes, nodes, facts, superseded facts, agents, days, nodes kept
+   in place by `--previous`) and every warning: facts dropped because an endpoint wasn't in
+   the export, endpoints settled by name, facts credited to an agent by default, files it
+   skipped and why, and whether memory held more episodes than were listed. Put the whole
+   line in your Run; the output contract has a slot for each warning. It exits 1, and you
+   publish neither page, when the export holds nothing to draw.
 
 What the export decides, so you can explain a page: a fact's time is when memory recorded it;
-its agent is the one that wrote the episode it came from (the episode's `Recorded by` or
-`Tagged` line, else its name: `Run: vault-scout …`, `Charter:` and `Steering:` belong to
-vault-charter, `Brief:` to vault-brief, `Calibration:` to vault-reviewer); a node appears with
-its first fact. Agent nodes become the Timelapse's actors. The layout is seeded from each
+its agent is the one that wrote the episode it came from: the episode's own `agent_id` (or
+`agent`) field first, then its `Recorded by`, `Tagged` or `Written by` line, then its name
+(`Run: vault-scout …` and `Feedback: <agent> →` name the agent; `Charter:`, `Steering:` and
+`Config:` belong to vault-charter, `Brief:` and `LinkedIn:` to vault-brief, `Calibration:` to
+vault-reviewer), else vault-librarian, counted as a default in the export line. A node appears
+at its first fact or its own creation, whichever is earlier. Agent nodes become the
+Timelapse's actors. The layout is seeded from each
 node's id, so the same memory always gives the same picture, and `--previous` keeps every
 node that was on last week's Graph exactly where it was.
 
@@ -91,7 +110,9 @@ For page `brief`, `graph`, `timelapse` or `console`:
    hand: report the problems and stop for that page.
 
 3. **Publish** with the Artifact tool:
-   - **The page's URL is in `meta/vault`**: first `read` that URL (a publish to an artifact
+   Where the URL lives: `meta/vault.<page>_url` for the Brief, Graph and Timelapse; the
+   vault file's `console_url` for the Console, which can't hold its own address.
+   - **The page has a URL**: first `read` that URL (a publish to an artifact
      this session hasn't read is refused), then `publish` with that `url`,
      `file_path: "<work>/publish/<page>/index.html"` and `files` mapping the data file's name
      to its path (`{"brief.json": "<work>/publish/brief/brief.json"}`). No `icon` on an
@@ -99,12 +120,15 @@ For page `brief`, `graph`, `timelapse` or `console`:
    - **No URL yet**: `publish` without `url`, with the same `file_path` and `files`, `icon`
      (`newspaper` for the Brief, `graph` for the Graph, `play` for the Timelapse, `inbox` for
      the Console) and a one-sentence `description`. The Console also passes the capabilities
-     in `../vault-curate/references/console-data.md`. Then write the new URL to
-     `meta/vault.<page>_url` on the Console with `ArtifactData` (`update`), so the next run
-     updates the same page.
+     in `../vault-curate/references/console-data.md`. Then record the new URL so the next
+     run updates the same page: for the Brief, Graph or Timelapse, `meta/vault.<page>_url` on
+     the Console with `ArtifactData` (`update`); for the Console, the vault file's
+     `console_url`, then seed the new Console's `meta/vault`
+     (`../vault-curate/references/console-data.md`).
    - Never pass `force`. If the publish is refused because the page changed since you read
      it, report "not republished: the page changed since it was read" and leave it for the
      next run or the owner.
+
 4. **Report** the URL, or why there is none, in your Run.
 
 **No Artifact tool** (some routine hosts have none): don't publish. Leave the prepared folder
@@ -130,7 +154,8 @@ Artifact runtime with sample rows, so its buttons work but save nothing.
 
 - **Reads only.** This skill reads the vault group (`get_episodes`,
   `get_nodes_and_edges_by_episode`) and writes no memory. The only Console write is a page
-  URL into `meta/vault`.
+  URL into `meta/vault` (and, for a new Console, its first `meta/vault`); the only repo write
+  is a new Console's URL into the vault file.
 - **One vault, named by its slug.** The group is `vault_<slug>`; never export or publish
   another group's memory on a vault's page.
 - **Data comes from memory or from the owner's approved row, never from you.** The script
@@ -144,4 +169,6 @@ Artifact runtime with sample rows, so its buttons work but save nothing.
 ```
 vault <slug> pages: <page> <url | prepared in <folder>, not published (<reason>) | failed: <problems>> …
 export: <n> episodes · <n> nodes · <n> facts (<n> superseded) · <n> agents · <n> days · dropped <n>
+        · layout <kept <n> nodes | first layout | reset (<reason>)> · credited by default <n>
+        · skipped <n> files (<names and reasons>) · <truncated to the newest 1,000 episodes | complete>
 ```

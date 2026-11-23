@@ -2,8 +2,8 @@
 
 The data file each page reads from next to itself, and the export the Graph and Timelapse are
 built from. `vault-pages.cjs check <page> <file>` tests a file against these contracts, and
-`prepare` refuses one that fails. Every file carries `"schema": 1`; a later change to a
-contract raises it.
+`prepare` refuses one that fails. Every file carries `"schema": 1`, and `check` refuses any
+other value; a later change to a contract raises it.
 
 Each template's `fixtures/` folder holds a complete example for an invented vault.
 
@@ -113,7 +113,7 @@ Everything the vault group holds, for the Graph page. Written by `vault-pages.cj
   ],
   "facts": [
     [
-      "1a2b3c4d",
+      "1a2b3c4d-0000-4000-8000-000000000001",
       "DRAWN_FROM",
       "The finding … is drawn from …",
       "Finding:Acme-Coder-2.0",
@@ -122,7 +122,14 @@ Everything the vault group holds, for the Graph page. Written by `vault-pages.cj
       0
     ]
   ],
-  "stats": { "episodes": 18, "ambiguous": 3, "unresolved": 0, "more_in_memory": false }
+  "stats": {
+    "episodes": 18,
+    "ambiguous": 3,
+    "unresolved": 0,
+    "by_default": 0,
+    "pinned": 0,
+    "more_in_memory": false
+  }
 }
 ```
 
@@ -131,12 +138,14 @@ Everything the vault group holds, for the Graph page. Written by `vault-pages.cj
   1,400 characters; `email` attributes are dropped. `x` and `y` are whole numbers from -1000
   to 1000.
 - `facts`: `[id, relation, fact text, source id, target id, valid date, superseded]`, where
-  `id` is the first 8 characters of the fact's uuid and `superseded` is `1` when the fact has
-  an `invalid_at` or `expired_at`.
+  `id` is the fact's full uuid (or its id when it has no uuid), unique in the file, and
+  `superseded` is `1` when the fact has an `invalid_at` or `expired_at`.
 - Some node ids name more than one node. The export settles each fact's endpoint by matching
   the fact's words against the candidates' names (`stats.ambiguous` counts those), and the
   page marks them "endpoint inferred". Facts whose endpoint isn't in the export are dropped
   (`stats.unresolved`).
+- `stats.by_default` counts facts credited to an agent by default (their episode named no
+  writer); `stats.pinned` counts nodes `--previous` kept in place.
 - `stats.more_in_memory` is `true` when `get_episodes` said the group holds more episodes than
   it listed; the pages then cover the newest ones, and the export's summary line says so.
 
@@ -177,18 +186,27 @@ replays it). Written by `vault-pages.cjs export` alongside `graph.json`.
   endpoint `≥ 0` is a node index; a negative endpoint `-1 - i` is agent `i`. The text is cut
   at 600 characters.
 - `days`: one marker per day with events, `day` counted from `start`.
-- The agents come first in the vault's own order (charter, scout, librarian, reviewer, curate,
-  brief), then any other identity that wrote an episode, by name.
+- The agents come first in the vault's own order (charter, scout, librarian, reviewer, brief,
+  with `vault-curate` kept in its old place for older vaults whose episodes carry that legacy
+  identity), then any other identity that wrote an episode, by name.
 
 ## The export's input
 
-`export --in` takes one JSON file or a folder of them, each one of:
+`export --in` takes one file or a folder of `.json` and `.txt` files, each one of:
 
 - a tool result as the memory server returned it: the `get_episodes` result (`episodes`),
   a `get_nodes_and_edges_by_episode` result (`nodes`, `facts`), as the JSON body, an MCP
-  content array whose text items hold the body, or wrapped as `{result: …}`;
+  content array whose text items hold the body, or wrapped as `{result: …}` or
+  `{payload: …}`;
 - one combined object `{vault, episodes, nodes, facts}`.
 
+A file the script can't use is skipped and named with the reason: an error result
+(`isError`, or a body that is only an `error`), a text item that isn't JSON (one such item
+makes the whole file unreadable), or no episodes, nodes or facts in it.
+
 Episodes, nodes and facts read more than once are merged: one copy each (by uuid, or by id
-and name for nodes, keeping the longest summary). `skills/vault-pages/fixtures/raw-export.json`
+and name for nodes), chosen the same way whatever order the files were read in. A node keeps
+its longest summary; a fact keeps the read that shows it superseded, then the later end. A
+graph fact's id is its full uuid (or id), and `check` refuses a graph.json that repeats one,
+because the page draws one fact per id. `skills/vault-pages/fixtures/raw-export.json`
 is a complete example for the invented vault the page fixtures come from.

@@ -502,7 +502,7 @@ b.short { color: var(--bad); font-weight: 600; }
     vault: null, charter: null, reviewer: null, drafts: {}, busy: {},
     ui: {}, done: {}, acts: {}, order: [], cursor: null, undo: null, focusNext: null,
     config: null, configChanges: [], cfgDraft: {}, ceilDraft: {}, cfgReset: null,
-    canAdmin: null, me: null, idKnown: false, userNs: null, names: {}
+    canAdmin: null, me: null, idKnown: false, userNs: null, names: {}, warned: {}
   };
   var LABELS = (function () {
     try { return JSON.parse(document.getElementById("console-labels").textContent) || {}; } catch (e) { return {}; }
@@ -566,12 +566,29 @@ b.short { color: var(--bad); font-weight: 600; }
     return box;
   }
   // LinkedIn counts characters as people see them; emoji and other astral characters count once.
+  // linkedin_md holds title candidates, the post, an image prompt and alt text under headings;
+  // only the Post section goes to LinkedIn, so only it is counted when the draft has one.
   var LINKEDIN_MAX = 3000;
   function charCount(text) { return Array.from(String(text || "")).length; }
+  function headingName(line) {
+    var m = String(line).match(/^\s*(?:#{1,6}\s*|\d+\.\s*)?\**\s*([A-Za-z][A-Za-z ]*?)\s*:?\s*\**\s*:?\s*$/);
+    return m ? m[1].toLowerCase() : null;
+  }
+  var DRAFT_SECTIONS = ["title candidates", "post", "image prompt", "alt text"];
+  function postSection(text) {
+    var lines = String(text || "").split("\n"), start = -1, end = lines.length;
+    for (var i = 0; i < lines.length; i++) {
+      var name = headingName(lines[i]);
+      if (start < 0 && name === "post") start = i + 1;
+      else if (start >= 0 && DRAFT_SECTIONS.indexOf(name) >= 0) { end = i; break; }
+    }
+    return start < 0 ? null : lines.slice(start, end).join("\n").trim();
+  }
   function linkedinCount(text) {
-    var n = charCount(text), over = n > LINKEDIN_MAX;
+    var post = postSection(text), n = charCount(post == null ? text : post), over = n > LINKEDIN_MAX;
     return h("p", { class: over ? "count over" : "count" },
-      n.toLocaleString("en-US") + " of " + LINKEDIN_MAX.toLocaleString("en-US") + " characters" + (over ? " · " + (n - LINKEDIN_MAX).toLocaleString("en-US") + " over LinkedIn's limit" : ""));
+      n.toLocaleString("en-US") + " of " + LINKEDIN_MAX.toLocaleString("en-US") + (post == null ? " characters (the whole draft: it has no Post heading)" : " characters in the post") +
+      (over ? " · " + (n - LINKEDIN_MAX).toLocaleString("en-US") + " over LinkedIn's limit" : ""));
   }
   function briefPageSummary(b) {
     var p = b.page;
@@ -660,10 +677,16 @@ b.short { color: var(--bad); font-weight: 600; }
 
   // ---------- next commit (U6) ----------
   // Commit times are the routine's, in the owner's zone (meta/vault.commit_times, .timezone).
+  // A malformed entry is left out; a list with none left means the time is unknown, not a guess.
   function commitTimes() {
-    var t = S.vault && Array.isArray(S.vault.commit_times) && S.vault.commit_times.length ? S.vault.commit_times : ["12:10", "19:10"];
-    return t.filter(function (x) { return /^\d{1,2}:\d{2}$/.test(String(x)); });
+    var set = S.vault && Array.isArray(S.vault.commit_times) && S.vault.commit_times.length;
+    var t = set ? S.vault.commit_times : ["12:10", "19:10"];
+    var ok = t.filter(function (x) { return /^\d{1,2}:\d{2}$/.test(String(x)); });
+    if (ok.length !== t.length && !S.warned.times) { S.warned.times = true; console.warn("meta/vault.commit_times has entries that aren't HH:MM", t); }
+    return ok;
   }
+  // null for a time zone the browser doesn't know: the page then says so instead of computing
+  // the next commit in the wrong zone.
   function tzOffsetMin(tz, date) {
     if (!tz) return -date.getTimezoneOffset();
     try {
@@ -671,10 +694,15 @@ b.short { color: var(--bad); font-weight: 600; }
       new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
         .formatToParts(date).forEach(function (x) { p[x.type] = x.value; });
       return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - Math.floor(date.getTime() / 1000) * 1000) / 60000;
-    } catch (e) { return -date.getTimezoneOffset(); }
+    } catch (e) {
+      if (!S.warned.tz) { S.warned.tz = true; console.warn("meta/vault.timezone is not a valid time zone", tz, e); }
+      return null;
+    }
   }
+  function badTimezone() { var tz = S.vault && S.vault.timezone; return !!tz && tzOffsetMin(tz, new Date()) === null; }
   function nextCommit() {
     var tz = S.vault && S.vault.timezone, nowD = new Date(), off = tzOffsetMin(tz, nowD), best = null;
+    if (off === null) return null;
     var wall = new Date(nowD.getTime() + off * 60000);
     for (var d = 0; d < 2; d++) commitTimes().forEach(function (t) {
       var hm = String(t).split(":");
@@ -688,7 +716,10 @@ b.short { color: var(--bad); font-weight: 600; }
     var t = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
     return localDay(d) === localDay() ? t : d.toLocaleDateString(undefined, { weekday: "short" }) + " " + t;
   }
-  function commitWhen() { var n = nextCommit(); return n ? "Next commit " + clock(n) + "." : ""; }
+  function commitWhen() {
+    if (badTimezone()) return "Next commit time unknown: meta/vault.timezone \"" + S.vault.timezone + "\" is not a valid time zone.";
+    var n = nextCommit(); return n ? "Next commit " + clock(n) + "." : "";
+  }
 
   // ---------- rows, classes and the reviewer's calls ----------
   function byCreatedDesc(a, b) { return String(b.created || "").localeCompare(String(a.created || "")); }
@@ -779,7 +810,9 @@ b.short { color: var(--bad); font-weight: 600; }
 
   // ---------- writes ----------
   function canAct() { return S.db && !S.readOnly; }
-  function write(key, fn, okMsg, undoFn, onFail) {
+  // ctx "settings": a permission error there is about the admin-only Settings, so it closes
+  // Settings alone and leaves the Inbox, which Editors and owners may still use.
+  function write(key, fn, okMsg, undoFn, onFail, ctx) {
     if (!canAct() || S.busy[key]) return;
     S.busy[key] = true; render();
     var attempt = function (retry) {
@@ -787,13 +820,17 @@ b.short { color: var(--bad); font-weight: 600; }
         var code = e && e.code;
         if (code === "unavailable" && retry) return new Promise(function (r) { setTimeout(r, 600 + Math.random() * 800); }).then(function () { return attempt(false); });
         if (onFail) onFail();
+        console.error("write " + key + " failed" + (code ? " (" + code + ")" : ""), e);
         if (code === "settings_busy") toast("Someone else is saving settings right now. Try again in a few seconds.");
         else if (code === "version_taken") toast("Someone else saved a new version first. Check their change in the log, then save again.");
+        else if (code === "settings_orphan") toast("Your change was logged but not applied, and the log entry couldn't be removed. Save again: the next save replaces it.");
+        else if (code === "settings_no_lease") toast("This Console can't lock its settings for a save. Republish it from the current template, then save again.");
+        else if ((code === "invalid_argument" || code === "permission_denied") && ctx === "settings") { S.canAdmin = false; toast("Only the vault's owner and Editors can change settings."); }
         else if (code === "invalid_argument") { S.readOnly = true; toast("You can view this Console but not change it."); }
         else if (code === "quota_exceeded") toast("The Console's storage is full. Archive old rows before adding more.");
         else if (code === "revoked") { S.readOnly = true; toast("This Console is no longer available to you."); }
         else if (code === "committed") toast("The commit already put this in the vault, so it can't be undone here.");
-        else toast("That didn't save. Try again in a moment.");
+        else toast("That didn't save" + (code ? " (" + code + ")" : "") + ". Try again in a moment.");
       });
     };
     attempt(true).then(function () { delete S.busy[key]; render(); });
@@ -1589,23 +1626,39 @@ b.short { color: var(--bad); font-weight: 600; }
     var logRef = S.db.doc("config_changes/v" + v), cfgRef = S.db.doc("meta/config"), lock = S.db.doc("meta/config_lock");
     // No transactions in the db: every Settings save takes a short lease on meta/config_lock, then
     // checks that nobody saved since this page read the config, so two saves can't both land.
+    // Without a lease that guarantee is gone, so the save is refused rather than raced.
     write("settings", function () {
-      var held = typeof lock.acquire === "function" ? lock.acquire({ holder: S.me, ttlMs: 15000 }) : Promise.resolve({ acquired: true });
-      return held.then(function (l) {
+      if (typeof lock.acquire !== "function") return Promise.reject(Object.assign(new Error("settings_no_lease"), { code: "settings_no_lease" }));
+      var lease = null;
+      var release = function () {
+        var r = lease && typeof lease.release === "function" ? lease.release() : typeof lock.release === "function" ? lock.release({ holder: S.me }) : null;
+        return Promise.resolve(r).then(null, function (e) { console.warn("meta/config_lock was not released; it expires on its own", e); });
+      };
+      return lock.acquire({ holder: S.me, ttlMs: 15000 }).then(function (l) {
         if (!l || !l.acquired) fail("settings_busy");
+        lease = l;
         return cfgRef.get();
       }).then(function (snap) {
         var cur = snap.exists ? Number(snap.data().config_version) || 0 : 0;
         if (cur !== base) fail("version_taken");
         return logRef.get();
       }).then(function (snap) {
-        if (snap.exists) fail("version_taken");
+        // A v<n> log row while meta/config is still at n-1 is a save that never landed (its
+        // tab closed, or its rollback failed). This save holds the lease, so it replaces it.
+        if (snap.exists) console.warn("config_changes/v" + v + " was logged but never applied; replacing it", snap.data());
         return logRef.set(entry);
       }).then(function () {
         return cfgRef.set({ config_version: v, values: values, class_ceilings: ceilings, saved_at: at, saved_by: S.me })
-          .then(null, function (err) { return logRef["delete"]().then(function () { throw err; }, function () { throw err; }); });
-      }).then(function () { S.cfgDraft = {}; S.ceilDraft = {}; S.cfgReset = null; });
-    }, "Saved as version " + v + ". It applies at the next research run.");
+          .then(null, function (err) {
+            console.error("meta/config was not written; removing config_changes/v" + v, err);
+            return logRef["delete"]().then(function () { throw err; }, function (err2) {
+              console.error("config_changes/v" + v + " could not be removed", err2);
+              fail("settings_orphan");
+            });
+          });
+      }).then(function () { S.cfgDraft = {}; S.ceilDraft = {}; S.cfgReset = null; })
+        .then(function () { return release(); }, function (err) { return release().then(function () { throw err; }); });
+    }, "Saved as version " + v + ". It applies at the next research run.", null, null, "settings");
   }
   function changeText(c) {
     var f = FIELD[c.key];
@@ -1745,7 +1798,7 @@ b.short { color: var(--bad); font-weight: 600; }
     if (aid && typeof active.selectionStart === "number") try { sel = [active.selectionStart, active.selectionEnd]; } catch (e) {}
     renderMast(); renderTabs();
     var m = document.getElementById("main"), next = document.createElement("main"), r = route();
-    if (S.stale) next.appendChild(keyed(h("div", { class: "banner", text: "The Console data can't be reached right now. What you see may be out of date." }), "stale", "1"));
+    if (S.stale) next.appendChild(keyed(h("div", { class: "banner", text: "The Console data can't be reached right now" + (S.staleWhy ? " (" + S.staleWhy + ")" : "") + ". What you see may be out of date." }), "stale", "1"));
     if (S.readOnly) next.appendChild(keyed(h("div", { class: "banner info", text: "You can view this Console but not change it." }), "readonly", "1"));
     if (S.noDb) next.appendChild(keyed(emptyState("The Console data isn't available in this view.", "Open the Console from claude.ai while signed in to review rows."), "nodb", "1"));
     else VIEWS[r.tab](next, r.arg);
@@ -1785,17 +1838,24 @@ b.short { color: var(--bad); font-weight: 600; }
       if (meta && meta.fromCache) return;
       if (!S.ready && --pending <= 0) { S.ready = true; S.stale = false; clearTimeout(timer); }
     }
-    function fail(e) { if (e && e.code === "revoked") S.readOnly = true; S.stale = true; clearTimeout(timer); render(); }
+    function fail(what) {
+      return function (e) {
+        console.error("live read of " + what + " failed" + (e && e.code ? " (" + e.code + ")" : ""), e);
+        if (e && e.code === "revoked") S.readOnly = true;
+        if (e && e.code && e.code !== "unavailable") S.staleWhy = what + ": " + e.code;
+        S.stale = true; clearTimeout(timer); render();
+      };
+    }
     function rows(snap) { return snap.docs.map(function (d) { var o = Object.assign({}, d.data()); o.id = d.id; return o; }); }
     var seen = {};
     // Snapshots arrive together on load; one redraw for a burst of them is enough.
     var queued = false;
     function soon() { if (queued) return; queued = true; setTimeout(function () { queued = false; render(); }, 16); }
     function q(name, query, key) {
-      query.onSnapshot(function (snap) { S[key] = rows(snap); if (!seen[name] && !snap.metadata.fromCache) { seen[name] = 1; landed(snap.metadata); } soon(); }, fail);
+      query.onSnapshot(function (snap) { S[key] = rows(snap); if (!seen[name] && !snap.metadata.fromCache) { seen[name] = 1; landed(snap.metadata); } soon(); }, fail(name));
     }
     function d(path, key) {
-      db.doc(path).onSnapshot(function (snap) { S[key] = snap.exists ? snap.data() : null; if (!seen[path] && !snap.metadata.fromCache) { seen[path] = 1; landed(snap.metadata); } soon(); }, fail);
+      db.doc(path).onSnapshot(function (snap) { S[key] = snap.exists ? snap.data() : null; if (!seen[path] && !snap.metadata.fromCache) { seen[path] = 1; landed(snap.metadata); } soon(); }, fail(path));
     }
     q("findings", db.collection("findings").orderBy("created", "desc").limit(600), "findings");
     q("steering", db.collection("steering").orderBy("at", "desc").limit(200), "steering");
@@ -1816,10 +1876,11 @@ b.short { color: var(--bad); font-weight: 600; }
       if (!u || typeof u.can !== "function") { S.idKnown = true; render(); return; }
       S.userNs = u;
       // Settings live under meta, which only the owner and Editors (admin) may write.
-      if (typeof u.canEdit === "function") u.canEdit().then(function (ok) { S.canAdmin = ok; render(); }, function () {});
+      // A check that fails counts as "no": Settings stay closed rather than fail on save.
+      if (typeof u.canEdit === "function") u.canEdit().then(function (ok) { S.canAdmin = ok; render(); }, function (e) { console.warn("canEdit failed; Settings stay read-only", e); S.canAdmin = false; render(); });
       if (typeof u.id === "function") u.id().then(function (id) { S.me = id || null; S.idKnown = true; render(); }, function () { S.idKnown = true; render(); });
       else S.idKnown = true;
-      return u.can("data.write").then(function (ok) { if (ok === false) { S.readOnly = true; render(); } });
+      return u.can("data.write").then(function (ok) { if (ok === false) { S.readOnly = true; render(); } }, function (e) { console.warn("can(data.write) failed; writes stay enabled and errors will say why", e); });
     }, function () { S.idKnown = true; render(); });
   }, function () { S.noDb = true; render(); });
 })();

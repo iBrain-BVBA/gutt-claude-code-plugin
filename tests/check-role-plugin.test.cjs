@@ -530,6 +530,17 @@ describe("the identity gate, for a vault's own group", () => {
     );
   });
 
+  it("catches a vault workflow whose declared identity is not a vault-* name", (t) => {
+    const { dir, out } = withMutation((target) => {
+      toVaultSkill(target);
+      patch(skillFile(target), "  memory-identity: vault-sample", "  memory-identity: sample");
+    });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    assert.equal(out.status, 1, `expected a failure, got:\n${out.stdout}${out.stderr}`);
+    assert.match(out.stderr, /a vault workflow's memory identity must be a vault-\* name/);
+  });
+
   it("catches a vault workflow reading a scope outside the vault", (t) => {
     const { dir, out } = withMutation((target) => {
       toVaultSkill(target);

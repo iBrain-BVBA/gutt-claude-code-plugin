@@ -79,15 +79,21 @@ Every skill that reads a key does this once per run, before the first step that 
 3. **Check every value**, whatever the Console accepted (the page's checks are a
    convenience, not the guard). A number outside its range is clamped to the nearer bound;
    a value that isn't a number (or, for the two text keys, isn't text) falls back to its
-   default; text longer than its cap is cut at the cap. Each change is a line in the run row's
+   default, except the `ladder` keys, which fail closed: an unreadable `ladder.ceiling` or
+   class ceiling counts as 0 (shadow) for this run, because its default is the most
+   permissive stage and the owner may have pinned it lower. Text longer than its cap is cut
+   at the cap. Each change is a line in the run row's
    `notes` and in the Run episode: `config: run.pending_cap 500 → 50 (clamped)`. Unknown keys
    are ignored and listed the same way.
 4. **Record** `config_version` (0 when `meta/config` is missing) in the run row and in the
    Run episode's boot line. With `meta/config` missing, every key is at its default and the
    run behaves exactly as before the Console held settings.
 
-Console unreachable: use the defaults (and charter numbers), record `config_version:
-unavailable`, and say so in the run row.
+Console unreachable: the owner's saved limits can't be read, so autonomy **fails closed**.
+`ladder.ceiling` and every class ceiling count as 0 for this run (every row escalates), the
+other keys use their defaults (and charter numbers), and the run records `config_version:
+unavailable`. vault-brief writes no Calibration stage change in such a run. Never let an
+outage raise the reviewer above what the owner allowed.
 
 ### Numbers still in an older review-policy charter
 

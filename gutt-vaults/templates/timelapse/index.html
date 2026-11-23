@@ -149,7 +149,7 @@ input[type=range] { width: 100%; accent-color: var(--a-librarian); margin: 0; }
     "vault-reviewer": tok("--a-reviewer"), "vault-curate": tok("--a-curate"), "vault-brief": tok("--a-brief") };
   var EXTRA = [tok("--a-extra-1"), tok("--a-extra-2"), tok("--a-extra-3"), tok("--a-extra-4")];
   var ROLE = { "vault-charter": "sets beats", "vault-scout": "finds sources", "vault-librarian": "records findings",
-    "vault-reviewer": "judges rows", "vault-curate": "writes procedures", "vault-brief": "writes the brief" };
+    "vault-reviewer": "judges rows", "vault-curate": "ran research (legacy)", "vault-brief": "writes the brief" };
   var FONT_MONO = tok("--font-mono"), FONT_UI = tok("--font-ui"), INK = tok("--ink");
   var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -176,7 +176,14 @@ input[type=range] { width: 100%; accent-color: var(--a-librarian); margin: 0; }
   function fail(text) { var s = document.getElementById("status"); s.hidden = false; s.textContent = text; }
 
   // ---------- data ----------
-  fetch("timeline.json").then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(init, function (e) {
+  // A failed fetch can be retried; a data file the page can't replay needs a new export.
+  fetch("timeline.json").then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (data) {
+    try { init(data); } catch (e) {
+      console.error("timeline.json could not be replayed", e);
+      fail("This page's data is malformed (" + e.message + "). The vault's owner needs to export it again.");
+    }
+  }).catch(function (e) {
+    console.error("timeline.json did not load", e);
     fail("The timeline didn't load (" + e.message + "). Reload the page to try again.");
   });
 

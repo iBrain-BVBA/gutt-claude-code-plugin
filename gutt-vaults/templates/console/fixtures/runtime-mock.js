@@ -35,7 +35,13 @@
       body_md: "# Test Vault, week 47\n\nTwo findings entered the vault. **Vendor X** cut its price; see [the source](https://example.com/a).\n\n## What changed\n- Finding r1-8 is in\n- A conflict stays open\n\n<img src=x onerror=alert(1)> stays text, and [this link](javascript:alert(1)) is not a link.",
       linkedin_md: "Post " + new Array(40).join("word "),
       page: { schema: 1, vault: { name: "Test Vault", slug: "test-vault" }, week: "2026-W47", headline: "Vendor X cut its price", changes: [{ finding: "Finding r1-8", title: "Finding r1-8", claim: "A claim.", sources: src }], conflicts: [], sources: src } };
-    store.briefs["brief-2026-W46"] = { vault: "test-vault", week: "2026-W46", status: "approved", published: true, published_at: D(6), committed_episode: "e0", at: D(7),
+    // ?linkedin=long: a post one character over LinkedIn's limit, emoji counted once each, with
+    // the draft's other sections around it (they don't count).
+    if (/linkedin=long/.test(location.search)) {
+      store.briefs["brief-2026-W47"].linkedin_md = "## Title candidates\n1. Long\n\n## Post\n" +
+        new Array(3000).join("a") + "\uD83D\uDE80\uD83D\uDE80" + "\n\n## Image prompt\nA rocket.\n\n## Alt text\nA rocket.";
+    }
+    store.briefs["brief-2026-W46"] = { vault: "test-vault", week: "2026-W46", status: "published", published_at: D(6), committed_episode: "e0", at: D(7),
       body_md: "# Week 46\n\nOne finding.", linkedin_md: "Last week's post" };
     store.steering["steer-20261120-1"] = { vault: "test-vault", text: "Never use vendor webinars", applies_to: "sources", source: "proposed", status: "new", at: D(2) };
     store.runs["curate-2026-11-23"] = { vault: "test-vault", routine: "curate", started: D(0.3), counts: { found: 20, dropped: 3, pending: 0, auto_approved: 2, auto_rejected: 3, escalated: 12, by_beat: { launches: 8, pricing: 6, failures: 6 } }, stage_by_class: {} };

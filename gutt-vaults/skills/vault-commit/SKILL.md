@@ -41,8 +41,9 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
 1. **Only decided rows.** Statuses `approved`, `rejected`, `auto_approved`, `auto_rejected`,
    and steering rows `accepted`. Never `pending` or `escalated`.
 2. **Provenance check before writing a Finding:** at least one source with a URL and a
-   retrieved date. Missing either: don't commit; set the row's `human.note` to the reason
-   and leave it decided-but-uncommitted for the owner.
+   retrieved date. Missing either: don't commit, leave the row decided-but-uncommitted, and
+   list it under skipped in the Run and the output with the reason. Never write the reason
+   into the row: `human{}` is the owner's, and its note is the evidence a Verdict cites.
 3. **One episode per fact, self-contained.** Episode text is the only thing extraction sees:
    every attribute the schema needs must be written out (`references/episode-kinds.md`).
 4. **Status follows only what the episode itself records.** Never imply a Finding's status
@@ -52,16 +53,26 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
    separate plain Verdict. The same decision with `human.confirm` is an audit confirmation:
    write the reviewer's Verdict (tagged `vault-reviewer`) and add "Confirmed by the owner on
    <date>" so it counts toward the class's audited agreement.
-6. **Idempotent.** A row with `committed_episode` set is skipped. Set it right after each
-   successful write, in the same batch cycle.
+6. **Idempotent, one episode at a time.** A row with `committed_episode` set is skipped. A
+   row that needs two episodes (a `Finding:`, `Conflict:` or `RoleCard:` and then its
+   `Verdict:`) records the first as `committed_finding_episode` right after it is written,
+   and a retry writes only the episodes the row doesn't record yet. Set `committed_episode`
+   right after the row's last episode, before the next row. A mark that fails after its
+   episode was written: list the row as "written but not marked" under errors; the next run
+   searches the vault group for that episode by name before writing it again.
 7. **Config only from the Console's `config_changes` rows**, one `Config:` episode per saved
    version, so a Calibration can explain a stage that moved because a threshold did. Never
    from anything else, and never a change to the settings themselves.
 8. **Steering only from Console rows the owner accepted or typed**, formatted by
    `vault-steer`'s template. Proposed steering the owner hasn't accepted is never committed.
 9. **The Brief page shows committed findings only,** and only a brief the owner approved.
-   Every finding on the page must already be a `Finding:` episode in the vault group; drop any
-   that isn't and say so in the Run.
+   Every finding the brief names (in `changes`, and any the headline, intro or spotlight
+   rests on) must already be a `Finding:` episode in the vault group. Check them all before
+   writing the `Brief:` episode. One that isn't: write nothing for that brief and publish
+   nothing, set the row's `status` to `changes_requested` (never its `note` or
+   `human_decision`), and list the findings under errors. Dropping a change silently would
+   leave its claim in the text the owner approved; vault-brief redrafts the row and the
+   owner approves it again.
 10. **Save this run's memories; expect the Stop hook.** Before your final report, do the
     learning step in `../vault-curate/references/run-end-memory.md`; when gutt-pro's
     `stop-capture` hook asks for memory captures, answer it the same way. Operational memories
@@ -88,7 +99,8 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
 
 2. **Register** the identities you'll tag.
 3. **For each finding row**, in `created` order, write per `references/episode-kinds.md`:
-   - `finding` approved/edited → `Finding:` episode (status current), then `Verdict:`.
+   - `finding` approved/edited → `Finding:` episode (status current), then `Verdict:`
+     (hard rule 6: record the Finding on the row before writing the Verdict).
    - `finding` rejected → `Verdict:` only (it records the rejection; status rejected). Its
      `Reason:` line carries the owner's rejection reason (`human.reason`, shown by its label:
      `stale` → "Stale") and the note, if any (`references/episode-kinds.md`).
@@ -109,19 +121,21 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
    skipped ("config v<n> not in meta/config"), so no episode records settings that never
    applied.
 5. **For each `briefs` row the owner approved** (oldest week first):
-   1. Unless it already has `committed_episode`, write `Brief: <YYYY-Www>` (the brief body
+   1. Check every finding the brief names (hard rule 9). Any missing: hold the brief as
+      that rule says and go to the next row.
+   2. Unless it already has `committed_episode`, write `Brief: <YYYY-Www>` (the brief body
       and the Findings it used), tagged `vault-brief`, and set `committed_episode`.
-   2. **Republish the Brief page** with `../vault-pages/SKILL.md` §Publish a page, page
-      `brief`, from the row's `page` field (the `brief.json` vault-brief drafted; hard rule 9
-      applies to its `changes`). Before publishing, fill in only what vault-brief couldn't
+   3. **Republish the Brief page** with `../vault-pages/SKILL.md` §Publish a page, page
+      `brief`, from the row's `page` field (the `brief.json` vault-brief drafted, unchanged). Before publishing, fill in only what vault-brief couldn't
       know: `published_at` (today, in the vault's time zone), `vault.graph_url` and
       `vault.timelapse_url` from `meta/vault`, and `past` from the earlier rows with
       `published_at`. The first publish creates the page and writes its URL to
       `meta/vault.brief_url`; later ones update that URL in place.
-   3. Mark the row `published` with `published_at` only after the page publish succeeded. A
-      row that is approved and committed but not published is retried at the next commit.
-6. **Mark** each finding, steering and config row `committed` with `committed_episode` (one
-   batch per 10 rows).
+   4. Set the row's `status: published` and `published_at` only after the page publish
+      succeeded. A row that is approved and committed but not published is retried at the
+      next commit, which republishes without writing a second `Brief:` episode.
+6. **Mark as you go:** each finding, steering and config row gets `status: committed` and
+   `committed_episode` right after its last episode (hard rule 6), not at the end of the run.
 7. **Run record**: `Run: vault-commit <start time from step 1>` with counts per episode kind,
    skipped rows and reasons, and the Brief page result (published, retried or failed).
 
@@ -145,7 +159,9 @@ skipped: <n> (<reasons>) · errors: <list|none>
 - A memory tool missing doesn't mean memory is down: in a routine the connector can still be
   connecting. Search again after about 15 seconds, once. Only then treat it as missing.
 - Write tool missing or memory down: commit nothing, change no row, report it.
-- A write fails twice: leave that row uncommitted, continue with the rest, list it.
+- A write fails twice: leave that row uncommitted (keeping any `committed_finding_episode`
+  it already has, so the retry doesn't write that episode again), continue with the rest,
+  list it.
 - Console unreachable: commit nothing.
 - No way to publish a page here (no Artifact tool in this environment) or the publish fails:
   commit the `Brief:` episode, leave the row `approved`, and say "Brief page not republished"
@@ -164,5 +180,4 @@ operational only, written at the end of the run (hard rule 10).
 ## Example invocation
 
 `/gutt-vaults:vault-commit <slug>` · scheduled: `vault-<slug>-commit`, 12:10 and 19:10
-(`../vault-curate/references/routines.md`). Example:
-`/gutt-vaults:vault-commit next-agent-to-hire`.
+(`../vault-curate/references/routines.md`). Example: `/gutt-vaults:vault-commit example-vault`.

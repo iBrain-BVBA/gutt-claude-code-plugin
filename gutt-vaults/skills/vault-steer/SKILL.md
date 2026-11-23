@@ -67,8 +67,14 @@ show the owner the episode text instead.
   each episode from `references/charter-template.md`. For a new vault also create the vault
   file (`../vault-curate/references/routines.md` §The vault file) with only `slug`,
   `group_id` (`vault_<slug>`, hyphens as underscores) and `console_url` (null until the
-  Console exists); the vault's name, owner, question and beats go to the Console's `meta/vault`
-  once it exists (`../vault-curate/references/vault-config.md` §What the vault file keeps).
+  Console exists). Then **publish the vault's Console**: this is the step that creates it,
+  and no other skill does. Follow `../vault-pages/SKILL.md` §Publish a page, page `console`,
+  which writes the new URL into the vault file's `console_url` and seeds the Console's
+  `meta/vault` with the vault's name, slug, group, owner, question and beats
+  (`../vault-curate/references/vault-config.md` §What the vault file keeps). No Artifact tool
+  here: leave `console_url` null and tell the owner to run
+  `/gutt-vaults:vault-pages <slug> publish console` where they have one; vault-curate stops
+  until the Console exists.
 - **`"<instruction>"`**: classify `applies_to`, find the item it refines or supersedes, draft
   the Steering episode, show it, write on yes.
 
@@ -101,4 +107,4 @@ steering rows; they become steering only when the owner accepts them.
 ## Example invocation
 
 `/gutt-vaults:vault-steer <slug> "drop vendor webinars as sources"`. Example:
-`/gutt-vaults:vault-steer next-agent-to-hire "drop vendor webinars as sources"`.
+`/gutt-vaults:vault-steer example-vault "drop vendor webinars as sources"`.

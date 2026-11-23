@@ -255,7 +255,8 @@ dl.attrs a { color: var(--accent); }
   }
   // The export fixes every node's place (x, y in -1000..1000) and keeps it week to week, so the
   // picture stays recognisable. Here it is only scaled to the node count and nudged apart where
-  // circles overlap; a node without a place falls back to a full force layout.
+  // circles overlap. If any node lacks a place, the whole graph falls back to a full force
+  // layout and the export's positions are not used.
   function layout(g) {
     var placed = g.nodes.filter(function (n) { return n.px != null && n.py != null; }).length;
     var spread = Math.max(0.2, 12 * Math.sqrt(g.nodes.length) / 1000);
@@ -663,14 +664,19 @@ dl.attrs a { color: var(--accent); }
   setStatus("loading", "Loading the graph");
   new ResizeObserver(resize).observe(stage);
   resize();
+  // A failed fetch can be retried; a data file the page can't draw needs a new export.
   fetch("graph.json").then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (data) {
     if (!data || !Array.isArray(data.nodes) || !data.nodes.length) {
       setStatus("error", "No graph yet", "The vault's memory had no nodes when this page was exported.");
       detail.textContent = ""; detail.append(h("p", "empty", "This vault's graph fills in after its first committed findings."));
       return;
     }
-    install(data);
-  }, function (e) {
+    try { install(data); } catch (e) {
+      console.error("graph.json could not be drawn", e);
+      setStatus("error", "This page's data is malformed (" + e.message + "). The vault's owner needs to export it again.");
+    }
+  }).catch(function (e) {
+    console.error("graph.json did not load", e);
     setStatus("error", "The graph didn't load (" + e.message + "). Reload the page to try again.");
   });
 })();

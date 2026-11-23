@@ -12,8 +12,9 @@
  * The export never calls memory itself: the vault-pages skill reads the vault group through
  * the memory connector and hands this script what came back, as one combined export.json or
  * as a folder of the raw tool results. Everything here is deterministic: the same input (and
- * the same previous graph.json) gives byte-identical output, so weekly re-exports keep the
- * picture where it was.
+ * the same previous graph.json) gives the same layout and data, whatever order it was read in,
+ * so weekly re-exports keep the picture where it was. Only the export timestamps differ,
+ * unless --now fixes them.
  */
 "use strict";
 
@@ -34,7 +35,11 @@ const SCALE = 1000;
 const SUMMARY_CAP = 1400;
 const FACT_TEXT_CAP = 600;
 
-/** The vault's own agents, in the order the Timelapse lists them. Others follow by name. */
+/**
+ * The vault's own agents, in the order the Timelapse lists them. Others follow by name.
+ * `vault-curate` is a legacy identity: no skill registers it now, but older vaults' episodes
+ * carry it, so their Timelapse keeps its place and label.
+ */
 const KNOWN_AGENTS = [
   "vault-charter",
   "vault-scout",
@@ -48,23 +53,34 @@ const AGENT_ABOUT = {
   "vault-scout": "Researches one beat on the open web and returns candidate findings.",
   "vault-librarian": "Verifies candidates against their sources and records findings.",
   "vault-reviewer": "Judges pending rows from the owner's past verdicts.",
-  "vault-curate": "Runs the daily research and writes procedures.",
+  "vault-curate": "Ran the daily research in older vaults (a legacy identity).",
   "vault-brief": "Writes the weekly brief and the reviewer's calibration.",
 };
 
 // ── reading the export ──────────────────────────────────────────────────────────
 
+const DATA_KEYS = ["episodes", "nodes", "facts"];
+const hasData = (b) => DATA_KEYS.some((k) => Array.isArray(b[k]));
+
+/** An error result: the tool said so, or the body is only an error message. */
+function isErrorBody(b) {
+  return b.isError === true || (b.error !== undefined && b.error !== null && !hasData(b));
+}
+
 /**
  * A tool result as the host saved it: the JSON body itself, an MCP content array whose text
- * items hold the body, or `{result: body}` / `{payload: body}`. Returns the body, or null.
+ * items hold the body, or `{result: body}` / `{payload: body}`. Returns the body, or null and
+ * the reason in `why.reason`. One unreadable or error item makes the whole result unreadable:
+ * keeping the rest would hide that a batch came back incomplete.
  */
-function unwrap(value) {
+function unwrap(value, why = {}) {
   let v = value;
   for (let depth = 0; depth < 4 && v !== null && v !== undefined; depth++) {
     if (typeof v === "string") {
       try {
         v = JSON.parse(v);
       } catch {
+        why.reason = "not JSON";
         return null;
       }
       continue;
@@ -72,12 +88,29 @@ function unwrap(value) {
     if (Array.isArray(v)) {
       const texts = v.filter((c) => c && c.type === "text" && typeof c.text === "string");
       if (texts.length === v.length && texts.length) {
-        const parts = texts.map((c) => unwrap(c.text)).filter(Boolean);
+        const parts = [];
+        for (const c of texts) {
+          const part = unwrap(c.text, why);
+          if (!part) {
+            why.reason = why.reason === "not JSON" ? "a text item is not JSON" : why.reason;
+            return null;
+          }
+          if (isErrorBody(part)) {
+            why.reason = "an error result";
+            return null;
+          }
+          parts.push(part);
+        }
         return parts.length === 1 ? parts[0] : mergeBodies(parts);
       }
+      why.reason = "not a tool result";
       return null;
     }
     if (typeof v === "object") {
+      if (v.isError === true) {
+        why.reason = "an error result";
+        return null;
+      }
       if (v.content && Array.isArray(v.content) && !v.episodes && !v.nodes && !v.facts) {
         v = v.content;
         continue;
@@ -92,6 +125,7 @@ function unwrap(value) {
       }
       return v;
     }
+    why.reason = "not a tool result";
     return null;
   }
   return v;
@@ -116,7 +150,7 @@ function mergeBodies(bodies) {
   return out;
 }
 
-/** Every *.json file under a folder, sorted, so a folder of saved tool results reads the same way twice. */
+/** Every *.json or *.txt file under a folder, sorted, so a folder of saved tool results reads the same way twice. */
 function jsonFiles(dir) {
   const out = [];
   const walk = (d) => {
@@ -142,11 +176,14 @@ function readExport(input) {
   const bodies = [];
   const skipped = [];
   for (const f of files) {
-    const body = unwrap(fs.readFileSync(f, "utf8"));
-    if (body && (body.episodes || body.nodes || body.facts || body.vault)) {
+    const why = {};
+    const body = unwrap(fs.readFileSync(f, "utf8"), why);
+    if (body && isErrorBody(body)) {
+      skipped.push(`${f} (an error result)`);
+    } else if (body && (hasData(body) || (body.vault && typeof body.vault === "object"))) {
       bodies.push(body);
     } else {
-      skipped.push(f);
+      skipped.push(`${f} (${why.reason || "no episodes, nodes or facts in it"})`);
     }
   }
   if (!bodies.length) {
@@ -166,6 +203,27 @@ function hash01(s) {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h / 4294967296;
+}
+
+/** A fact's id: its uuid, or its id. The same key everywhere a fact is looked up or drawn. */
+const factId = (f) => String(f.uuid || f.id || "");
+
+/** A stable order between two copies of one record, so a tie never depends on read order. */
+function later(a, b) {
+  return JSON.stringify(a) > JSON.stringify(b);
+}
+
+/** Of two reads of one fact, the one to keep: superseded beats current, then the later end. */
+function newerFact(a, b) {
+  const endA = a.invalid_at || a.expired_at || "";
+  const endB = b.invalid_at || b.expired_at || "";
+  if (!!endA !== !!endB) {
+    return !!endA;
+  }
+  if (endA !== endB) {
+    return (ms(endA) || 0) > (ms(endB) || 0);
+  }
+  return later(a, b);
 }
 
 const ms = (iso) => {
@@ -207,47 +265,54 @@ function nodeType(labels) {
 }
 
 /**
- * Who wrote an episode. An explicit field wins; then the episode's own text ("Recorded by
- * vault-librarian", "Tagged vault-scout"); then its name (`Run: vault-scout …`, `Charter: …`).
+ * Who wrote an episode, and whether that was a guess. An explicit field wins; then the
+ * episode's own text ("Recorded by vault-librarian", "Tagged vault-scout"); then its name
+ * (`Run: vault-scout …`, `Charter: …`); else vault-librarian, as a default.
  */
-function episodeAgent(ep) {
+function attribute(ep) {
   for (const k of ["agent", "agent_id", "agent_name"]) {
     if (typeof ep[k] === "string" && ep[k]) {
-      return ep[k].split("--")[0];
+      return { agent: ep[k].split("--")[0], guessed: false };
     }
   }
   const meta = ep.episode_metadata || ep.metadata;
   if (meta && typeof meta === "object") {
     for (const k of ["agent_id", "agent", "agent_name"]) {
       if (typeof meta[k] === "string" && meta[k]) {
-        return meta[k].split("--")[0];
+        return { agent: meta[k].split("--")[0], guessed: false };
       }
     }
   }
+  const named = (agent) => ({ agent, guessed: false });
   const text = String(ep.content || "");
   const rec = text.match(/\b(?:Recorded|Tagged|Written)(?: by| as)? (vault-[a-z]+)/);
   if (rec) {
-    return rec[1];
+    return named(rec[1]);
   }
   const name = String(ep.name || "");
   const run = name.match(/^Run: (vault-[a-z]+)/);
   if (run) {
-    return run[1];
+    return named(run[1]);
   }
   const fb = name.match(/^Feedback: (vault-[a-z]+) →/);
   if (fb) {
-    return fb[1];
+    return named(fb[1]);
   }
   if (/^(Charter|Steering|Config):/.test(name)) {
-    return "vault-charter";
+    return named("vault-charter");
   }
   if (/^(Brief|LinkedIn):/.test(name)) {
-    return "vault-brief";
+    return named("vault-brief");
   }
   if (/^Calibration:/.test(name)) {
-    return "vault-reviewer";
+    return named("vault-reviewer");
   }
-  return "vault-librarian";
+  return { agent: "vault-librarian", guessed: true };
+}
+
+/** Who wrote an episode (see attribute). */
+function episodeAgent(ep) {
+  return attribute(ep).agent;
 }
 
 // ── layout ──────────────────────────────────────────────────────────────────────
@@ -407,8 +472,15 @@ function layout(keys, edges, pinned) {
 /** Previous positions by node key, from an earlier graph.json (or timeline.json, by type and name). */
 function previousPositions(file) {
   const out = new Map();
-  if (!file || !fs.existsSync(file)) {
+  if (file === undefined || file === null) {
     return out;
+  }
+  if (typeof file !== "string" || !file) {
+    throw new Error("--previous needs the path of last week's graph.json");
+  }
+  // A wrong path would lay the whole graph out again and move every node on the public page.
+  if (!fs.existsSync(file)) {
+    throw new Error(`previous layout not found: ${file}`);
   }
   const prev = JSON.parse(fs.readFileSync(file, "utf8"));
   if (Array.isArray(prev.nodes) && prev.nodes.length && typeof prev.nodes[0][0] === "string") {
@@ -438,11 +510,11 @@ function buildPages(raw, opts = {}) {
     vault.group_id || (vault.slug ? "vault_" + String(vault.slug).replace(/-/g, "_") : "");
   const pinnedIn = opts.previous || new Map();
 
-  // Episodes, de-duplicated by id, oldest first.
+  // Episodes, de-duplicated by id (the same copy whatever the read order), oldest first.
   const epById = new Map();
   for (const e of raw.episodes || []) {
     const id = String(e.uuid || e.id || "");
-    if (id && !epById.has(id)) {
+    if (id && (!epById.has(id) || later(e, epById.get(id)))) {
       epById.set(id, e);
     }
   }
@@ -452,11 +524,15 @@ function buildPages(raw, opts = {}) {
       String(a.name).localeCompare(String(b.name))
   );
   const epAgent = new Map();
+  const epDefault = new Set();
   const factEpisode = new Map();
   for (const e of episodes) {
-    const agent = episodeAgent(e);
+    const { agent, guessed } = attribute(e);
     for (const id of [e.uuid, e.id].filter(Boolean)) {
       epAgent.set(String(id), agent);
+      if (guessed) {
+        epDefault.add(String(id));
+      }
     }
     for (const f of e.entity_edges || []) {
       if (!factEpisode.has(f)) {
@@ -465,13 +541,18 @@ function buildPages(raw, opts = {}) {
     }
   }
 
-  // Nodes, de-duplicated by id and name; a later read with a longer summary wins.
+  // Nodes, de-duplicated by id and name: the longest summary wins, then a stable comparison,
+  // so the copy kept never depends on the order the files were read in.
   const nodeByKey = new Map();
+  const nodeRaw = new Map();
   for (const r of raw.nodes || []) {
     const id = stripGroup(r.id || r.uuid, group);
     const key = id + "\u0001" + r.name;
-    const prev = nodeByKey.get(key);
-    if (!prev || String(r.summary || "").length > String(prev.summary || "").length) {
+    const prev = nodeRaw.get(key);
+    const len = String(r.summary || "").length;
+    const plen = prev ? String(prev.summary || "").length : -1;
+    if (!prev || len > plen || (len === plen && later(r, prev))) {
+      nodeRaw.set(key, r);
       nodeByKey.set(key, Object.assign({}, r, { _id: id, _key: key }));
     }
   }
@@ -479,11 +560,13 @@ function buildPages(raw, opts = {}) {
     a._key < b._key ? -1 : a._key > b._key ? 1 : 0
   );
 
-  // Facts, de-duplicated by uuid.
+  // Facts, de-duplicated by uuid. A read taken after the fact was superseded beats one from
+  // before; then the later invalidation; then a stable comparison.
   const factById = new Map();
   for (const f of raw.facts || []) {
-    const id = String(f.uuid || f.id || "");
-    if (id && !factById.has(id)) {
+    const id = factId(f);
+    const prev = factById.get(id);
+    if (id && (!prev || newerFact(f, prev))) {
       factById.set(id, f);
     }
   }
@@ -559,6 +642,7 @@ function buildPages(raw, opts = {}) {
 
   const resolved = [];
   let unresolved = 0;
+  let byDefault = 0;
   for (const f of facts) {
     const s = pick(f.source_node_id || f.source_node_uuid, f.fact);
     const t = pick(f.target_node_id || f.target_node_uuid, f.fact);
@@ -567,27 +651,28 @@ function buildPages(raw, opts = {}) {
       continue;
     }
     const ep =
-      factEpisode.get(String(f.uuid)) ||
+      factEpisode.get(factId(f)) ||
       (Array.isArray(f.episodes)
         ? f.episodes.map((id) => epById.get(String(id))).find(Boolean)
         : null);
     const created = ms(f.created_at) ?? (ep ? ms(ep.created_at) : null) ?? t0;
-    const agent = ep ? epAgent.get(String(ep.uuid || ep.id)) : "vault-librarian";
+    const agent = ep ? epAgent.get(String(ep.uuid || ep.id)) : null;
+    if (!agent || !agentIndex.has(agent) || (ep && epDefault.has(String(ep.uuid || ep.id)))) {
+      byDefault++;
+    }
     resolved.push({
       f,
       s,
       t,
       created,
-      agent: agentIndex.has(agent) ? agent : agents[0] || "vault-librarian",
+      agent: agent && agentIndex.has(agent) ? agent : agents[0] || "vault-librarian",
     });
   }
   if (!agentIndex.size) {
     agents.push("vault-librarian");
     agentIndex.set("vault-librarian", 0);
   }
-  resolved.sort(
-    (a, b) => a.created - b.created || String(a.f.uuid).localeCompare(String(b.f.uuid))
-  );
+  resolved.sort((a, b) => a.created - b.created || factId(a.f).localeCompare(factId(b.f)));
 
   // Degree on current facts, and each node's first appearance.
   const degree = new Array(allNodes.length).fill(0);
@@ -672,7 +757,7 @@ function buildPages(raw, opts = {}) {
       ...xy(i),
     ]),
     facts: resolved.map((r) => [
-      String(r.f.uuid).slice(0, 8),
+      factId(r.f),
       r.f.name || "RELATES_TO",
       String(r.f.fact || ""),
       allNodes[r.s]._id,
@@ -680,7 +765,14 @@ function buildPages(raw, opts = {}) {
       String(r.f.valid_at || "").slice(0, 10),
       r.f.invalid_at || r.f.expired_at ? 1 : 0,
     ]),
-    stats: { episodes: episodes.length, ambiguous, unresolved, more_in_memory: !!raw.has_more },
+    stats: {
+      episodes: episodes.length,
+      ambiguous,
+      unresolved,
+      by_default: byDefault,
+      pinned: pinned.size,
+      more_in_memory: !!raw.has_more,
+    },
   };
 
   // timeline.json: agents leave the node list and become the actors.
@@ -796,6 +888,9 @@ function checkData(page, data) {
   if (!data || typeof data !== "object") {
     return ["not a JSON object"];
   }
+  if (PAGES[page] && PAGES[page].data && data.schema !== SCHEMA) {
+    p.push(`schema must be ${SCHEMA}`);
+  }
   if (page === "brief") {
     if (!data.vault || !isStr(data.vault.name) || !data.vault.name) {
       p.push("vault.name is required");
@@ -856,10 +951,20 @@ function checkData(page, data) {
       }
     });
     const ids = new Set(data.nodes.map((n) => n[0]));
+    const factIds = new Set();
     data.facts.forEach((f, i) => {
       if (!Array.isArray(f) || f.length !== 7) {
         p.push(`facts[${i}]: expected [id, rel, fact, source, target, valid_at, invalid]`);
-      } else if (!ids.has(f[3]) || !ids.has(f[4])) {
+        return;
+      }
+      if (!isStr(f[0]) || !f[0]) {
+        p.push(`facts[${i}]: id is required`);
+      } else if (factIds.has(f[0])) {
+        // The page draws one fact per id, so a repeated id hides a fact.
+        p.push(`facts[${i}]: id ${f[0]} repeats an earlier fact's`);
+      }
+      factIds.add(f[0]);
+      if (!ids.has(f[3]) || !ids.has(f[4])) {
         p.push(`facts[${i}]: endpoint not in nodes`);
       }
     });
@@ -923,7 +1028,7 @@ function checkData(page, data) {
   } else {
     p.push(`unknown page ${page}`);
   }
-  return p.slice(0, 20);
+  return p.length > 20 ? [...p.slice(0, 20), `… and ${p.length - 20} more problems`] : p;
 }
 
 // ── prepare and preview ─────────────────────────────────────────────────────────
@@ -998,8 +1103,10 @@ function preview(page, { data, port }) {
     res.writeHead(404);
     res.end("not found");
   });
+  // Port 0 asks the system for a free one; the line names the port actually bound.
   server.listen(port, "127.0.0.1", () => {
-    process.stdout.write(`Previewing ${page} at http://127.0.0.1:${port}/ (Ctrl+C to stop)\n`);
+    const bound = server.address().port;
+    process.stdout.write(`Previewing ${page} at http://127.0.0.1:${bound}/ (Ctrl+C to stop)\n`);
   });
   return server;
 }
@@ -1011,13 +1118,15 @@ const HELP = `vault-pages: data files and page copies for a vault's shareable pa
   export  --in <export.json | folder> --out <folder> [--previous <graph.json>]
           [--name <vault name>] [--slug <slug>] [--now <ISO time>]
       Writes graph.json and timeline.json. --previous keeps every node that was in the
-      last graph.json exactly where it was. --now fixes the export time (for fixtures).
+      last graph.json exactly where it was, and stops if that file is missing. Exits 1,
+      writing nothing, when the export has nothing to draw. --now fixes the export time.
   prepare <brief|graph|timelapse|console> --title "<title>" --out <folder> [--data <file>]
       Copies the template's index.html with that <title>, and the checked data file.
   check   <brief|graph|timelapse> <file>
       Exits 1 and lists what is wrong when the file breaks the page's contract.
   preview <brief|graph|timelapse|console> [--data <file>] [--port 8765]
       Serves the template on 127.0.0.1 with its fixture, or with your data file.
+      --port 0 picks a free port and prints it.
 `;
 
 function args(argv) {
@@ -1060,22 +1169,35 @@ function main(argv) {
       vault,
       now: a.now,
     });
+    // An export that breaks its own contract would only fail later, at prepare.
+    const problems = [
+      ...checkData("graph", graph).map((x) => "graph.json: " + x),
+      ...checkData("timelapse", timeline).map((x) => "timeline.json: " + x),
+    ];
+    if (problems.length) {
+      throw new Error(`the export can't make the pages:\n  ${problems.join("\n  ")}`);
+    }
     fs.mkdirSync(a.out, { recursive: true });
     fs.writeFileSync(path.join(a.out, "graph.json"), JSON.stringify(graph));
     fs.writeFileSync(path.join(a.out, "timeline.json"), JSON.stringify(timeline));
     const s = timeline.stats;
+    const g = graph.stats;
     say(
       `exported ${s.episodes} episodes: ${s.nodes} nodes, ${s.facts} facts (${s.invalidated} superseded), ` +
         `${timeline.agents.length} agents, ${timeline.days.length} days → ${a.out}` +
+        (a.previous ? ` · layout: ${g.pinned} nodes kept in place` : " · layout: computed afresh") +
         (s.unresolved
           ? ` · ${s.unresolved} facts dropped: an endpoint was not in the export`
           : "") +
         (s.ambiguous ? ` · ${s.ambiguous} endpoints settled by name (shared ids)` : "") +
+        (g.by_default
+          ? ` · ${g.by_default} facts credited to an agent by default (no writer on their episode)`
+          : "") +
         (graph.stats.more_in_memory
           ? " · memory holds more episodes than were listed: the pages cover the newest ones"
           : "") +
         (raw.skipped.length
-          ? ` · ${raw.skipped.length} files skipped, not a tool result: ${raw.skipped.join(", ")}`
+          ? ` · ${raw.skipped.length} files skipped: ${raw.skipped.join(", ")}`
           : "")
     );
     return 0;

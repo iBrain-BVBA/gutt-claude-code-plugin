@@ -182,7 +182,7 @@ footer p { margin: 0 0 6px; }
     }
 
     var cs = h("section", null, h("h2", { text: "Open conflicts" }));
-    if (!conflicts.length) cs.appendChild(h("p", { class: "empty", text: "No open conflicts: every committed finding agrees with the others." }));
+    if (!conflicts.length) cs.appendChild(h("p", { class: "empty", text: "No open conflicts this week." }));
     conflicts.forEach(function (c) {
       function side(x, cls, lbl) {
         x = x || {};
@@ -211,16 +211,26 @@ footer p { margin: 0 0 6px; }
     }
 
     page.appendChild(h("footer", null,
-      h("p", { text: "Every finding here was checked against its sources and approved by the vault's owner before it entered the vault. Sources are public; follow them for the full text." }),
+      h("p", { text: "Every finding here was checked against its sources and approved before it entered the vault: by the vault's owner, or by a reviewer trained on the owner's past decisions. Sources are public; follow them for the full text." }),
       h("p", { text: "Built with gutt memory." })));
   }
 
-  fetch("brief.json").then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (d) {
-    if (!d || typeof d !== "object") throw new Error("not a brief");
-    render(d);
-  }).catch(function (e) {
+  // A failed fetch can be retried; a data file the page can't show needs a new copy.
+  function status(text) {
     page.textContent = "";
-    page.appendChild(h("p", { class: "status", text: "This week's brief didn't load (" + e.message + "). Reload the page to try again." }));
+    page.appendChild(h("p", { class: "status", text: text }));
+  }
+  fetch("brief.json").then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (d) {
+    try {
+      if (!d || typeof d !== "object") throw new Error("not a brief");
+      render(d);
+    } catch (e) {
+      console.error("brief.json could not be shown", e);
+      status("This page's data is malformed (" + e.message + "). The vault's owner needs to publish it again.");
+    }
+  }).catch(function (e) {
+    console.error("brief.json did not load", e);
+    status("This week's brief didn't load (" + e.message + "). Reload the page to try again.");
   });
 })();
 </script>

@@ -221,8 +221,12 @@ charter: <episode ids> · config v<n> (<clamps|no changes>) · memory writes: <n
 - A memory tool missing doesn't mean memory is down: in a routine the connector can still be
   connecting. Search again after about 15 seconds, once. Only then treat memory as down.
 - Memory down: no charter means no run. Stop and write the reason to the run row.
-- Console unreachable (`ArtifactData` errors): continue as `--dry-run` and put the rows in the
-  output so the next run can retry; write the Run episode with the error.
+- Console unreachable (`ArtifactData` errors) at Step 0: stop before Step 2, so no scout,
+  fetch or reviewer is spent on rows nothing could store; no later run reads this run's
+  output. Write the `Run:` episode with the error (the one write such a run makes) and report
+  it. The Console failing later, at the row write: write the `Run:` episode with the error
+  and the verified rows' claims and source URLs in it, so the owner can see what was found;
+  the next run finds the same items again through its own scouts.
 - A scout fails or returns invalid JSON: count the beat as failed; never re-run it more than
   once.
 - WebFetch blocked on a source: drop the item (can't verify) and count it under
@@ -243,4 +247,4 @@ the run (hard rule 7).
 ## Example invocation
 
 `/gutt-vaults:vault-curate <slug>` · scheduled: `vault-<slug>-curate`, daily 02:40
-(`references/routines.md`). Example: `/gutt-vaults:vault-curate next-agent-to-hire`.
+(`references/routines.md`). Example: `/gutt-vaults:vault-curate example-vault`.

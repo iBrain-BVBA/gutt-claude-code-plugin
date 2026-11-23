@@ -1,4 +1,5 @@
-# Vault page templates are published as artifacts byte for byte, and their fixtures are
-# generated (tests/vaults.test.cjs compares graph.json and timeline.json to the script's
-# output exactly). Formatting either would change what ships or break that comparison.
+# Vault page templates are published as artifacts with only their <title> changed, and the
+# Graph and Timelapse fixtures are generated (tests/vaults.test.cjs compares graph.json and
+# timeline.json to the script's output exactly). Formatting either would change what ships
+# or break that comparison.
 gutt-vaults/templates/

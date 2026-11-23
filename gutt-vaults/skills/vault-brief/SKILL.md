@@ -85,9 +85,13 @@ then write nothing and put the episodes in the Console run row's notes.
    its own post-drafting skill, the owner can redo the post with it from the approved brief;
    this skill never depends on one.
 5. **Write all three** to the Console `briefs` collection (`brief-<YYYY-Www>`,
-   `status: draft`: `body_md`, `linkedin_md`, `page`). Console reads are inline `get`s of the
-   documents you write, never with `out_dir` (`../vault-curate/references/console-data.md`
-   §Reads).
+   `status: draft`: `body_md`, `linkedin_md`, `page`). First `get` the row: write it only
+   when it is absent, or is `draft` or `changes_requested` with no `committed_episode`. An
+   `approved` or `published` row, or any row with `committed_episode`, belongs to the owner's
+   decision and the commit routine: leave it untouched, skip only this step, say "brief
+   <week> already approved, not redrafted" in the Run, and go on with the Calibration and
+   the pages. Console reads are inline `get`s of the documents you write, never with
+   `out_dir` (`../vault-curate/references/console-data.md` §Reads).
 6. **Calibration**: compute per-class agreement (stage classes and steering adjustment from
    `../vault-review/references/autonomy-ladder.md` §Stage class, §Agreement), escalation rate,
    the share of predictions that cited precedents, audit outcomes, overrides; per class,
@@ -121,7 +125,9 @@ on|off, auto_approve on|off)`, using this run's `ladder` and `review` settings; 
 ```
 vault <slug> brief <week>: <n> findings · <c> conflicts · <k> card changes
 reviewer: rolling agreement <x%> · escalation <y%> · stages <class:stage, …>
-insights: <n> · proposed steering: <n> · brief + LinkedIn draft on the Console for approval
+insights: <n> · proposed steering: <n>
+brief: <on the Console for approval | skipped (<n> findings) | already approved, not redrafted | not written (<error>)>
+calibration: <written | stages unchanged (config unavailable) | not written (<error>)>
 pages: graph <url|failed: reason> · timelapse <url|failed: reason>
 ```
 
@@ -137,6 +143,13 @@ pages: graph <url|failed: reason> · timelapse <url|failed: reason>
   Insights, skip the brief, say so. The Graph and Timelapse are still republished.
 - No way to publish a page here (no Artifact tool, or no Node.js for the export script): skip
   step 8 and say so; the next week's run catches up.
+- Console unreachable at step 0: the owner's settings can't be read, so config fails closed
+  (`../vault-curate/references/vault-config.md`): write the `Calibration:` episode with the
+  measured agreement but no stage changes, write nothing to the Console, skip the brief, and
+  report `brief: not written (Console unreachable)`.
+- A Console write fails (step 5's brief, or step 6's `meta/reviewer` and `calibrations`
+  batch): retry once, then report it in the output line for that write as `not written
+(<error>)`, never as waiting for approval, and go on with the other steps.
 
 ## Grounding Protocol
 
@@ -150,5 +163,4 @@ Console and write an Insight when an edit repeats.
 ## Example invocation
 
 `/gutt-vaults:vault-brief <slug>` · scheduled: `vault-<slug>-brief`, Fri 13:20
-(`../vault-curate/references/routines.md`). Example:
-`/gutt-vaults:vault-brief next-agent-to-hire`.
+(`../vault-curate/references/routines.md`). Example: `/gutt-vaults:vault-brief example-vault`.

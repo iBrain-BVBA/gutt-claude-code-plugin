@@ -25,14 +25,14 @@ Every skill that runs a vault takes the vault's slug first; there is no default 
 
 ## Skills
 
-| Skill          | What it does                                                                                                                                                |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vault-steer`  | Creates a vault's charter (scope, beats, source rules, review policy) and turns your instructions into steering                                             |
-| `vault-curate` | The daily run: assembles the charter, sends one scout per beat, verifies every source, writes rows to the Console, runs the reviewer                        |
-| `vault-review` | The reviewer's policy: precedent matching against your past verdicts, and the autonomy ladder it climbs per class                                           |
-| `vault-commit` | The only writer of vault knowledge: your decided rows become Finding, Conflict, Verdict and Steering episodes; an approved brief republishes the Brief page |
-| `vault-brief`  | The weekly brief and LinkedIn draft from committed findings only, the reviewer's calibration, and the republished Graph and Timelapse                       |
-| `vault-pages`  | Exports the vault's memory to the Graph and Timelapse data, checks every page's data, publishes and previews the pages                                      |
+| Skill          | What it does                                                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vault-steer`  | Creates a vault's charter (scope, beats, source rules, review policy) and its Console, and turns your instructions into steering                                                     |
+| `vault-curate` | The daily run: assembles the charter, sends one scout per beat, verifies every source, writes rows to the Console, runs the reviewer                                                 |
+| `vault-review` | The reviewer's policy: precedent matching against your past verdicts, and the autonomy ladder it climbs per class                                                                    |
+| `vault-commit` | The only writer of vault knowledge: your decided rows become Finding, Conflict, RoleCard, Verdict, Steering, Config and Brief episodes; an approved brief republishes the Brief page |
+| `vault-brief`  | The weekly brief and LinkedIn draft from committed findings only, the reviewer's calibration, and the republished Graph and Timelapse                                                |
+| `vault-pages`  | Exports the vault's memory to the Graph and Timelapse data, checks every page's data, publishes and previews the pages                                                               |
 
 ## Agents
 
@@ -58,9 +58,10 @@ private until you share them. `vault-pages` previews any of them on your own mac
 ## What it writes
 
 - **Memory:** only into the vault's own group. `vault-commit` writes what the vault knows, and
-  only from rows you (or the reviewer, at the stage it has earned) decided. `vault-curate`,
-  `vault-brief` and `vault-steer` write their own runs, insights and procedures. The reviewer
-  and the scouts write nothing themselves.
+  only from rows you (or the reviewer, at the stage it has earned) decided. `vault-steer`
+  writes the charter and your steering. `vault-brief` writes the reviewer's weekly
+  Calibration. `vault-curate`, `vault-brief` and `vault-steer` also write their own runs,
+  insights and procedures. The reviewer and the scouts write nothing themselves.
 - **Pages:** the Console's rows, and the Brief, Graph and Timelapse pages as artifacts.
 
 No hooks.

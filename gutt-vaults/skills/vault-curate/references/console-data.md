@@ -21,7 +21,7 @@ findings   id, vault, type (finding|conflict|reverify|card_update), title, claim
                  confirm (bool, audit), blind (bool), at},
            left_open{revisit (YYYY-MM-DD), note, at}                   # conflicts the owner left open
            revealed (bool: the page has shown the owner this row's prediction)
-           audit (bool), committed_episode, run_id, created
+           audit (bool), committed_finding_episode, committed_episode, run_id, created
 steering   id, vault, text, applies_to, target_agent, supersedes,
            source (typed|proposed|clash), status (new|accepted|dismissed|committed), at
 briefs     id, vault, week, body_md, linkedin_md, page (the week's brief.json),
@@ -80,12 +80,15 @@ vault-commit marks `config_changes` rows with `committed_episode` once their `Co
 is written.
 
 The page is `templates/console/index.html` in the gutt-vaults plugin, vault-agnostic: it reads
-the vault's name and beats from `meta/vault`. A new vault publishes a copy with its own
+the vault's name and beats from `meta/vault`. `vault-steer --charter` publishes a new vault's
+Console (`../../vault-steer/SKILL.md` §Workflow) as a copy with its own
 `<title>` (`<vault name> Console`) as a new Artifact (`../../vault-pages/SKILL.md` §Publish a
 page) with capabilities
 `{db: {rules: [{path: "meta", write: "admin"}, {path: "runs", write: "admin"},
 {path: "config_changes", write: "admin"}, {path: "calibrations", write: "admin"}]},
-user: {scopes: ["profile"]}}`, then seeds `meta/vault`. No `meta/config` is needed at first:
+user: {scopes: ["profile"]}}`, writes its URL to the vault file's `console_url` (the Console
+can't hold its own address: every skill reaches it from the vault file), then seeds
+`meta/vault`. No `meta/config` is needed at first:
 every key starts at its default. An existing Console gets the `config_changes` and
 `calibrations` rules and the `user` capability when it is republished from this template.
 
@@ -145,7 +148,10 @@ note, at}`; it leaves the Inbox, shows on Summary with its revisit date, and com
   same decision with `confirm: true` is an audit confirmation.
 - Leave open on a conflict writes only `left_open{}`; the status stays `escalated`.
 - Reopen (before commit) sets the status back to the reviewer's outcome and `human: null`.
-- commit sets `committed` and `committed_episode`. Committed rows are never edited.
+- commit records `committed_finding_episode` after a row's first episode, then sets
+  `committed` and `committed_episode` after its last. Committed rows are never edited.
+- commit sets a brief `published` once its page is live, or `changes_requested` when the
+  brief names a finding that isn't committed (`vault-commit` hard rule 9).
 - `human{}` always wins over `review{}`.
 
 ## Reads

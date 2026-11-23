@@ -46,5 +46,5 @@ slug disagree about where the vault lives.
 
 ## Example
 
-For a vault with slug `next-agent-to-hire` (example), the curate routine's prompt is
-`/gutt-vaults:vault-curate next-agent-to-hire` and its group is `vault_next_agent_to_hire`.
+For a vault with slug `example-vault`, the curate routine's prompt is
+`/gutt-vaults:vault-curate example-vault` and its group is `vault_example_vault`.

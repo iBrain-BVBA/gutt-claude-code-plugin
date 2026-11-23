@@ -61,4 +61,6 @@ Headings, in this order:
 3. **Image prompt:** one picture for the post, built from the week's subject.
 4. **Alt text:** one or two plain sentences describing that picture.
 
-The Console counts the post's characters for the owner; LinkedIn cuts a post at 3,000.
+The Console counts the characters of the Post section alone (the other sections never go to
+LinkedIn) for the owner; LinkedIn cuts a post at 3,000. A draft without a `Post` heading is
+counted whole, and the Console says so.

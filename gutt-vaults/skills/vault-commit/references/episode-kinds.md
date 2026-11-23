@@ -11,8 +11,8 @@ same string, whatever their type. Use the name formats exactly.
 Episode name: `Finding: <claimant> (<YYYY-MM-DD>): <headline ≤ 60 chars>`
 
 ```
-Finding <claimant> (<YYYY-MM-DD>): <headline> is current: the owner approved its entry into the
-<vault name> vault on <decision date>.
+Finding <claimant> (<YYYY-MM-DD>): <headline> is current: <approver> approved its entry into
+the <vault name> vault on <decision date>.
 
 Claim: <claim as the source states it, with numbers>
 Claimant: <Organization>, a <company|public_body|standards_body|research_group|investor|other>.
@@ -27,6 +27,13 @@ Sources (evidence grade: <primary_source|independent_study|customer_case|vendor_
 
 Recorded by vault-librarian. Effective charter: <episode ids>.
 ```
+
+`<approver>` is who actually decided the row: "the owner" for a `human{}` decision, "the
+reviewer (vault-reviewer, stage <s>)" for an `auto_approved` row nobody overrode. Extraction
+reads this sentence, so a reviewer's approval written as the owner's would give the Finding a
+human provenance it doesn't have. An owner's later audit confirmation is recorded on the
+Verdict ("Confirmed by the owner on <date>", `../SKILL.md` hard rule 5), never by rewriting
+the approver here.
 
 An edited approval says "approved with edits" and gives the edited claim only.
 
@@ -99,8 +106,11 @@ Episode name: `RoleCard: <role> — <section> <YYYY-MM-DD>`
 Role Card change for the AgentRole <role> (business function <function>), section <section>.
 Change: <diff>. Rests on Finding <name>.
 Maturity: <unchanged | now Emerging | Proven in pilots | Proven at scale>.
-Approved by the owner on <date>. Recorded by vault-librarian.
+Approved by <approver> on <decision date>. Recorded by vault-librarian.
 ```
+
+`<approver>` follows the Finding rule above: the owner, or the reviewer at its stage for an
+`auto_approved` diff.
 
 ## Config
 
@@ -131,7 +141,10 @@ Brief for week <YYYY-Www> of the <vault name> vault, approved by the owner on <Y
 Headline: <the brief's one-sentence headline>.
 Findings it reports: <Finding names, each as written in its Finding episode>.
 Conflicts it reports: <Conflict names, or none>.
-Brief page: <URL, or "not published yet">.
+Brief page at commit time: <meta/vault.brief_url, or "first publish follows this episode">.
+                (the page is republished after this episode is written and the episode isn't
+                rewritten, so this line never claims the week's publish succeeded; the Run
+                records that)
 
 <the approved brief body, as Markdown>
 

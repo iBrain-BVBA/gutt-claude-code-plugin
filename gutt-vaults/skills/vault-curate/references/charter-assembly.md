@@ -6,9 +6,20 @@ Shared by vault-curate, vault-review, vault-brief, vault-steer and vault-commit.
 
 Group-wide in `vault_<slug>`, no `agent_id`:
 
-1. `get_episodes(group_id="vault_<slug>", last_n=50)` and page while `has_more`, keeping
-   episodes whose name starts `Charter:` or `Steering:`. (Search alone can miss old ones.)
-2. For each, parse the header lines the templates in
+1. **One** `get_episodes(group_id="vault_<slug>", last_n=1000)` call, keeping episodes whose
+   name starts `Charter:` or `Steering:`. Never page: the server ignores an offset, so a
+   second call repeats the newest episodes instead of reaching older ones (and a loop that
+   waits for `has_more` to clear never ends). Search alone can miss old items, so it is not a
+   substitute.
+2. **`has_more` set** (the group holds more episodes than were listed): the oldest charter
+   items may be missing. Add every id in the Console's `meta/charter.episode_ids` (the last
+   assembly) that the list didn't return, each with `get_episode`. Charter and Steering
+   written since that assembly are among the newest episodes, so the union is complete.
+   Completeness can't be shown when there is no earlier assembly, or one of its ids no longer
+   resolves: stop the run before any research or write, with "charter incomplete: <reason>".
+   A reader without the Console (vault-reviewer) escalates every row with that reason
+   instead.
+3. For each, parse the header lines the templates in
    `../../vault-steer/references/charter-template.md` define: `applies_to`, `supersedes`,
    `date`, `target_agent` (steering aimed at one agent).
 

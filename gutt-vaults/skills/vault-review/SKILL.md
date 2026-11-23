@@ -34,7 +34,11 @@ Every threshold below is a key in `../vault-curate/references/vault-config.md`, 
 vault-curate in the `config:` line (`review` and `ladder` sections, `config_version`). Check
 each value against that file's range: clamp one outside it, use the default for one that is
 missing or not a number, and list each in `notes` (`config: review.precedents_min 1 → 3
-(clamped)`). No `config:` line: use the defaults and say so in `notes`.
+(clamped)`). The `ladder` keys fail closed: a `ladder.ceiling` or class ceiling that is
+missing or not a number counts as 0, never its default (the default is the most permissive
+stage). No `config:` line at all: the owner's limits are unknown, so escalate every row with
+reason "config missing" and say so in `notes` (`../vault-curate/references/vault-config.md`
+§Reading the config at boot).
 
 ## Hard rules
 
@@ -213,8 +217,8 @@ Spawned by vault-curate as `Agent(subagent_type="gutt-vaults:vault-reviewer", pr
 run, here the gutt-pro plugin's own server):
 
 ```
-vault: next-agent-to-hire
-group: vault_next_agent_to_hire
+vault: example-vault
+group: vault_example_vault
 run: curate-2026-11-06
 memory_server: <prefix found by vault-curate>
 config: {"config_version": 0, "review": {…defaults…}, "ladder": {…defaults…}}

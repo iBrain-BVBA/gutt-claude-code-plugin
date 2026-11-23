@@ -5,7 +5,7 @@
  *
  * - Settings: vault-config.md and the Console's Settings tab list the same keys, defaults and
  *   ranges; no rule carries a threshold that moved to settings; every key a rule names exists.
- * - Vault-agnostic: the example vault is named only in lines marked as examples, there is no
+ * - Vault-agnostic: skills and agents name no real vault, even as an example, there is no
  *   default vault, and no person is named.
  * - The reviewer's tool allowlist is read-only and covers every known memory server prefix.
  * - The Console reads only what its data contract defines and never writes HTML.
@@ -199,16 +199,20 @@ describe("settings", () => {
 const FLAGSHIP = /next[-_ ]agent[-_ ]to[-_ ]hire|\bhire vault\b/i;
 
 describe("vault-agnostic", () => {
-  it("names the example vault only in lines marked as examples", () => {
+  it("names no real vault in skills or agents, even as an example", () => {
+    // A real slug or group in prompt text reads, on another deployment, as a scope that
+    // exists: examples use example-vault / vault_example_vault.
     const hits = [];
     for (const file of ruleFiles()) {
-      for (const [n, line] of outsideExamples(file)) {
-        if (FLAGSHIP.test(line)) {
-          hits.push(`${relp(file)}:${n}: ${line.trim()}`);
-        }
-      }
+      read(file)
+        .split("\n")
+        .forEach((line, i) => {
+          if (FLAGSHIP.test(line) || /mcp__[0-9a-f]{8}-/.test(line)) {
+            hits.push(`${relp(file)}:${i + 1}: ${line.trim()}`);
+          }
+        });
     }
-    assert.deepEqual(hits, [], "mark these as examples or make them vault-agnostic");
+    assert.deepEqual(hits, [], "use example-vault and <connector-uuid> placeholders");
   });
 
   it("templates, fixtures and the plugin README name no real vault", () => {
@@ -545,6 +549,79 @@ describe("vault-pages export", () => {
     assert.deepEqual(build(shuffled), build(raw));
   });
 
+  it("keeps the same copy of a record read twice, whatever order the reads came in", () => {
+    const raw = rawExport();
+    const fact = raw.facts.find((f) => !f.invalid_at && !f.expired_at);
+    const node = raw.nodes[0];
+    // The same fact read before and after it was superseded, and the same node read twice
+    // with equal-length summaries but different attributes.
+    const twice = Object.assign({}, raw, {
+      facts: [...raw.facts, Object.assign({}, fact, { invalid_at: "2026-11-05T10:00:00Z" })],
+      nodes: [...raw.nodes, Object.assign({}, node, { attributes: { changed: "yes" } })],
+    });
+    const reversed = Object.assign({}, twice, {
+      facts: twice.facts.slice().reverse(),
+      nodes: twice.nodes.slice().reverse(),
+    });
+    const a = build(twice);
+    assert.deepEqual(build(reversed), a);
+    assert.equal(a.timeline.stats.invalidated, build(raw).timeline.stats.invalidated + 1);
+    assert.equal(a.graph.facts.filter((f) => f[0] === fact.uuid).length, 1);
+  });
+
+  it("drops a fact whose endpoint is not in the export, and says so", (t) => {
+    const raw = rawExport();
+    raw.facts.push({
+      uuid: "eeeeeeee-0000-4000-8000-000000000001",
+      name: "RELATES_TO",
+      fact: "Something points at a node nobody read",
+      source_node_id: raw.facts[0].source_node_id,
+      target_node_id: "vault_example_vault:Product:Never-Read",
+      created_at: "2026-11-05T10:00:00Z",
+    });
+    const { graph, timeline } = build(raw);
+    assert.equal(graph.stats.unresolved, 1);
+    assert.equal(timeline.stats.unresolved, 1);
+    assert.ok(!graph.facts.some((f) => f[0] === "eeeeeeee-0000-4000-8000-000000000001"));
+    assert.ok(!timeline.facts.some((f) => f[6] === "Something points at a node nobody read"));
+    assert.deepEqual(pages.checkData("graph", graph), []);
+    assert.deepEqual(pages.checkData("timelapse", timeline), []);
+    const dir = tmp(t);
+    fs.writeFileSync(path.join(dir, "export.json"), JSON.stringify(raw));
+    const out = spawnSync(
+      process.execPath,
+      [SCRIPT, "export", "--in", path.join(dir, "export.json"), "--out", path.join(dir, "out")],
+      { encoding: "utf8" }
+    );
+    assert.equal(out.status, 0, out.stderr);
+    assert.match(out.stdout, /1 facts dropped: an endpoint was not in the export/);
+  });
+
+  it("gives every fact its full id, keyed by uuid or id, so none hides another", () => {
+    const raw = rawExport();
+    const [a, b] = raw.facts.filter((f) => !f.invalid_at).slice(0, 2);
+    // Two facts with no uuid, and two whose uuids share their first 8 characters.
+    const byId = Object.assign({}, raw, {
+      facts: [
+        ...raw.facts,
+        Object.assign({}, a, { uuid: undefined, id: "only-id-1" }),
+        Object.assign({}, b, { uuid: undefined, id: "only-id-2" }),
+        Object.assign({}, a, { uuid: "abcdef01-0000-4000-8000-000000000001" }),
+        Object.assign({}, b, { uuid: "abcdef01-0000-4000-8000-000000000002" }),
+      ],
+    });
+    const { graph } = build(byId);
+    const ids = graph.facts.map((f) => f[0]);
+    assert.equal(new Set(ids).size, ids.length);
+    for (const id of ["only-id-1", "only-id-2", "abcdef01-0000-4000-8000-000000000001"]) {
+      assert.ok(ids.includes(id), id);
+    }
+    assert.deepEqual(pages.checkData("graph", graph), []);
+    const dup = JSON.parse(JSON.stringify(graph));
+    dup.facts.push(dup.facts[0].slice());
+    assert.match(pages.checkData("graph", dup).join("\n"), /repeats an earlier fact's/);
+  });
+
   it("meets both contracts", () => {
     const { graph, timeline } = build(rawExport());
     assert.deepEqual(pages.checkData("graph", graph), []);
@@ -668,9 +745,106 @@ describe("vault-pages export", () => {
       }
     );
     assert.equal(out.status, 0, out.stderr);
-    assert.match(out.stdout, /1 files skipped, not a tool result: .*batch-2\.json/);
+    assert.match(out.stdout, /1 files skipped: .*batch-2\.json \(not JSON\)/);
     assert.match(out.stdout, /memory holds more episodes than were listed/);
     assert.equal(JSON.parse(read(path.join(dir, "out", "graph.json"))).stats.more_in_memory, true);
+  });
+
+  it("skips an error result, or one with an unreadable item, instead of reading it as empty", (t) => {
+    const raw = rawExport();
+    const dir = tmp(t);
+    fs.writeFileSync(path.join(dir, "episodes.json"), JSON.stringify({ episodes: raw.episodes }));
+    fs.writeFileSync(
+      path.join(dir, "batch-1.json"),
+      JSON.stringify({ nodes: raw.nodes, facts: raw.facts })
+    );
+    const text = (t2) => ({ type: "text", text: t2 });
+    fs.writeFileSync(
+      path.join(dir, "batch-2.json"),
+      JSON.stringify({
+        content: [text('{"error":"rate limited"}'), text('{"error":"retry later"}')],
+        isError: true,
+      })
+    );
+    fs.writeFileSync(
+      path.join(dir, "batch-3.json"),
+      JSON.stringify({ content: [text('{"nodes":[],"facts":[]}'), text("Error: timed out")] })
+    );
+    fs.writeFileSync(
+      path.join(dir, "batch-4.json"),
+      JSON.stringify({ content: [text('{"error":"no such episode"}')] })
+    );
+    const got = pages.readExport(dir);
+    assert.deepEqual(
+      got.skipped.map((s) => path.basename(s)),
+      [
+        "batch-2.json (an error result)",
+        "batch-3.json (a text item is not JSON)",
+        "batch-4.json (an error result)",
+      ]
+    );
+    assert.equal(got.nodes.length, raw.nodes.length);
+  });
+
+  it("refuses an export with nothing to draw", (t) => {
+    const dir = tmp(t);
+    fs.writeFileSync(path.join(dir, "batch-1.json"), "Error: the server timed out");
+    let out = spawnSync(process.execPath, [SCRIPT, "export", "--in", dir, "--out", dir], {
+      encoding: "utf8",
+    });
+    assert.equal(out.status, 1);
+    assert.match(out.stderr, /no episodes, nodes or facts found/);
+    fs.writeFileSync(path.join(dir, "batch-1.json"), JSON.stringify({ vault: { name: "x" } }));
+    out = spawnSync(process.execPath, [SCRIPT, "export", "--in", dir, "--out", dir], {
+      encoding: "utf8",
+    });
+    assert.equal(out.status, 1);
+    assert.match(out.stderr, /nothing to replay/);
+    assert.ok(!fs.existsSync(path.join(dir, "graph.json")));
+  });
+
+  it("stops when --previous names no file, and keeps places from last week's timeline.json", (t) => {
+    const dir = tmp(t);
+    const out = spawnSync(
+      process.execPath,
+      [SCRIPT, "export", "--in", RAW, "--out", dir, "--previous", path.join(dir, "missing.json")],
+      { encoding: "utf8" }
+    );
+    assert.equal(out.status, 1);
+    assert.match(out.stderr, /previous layout not found/);
+    const bare = spawnSync(
+      process.execPath,
+      [SCRIPT, "export", "--in", RAW, "--out", dir, "--previous"],
+      { encoding: "utf8" }
+    );
+    assert.equal(bare.status, 1);
+    assert.match(bare.stderr, /--previous needs the path/);
+
+    const raw = rawExport();
+    const lastWeek = build(raw).timeline;
+    const prevFile = path.join(dir, "timeline.json");
+    fs.writeFileSync(prevFile, JSON.stringify(lastWeek));
+    // Last week's places, moved so they can't be this week's own layout by chance.
+    const shrink = (v) => Math.round(v * 0.9);
+    const moved = lastWeek.nodes.map((n) => [n[3], shrink(n[0]), shrink(n[1])]);
+    const shifted = JSON.parse(JSON.stringify(lastWeek));
+    shifted.nodes.forEach((n) => {
+      n[0] = shrink(n[0]);
+      n[1] = shrink(n[1]);
+    });
+    fs.writeFileSync(prevFile, JSON.stringify(shifted));
+    const next = build(raw, { previous: pages.previousPositions(prevFile) }).timeline;
+    const where = new Map(next.nodes.map((n) => [n[3], [n[0], n[1]]]));
+    for (const [name, x, y] of moved) {
+      assert.deepEqual(where.get(name), [x, y], name);
+    }
+    const cli = spawnSync(
+      process.execPath,
+      [SCRIPT, "export", "--in", RAW, "--out", path.join(dir, "o"), "--previous", prevFile],
+      { encoding: "utf8" }
+    );
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.match(cli.stdout, new RegExp(`layout: ${lastWeek.nodes.length} nodes kept in place`));
   });
 
   it("names an episode's writer from the episode itself", () => {
@@ -687,6 +861,15 @@ describe("vault-pages export", () => {
     for (const [ep, who] of cases) {
       assert.equal(pages.episodeAgent(ep), who, JSON.stringify(ep));
     }
+    // A fact whose episode names no writer is credited by default, and counted.
+    const raw = rawExport();
+    const ep = raw.episodes.find((e) => (e.entity_edges || []).length);
+    Object.assign(ep, { name: "Finding: anonymous", content: "No writer named." });
+    for (const k of ["agent", "agent_id", "agent_name", "episode_metadata", "metadata"]) {
+      delete ep[k];
+    }
+    assert.ok(build(raw).graph.stats.by_default >= 1);
+    assert.equal(build(rawExport()).graph.stats.by_default, 0);
   });
 });
 
@@ -840,14 +1023,6 @@ describe("page templates", () => {
       assert.deepEqual(fetches, [`"${file}"`], page);
     }
   });
-
-  it("the brief page links only http(s) URLs", () => {
-    const html = read(path.join(TEMPLATES, "brief", "index.html"));
-    assert.match(
-      html,
-      /function safeUrl\(u\) \{ return typeof u === "string" && \/\^https\?:\\\/\\\/\/i\.test\(u\)/
-    );
-  });
 });
 
 // ── headless Chrome ─────────────────────────────────────────────────────────────
@@ -886,24 +1061,29 @@ function dumpDom(t, url) {
   return (out.stdout || "") + (out.stderr || "").slice(-500);
 }
 
-/** Serve a template with its fixture through the script's own preview, for one test. */
-async function preview(t, page) {
-  const port = 20000 + Math.floor(Math.random() * 20000);
-  const child = spawn(process.execPath, [SCRIPT, "preview", page, "--port", String(port)], {
+/**
+ * Serve a template with its fixture (or `data`) through the script's own preview, for one
+ * test. Port 0 lets the system pick a free port; the preview prints the one it bound.
+ */
+async function preview(t, page, data) {
+  const extra = data ? ["--data", data] : [];
+  const child = spawn(process.execPath, [SCRIPT, "preview", page, "--port", "0", ...extra], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   t.after(() => child.kill());
-  await new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("preview did not start")), 10000);
+    let out = "";
     child.stdout.on("data", (d) => {
-      if (String(d).includes("Previewing")) {
+      out += String(d);
+      const m = out.match(/Previewing \w+ at (http:\/\/127\.0\.0\.1:\d+\/)/);
+      if (m) {
         clearTimeout(timer);
-        resolve();
+        resolve(m[1]);
       }
     });
     child.on("exit", (code) => reject(new Error(`preview exited ${code}`)));
   });
-  return `http://127.0.0.1:${port}/`;
 }
 
 const text = (dom) => dom.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -925,6 +1105,39 @@ describe("pages in a headless browser", () => {
     ]) {
       assert.ok(body.includes(want), `${want}: ${body.slice(0, 400)}`);
     }
+  });
+
+  it("the Brief page links only http(s) URLs, whatever the data holds", async (t) => {
+    if (!chrome()) {
+      t.skip("no Chrome or Chromium (set CHROME)");
+      return;
+    }
+    const brief = JSON.parse(read(path.join(TEMPLATES, "brief", "fixtures", "brief.json")));
+    brief.changes[0].sources[0].url = "javascript:alert(1)";
+    brief.past = [{ week: "2026-W40", url: "javascript:alert(2)", headline: "Old week" }];
+    brief.vault.graph_url = "javascript:alert(3)";
+    const file = path.join(tmp(t), "brief.json");
+    fs.writeFileSync(file, JSON.stringify(brief));
+    const dom = dumpDom(t, await preview(t, "brief", file));
+    assert.ok(!/href="javascript:/i.test(dom), "a javascript: URL became a link");
+    const body = text(dom);
+    assert.ok(body.includes(brief.changes[0].title), "the change's title is still shown");
+    assert.ok(body.includes("Old week"), "the past brief's headline is still shown as text");
+  });
+
+  it("the Graph page loads its fixture", async (t) => {
+    if (!chrome()) {
+      t.skip("no Chrome or Chromium (set CHROME)");
+      return;
+    }
+    const graph = JSON.parse(read(path.join(TEMPLATES, "graph", "fixtures", "graph.json")));
+    const dom = dumpDom(t, await preview(t, "graph"));
+    const body = text(dom);
+    assert.ok(!/didn't load|malformed|Loading the graph/.test(body), body.slice(0, 400));
+    assert.ok(body.includes(graph.vault.name), "the vault's name");
+    const old = graph.facts.filter((f) => f[6]).length;
+    const counts = `${graph.nodes.length} nodes · ${graph.facts.length - old} current facts · ${old} superseded`;
+    assert.ok(body.includes(counts), `${counts}: ${body.slice(0, 400)}`);
   });
 
   it("the Timelapse page loads its fixture and counts every node and fact", async (t) => {
@@ -952,6 +1165,11 @@ describe("pages in a headless browser", () => {
       ],
     ],
     ["seed=full", "archive", ["Brief page published"]],
+    [
+      "seed=full&linkedin=long",
+      "inbox",
+      ["3,001 of 3,000 characters in the post · 1 over LinkedIn's limit"],
+    ],
     ["seed=empty", "inbox", ["fills after the vault's first research run"]],
   ]) {
     it(`the Console renders #${tab} (${query})`, async (t) => {
@@ -968,6 +1186,9 @@ describe("pages in a headless browser", () => {
       }
       for (const word of ["vault-librarian", "finding/pricing", "card_update"]) {
         assert.ok(!body.includes(word), `#${tab} shows the internal name ${word}`);
+      }
+      if (query.includes("linkedin=long")) {
+        assert.match(main[1], /class="count over"/);
       }
       if (tab === "inbox" && query === "seed=full") {
         assert.ok(!/<img[^>]*onerror/i.test(main[1]), "Markdown in a brief must stay text");

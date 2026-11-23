@@ -15,7 +15,7 @@ connected:
 | The gutt-pro plugin's own server, `gutt-mcp-remote` (the usual case: gutt-vaults depends on gutt-pro) | `mcp__plugin_<plugin>_<server>__<tool>` | `mcp__plugin_gutt-pro_gutt-mcp-remote__search_memory_facts` |
 | claude.ai connector in Claude Code (terminal)                                                         | `mcp__claude_ai_<server>__<tool>`       | `mcp__claude_ai_gutt-pro-memory__search_memory_facts`       |
 | Connector in a cloud routine                                                                          | `mcp__<server>__<tool>`                 | `mcp__gutt-pro-memory__search_memory_facts`                 |
-| Connector in the Claude desktop app                                                                   | `mcp__<connector-uuid>__<tool>`         | `mcp__b976e251-…__search_memory_facts`                      |
+| Connector in the Claude desktop app                                                                   | `mcp__<connector-uuid>__<tool>`         | `mcp__<connector-uuid>__search_memory_facts`                |
 
 Claude Code also deduplicates servers by endpoint (local > project > user > plugin > claude.ai
 connector). Installing or updating the gutt-pro plugin can therefore replace a connector, and
@@ -37,7 +37,12 @@ Run it at the start of the workflow, before the first memory read.
    server is the one where `vault_<slug>` is listed.
    - **Exactly one** → use that prefix for every memory call in this run.
    - **None** → treat it as "no write tool for the group" (each skill's Degradation says what
-     that means). Reads may still work on the first prefix; say which you used.
+     that means). A workflow that only reads (vault-pages export, the reviewer) still needs
+     the one server that **holds** the vault, never just the first prefix: on each server,
+     call `get_episodes(group_id="vault_<slug>", last_n=1)`. Exactly one returns an episode →
+     read from it and say which prefix you used. None or more than one → stop and publish or
+     decide nothing, as in the next case: another deployment's copy of the vault must never
+     reach a public page.
    - **More than one** → **stop before any write.** Two servers expose the vault and may be
      different deployments; a write to the wrong one can't be moved. Report both prefixes in
      the run row and the output, and write nothing.
