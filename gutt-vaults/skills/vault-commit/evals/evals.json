@@ -76,6 +76,18 @@
         "The Brief page is read and then published to meta/vault.brief_url",
         "The row ends with status published and a published_at date, set only after the publish succeeded"
       ]
+    },
+    {
+      "id": 6,
+      "eval_name": "memory-connector-empty-group-commits-nothing",
+      "prompt": "/gutt-vaults:vault-commit next-agent-to-hire. The vault file sets memory_connector: gutt-pro-memory-stage. mcp__claude_ai_gutt-pro-memory-stage__ is connected and its get_episodes(group_id=\"vault_next_agent_to_hire\") returns no episodes; mcp__claude_ai_gutt-pro-memory__ is also connected and holds the vault's episodes. The Console has two approved finding rows and one saved config version.",
+      "expected_output": "Treats the named connector's empty group as no vault server: commits nothing, changes no Console row, and reports 'vault_next_agent_to_hire not writable on any memory server' with the prefixes seen, instead of starting a second copy of the vault on the named server.",
+      "files": [],
+      "assertions": [
+        "No add_memory* or register_agent call",
+        "No Console row is changed",
+        "The output contains 'vault_next_agent_to_hire not writable on any memory server'"
+      ]
     }
   ]
 }

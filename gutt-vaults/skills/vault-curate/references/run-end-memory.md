@@ -57,6 +57,12 @@ hook fires.
 
 - **vault-reviewer:** the same rules for its own identity (`vault-reviewer`), but it has no
   write tools: every candidate goes under `unwritten` with its `agent_id`, and vault-curate
-  writes it under that identity (the target's name for Feedback).
+  writes it under that identity (the target's name for Feedback), with `source_description`
+  `<agent_id>, <run_id>`. A delta that refines one of the reviewer's earlier episodes carries
+  that episode's id in the entry's `previous_episodes` (step 3) and opens its body with
+  `Refines '<predecessor name>'`; vault-curate checks each id with `get_episode` (same vault
+  group, same type, `source_description` starting `vault-reviewer`, or for an episode written
+  before that format, tagged `vault-reviewer`) and passes it through, or drops the entry
+  (`../SKILL.md` Step 5).
 - **vault-scout:** has no write tools. Candidates go in `scout_notes`, which vault-curate
   writes under the scout's name.

@@ -1227,7 +1227,10 @@ function main(argv) {
     return 0;
   }
   if (cmd === "preview") {
-    preview(a._[1], { data: a.data, port: Number(a.port) || 8765 });
+    preview(a._[1], {
+      data: a.data,
+      port: a.port === undefined || a.port === "" ? 8765 : Number(a.port),
+    });
     return null;
   }
   throw new Error(`unknown command ${cmd}\n\n${HELP}`);

@@ -778,7 +778,8 @@ b.short { color: var(--bad); font-weight: 600; }
     else if (kind === "audit") state = !r.human && (r.status === "auto_approved" || r.status === "auto_rejected") ? "open" : "decided";
     else state = isOpen(r) ? "open" : "decided";
     var sg = Number(r.significance) || 0;
-    var rank = kind === "conflict" ? (r.left_open ? 0 : 1) : kind === "call" ? (sg >= 5 ? 0 : 2) : 3;
+    // Due left-open conflicts come first; parked ones (revisit date not reached) sort last.
+    var rank = kind === "conflict" ? (r.left_open ? (revisitDue(r) ? 0 : 6) : 1) : kind === "call" ? (sg >= 5 ? 0 : 2) : 3;
     return { id: r.id, kind: kind, state: state, rank: rank, sig: sg, t: ms(r.created), row: r };
   }
   // A row decided here stays in place, marked done, until you leave the tab (no jumping list).
@@ -788,7 +789,13 @@ b.short { color: var(--bad); font-weight: 600; }
     var lo = it.row && it.row.left_open;
     if (d && d.revisit && lo && lo.revisit === d.revisit && it.state === "open") { delete S.done[it.id]; d = null; }
     if (d && d.state === "done") return "done";
-    if (d && d.state === "undone") return it.state === "open" ? "open" : "undoing";
+    if (d && d.state === "undone") {
+      if (it.state === "open") return "open";
+      // Undoing a decision on a parked conflict puts left_open back, so it returns to parked.
+      // Undoing a leave-open shows "undoing" until the row is open again, not hidden as parked.
+      var back = d.before && d.before.left_open;
+      return it.state === "parked" && back && !revisitDue({ left_open: back }) ? "parked" : "undoing";
+    }
     return it.state;
   }
   function inboxItems() {
@@ -812,24 +819,28 @@ b.short { color: var(--bad); font-weight: 600; }
   function canAct() { return S.db && !S.readOnly; }
   // ctx "settings": a permission error there is about the admin-only Settings, so it closes
   // Settings alone and leaves the Inbox, which Editors and owners may still use.
+  // okMsg may be a function of the write's result, called only once the write has landed.
   function write(key, fn, okMsg, undoFn, onFail, ctx) {
     if (!canAct() || S.busy[key]) return;
     S.busy[key] = true; render();
     var attempt = function (retry) {
-      return fn().then(function () { if (okMsg) toast(okMsg, undoFn); }, function (e) {
+      // Promise.resolve().then: a synchronous throw inside fn still reaches the handler below.
+      return Promise.resolve().then(fn).then(function (res) { var msg = typeof okMsg === "function" ? okMsg(res) : okMsg; if (msg) toast(msg, undoFn); }, function (e) {
         var code = e && e.code;
         if (code === "unavailable" && retry) return new Promise(function (r) { setTimeout(r, 600 + Math.random() * 800); }).then(function () { return attempt(false); });
         if (onFail) onFail();
-        console.error("write " + key + " failed" + (code ? " (" + code + ")" : ""), e);
+        console.error("write " + key + " failed" + (code ? " (" + code + ")" : "") + (e && e.step ? " at step " + e.step : ""), e);
         if (code === "settings_busy") toast("Someone else is saving settings right now. Try again in a few seconds.");
         else if (code === "version_taken") toast("Someone else saved a new version first. Check their change in the log, then save again.");
         else if (code === "settings_orphan") toast("Your change was logged but not applied, and the log entry couldn't be removed. Save again: the next save replaces it.");
         else if (code === "settings_no_lease") toast("This Console can't lock its settings for a save. Republish it from the current template, then save again.");
+        else if (code === "lease_lapsed") toast("This save took too long to finish under its lock and was stopped. Check Settings and the change log, then save again if your change is missing.");
         else if ((code === "invalid_argument" || code === "permission_denied") && ctx === "settings") { S.canAdmin = false; toast("Only the vault's owner and Editors can change settings."); }
         else if (code === "invalid_argument") { S.readOnly = true; toast("You can view this Console but not change it."); }
         else if (code === "quota_exceeded") toast("The Console's storage is full. Archive old rows before adding more.");
         else if (code === "revoked") { S.readOnly = true; toast("This Console is no longer available to you."); }
         else if (code === "committed") toast("The commit already put this in the vault, so it can't be undone here.");
+        else if (code === "missing") toast("This row is no longer in the Console, so there is nothing to undo.");
         else toast("That didn't save" + (code ? " (" + code + ")" : "") + ". Try again in a moment.");
       });
     };
@@ -837,15 +848,30 @@ b.short { color: var(--bad); font-weight: 600; }
   }
   function now() { return new Date().toISOString(); }
   function draft(id) { return String(S.drafts[id] || "").trim(); }
-  function clearDrafts(id) { delete S.drafts["note-" + id]; delete S.drafts["edit-" + id]; delete S.ui[id]; }
+  var DRAFT_KEYS = ["note-", "edit-", "revisit-"];
+  // Clears a card's typed text and open sections, and returns them so a failed write can put them back.
+  function clearDrafts(id) {
+    var saved = { ui: S.ui[id], drafts: {} };
+    DRAFT_KEYS.forEach(function (k) { if (k + id in S.drafts) { saved.drafts[k + id] = S.drafts[k + id]; delete S.drafts[k + id]; } });
+    delete S.ui[id];
+    return saved;
+  }
+  function restoreDrafts(id, saved) {
+    Object.keys(saved.drafts).forEach(function (k) { if (!(k in S.drafts)) S.drafts[k] = saved.drafts[k]; });
+    if (saved.ui && !S.ui[id]) S.ui[id] = saved.ui;
+  }
   // Every Inbox action: write the change, keep the card in place as done, offer Undo for five
-  // seconds (U4). Undo writes back exactly the fields the action changed.
-  function act(id, path, change, before, msg, doneText) {
+  // seconds (U4). Undo writes back the fields the action changed, except `revealed`, which stays
+  // set so a second call on the row is never counted as blind. A failed write brings back the card
+  // with what was typed on it. While the write is in flight the card shows pendingText (when given),
+  // so a prediction is revealed only once the write that records `revealed` has landed.
+  function act(id, path, change, before, msg, doneText, pendingText) {
     if (!canAct() || S.busy[id]) return;
-    var entry = S.done[id] = { state: "done", text: doneText || msg, path: path, before: before };
-    clearDrafts(id);
+    var entry = S.done[id] = { state: "done", text: pendingText || doneText || msg, path: path, before: before };
+    var saved = clearDrafts(id);
     if (S.cursor === id) moveCursor(1);
-    write(id, function () { return S.db.doc(path).update(change); }, msg, function () { undoDone(id, entry); }, function () { delete S.done[id]; });
+    write(id, function () { return S.db.doc(path).update(change); }, function () { entry.text = doneText || msg; return msg; },
+      function () { undoDone(id, entry); }, function () { delete S.done[id]; restoreDrafts(id, saved); });
   }
   // Undo and Reopen re-read the row first and refuse once the commit routine has recorded it.
   // The db has no transactions, so a commit landing between the read and the write can still
@@ -853,8 +879,10 @@ b.short { color: var(--bad); font-weight: 600; }
   function unlessCommitted(path, change) {
     var ref = S.db.doc(path);
     return ref.get().then(function (snap) {
-      var cur = snap.exists ? snap.data() : null;
-      if (cur && (cur.status === "committed" || cur.status === "published" || cur.committed_episode)) fail("committed");
+      // A row that is gone has nothing to undo; an update would fail or recreate a partial row.
+      if (!snap.exists) fail("missing");
+      var cur = snap.data();
+      if (cur.status === "committed" || cur.status === "published" || cur.committed_episode) fail("committed");
       return ref.update(change);
     });
   }
@@ -870,17 +898,22 @@ b.short { color: var(--bad); font-weight: 600; }
     if (extra.edited_claim) human.edited_claim = extra.edited_claim;
     if (extra.resolution) human.resolution = extra.resolution;
     if (extra.confirm) human.confirm = true;
-    var blind = isBlind(row);
+    // Blind only when there was a prediction to hide.
+    var blind = isBlind(row) && !!predicted(row);
     human.blind = blind;
     var status = decision === "rejected" ? "rejected" : "approved";
     var after = Object.assign({}, row, { status: status, human: human });
     var change = { status: status, human: human };
     // The decision reveals the prediction; a later call on this row is no longer blind.
-    if (blind && predicted(row)) change.revealed = true;
+    if (blind) change.revealed = true;
+    var before = { status: row.status, human: row.human || null };
+    // Deciding a parked conflict settles it: clear left_open in the same write, and put it back on undo.
+    if (row.left_open) { change.left_open = null; before.left_open = row.left_open; }
     var said = extra.msg || (decision === "edited" ? "Approved with your edit." : status === "approved" ? "Approved." : "Rejected" + (extra.reason ? " (" + reasonLabel(extra.reason) + ")." : "."));
     var reveal = revealText(after);
-    act(row.id, "findings/" + row.id, change, { status: row.status, human: row.human || null },
-      [said, reveal, commitWhen()].filter(Boolean).join(" "), [said, reveal].filter(Boolean).join(" "));
+    // The card says only what was decided until the write lands; then it shows the prediction.
+    act(row.id, "findings/" + row.id, change, before,
+      [said, reveal, commitWhen()].filter(Boolean).join(" "), [said, reveal].filter(Boolean).join(" "), said);
   }
   function priorStatus(row) {
     var d = row.review && row.review.decision;
@@ -1050,20 +1083,26 @@ b.short { color: var(--bad); font-weight: 600; }
     return rowCard(r, c, [u, "audit"]);
   }
   function plusDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return localDay(d); }
+  // Leaves a conflict open until the revisit date typed on its card (default: two weeks).
+  function leaveOpen(r) {
+    var rid = "revisit-" + r.id, until = String(S.drafts[rid] || plusDays(14));
+    // The date input's min isn't enforced on a button click: a typed past date would park the
+    // conflict and bring it straight back as due.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < plusDays(1)) {
+      toast("Pick a date from tomorrow on to leave it open."); S.focusNext = rid; render(); return;
+    }
+    var lo = { revisit: until, note: draft("note-" + r.id), at: now() };
+    act(r.id, "findings/" + r.id, { left_open: lo }, { left_open: r.left_open || null },
+      "Left open until " + until + ". It stays on Summary and comes back here then.", "Left open until " + until + ".");
+    if (S.done[r.id]) S.done[r.id].revisit = until;
+  }
   function conflictCard(r) {
     var u = ui(r.id), dis = !canAct() || !!S.busy[r.id], acts = S.acts[r.id] = {}, rid = "revisit-" + r.id;
     var settle = function (res, said) { return function () { decide(r, "approved", { resolution: res, msg: said }); }; };
     acts.a = settle("a", "Resolved: A stands."); acts.b = settle("b", "Resolved: B stands."); acts.t = settle("both", "Resolved: both stand.");
     acts.n = function () { u.note = true; S.focusNext = "note-" + r.id; render(); };
     acts.o = function () { if (!S.drafts[rid]) S.drafts[rid] = plusDays(14); toggle(r.id, "open", rid); };
-    var keepOpen = function () {
-      var until = String(S.drafts[rid] || plusDays(14));
-      var lo = { revisit: until, note: draft("note-" + r.id), at: now() };
-      delete S.drafts[rid];
-      act(r.id, "findings/" + r.id, { left_open: lo }, { left_open: r.left_open || null },
-        "Left open until " + until + ". It stays on Summary and comes back here then.", "Left open until " + until + ".");
-      if (S.done[r.id]) S.done[r.id].revisit = until;
-    };
+    var keepOpen = function () { leaveOpen(r); };
     var c = [noteField(r.id, "Why this resolution? (optional)", "What decided it?", u.note)];
     if (u.open) c.push(h("div", { class: "row2" },
       h("label", { class: "small", for: rid }, "Come back to it on",
@@ -1293,9 +1332,13 @@ b.short { color: var(--bad); font-weight: 600; }
   }
 
   // ---------- Reviewer tab (S4) ----------
-  function dirStats(d) {
-    d = d || {}; var n = Number(d.n) || 0, k = Number(d.agree) || 0;
-    if (k > 0 && k < 1 && n > 1) k = Math.round(k * n); // a share written as a fraction
+  // `agree` is a whole count (console-data.md). Anything else is the brief's bug: show it, don't guess.
+  function dirStats(d, cls) {
+    d = d || {}; var n = Number(d.n) || 0, k = d.agree == null ? 0 : Number(d.agree);
+    if (isNaN(k) || k !== Math.floor(k) || k < 0) {
+      if (!S.warned["agree " + cls]) { S.warned["agree " + cls] = true; console.error("Calibration data malformed for " + (cls || "a class") + ": agree must be a count, got " + JSON.stringify(d.agree)); }
+      return { n: n, k: 0, share: null, bad: true };
+    }
     return { n: n, k: Math.min(k, n), share: n ? Math.min(k, n) / n : null };
   }
   function ceilingOf(cls) {
@@ -1303,14 +1346,29 @@ b.short { color: var(--bad); font-weight: 600; }
     if (own != null && own !== "" && !isNaN(Number(own))) c = Math.min(c, Number(own));
     return c;
   }
+  // The last Calibration counted committed Verdicts only: a call made before it but committed after
+  // isn't in owner_verdicts. counted_through is the latest call time that count includes (vault-brief);
+  // older Calibrations without it fall back to their own time.
+  function countedThrough() { var rv = S.reviewer; return ms(rv && (rv.counted_through || rv.at)); }
   function liveSince(cls) {
-    var since = ms(S.reviewer && S.reviewer.at), out = { calls: 0, agree: 0 };
+    var since = countedThrough(), out = { calls: 0, agree: 0 };
     S.findings.forEach(function (r) {
       if (!r.human || !r.human.decision || rowClass(r) !== cls || ms(r.human.at) <= since) return;
       var a = agrees(r); if (a == null) return;
       out.calls++; if (a) out.agree++;
     });
     return out;
+  }
+  // Latest override in the class: the Calibration's last_override, or a newer human decision that
+  // differs from an auto_* call (vault-config.md §Promotion re-check step 3).
+  function lastOverride(cls, rec) {
+    var t = rec.last_override && rec.last_override !== "none" ? ms(rec.last_override) : 0;
+    S.findings.forEach(function (r) {
+      var d = r.review && r.review.decision;
+      if ((d !== "auto_approve" && d !== "auto_reject") || rowClass(r) !== cls || agrees(r) !== false) return;
+      t = Math.max(t, ms(r.human.at) || 0);
+    });
+    return t;
   }
   function reviewerClasses() {
     var set = {};
@@ -1331,34 +1389,48 @@ b.short { color: var(--bad); font-weight: 600; }
     if (st.share == null) return "no calls scored yet, needs " + pct(needShare) + " right";
     return [h("b", { class: st.share >= needShare ? "ok" : "short", text: pct(st.share) + " right" }), ", needs " + pct(needShare)];
   }
-  function classRow(cls, trend) {
-    var rec = classRecord(cls), st = Number(rec.stage) || 0, cap = ceilingOf(cls), live = liveSince(cls);
-    var rej = dirStats(rec.reject), apr = dirStats(rec.approve), rolling = rec.rolling_30d != null ? Number(rec.rolling_30d) : rec.agreement != null ? Number(rec.agreement) : null;
+  var MALFORMED = "Calibration data malformed";
+  // A class's numbers and what it waits for, shown by classRow.
+  function classStatus(cls) {
+    var rec = classRecord(cls), st = Number(rec.stage) || 0, cap = ceilingOf(cls);
+    var rej = dirStats(rec.reject, cls), apr = dirStats(rec.approve, cls), rolling = rec.rolling_30d != null ? Number(rec.rolling_30d) : rec.agreement != null ? Number(rec.agreement) : null;
     var n1 = cfgNum("ladder.stage1_calls"), a1 = cfgNum("ladder.stage1_agreement"), n2 = cfgNum("ladder.stage2_approve_calls"), a2 = cfgNum("ladder.stage2_agreement"), a3 = cfgNum("ladder.stage3_agreement");
     var replay = (S.reviewer && S.reviewer.replay) || {}, rk = Number(replay.k) || 0, rn = Number(replay.n) || 0;
-    var cool = cfgNum("review.override_cooloff_days"), lastOv = rec.last_override && rec.last_override !== "none" ? ms(rec.last_override) : 0;
+    var cool = cfgNum("review.override_cooloff_days"), lastOv = lastOverride(cls, rec);
     var coolUntil = lastOv ? new Date(lastOv + cool * 864e5) : null, cooling = coolUntil && coolUntil > new Date();
-    var needsEl = h("div", { class: "needs" }), wait = [];
+    var wait = [];
+    // A malformed count has no share: say so instead of reading it as an accuracy shortfall.
+    var malformed = function () { if (wait.indexOf(MALFORMED) < 0) wait.push(MALFORMED); };
+    // A direction the ceiling still allows is listed with what it needs; the cap is named when it
+    // holds back a direction or the steady stage.
+    var capped = (!rec.auto_reject && cap < 1) || (!rec.auto_approve && cap < 2) || (rec.auto_approve && st < 3 && cap < 3);
+    if (!rec.auto_reject && cap >= 1) {
+      if (rej.bad) malformed();
+      else if (rej.n < n1) wait.push(plural(n1 - rej.n, "more reject prediction"));
+      else if (rej.share < a1) wait.push("Reject accuracy; see disagreements");
+      else wait.push("Auto-reject at the next research run");
+    }
+    if (!rec.auto_approve && cap >= 2) {
+      if (apr.bad) malformed();
+      else if (apr.n < n2) wait.push(plural(n2 - apr.n, "more approve prediction"));
+      else if (apr.share < a2) wait.push("Approve accuracy; see disagreements");
+      else if (cooling) wait.push("No overrides until " + shortDay(coolUntil.toISOString()));
+      else if (!rn || rn < cfgNum("ladder.replay_size") || rk / rn < cfgNum("ladder.replay_pass")) wait.push("A passing eval replay");
+      else wait.push("Auto-approve at the next research run");
+    }
+    if (rec.auto_approve && st < 3 && cap >= 3) wait.push(rolling != null && rolling >= a3 ? "Steady at the next research run" : "30-day agreement of " + pct(a3));
+    if (capped) wait.push(cap === 0 ? "Held in shadow in Settings" : "Capped at stage " + cap + " in Settings");
+    if (!wait.length) wait.push(st >= 3 ? "Nothing: steady" : "Nothing");
+    return { rec: rec, st: st, cap: cap, rej: rej, apr: apr, rolling: rolling, a1: a1, a2: a2, a3: a3, n1: n1, n2: n2, rk: rk, rn: rn, wait: wait };
+  }
+  function classRow(cls, trend) {
+    var c = classStatus(cls), rec = c.rec, st = c.st, cap = c.cap, rej = c.rej, apr = c.apr, rolling = c.rolling;
+    var n1 = c.n1, a1 = c.a1, n2 = c.n2, a2 = c.a2, a3 = c.a3, rk = c.rk, rn = c.rn, wait = c.wait, live = liveSince(cls);
+    var needsEl = h("div", { class: "needs" });
+    if (rej.bad || apr.bad) needsEl.appendChild(h("b", { class: "short", text: "Calibration data malformed (agree must be a count)" }));
     needsEl.appendChild(meter("Auto-reject: reject predictions", rej.n, n1, rightLine(rej, a1), !!rec.auto_reject));
     needsEl.appendChild(meter("Auto-approve: approve predictions", apr.n, n2, [rightLine(apr, a2), " · replay " + (rn ? rk + "/" + rn : "not run")], !!rec.auto_approve));
     if (rec.auto_approve) needsEl.appendChild(meter("Steady: 30-day agreement", Math.round((rolling || 0) * 100), Math.round(a3 * 100), "needs " + pct(a3), st >= 3));
-    if (cap <= st && st < 3) wait.push(cap === 0 ? "Held in shadow in Settings" : "Capped at stage " + cap + " in Settings");
-    else {
-      if (!rec.auto_reject && cap >= 1) {
-        if (rej.n < n1) wait.push(plural(n1 - rej.n, "more reject prediction"));
-        else if (rej.share < a1) wait.push("Reject accuracy; see disagreements");
-        else wait.push("Auto-reject at the next research run");
-      }
-      if (!rec.auto_approve && cap >= 2) {
-        if (apr.n < n2) wait.push(plural(n2 - apr.n, "more approve prediction"));
-        else if (apr.share < a2) wait.push("Approve accuracy; see disagreements");
-        else if (cooling) wait.push("No overrides until " + shortDay(coolUntil.toISOString()));
-        else if (!rn || rn < cfgNum("ladder.replay_size") || rk / rn < cfgNum("ladder.replay_pass")) wait.push("A passing eval replay");
-        else wait.push("Auto-approve at the next research run");
-      }
-      if (rec.auto_approve && st < 3 && cap >= 3) wait.push(rolling != null && rolling >= a3 ? "Steady at the next research run" : "30-day agreement of " + pct(a3));
-      if (!wait.length) wait.push(st >= 3 ? "Nothing: steady" : "Nothing");
-    }
     var pts = trend.map(function (c) { var v = ((c.by_class || {})[cls] || {}); return v.agreement != null ? Number(v.agreement) : null; }).filter(function (v) { return v != null && !isNaN(v); });
     var row = h("div", { class: "crow", role: "row" },
       h("div", { class: "c-name", role: "cell" }, h("b", { title: cls, text: classLabel(cls) }),
@@ -1377,7 +1449,7 @@ b.short { color: var(--bad); font-weight: 600; }
       .sort(function (a, b) { return ms(b.human.at) - ms(a.human.at); }).slice(0, 8);
   }
   function viewReviewer(m) {
-    var rv = S.reviewer, classes = reviewerClasses(), since = ms(rv && rv.at);
+    var rv = S.reviewer, classes = reviewerClasses(), since = countedThrough();
     var liveCalls = S.findings.filter(function (r) { return r.human && r.human.decision && ms(r.human.at) > since; }).length;
     var total = rv && rv.owner_verdicts != null ? Number(rv.owner_verdicts) + liveCalls : S.findings.filter(function (r) { return r.human && r.human.decision; }).length;
     var week = curateRuns().filter(function (r) { return ms(r.started) > Date.now() - 7 * 864e5; });
@@ -1401,7 +1473,7 @@ b.short { color: var(--bad); font-weight: 600; }
     var grid = h("div", { class: "classes", role: "table", "aria-label": "Reviewer progress by class" },
       h("div", { class: "crow head", role: "row" }, ["Class", "Stage", "Next stage needs", "Since calibration", "Waiting for"].map(function (t) { return h("div", { role: "columnheader", text: t }); })));
     classes.forEach(function (k) { grid.appendChild(classRow(k, trend)); });
-    var cf = classRecord("conflict"), cfr = dirStats(cf.approve), cfj = dirStats(cf.reject), cfn = cfr.n + cfj.n;
+    var cf = classRecord("conflict"), cfr = dirStats(cf.approve, "conflict"), cfj = dirStats(cf.reject, "conflict"), cfn = cfr.n + cfj.n;
     grid.appendChild(h("div", { class: "crow", role: "row" },
       h("div", { class: "c-name", role: "cell" }, h("b", { title: "conflict", text: classLabel("conflict") })),
       h("div", { class: "c-stage", role: "cell" }, h("span", { class: "chip warn", text: "Always yours" })),
@@ -1607,8 +1679,12 @@ b.short { color: var(--bad); font-weight: 600; }
     delete set.conflict;
     return Object.keys(set).sort();
   }
-  function canSettings() { return canAct() && S.canAdmin === true; }
+  // Settings open only once user.canEdit() says yes: unknown, pending or failed stays read-only.
+  function canSettings() { return !!canAct() && S.canAdmin === true; }
   function fail(code) { var err = new Error(code); err.code = code; throw err; }
+  // One lease holder per page load, so two tabs of the same viewer contend like two viewers.
+  var HOLDER = "page-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  var LEASE_MS = 30000;
   function saveSettings() {
     var e = cfgEdits(); if (e.invalid || (!e.edits.length && !e.ceil.length) || !S.me) return;
     var base = cfgVersion(), v = base + 1, values = Object.assign({}, savedValues()), ceilings = Object.assign({}, savedCeilings());
@@ -1627,37 +1703,65 @@ b.short { color: var(--bad); font-weight: 600; }
     // No transactions in the db: every Settings save takes a short lease on meta/config_lock, then
     // checks that nobody saved since this page read the config, so two saves can't both land.
     // Without a lease that guarantee is gone, so the save is refused rather than raced.
+    // The db can't reject a write from an expired holder, so the page proves it held the lease
+    // through every call instead: it renews before each write, and every call must settle
+    // before `deadline`, the request time of the last grant plus LEASE_MS (never later than the
+    // server's expiry, whatever the clocks say). A call that settles after it stops the save
+    // with lease_lapsed: no later write is sent and the editor is told to check the log.
     write("settings", function () {
-      if (typeof lock.acquire !== "function") return Promise.reject(Object.assign(new Error("settings_no_lease"), { code: "settings_no_lease" }));
-      var lease = null;
+      if (typeof lock.acquire !== "function") fail("settings_no_lease");
+      var lease = null, step = "lease", deadline = 0;
+      var inTime = function (x) { if (Date.now() > deadline) fail("lease_lapsed"); return x; };
+      var hold = function (renew) {
+        var t0 = Date.now();
+        return lock.acquire({ holder: HOLDER, ttlMs: LEASE_MS }).then(function (l) {
+          if (!l || !l.acquired) fail(renew ? "lease_lapsed" : "settings_busy");
+          if (renew) inTime();
+          lease = l; deadline = t0 + LEASE_MS;
+        });
+      };
+      var held = function (call) { return hold(true).then(call).then(inTime, function (err) { inTime(); throw err; }); };
       var release = function () {
-        var r = lease && typeof lease.release === "function" ? lease.release() : typeof lock.release === "function" ? lock.release({ holder: S.me }) : null;
+        var r = lease && typeof lease.release === "function" ? lease.release() : typeof lock.release === "function" ? lock.release({ holder: HOLDER }) : null;
         return Promise.resolve(r).then(null, function (e) { console.warn("meta/config_lock was not released; it expires on its own", e); });
       };
-      return lock.acquire({ holder: S.me, ttlMs: 15000 }).then(function (l) {
-        if (!l || !l.acquired) fail("settings_busy");
-        lease = l;
-        return cfgRef.get();
+      return hold(false).then(function () {
+        step = "read config"; return cfgRef.get().then(inTime);
       }).then(function (snap) {
-        var cur = snap.exists ? Number(snap.data().config_version) || 0 : 0;
+        var d = snap.exists ? snap.data() : {}, cur = Number(d.config_version) || 0;
+        // A retry after `unavailable` may find this very save already in place.
+        if (cur === v && d.saved_at === at && d.saved_by === S.me) return "landed";
         if (cur !== base) fail("version_taken");
-        return logRef.get();
-      }).then(function (snap) {
-        // A v<n> log row while meta/config is still at n-1 is a save that never landed (its
-        // tab closed, or its rollback failed). This save holds the lease, so it replaces it.
-        if (snap.exists) console.warn("config_changes/v" + v + " was logged but never applied; replacing it", snap.data());
-        return logRef.set(entry);
-      }).then(function () {
-        return cfgRef.set({ config_version: v, values: values, class_ceilings: ceilings, saved_at: at, saved_by: S.me })
-          .then(null, function (err) {
+        return logRef.get().then(inTime).then(function (old) {
+          // A v<n> log row while meta/config is still at n-1 is a save that never landed (its
+          // tab closed, or its rollback failed). This save holds the lease, so it replaces it.
+          if (old.exists) console.warn("config_changes/v" + v + " was logged but never applied; replacing it", old.data());
+          step = "write change log"; return held(function () { return logRef.set(entry); });
+        }).then(function () {
+          step = "write config";
+          return held(function () {
+            return cfgRef.set({ config_version: v, values: values, class_ceilings: ceilings, saved_at: at, saved_by: S.me });
+          });
+        }).then(null, function (err) {
+          if (step !== "write config" || (err && err.code === "lease_lapsed")) throw err;
+          // The write may have landed although the call failed: check before rolling back.
+          return cfgRef.get().then(function (s2) {
+            var d2 = s2.exists ? s2.data() : {};
+            if (Number(d2.config_version) === v && d2.saved_at === at) return "landed";
             console.error("meta/config was not written; removing config_changes/v" + v, err);
-            return logRef["delete"]().then(function () { throw err; }, function (err2) {
+            step = "roll back change log";
+            return held(function () { return logRef["delete"](); }).then(function () { throw err; }, function (err2) {
+              if (err2 && err2.code === "lease_lapsed") throw err2;
               console.error("config_changes/v" + v + " could not be removed", err2);
               fail("settings_orphan");
             });
-          });
+          }, function () { throw err; });
+        });
       }).then(function () { S.cfgDraft = {}; S.ceilDraft = {}; S.cfgReset = null; })
-        .then(function () { return release(); }, function (err) { return release().then(function () { throw err; }); });
+        .then(function () { return release(); }, function (err) {
+          if (err && !err.step) err.step = step;
+          return release().then(function () { throw err; });
+        });
     }, "Saved as version " + v + ". It applies at the next research run.", null, null, "settings");
   }
   function changeText(c) {
@@ -1865,6 +1969,13 @@ b.short { color: var(--bad); font-weight: 600; }
     q("calibrations", db.collection("calibrations").orderBy("week", "desc").limit(26), "calibrations");
     d("meta/vault", "vault"); d("meta/charter", "charter"); d("meta/reviewer", "reviewer"); d("meta/config", "config");
   }
+
+  // Test hook for the plugin repository's tests/vaults.test.cjs; nothing sets it on a published page.
+  if (typeof window.__vaultConsoleTest === "function") window.__vaultConsoleTest({
+    S: S, FIELD: FIELD, cfgEdits: cfgEdits, saveSettings: saveSettings, canSettings: canSettings,
+    lastOverride: lastOverride, countedThrough: countedThrough, liveSince: liveSince, dirStats: dirStats,
+    decide: decide, undoDone: undoDone, inboxItems: inboxItems, classStatus: classStatus, leaveOpen: leaveOpen
+  });
 
   render();
   var cl = window.claude;

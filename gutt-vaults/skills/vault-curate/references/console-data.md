@@ -42,20 +42,24 @@ meta/config    config_version, values{<key>: value}, class_ceilings{<class>: 0â€
                saved_by                                             (the Settings tab; every skill reads)
 meta/charter   status (assembled|draft), assembled_at, episode_ids[], clashes[],
                sections[{applies_to, title, text}]                  (vault-curate, every run)
-meta/reviewer  at, week, config_version, owner_verdicts, rolling_agreement, escalation_rate,
-               replay{k, n}, stage_by_class{<class>: {stage, auto_reject, auto_approve,
+meta/reviewer  at, week, config_version, owner_verdicts, counted_through, rolling_agreement,
+               escalation_rate, replay{k, n}, stage_by_class{<class>: {stage, auto_reject, auto_approve,
                predictions, agreement, reject{n, agree}, approve{n, agree}, rolling_30d,
                last_override}}                                      (vault-brief, weekly)
 calibrations   id (<YYYY-Www>), week, at, config_version, owner_verdicts, rolling_agreement,
                escalation_rate, replay{k, n}, by_class{<class>: {stage, auto_reject,
-               auto_approve, agreement, reject{n, agree}, approve{n, agree}, blind}}
+               auto_approve, agreement, reject{n, agree}, approve{n, agree}, rolling_30d,
+               blind}}
                                                                     (vault-brief, weekly)
 ```
 
 `reject{n, agree}` and `approve{n, agree}`: `n` predictions in that direction, `agree` of them
 matching your call (whole numbers, steering-adjusted). `agreement` is a fraction (`0.91`).
-`owner_verdicts` is your calls to date at the Calibration; the Reviewer tab adds the calls
-made since. `calibrations` keeps one document per week, so the tab can draw each class's
+`owner_verdicts` is your calls to date at the Calibration, counted from committed Verdicts;
+`counted_through` is the latest `human.at` among the Console rows those Verdicts came from (rows
+with `committed_episode` set when the brief ran). The Reviewer tab adds the calls made after
+`counted_through` (after `at` when it is missing), so a call made before the Calibration but
+committed after it is still counted. `calibrations` keeps one document per week, so the tab can draw each class's
 agreement over time; `meta/reviewer` is always the latest week.
 
 `meta`, `runs`, `config_changes` and `calibrations` are writable only by the owner and Editors
@@ -70,10 +74,18 @@ publishes each page.
 
 **Settings** (`meta/config`): keys, defaults and ranges are in `vault-config.md`; `values` holds
 every key the owner saved (Reset removes a section's keys). The db has no transactions, so a
-Save on the Settings tab takes a short lease on `meta/config_lock` (`acquire`), re-reads
-`meta/config` and refuses if its `config_version` moved since the page read it, then writes
-`config_changes/v<n>` and `meta/config` with `config_version` n. A save while another holds the
-lease, or after someone else saved, is refused with a message, never merged. Save waits until
+Save on the Settings tab takes a short lease on `meta/config_lock` (`acquire`, one holder per
+page load, so two tabs contend like two viewers), re-reads `meta/config` and refuses if its
+`config_version` moved since the page read it, then writes `config_changes/v<n>` and
+`meta/config` with `config_version` n. A runtime without `acquire` can't save Settings (the
+page says to republish). A save while another holds the lease, or after someone else saved, is
+refused with a message, never merged. Under the lease, a `config_changes/v<n>` row left by a
+save whose `meta/config` write failed is replaced; a failed `meta/config` write is re-read
+before the log row is rolled back, so a write that landed keeps its log row. The db can't
+reject a write from a holder whose lease expired, so the page renews the lease before each
+write and stops the save, sending nothing more, if any call settles after the last grant's
+request time plus the lease length; the editor is told to check Settings and the change log.
+Save waits until
 the page knows the viewer's id: `by` and `saved_by` are viewer ids from the `user` capability,
 never names, and a change is never recorded without one; the page resolves names when it shows the change log. Skills only read `meta/config`;
 vault-commit marks `config_changes` rows with `committed_episode` once their `Config:` episode
@@ -107,8 +119,9 @@ on the matching filter.
 
 - **Blind calls.** In a class at stage 0 (and for every conflict), the page hides the
   reviewer's prediction, confidence and reason until the owner decides, then shows whether
-  they agreed. The page records `human.blind` on every call, and sets `revealed: true` on the
-  row once a decision has shown the prediction; `revealed` survives undo, Reopen and reload, so
+  they agreed. The page records `human.blind` on every call (true only when there was a
+  prediction to hide), and sets `revealed: true` on the row once a decision has shown it; the
+  card shows the prediction only after that write has landed. `revealed` survives undo, Reopen and reload, so
   a second call on the same row is never counted as blind. The reviewer is graded on the
   owner's calls, so a call made after seeing its prediction is weaker evidence.
 - **Rejection reasons.** Rejecting takes one reason chip, stored as `human.reason`; the note
@@ -130,12 +143,15 @@ on the matching filter.
   <!-- reject-reasons:end -->
 
 - **Undo.** Every Inbox action can be undone for five seconds from the toast, and from the
-  card while it stays on screen; undo writes back the fields the action changed. Before the
+  card while it stays on screen; undo writes back the fields the action changed, except
+  `revealed`, which stays set so a second call on the row is never counted as blind. Before the
   next commit, Reopen in the Archive does the same. Both re-read the row and refuse once it is
-  committed (or a brief is published).
+  committed (or a brief is published), or when the row is gone.
 - **Leave open.** A conflict left open keeps `status: escalated` and gets `left_open{revisit,
 note, at}`; it leaves the Inbox, shows on Summary with its revisit date, and comes back to
-  the Inbox on that date. It is not a decision, so vault-commit never sees it.
+  the Inbox on that date. The revisit date is tomorrow or later; the page refuses an earlier
+  one. It is not a decision, so vault-commit never sees it. Deciding a left-open conflict
+  clears `left_open` in the same write (undo puts it back).
 - **In-place updates.** A routine writing rows doesn't redraw the page: cards whose row didn't
   change stay as they are, with their typed notes, open sections and scroll position.
 
@@ -174,7 +190,8 @@ note, at}`; it leaves the Inbox, shows on Summary with its revisit date, and com
     `briefs/brief-<YYYY-Www>`, `meta/reviewer`, `calibrations/<YYYY-Www>`), plus one `query`
     of `findings` with `type: conflict` and `status: escalated` for the open conflicts (a
     conflict left open never becomes a `Conflict:` episode), and one `query` of `findings`
-    with `committed_episode` set for the Calibration (per-row `human.at`, `human.blind`);
+    with `committed_episode` set for the Calibration (per-row `human.at`, `human.blind`, and
+    `counted_through`, the latest `human.at` among them);
   - every skill at boot: `get` `meta/vault` and `meta/config`; curate also `meta/reviewer` for
     the promotion re-check (`vault-config.md`).
 - **Pin writes to what you read:** every read returns each document's `version`; pass it as

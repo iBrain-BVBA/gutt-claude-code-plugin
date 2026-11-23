@@ -66,9 +66,11 @@ show the owner the episode text instead.
   review policy and, for a vault that tracks roles, a role taxonomy, one at a time, drafting
   each episode from `references/charter-template.md`. For a new vault also create the vault
   file (`../vault-curate/references/routines.md` §The vault file) with only `slug`,
-  `group_id` (`vault_<slug>`, hyphens as underscores) and `console_url` (null until the
-  Console exists). Then **publish the vault's Console**: this is the step that creates it,
-  and no other skill does. Follow `../vault-pages/SKILL.md` §Publish a page, page `console`,
+  `group_id` (`vault_<slug>`, hyphens as underscores), `console_url` (null until the
+  Console exists) and, when the owner keeps the vault on a server that starts a group on its
+  first write (such as the shared gutt stage), `memory_connector` with that connector's name
+  or names. Then **publish the vault's Console**: this is the step that creates it, and no
+  other skill does. Follow `../vault-pages/SKILL.md` §Publish a page, page `console`,
   which writes the new URL into the vault file's `console_url` and seeds the Console's
   `meta/vault` with the vault's name, slug, group, owner, question and beats
   (`../vault-curate/references/vault-config.md` §What the vault file keeps). No Artifact tool
@@ -78,8 +80,24 @@ show the owner the episode text instead.
 - **`"<instruction>"`**: classify `applies_to`, find the item it refines or supersedes, draft
   the Steering episode, show it, write on yes.
 
-Before a new vault's first write, confirm the group exists in `list_writable_groups`.
-A missing group needs a gutt admin; stop.
+Before a vault's first write, find its server with
+`../vault-curate/references/memory-tools.md` step 2. Every write waits for that.
+
+- **`memory_connector` set:** the named connector is the server. For `--charter` on a new
+  vault, no episode back is expected (a vault has none before its charter), and so is its id
+  missing from `list_writable_groups` on a server that starts groups on the first write; the
+  first write, through the generic `add_memory` with `group_id="vault_<slug>"`, starts the
+  group. Check that write as step 6 says. Rejected, or acknowledged but never seen: stop, and
+  tell the owner that `vault_<slug>` must be created on, or granted to them on, the server
+  `memory_connector` names (a gutt admin does that where groups are provisioned). For any
+  other mode, or an existing vault, no episode back means the connector doesn't hold the vault:
+  stop as **None** below.
+- **Not set:** the server is the one that lists `vault_<slug>` as writable. Not listed
+  anywhere: the group needs a gutt admin to create it, unless the owner's server starts groups
+  on the first write, in which case they set `memory_connector` to that connector's name.
+- **None, or two:** write nothing and print the episodes (§Degradation). Say which case it is
+  and the fix: with `memory_connector` unset, set it (or have the group created, above); with
+  it set, name the connector that isn't connected, or the two prefixes found for it.
 
 ## Output contract
 
