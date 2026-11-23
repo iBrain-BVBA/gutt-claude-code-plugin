@@ -53,7 +53,8 @@ Drop as `duplicate` when:
 
 - a current Finding in the group has the same claimant and claim
   (`search_memory_nodes(entity="Finding", query=<claimant + headline>)`), or
-- a Console row (pending, escalated, rejected, auto_rejected) has the same claim.
+- a Console row (pending, escalated, approved, auto_approved, rejected, auto_rejected) has
+  the same claim. An approved row has no Finding in memory until vault-commit writes it.
 
 A newer number for the same claimant and metric is not a duplicate: it's a replacement.
 Propose it as a finding whose `why_it_matters` names the Finding it would replace.

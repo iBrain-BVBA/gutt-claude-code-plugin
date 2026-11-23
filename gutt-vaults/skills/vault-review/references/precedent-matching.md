@@ -71,7 +71,11 @@ batch, then reads for the top candidates.
 
 Weight each precedent `w = 0.5 ^ (age_days / review.precedent_half_life_days)`. Steering
 newer than a precedent that it contradicts sets that precedent's weight to 0. Agreement =
-weighted share of the majority decision. Count N on unweighted precedents.
+weighted share of the majority decision. Count N on unweighted precedents, leaving out every
+precedent whose weight is 0: a precedent Steering has invalidated says nothing about this row,
+so invalidated precedents never make up the minimum count for one usable verdict. All
+precedents at weight 0 means none is usable: escalate with "no similar precedent" (SKILL.md
+Step 3).
 
 Auto-eligible when: N ≥ `review.precedents_min`, agreement ≥ `review.precedent_agreement`, and
 no override in the class within `review.override_cooloff_days` (keys and defaults:

@@ -73,7 +73,12 @@ then write nothing and put the episodes in the Console run row's notes.
    peers: `vault-librarian` RoleCard history, `vault-reviewer` Calibration; group-wide recall
    for the week.
 2. **Gather** the week's committed Findings, Conflicts, RoleCard diffs and Verdicts
-   (`search_memory_facts(include_invalidated=true)` for "what changed").
+   (`search_memory_facts(include_invalidated=true)` for "what changed"). Then the **open
+   conflicts**, which memory doesn't hold: a conflict the owner leaves open stays `escalated`
+   on the Console and never becomes a `Conflict:` episode. Query the Console `findings` with
+   `type: conflict` and `status: escalated` (`../vault-curate/references/console-data.md`
+   §Reads) and list each as open, both sides attributed to their own sources. An open side is
+   a source's claim, never a finding: it stays out of "What changed", the headline and `changes`.
 3. **Draft the brief** from `references/brief-template.md`; for a vault whose charter has a
    role taxonomy (`applies_to: roles`), include the board movement and "Agent of the week".
    Draft its **page data** from the same findings, shaped as `brief.json` in

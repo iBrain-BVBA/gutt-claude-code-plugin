@@ -161,15 +161,19 @@ note, at}`; it leaves the Inbox, shows on Summary with its revisit date, and com
   only with a person's consent. A routine has nobody to give it, so the read is denied.
 - **Only what the step needs.** `query` with a `where` status filter instead of listing a
   whole collection, which grows every run:
-  - curate dedupe: `findings` with `status` in `pending`, `escalated`, `rejected`,
-    `auto_rejected` (committed claims are deduped against the vault's Findings in memory);
+  - curate dedupe: `findings` with `status` in `pending`, `escalated`, `approved`,
+    `auto_approved`, `rejected`, `auto_rejected` (an approved row has no Finding in memory
+    until vault-commit writes it; committed claims are deduped against the vault's Findings in
+    memory);
   - curate run id: `get` `runs/<routine>-<YYYY-MM-DD>`, then `-2`, `-3`, until one is free;
   - commit: `findings` with `status` in `approved`, `rejected`, `auto_approved`,
     `auto_rejected`; `steering` with `status` in `accepted`, `new`; `briefs` with
     `status: approved` (approved and not yet published); `config_changes` without
     `committed_episode`;
   - brief: `get` only the documents it reads or writes (`meta/vault`, `meta/config`,
-    `briefs/brief-<YYYY-Www>`, `meta/reviewer`, `calibrations/<YYYY-Www>`);
+    `briefs/brief-<YYYY-Www>`, `meta/reviewer`, `calibrations/<YYYY-Www>`), plus one `query`
+    of `findings` with `type: conflict` and `status: escalated` for the open conflicts (a
+    conflict left open never becomes a `Conflict:` episode);
   - every skill at boot: `get` `meta/vault` and `meta/config`; curate also `meta/reviewer` for
     the promotion re-check (`vault-config.md`).
 - **Pin writes to what you read:** every read returns each document's `version`; pass it as

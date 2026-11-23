@@ -145,7 +145,8 @@ Follow `references/verification.md`. Summary:
   or a compressed PDF) with curl as `references/verification.md` §1a says, and verify it like
   any other source.
 - **Dedupe** against the vault group (`search_memory_nodes(entity="Finding")`), and against
-  pending and rejected Console rows, read inline with a status filter, never with `out_dir`
+  every uncommitted Console row (pending, escalated, approved, rejected, and their `auto_`
+  forms), read inline with a status filter, never with `out_dir`
   (`references/console-data.md` §Reads).
 - **Score** significance 1–5 against the charter audience; drop below
   `run.significance_floor` and count them.

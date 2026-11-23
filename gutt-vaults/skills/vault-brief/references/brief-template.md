@@ -27,14 +27,16 @@
 
 ## Claimed vs measured
 
-<Open or resolved conflicts: one claim against the other, both cited.>
+<Resolved conflicts (committed `Conflict:` episodes) and open ones (escalated Console conflict
+rows, marked open): one claim against the other, each attributed to its source and cited.>
 
 ## Sources
 
 <Every source used, with retrieved dates.>
 ```
 
-Rules: committed findings only; every claim cited; no ranking of vendors; for a vault about
+Rules: committed findings only (an open conflict's two claims are reported as what each
+source says, never as findings); every claim cited; no ranking of vendors; for a vault about
 agents in roles, roles on a team, never replacement.
 
 ## Brief page data (`page`)

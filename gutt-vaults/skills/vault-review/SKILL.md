@@ -117,7 +117,7 @@ a whole run comes back with empty `precedents`.
   none matched, and then say "no similar precedent" in `reason`.
 
 A row is **auto-eligible** only when it has at least `review.precedents_min` similar
-human-decided precedents, at least `review.precedent_agreement` of them agree (time-decayed),
+human-decided precedents of non-zero weight (one Steering has zeroed doesn't count), at least `review.precedent_agreement` of them agree (time-decayed),
 and no override of you exists in its stage class within `review.override_cooloff_days`.
 
 ### Step 4 — decide within the stage

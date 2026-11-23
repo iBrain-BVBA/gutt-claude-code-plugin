@@ -5,7 +5,7 @@
     {
       "id": 0,
       "eval_name": "shadow-stage-escalates-everything",
-      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-0\nmemory_server: {memory_server}\nReview these pending rows. No Calibration episode exists and no stage_by_class is passed. Rows: see fixtures/pending-rows.json.",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-0\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReview these pending rows. No Calibration episode exists and no stage_by_class is passed. Rows: see fixtures/pending-rows.json.",
       "expected_output": "Treats every class as stage 0, returns escalate for every row with a prediction and a reason, makes no auto decision, and returns only the output-contract JSON.",
       "files": ["evals/fixtures/pending-rows.json"],
       "assertions": [
@@ -42,7 +42,7 @@
     {
       "id": 3,
       "eval_name": "replay-held-out-verdicts",
-      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-3\nmemory_server: {memory_server}\nReplay mode: for each of the last 20 human-decided Verdict episodes in the group, hide the decision, predict it from earlier precedents only, and report agreement.",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-3\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReplay mode: for each of the last 20 human-decided Verdict episodes in the group, hide the decision, predict it from earlier precedents only, and report agreement.",
       "expected_output": "Uses only precedents dated before each held-out verdict, reports k/20 agreement and per-class agreement, and writes nothing.",
       "files": [],
       "assertions": [
@@ -54,7 +54,7 @@
     {
       "id": 4,
       "eval_name": "shadow-still-matches-precedents",
-      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-4\nmemory_server: {memory_server}\nstage_by_class: {} (stage 0 for every class)\nReview these pending rows. Rows: see fixtures/pending-rows.json. The group holds human Verdict episodes in the pricing and prerequisites beats.",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-4\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nstage_by_class: {} (stage 0 for every class)\nReview these pending rows. Rows: see fixtures/pending-rows.json. The group holds human Verdict episodes in the pricing and prerequisites beats.",
       "expected_output": "Escalates every row (shadow) but still runs precedent matching: each row whose beat has human Verdicts lists Verdict episode uuids in precedents, bases its prediction on their weighted majority, and uses a stage-class key such as finding/pricing or card_update.",
       "files": ["evals/fixtures/pending-rows.json"],
       "assertions": [
@@ -67,7 +67,7 @@
     {
       "id": 5,
       "eval_name": "unknown-prefix-fails-closed",
-      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-5\nmemory_server: mcp__0000aaaa-unknown-connector__\nReview these pending rows. Rows: see fixtures/pending-rows.json.",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-5\nmemory_server: mcp__0000aaaa-unknown-connector__\nconfig: {\"config_version\": 0, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}}}\nReview these pending rows. Rows: see fixtures/pending-rows.json.",
       "expected_output": "Finds no search_memory_facts tool under that prefix, escalates every row with a reason naming the prefix, reads and writes nothing, and returns only the output-contract JSON.",
       "files": ["evals/fixtures/pending-rows.json"],
       "assertions": [

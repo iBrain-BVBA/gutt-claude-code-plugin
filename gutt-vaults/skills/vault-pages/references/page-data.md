@@ -83,7 +83,10 @@ Rules:
   another group.
 - Every change has at least one source with an `http(s)` URL; `retrieved` dates are
   `YYYY-MM-DD`. `sources` lists every source the week's changes and conflicts cite, once.
-- `conflicts` are the open `Conflict:` episodes, each side with its own source.
+- `conflicts` are the week's conflicts, each side with its own source: resolved ones from
+  `Conflict:` episodes, and open ones from the Console's escalated `conflict` rows (a conflict
+  left open never becomes an episode), with `status: "open"`. An open side is a source's claim,
+  not a finding, and never appears in `changes`.
 - `spotlight` and `board` are for vaults whose charter has a role taxonomy (`applies_to:
 roles`); leave them out otherwise.
 - `past` lists earlier published briefs, newest first, from the `briefs` rows with
