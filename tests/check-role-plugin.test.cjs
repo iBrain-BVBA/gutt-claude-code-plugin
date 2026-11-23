@@ -228,6 +228,49 @@ describe("a plugin scaffolded from the template", () => {
     });
     assert.equal(plugin.status, 0, `plugin validation failed:\n${plugin.stdout}${plugin.stderr}`);
   });
+
+  it("passes the doc-pointer drift check once registered, and fails on an unlisted skill", (t) => {
+    const { dir, target } = scaffold({ withAgent: false });
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    // Register it the way the template's README says: a marketplace entry, a linked row in
+    // the main README, and the install command in the onboarding guide.
+    const install = `claude plugin install ${PLUGIN}@gutt-plugins`;
+    const put = (rel, text) => {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), text);
+    };
+    put(
+      ".claude-plugin/marketplace.json",
+      JSON.stringify({ name: "gutt-plugins", plugins: [{ name: PLUGIN, source: `./${PLUGIN}` }] })
+    );
+    put(
+      "README.md",
+      `| Plugin | Install |\n| - | - |\n| [${PLUGIN}](${PLUGIN}/README.md) | \`${install}\` |\n`
+    );
+    put("docs/team-onboarding.md", `\`\`\`\n${install}\n\`\`\`\n`);
+    for (const doc of ["CONTRIBUTING.md", "docs/hooks.md", "docs/statusline.md"]) {
+      put(doc, "# doc\n");
+    }
+    // The guard resolves its root as its own parent directory, so it runs from a copy.
+    put(
+      "tests/check-doc-pointers.cjs",
+      fs.readFileSync(path.join(__dirname, "check-doc-pointers.cjs"))
+    );
+    const guard = () =>
+      spawnSync(process.execPath, [path.join(dir, "tests", "check-doc-pointers.cjs")], {
+        encoding: "utf8",
+      });
+
+    const green = guard();
+    assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
+
+    fs.mkdirSync(path.join(target, "skills", "second-skill"));
+    fs.writeFileSync(path.join(target, "skills", "second-skill", "SKILL.md"), "# second\n");
+    const red = guard();
+    assert.equal(red.status, 1, `${red.stdout}${red.stderr}`);
+    assert.match(`${red.stdout}${red.stderr}`, /ships skill `second-skill`, but its skills table/);
+  });
 });
 
 // ── red: each gate catches its violation ──────────────────────────────────────

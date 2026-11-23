@@ -22,12 +22,14 @@
  * kept working. So, besides the slash references:
  *
  *  - every marketplace plugin has a row in the main README's plugin table, linked to
- *    its own `README.md`, with its install command, and every linked row names a
- *    plugin the marketplace lists;
+ *    its own `README.md`, and that row gives its install command; every linked row
+ *    names a plugin the marketplace lists;
  *  - every skill, command and agent a plugin ships is listed in its README's Skills,
- *    Commands or Agents table, and every name those tables list is shipped;
- *  - every `claude plugin …` command in a README is written exactly as
- *    `docs/team-onboarding.md` writes it.
+ *    Commands or Agents table under its own plugin name, and every name those tables
+ *    list is shipped;
+ *  - every `claude plugin …` command in a README or CONTRIBUTING.md matches one in
+ *    `docs/team-onboarding.md` (whitespace-normalized, up to a `#` comment);
+ *  - the docs the READMEs link to exist, so a rename cannot quietly end their scan.
  */
 
 const fs = require("fs");
@@ -47,9 +49,20 @@ const HOST_OWNED = new Set(["config"]);
 
 const ONBOARDING = path.join("docs", "team-onboarding.md");
 
-// The READMEs and the docs moved out of them. Each is read only if it exists; the
-// per-plugin READMEs are required separately, so a missing one is reported by name.
-const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "docs/hooks.md", "docs/statusline.md"];
+// The root files scanned besides everything under docs/. The main README is required
+// by its own check; the per-plugin READMEs are required separately.
+const ROOT_DOCS = ["README.md", "CONTRIBUTING.md"];
+
+// Docs the READMEs link to. A missing one is reported by name: the docs/ glob would
+// still scan a renamed file, but the README links to the old name would break unnoticed.
+const REQUIRED_DOCS = ["CONTRIBUTING.md", ONBOARDING, "docs/hooks.md", "docs/statusline.md"];
+
+// Docs under docs/ that name commands which do not resolve, on purpose. Listed with the
+// reason so that leaving a doc out of the scan is a deliberate act, not a glob accident.
+const NOT_SCANNED = {
+  "docs/migration-3.0.md": "its old-to-new tables name the 2.x commands that were removed",
+  "docs/plugin-platform-reference.md": "platform research notes that discuss bare host forms",
+};
 
 // The plugin-README sections whose tables list shipped components, keyed by heading.
 const SECTION_KIND = {
@@ -156,7 +169,11 @@ function filesToScan(plugins) {
     files.push(...markdownUnder(path.join(dir, "skills")));
     files.push(...markdownUnder(path.join(dir, "agents")));
   }
-  files.push(path.join(ROOT, ONBOARDING));
+  files.push(
+    ...markdownUnder(path.join(ROOT, "docs")).filter(
+      (f) => !(path.relative(ROOT, f).split(path.sep).join("/") in NOT_SCANNED)
+    )
+  );
   for (const { dir } of plugins) {
     files.push(path.join(dir, "README.md"));
   }
@@ -166,13 +183,22 @@ function filesToScan(plugins) {
   return files.filter((f) => fs.existsSync(f));
 }
 
+function checkRequiredDocs() {
+  return REQUIRED_DOCS.filter((doc) => !fs.existsSync(path.join(ROOT, doc))).map(
+    (doc) => `${doc}: missing — the READMEs point readers to it`
+  );
+}
+
 /**
  * The names a README table lists, per section. Only the first cell of a row counts, and
  * only its first backticked token, reduced to the bare name: `/gutt-pro:mode auto|hitl`
- * lists `mode`. Lines inside a fenced code block are neither headings nor rows.
+ * lists `mode`, with prefix `gutt-pro`. Lines inside a fenced code block are neither
+ * headings nor rows. Any heading ends a section, so a `###` table under `## Commands`
+ * (a settings-keys table, say) is not read as a listing.
  */
 function tableListings(text) {
   const listed = { skills: [], commands: [], agents: [] };
+  const prefixes = [];
   let kind = null;
   let fenced = false;
   for (const line of text.split(/\r?\n/)) {
@@ -183,9 +209,9 @@ function tableListings(text) {
     if (fenced) {
       continue;
     }
-    const heading = line.match(/^##\s+(.+?)\s*$/);
+    const heading = line.match(/^(#+)\s+(.+?)\s*$/);
     if (heading) {
-      kind = SECTION_KIND[heading[1]] || null;
+      kind = heading[1] === "##" ? SECTION_KIND[heading[2]] || null : null;
       continue;
     }
     if (!kind || !line.startsWith("|")) {
@@ -194,11 +220,16 @@ function tableListings(text) {
     const firstCell = line.split(/(?<!\\)\|/)[1] || "";
     const token = firstCell.match(/`([^`]+)`/);
     if (token) {
-      const word = token[1].trim().split(/\s+/)[0];
-      listed[kind].push(word.replace(/^\//, "").split(":").pop());
+      const word = token[1].trim().split(/\s+/)[0].replace(/^\//, "");
+      const colon = word.lastIndexOf(":");
+      const name = word.slice(colon + 1);
+      listed[kind].push(name);
+      if (colon > 0) {
+        prefixes.push({ prefix: word.slice(0, colon), name });
+      }
     }
   }
-  return listed;
+  return { listed, prefixes };
 }
 
 function checkPluginReadmes(plugins) {
@@ -211,7 +242,14 @@ function checkPluginReadmes(plugins) {
       continue;
     }
     const shipped = componentsOf(dir);
-    const listed = tableListings(fs.readFileSync(readme, "utf8"));
+    const { listed, prefixes } = tableListings(fs.readFileSync(readme, "utf8"));
+    for (const { prefix, name: component } of prefixes) {
+      if (prefix !== name) {
+        problems.push(
+          `${rel}: lists \`/${prefix}:${component}\`, but the plugin is ${name} — write \`/${name}:${component}\``
+        );
+      }
+    }
     for (const kind of ["skills", "commands", "agents"]) {
       for (const component of shipped[kind]) {
         if (!listed[kind].includes(component)) {
@@ -246,6 +284,20 @@ function pluginCommandsIn(text) {
   return found;
 }
 
+/**
+ * `[text](dir/README.md)` links in a line, an anchor or a link title allowed, so
+ * `[x](x/README.md#skills)` still counts as linking `x`.
+ */
+function readmeLinksIn(line) {
+  const links = [];
+  for (const m of line.matchAll(
+    /\[([^\]]+)\]\(([^)\s#]+)\/README\.md(?:#[^)\s]*)?(?:\s+"[^"]*")?\)/g
+  )) {
+    links.push({ text: m[1], dir: path.normalize(m[2]) });
+  }
+  return links;
+}
+
 function checkRootReadme(marketplace, plugins) {
   const problems = [];
   const readme = path.join(ROOT, "README.md");
@@ -253,25 +305,25 @@ function checkRootReadme(marketplace, plugins) {
     return ["README.md: missing"];
   }
   const text = fs.readFileSync(readme, "utf8");
-  const rows = text.split(/\r?\n/).filter((l) => l.startsWith("|"));
-  const commands = pluginCommandsIn(text);
-  const linkedDirs = new Set();
-
-  for (const row of rows) {
-    for (const m of row.matchAll(/\]\(([^)\s]+)\/README\.md\)/g)) {
-      linkedDirs.add(path.normalize(m[1]));
-    }
-  }
+  const rows = text
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith("|"))
+    .map((row) => ({ row, links: readmeLinksIn(row) }));
+  const linkedDirs = new Set(rows.flatMap((r) => r.links.map((l) => l.dir)));
 
   for (const { name, dir } of plugins) {
     const relDir = path.relative(ROOT, dir);
     const link = `[${name}](${relDir.split(path.sep).join("/")}/README.md)`;
-    if (!rows.some((r) => r.includes(link))) {
+    const row = rows.find((r) => r.links.some((l) => l.text === name && l.dir === relDir));
+    if (!row) {
       problems.push(`README.md: the plugin table has no row linking ${link}`);
+      continue;
     }
+    // The row is the contract: the same command in a fenced block elsewhere does not
+    // stand in for a missing Install cell.
     const install = `claude plugin install ${name}@${marketplace.name}`;
-    if (!commands.has(install)) {
-      problems.push(`README.md: does not give the install command \`${install}\``);
+    if (!pluginCommandsIn(row.row).has(install)) {
+      problems.push(`README.md: the plugin table's ${name} row does not give \`${install}\``);
     }
   }
 
@@ -316,7 +368,9 @@ function checkInstallCommands(plugins) {
  */
 function referencesIn(text) {
   const found = [];
-  for (const m of text.matchAll(/`\/([a-z][a-z0-9-]*)(?::([a-z][a-z0-9-]*))?`/g)) {
+  // A reference may carry arguments (`/gutt-pro:off 30`, `/gutt-pro:mode auto\|hitl`);
+  // the name still has to resolve.
+  for (const m of text.matchAll(/`\/([a-z][a-z0-9-]*)(?::([a-z][a-z0-9-]*))?(?=[\s`\\])[^`]*`/g)) {
     found.push(m[2] ? { prefix: m[1], stem: m[2] } : { prefix: null, stem: m[1] });
   }
   return found;
@@ -362,6 +416,7 @@ function main() {
   // Both halves run before either reports, so one failing run lists everything to fix
   // rather than revealing the drift only after the slash references are clean.
   const drift = [
+    ...checkRequiredDocs(),
     ...checkRootReadme(marketplace, plugins),
     ...checkPluginReadmes(plugins),
     ...checkInstallCommands(plugins),

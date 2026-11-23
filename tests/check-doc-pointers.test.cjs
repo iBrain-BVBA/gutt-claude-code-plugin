@@ -35,8 +35,8 @@ function write(file, contents) {
  *
  * `opts.ships` controls whether the plugin ships anything invocable, which is what the
  * scanned-nothing floor turns on. The tree starts in sync — a main README with the plugin
- * table, a plugin README listing what ships, and an onboarding guide holding the install
- * commands — so each case breaks exactly one thing.
+ * table, a plugin README listing what ships, an onboarding guide holding the install
+ * commands, and the root docs the READMEs link to — so each case breaks only what it names.
  */
 const ONBOARDING = [
   "# Onboarding",
@@ -86,6 +86,9 @@ const PLUGIN_README = [
   "",
 ].join("\n");
 
+// Required by the guard alongside the onboarding guide; each starts empty of references.
+const ROOT_DOCS = ["CONTRIBUTING.md", "docs/hooks.md", "docs/statusline.md"];
+
 function tempTree(opts = {}) {
   const { ships = true } = opts;
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "doc-pointer-guard-")));
@@ -112,6 +115,9 @@ function tempTree(opts = {}) {
   write(path.join(dir, "README.md"), ROOT_README);
   write(path.join(dir, "p1", "README.md"), PLUGIN_README);
   write(path.join(dir, "docs", "team-onboarding.md"), ONBOARDING);
+  for (const doc of ROOT_DOCS) {
+    write(path.join(dir, doc), "# doc\n");
+  }
 
   fs.mkdirSync(path.join(dir, "tests"), { recursive: true });
   fs.copyFileSync(GUARD, path.join(dir, "tests", "check-doc-pointers.cjs"));
@@ -264,7 +270,68 @@ describe("the README drift check", () => {
     t.file("README.md", ROOT_README.replace("`claude plugin install p1@m1`", "see below"));
     const { code, out } = t.run();
     assert.equal(code, 1, out);
-    assert.match(out, /does not give the install command `claude plugin install p1@m1`/);
+    assert.match(out, /the plugin table's p1 row does not give `claude plugin install p1@m1`/);
+  });
+
+  it("fails when the install command is only outside the plugin table's row", () => {
+    const t = tempTree();
+    t.file(
+      "README.md",
+      `${ROOT_README.replace("`claude plugin install p1@m1`", "see below")}` +
+        "\n```\nclaude plugin install p1@m1\n```\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /the plugin table's p1 row does not give `claude plugin install p1@m1`/);
+  });
+
+  it("fails when two plugins' Install cells are swapped", () => {
+    const t = tempTree();
+    t.file(
+      ".claude-plugin/marketplace.json",
+      JSON.stringify({
+        name: "m1",
+        plugins: [
+          { name: "p1", source: "./p1" },
+          { name: "p2", source: "./p2" },
+        ],
+      })
+    );
+    t.file("p2/.claude-plugin/plugin.json", JSON.stringify({ name: "p2", version: "1.0.0" }));
+    t.file("p2/README.md", "# p2\n");
+    t.file("docs/team-onboarding.md", `${ONBOARDING}\n\`claude plugin install p2@m1\`\n`);
+    t.file(
+      "README.md",
+      ROOT_README.replace(
+        "| p2                     | Coming                           |",
+        "| [p2](p2/README.md)     | `claude plugin install p2@m1`    |"
+      )
+    );
+    assert.equal(t.run().code, 0, "the two-plugin tree starts in sync");
+    t.file(
+      "README.md",
+      ROOT_README.replace("`claude plugin install p1@m1`", "`claude plugin install p2@m1`").replace(
+        "| p2                     | Coming                           |",
+        "| [p2](p2/README.md)     | `claude plugin install p1@m1`    |"
+      )
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /p1 row does not give `claude plugin install p1@m1`/);
+    assert.match(out, /p2 row does not give `claude plugin install p2@m1`/);
+  });
+
+  it("reads a plugin-table link with an anchor or a title", () => {
+    const t = tempTree();
+    t.file(
+      "README.md",
+      `${ROOT_README.replace("[p1](p1/README.md)", '[p1](p1/README.md#skills "p1")')}` +
+        "\n| [gone](gone/README.md#skills) | x |\n"
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.doesNotMatch(out, /no row linking/);
+    assert.match(out, /links gone\/README\.md, which the marketplace does not list/);
   });
 
   it("fails when a README writes an install command differently from onboarding", () => {
@@ -285,6 +352,79 @@ describe("the README drift check", () => {
     const { code, out } = t.run();
     assert.equal(code, 1, out);
     assert.match(out, /README\.md: `\/p1:no-such-thing` resolves to nothing shipped/);
+  });
+
+  it("fails a table row whose command carries the wrong plugin name", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      PLUGIN_README.replace("`/p1:setup [url\\|none]`", "`/p2:setup [url\\|none]`")
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /lists `\/p2:setup`, but the plugin is p1 — write `\/p1:setup`/);
+  });
+
+  it("checks a reference that carries arguments", () => {
+    const t = tempTree();
+    t.prose("Snooze with `/p2:on 30`, or `/p1:nope auto\\|hitl`.\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /`\/p2:on` resolves to nothing shipped/);
+    assert.match(out, /`\/p1:nope` resolves to nothing shipped/);
+  });
+
+  for (const doc of ROOT_DOCS) {
+    it(`scans ${doc} for slash references`, () => {
+      const t = tempTree();
+      t.file(doc, "Run `/p1:no-such-thing`.\n");
+      const { code, out } = t.run();
+      assert.equal(code, 1, out);
+      const shown = doc.split("/").join("[\\\\/]").replace(".", "\\.");
+      assert.match(out, new RegExp(`${shown}: \`/p1:no-such-thing\` resolves to nothing shipped`));
+    });
+  }
+
+  it("scans a doc under docs/ that is not on any list", () => {
+    const t = tempTree();
+    t.file("docs/hooks-renamed.md", "Run `/p1:no-such-thing`.\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /hooks-renamed\.md: `\/p1:no-such-thing` resolves to nothing shipped/);
+  });
+
+  it("fails when a doc the READMEs link to is missing", () => {
+    const t = tempTree();
+    t.remove("docs/hooks.md");
+    t.remove("CONTRIBUTING.md");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /docs\/hooks\.md: missing/);
+    assert.match(out, /CONTRIBUTING\.md: missing/);
+  });
+
+  it("reads a singular `## Agent` heading as the agents table", () => {
+    const t = tempTree();
+    t.file("p1/README.md", PLUGIN_README.replace("## Agents", "## Agent"));
+    assert.equal(t.run().code, 0, "the singular heading lists the agent");
+    t.remove("p1/agents/placeholder.md");
+    t.file("p1/agents/other.md", "# other\n");
+    const { code, out } = t.run();
+    assert.equal(code, 1, out);
+    assert.match(out, /lists agent `placeholder`, which p1 does not ship/);
+  });
+
+  it("does not read a `###` subsection's table as a listing", () => {
+    const t = tempTree();
+    t.file(
+      "p1/README.md",
+      PLUGIN_README.replace(
+        "| `/p1:on`                  | x      |\n",
+        "| `/p1:on`                  | x      |\n\n### Settings keys\n\n| Key | x |\n| --- | - |\n| `recall_minutes` | x |\n"
+      )
+    );
+    const { code, out } = t.run();
+    assert.equal(code, 0, out);
   });
 
   it("lets a bare host command share a stem with a shipped one", () => {

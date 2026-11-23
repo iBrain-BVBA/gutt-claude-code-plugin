@@ -30,12 +30,15 @@ whatever Atlassian connector your session has; without one, paste the ticket tex
 
 ## What it writes
 
-- **Jira:** the research, duplicate, estimate, bug and review skills never edit a ticket; each
-  posts at most one comment, and only text you approved. `sub-task-breakdown` creates sub-tasks
-  and their links only when you ask it to in the session and approve the exact set.
+- **Jira:** the research, duplicate, estimate and bug skills never edit a ticket; each posts at
+  most one comment, and only text you approved. `sub-task-breakdown` creates sub-tasks and their
+  links only when you ask it to in the session and approve the exact set.
+- **Pull requests:** `pr-re-review` posts nothing to the PR unless you ask in the session and
+  approve the exact text.
 - **Memory:** `bug-investigation` and `pr-re-review` offer a confirmed outcome to
   `memory-capture`, which applies its own rules and asks where it should. They write under the
-  workflow identities `bug-investigator` and `pr-reviewer`, so earlier findings stay reachable.
+  workflow identities `bug-investigator--<scope>` and `pr-reviewer--<scope>` (see agent scope in
+  the [gutt-pro README](../gutt-core/README.md#commands)), so earlier findings stay reachable.
 
 No hooks and no agents. The review structure of `pr-re-review` is credited in
 [ATTRIBUTION.md](ATTRIBUTION.md).

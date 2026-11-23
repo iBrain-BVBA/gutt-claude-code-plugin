@@ -89,9 +89,9 @@ Only `gutt-pro` has hooks. Each, in one line:
 
 - **Session start:** opens a session record and checks, in the background, that a gutt server
   is configured. It does not search memory.
-- **Each prompt:** applies `/gutt-pro:` settings commands. On a new session or after a
-  compaction it adds a pointer to memory search. It does not search by itself, and it does not
-  fire on every prompt.
+- **Each prompt:** applies `/gutt-pro:` settings commands. It runs on every prompt, but it adds
+  the pointer to memory search only on a new session or after a compaction, and it never
+  searches by itself.
 - **After a gutt tool call:** notes whether the call worked, for the status bar. It does not
   change the result.
 - **End of turn:** asks a separate `claude -p` call whether the turn produced something worth
@@ -99,10 +99,13 @@ Only `gutt-pro` has hooks. Each, in one line:
   skipped while recall is off.
 - **Session end:** closes the session record.
 
-No hook edits, formats or lints your files. Details: [docs/hooks.md](docs/hooks.md).
+No hook edits, formats or lints your project's files. The only user file a hook touches is
+`~/.claude/settings.json`, and only to keep the status bar you opted into. Details:
+[docs/hooks.md](docs/hooks.md).
 
 **Captures** are typed. Insight and Incident are written directly; Lesson, Decision and
-WorkingAgreement wait for you to confirm. `/gutt-pro:mode hitl` makes every capture wait.
+WorkingAgreement wait for you to confirm. `/gutt-pro:mode hitl` makes every capture the
+end-of-turn judge proposes wait for your confirmation.
 
 ## Try it
 
@@ -132,7 +135,8 @@ WorkingAgreement wait for you to confirm. `/gutt-pro:mode hitl` makes every capt
 
 ## Settings
 
-Type these in a session. They take effect before Claude reads your prompt.
+Type these in a session. `config`, `off`, `disable`, `on`, `mode`, `statusline` and
+`agent-scope` take effect before Claude reads your prompt; the others run as ordinary commands.
 
 | Command                     | Effect                                                                          |
 | --------------------------- | ------------------------------------------------------------------------------- |
@@ -142,7 +146,7 @@ Type these in a session. They take effect before Claude reads your prompt.
 | `/gutt-pro:off`             | Recall off for this session; `/gutt-pro:off 30` for 30 minutes                  |
 | `/gutt-pro:disable`         | Recall off until `/gutt-pro:on`, across restarts                                |
 | `/gutt-pro:on`              | Clear an off, a snooze and a disable                                            |
-| `/gutt-pro:mode auto\|hitl` | Write captures directly, or confirm each one                                    |
+| `/gutt-pro:mode auto\|hitl` | `auto`: Insight and Incident written directly; `hitl`: judge proposals all wait |
 | `/gutt-pro:statusline`      | Add the status bar ([docs/statusline.md](docs/statusline.md))                   |
 | `/gutt-pro:agent-scope`     | Bind the memory scope named workflows use in this directory                     |
 | `/gutt-pro:setup`           | Point the plugin at your organization's endpoint; `/gutt-pro:start` is the same |
@@ -155,12 +159,12 @@ Install with `/add-plugin` and the repository URL
 `https://github.com/iBrain-BVBA/gutt-claude-code-plugin`, then run `/gutt-pro:setup` with your
 memory endpoint, restart, and connect `gutt-mcp-remote` under Settings → Tools & MCP Servers.
 
-| Works in Cursor                                          | Does not                                                                          |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Memory tools, once `gutt-mcp-remote` is connected        | The stage default: Cursor needs `/gutt-pro:setup` and an endpoint                 |
-| The skills, including the role plugins'                  | The status bar and `/gutt-pro:statusline`                                         |
-| The `gutt-memory.mdc` rule (search first, capture after) | The end-of-turn capture judge, unless the `claude` CLI is installed and signed in |
-| `/gutt-pro:setup`, which writes `~/.cursor/mcp.json`     | The `mcp_url` plugin option                                                       |
+| Works in Cursor                                          | Does not, or not verified                                                   |
+| -------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Memory tools, once `gutt-mcp-remote` is connected        | The stage default: Cursor needs `/gutt-pro:setup` and an endpoint           |
+| The skills, including the role plugins'                  | The status bar and `/gutt-pro:statusline`                                   |
+| The `gutt-memory.mdc` rule (search first, capture after) | The `mcp_url` plugin option                                                 |
+| `/gutt-pro:setup`, which writes `~/.cursor/mcp.json`     | The hooks, so the `/gutt-pro:` settings and the capture judge: not verified |
 
 ## Requirements
 
@@ -180,7 +184,10 @@ memory endpoint, restart, and connect `gutt-mcp-remote` under Settings → Tools
 - **Memory tools missing, or the status bar shows `auth needed`:** open `/mcp`, pick
   `gutt-mcp-remote` and authorise again.
 - **Nothing is recalled or captured:** `/gutt-pro:config` shows the state; `/gutt-pro:on` clears
-  an off, a snooze and a disable.
+  an off, a snooze and a disable. If captures never trigger, look for `judge` lines in
+  `hook-errors.log`: a judge that cannot sign in (no `claude` login on this machine, as in
+  Cowork or with only the desktop app) logs its failure there. Run `claude` once in a terminal
+  to sign in.
 - **Personal or team login?** Authorising the default connector gives you a personal login on
   the shared stage server, for trying gutt and for public vaults. Your team's memory lives on
   your organization's own endpoint: get the URL from your admin and run `/gutt-pro:setup`, then

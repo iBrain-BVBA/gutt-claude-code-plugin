@@ -59,7 +59,11 @@ npm run test:all       # unit tests, hook smoke tests and every guard below
 - one of those tables lists a skill, command or agent the plugin no longer ships;
 - a `claude plugin` command in a README or in this file is not written the same way in
   `docs/team-onboarding.md`;
-- a backticked slash command in the docs or in a skill resolves to nothing the plugins ship.
+- a backticked slash command resolves to nothing the plugins ship, in a skill, an agent, a
+  README, this file or anything under `docs/` (except the two docs the script's `NOT_SCANNED`
+  lists, with its reasons);
+- `CONTRIBUTING.md`, `docs/team-onboarding.md`, `docs/hooks.md` or `docs/statusline.md` is
+  missing.
 
 So when you add, rename or remove a skill, command or agent, update its plugin's README in the
 same change. When an install step changes, change `docs/team-onboarding.md` first and copy the
@@ -80,7 +84,8 @@ prompt, the injected pointers, the skills. A round makes real `claude -p` calls 
 hand:
 
 ```bash
-python3 evals/run.py --list
+python3 evals/run.py --list         # the suites; no model calls
+python3 evals/run.py stop-judge     # one round of a suite; this one costs model calls
 ```
 
 The offline self-checks make no model calls and run in `test:all` as `npm run check:evals`.
@@ -89,8 +94,8 @@ The offline self-checks make no model calls and run in `test:all` as `npm run ch
 
 [Conventional Commits](https://www.conventionalcommits.org/) with a lowercase subject, enforced
 by commitlint on commit. Open a pull request against `main`; CI runs lint, format, the guards
-and the tests on Linux and Windows, plus the hook smoke tests on the Node.js version
-`package.json` declares as the floor.
+and the unit tests on Linux, the hook smoke tests on Linux and Windows, and the hook smoke tests
+again on the Node.js version `package.json` declares as the floor.
 
 ## Releasing
 
@@ -102,5 +107,7 @@ and the tests on Linux and Windows, plus the hook smoke tests on the Node.js ver
 3. Move the `[Unreleased]` notes in `CHANGELOG.md` under the new version and date.
 4. After the release is merged, tag it on `main` as `v<version>` of `gutt-pro`.
 
-Users get the release on `claude plugin marketplace update gutt-plugins`, or on their next
-install with the full `name@marketplace` spelling.
+Users get the release in two steps: `claude plugin marketplace update gutt-plugins` refreshes
+the catalogue, and `claude plugin update gutt-pro@gutt-plugins`
+updates the installed copy; a restart applies it. A first install with the full
+`name@marketplace` spelling gets it directly.

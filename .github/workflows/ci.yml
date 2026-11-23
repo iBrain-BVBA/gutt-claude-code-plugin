@@ -41,7 +41,7 @@ jobs:
       - name: Check role-plugin gates (licensing, delivery context, identity, dedupe)
         run: npm run check:role-plugin
 
-      - name: Check doc pointers (slash references in prose resolve)
+      - name: Check doc pointers (slash references resolve; READMEs match what ships)
         run: npm run check:doc-pointers
 
       # Deliberately runs on whatever python3 the runner provides rather than a
