@@ -42,6 +42,36 @@ const FIXTURE_NOW = "2026-11-06T13:00:00Z";
 const pages = require(SCRIPT);
 
 const read = (p) => fs.readFileSync(p, "utf8");
+
+/**
+ * A page file with its layout coordinates zeroed. The force layout runs hundreds of steps of
+ * Math.sin/cos/sqrt, whose last bits differ between V8 releases, so the exact positions differ
+ * between Node versions (CI runs the .nvmrc floor). Everything else must match byte for byte;
+ * `assertLayout` checks the positions themselves.
+ */
+function withoutLayout(text, kind) {
+  const doc = JSON.parse(text);
+  const at = kind === "graph" ? [5, 6] : [0, 1];
+  for (const node of doc.nodes) {
+    for (const i of at) {
+      node[i] = 0;
+    }
+  }
+  return JSON.stringify(doc);
+}
+
+function assertLayout(text, kind) {
+  const doc = JSON.parse(text);
+  const at = kind === "graph" ? [5, 6] : [0, 1];
+  for (const node of doc.nodes) {
+    for (const i of at) {
+      assert.ok(
+        Number.isInteger(node[i]) && Math.abs(node[i]) <= 1000,
+        `${kind} node ${JSON.stringify(node).slice(0, 80)}`
+      );
+    }
+  }
+}
 const relp = (p) => path.relative(ROOT, p);
 const tmp = (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaults-test-"));
@@ -529,13 +559,18 @@ const build = (raw, opts = {}) => pages.buildPages(raw, Object.assign({ now: FIX
 describe("vault-pages export", () => {
   it("the page fixtures are exactly what the script makes of the raw export", () => {
     const { graph, timeline } = build(rawExport());
+    assertLayout(JSON.stringify(graph), "graph");
+    assertLayout(JSON.stringify(timeline), "timeline");
     assert.equal(
-      JSON.stringify(graph),
-      read(path.join(TEMPLATES, "graph", "fixtures", "graph.json"))
+      withoutLayout(JSON.stringify(graph), "graph"),
+      withoutLayout(read(path.join(TEMPLATES, "graph", "fixtures", "graph.json")), "graph")
     );
     assert.equal(
-      JSON.stringify(timeline),
-      read(path.join(TEMPLATES, "timelapse", "fixtures", "timeline.json"))
+      withoutLayout(JSON.stringify(timeline), "timeline"),
+      withoutLayout(
+        read(path.join(TEMPLATES, "timelapse", "fixtures", "timeline.json")),
+        "timeline"
+      )
     );
   });
 
@@ -972,8 +1007,8 @@ describe("vault-pages contracts", () => {
     );
     assert.equal(r3.status, 0, r3.stderr);
     assert.equal(
-      read(path.join(dir, "graph.json")),
-      read(path.join(TEMPLATES, "graph", "fixtures", "graph.json"))
+      withoutLayout(read(path.join(dir, "graph.json")), "graph"),
+      withoutLayout(read(path.join(TEMPLATES, "graph", "fixtures", "graph.json")), "graph")
     );
   });
 });
