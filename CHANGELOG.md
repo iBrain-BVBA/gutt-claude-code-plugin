@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [gutt-vaults 0.3.0] - 2026-11-24
+
+Plugin versions: gutt-vaults 0.3.0. gutt-pro stays 3.2.0; no other plugin changed.
+
 ### Added
 
 - **gutt-vaults: read a vault.** `/gutt-vaults:vault-list` lists the vaults the login can read
