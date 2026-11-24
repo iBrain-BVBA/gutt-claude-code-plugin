@@ -94,6 +94,42 @@ roles`); leave them out otherwise.
 - Text is plain: the page shows it as written, never as HTML or Markdown, and only `http(s)`
   URLs become links.
 
+## brief.json as a digest
+
+A reader's weekly digest (`vault-follow`) is the same file on the same page (`prepare digest`
+copies the Brief template), with three more fields:
+
+```json
+{
+  "kind": "digest",
+  "window": { "from": "2026-11-01", "to": "2026-11-07" },
+  "retired": [
+    {
+      "finding": "The retired Finding's name in memory",
+      "title": "…",
+      "replaced_by": "The Finding that replaced it (optional)",
+      "note": "Why it was retired, from its Verdict (optional)",
+      "sources": [{ "url": "https://…", "title": "…" }]
+    }
+  ]
+}
+```
+
+Rules, on top of the brief's:
+
+- `kind` is `"digest"` and `window.from` ≤ `window.to`, both `YYYY-MM-DD`. The next digest
+  starts the day after `window.to`. A brief may leave `kind` out or set it to `"brief"`.
+- `changes` holds Findings that entered the vault in the window and are still current, each
+  from its `Finding:` episode in the vault group. `retired` holds Findings a Verdict retired in
+  the window. Neither holds anything from outside the vault group.
+- `conflicts` holds `Conflict:` episodes from the window. A reader can't see the Console, so
+  open conflicts never appear.
+- `past` lists the earlier digests on this page, newest first, carried over from the last
+  `brief.json`.
+- `spotlight` and `board` are left out.
+
+The fixture is `templates/brief/fixtures/digest.json`.
+
 ## graph.json
 
 Everything the vault group holds, for the Graph page. Written by `vault-pages.cjs export`.

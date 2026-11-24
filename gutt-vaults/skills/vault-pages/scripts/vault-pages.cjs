@@ -4,7 +4,7 @@
  *
  *   export   episodes, nodes and facts read from memory → graph.json and timeline.json
  *   prepare  a template's index.html with the vault's <title>, plus its data file, in one folder
- *   check    a brief.json, graph.json or timeline.json against its contract
+ *   check    a brief.json (Brief or Digest), graph.json or timeline.json against its contract
  *   preview  serve a template on localhost with its fixture (or your data file)
  *
  * Zero dependencies, Node.js 18 or later. Run `node vault-pages.cjs help` for the options.
@@ -26,6 +26,8 @@ const PLUGIN_ROOT = path.resolve(__dirname, "..", "..", "..");
 const TEMPLATES = path.join(PLUGIN_ROOT, "templates");
 const PAGES = {
   brief: { data: "brief.json", suffix: "Brief" },
+  // A reader's weekly digest (vault-follow): the Brief template, its own fixture and checks.
+  digest: { data: "brief.json", suffix: "Digest", template: "brief", fixture: "digest.json" },
   graph: { data: "graph.json", suffix: "Graph" },
   timelapse: { data: "timeline.json", suffix: "Timelapse" },
   console: { data: null, suffix: "Console" },
@@ -891,7 +893,29 @@ function checkData(page, data) {
   if (PAGES[page] && PAGES[page].data && data.schema !== SCHEMA) {
     p.push(`schema must be ${SCHEMA}`);
   }
-  if (page === "brief") {
+  if (page === "brief" || page === "digest") {
+    if (data.kind !== undefined && data.kind !== "brief" && data.kind !== "digest") {
+      p.push('kind must be "brief" or "digest"');
+    }
+    if (page === "digest") {
+      if (data.kind !== "digest") {
+        p.push('kind must be "digest"');
+      }
+      const w = data.window;
+      if (!w || !isDate(w.from) || !isDate(w.to)) {
+        p.push("window.from and window.to must be YYYY-MM-DD dates");
+      } else if (w.from.slice(0, 10) > w.to.slice(0, 10)) {
+        p.push("window.from must not be after window.to");
+      }
+    }
+    if (data.retired !== undefined && !Array.isArray(data.retired)) {
+      p.push("retired must be an array");
+    }
+    (Array.isArray(data.retired) ? data.retired : []).forEach((r, i) => {
+      if (!r || !isStr(r.finding) || !r.finding) {
+        p.push(`retired[${i}]: finding (the Finding's name) is required`);
+      }
+    });
     if (!data.vault || !isStr(data.vault.name) || !data.vault.name) {
       p.push("vault.name is required");
     }
@@ -1033,8 +1057,13 @@ function checkData(page, data) {
 
 // ── prepare and preview ─────────────────────────────────────────────────────────
 
+/** The template folder a page is copied from: its own, or the one it shares. */
+function templateDir(page) {
+  return path.join(TEMPLATES, (PAGES[page] && PAGES[page].template) || page);
+}
+
 function templateHtml(page) {
-  return fs.readFileSync(path.join(TEMPLATES, page, "index.html"), "utf8");
+  return fs.readFileSync(path.join(templateDir(page), "index.html"), "utf8");
 }
 
 /** The template with its <title> replaced; the only per-vault edit an index.html gets. */
@@ -1079,7 +1108,7 @@ function preview(page, { data, port }) {
   if (!PAGES[page]) {
     throw new Error(`unknown page ${page}`);
   }
-  const dir = path.join(TEMPLATES, page);
+  const dir = templateDir(page);
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
     if (url.pathname === "/" || url.pathname === "/index.html") {
@@ -1095,7 +1124,7 @@ function preview(page, { data, port }) {
       return;
     }
     if (PAGES[page].data && url.pathname === "/" + PAGES[page].data) {
-      const file = data || path.join(dir, "fixtures", PAGES[page].data);
+      const file = data || path.join(dir, "fixtures", PAGES[page].fixture || PAGES[page].data);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(fs.readFileSync(file));
       return;
@@ -1120,11 +1149,11 @@ const HELP = `vault-pages: data files and page copies for a vault's shareable pa
       Writes graph.json and timeline.json. --previous keeps every node that was in the
       last graph.json exactly where it was, and stops if that file is missing. Exits 1,
       writing nothing, when the export has nothing to draw. --now fixes the export time.
-  prepare <brief|graph|timelapse|console> --title "<title>" --out <folder> [--data <file>]
+  prepare <brief|digest|graph|timelapse|console> --title "<title>" --out <folder> [--data <file>]
       Copies the template's index.html with that <title>, and the checked data file.
-  check   <brief|graph|timelapse> <file>
+  check   <brief|digest|graph|timelapse> <file>
       Exits 1 and lists what is wrong when the file breaks the page's contract.
-  preview <brief|graph|timelapse|console> [--data <file>] [--port 8765]
+  preview <brief|digest|graph|timelapse|console> [--data <file>] [--port 8765]
       Serves the template on 127.0.0.1 with its fixture, or with your data file.
       --port 0 picks a free port and prints it.
 `;

@@ -15,6 +15,10 @@ the vault's own `<title>` and data file next to it:
 | Graph     | `templates/graph/`     | `graph.json`            | vault-brief, weekly                                     | `meta/vault.graph_url`         |
 | Timelapse | `templates/timelapse/` | `timeline.json`         | vault-brief, weekly                                     | `meta/vault.timelapse_url`     |
 | Console   | `templates/console/`   | none (its own database) | vault-steer `--charter`, once per vault                 | the vault file's `console_url` |
+| Digest    | `templates/brief/`     | `brief.json` (digest)   | vault-follow, weekly, for one reader                    | the reader's digest routine    |
+
+A Digest isn't a vault page: it belongs to a reader who follows the vault, and
+`vault-follow` publishes it with `prepare digest`.
 
 The pages are vault-agnostic: everything about the vault comes from the data file (or, for
 the Console, from `meta/vault`). The data contracts are in `references/page-data.md`.

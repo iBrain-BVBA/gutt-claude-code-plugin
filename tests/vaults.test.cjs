@@ -554,10 +554,13 @@ describe("reading the charter", () => {
   });
 
   it("keeps every other episode list small", () => {
-    // vault-pages exports the whole vault through its own script, so it is the one exception.
+    // vault-pages exports the whole vault through its own script, and vault-follow pages
+    // through one week's episodes to build a digest; those are the two exceptions.
     const files = fs
       .readdirSync(SKILLS, { recursive: true })
-      .filter((f) => f.endsWith(".md") && !f.startsWith("vault-pages"));
+      .filter(
+        (f) => f.endsWith(".md") && !f.startsWith("vault-pages") && !f.startsWith("vault-follow")
+      );
     for (const f of files) {
       const text = read(path.join(SKILLS, f));
       for (const m of text.matchAll(/`get_episodes\(([^`]*)\)`/g)) {
@@ -1941,6 +1944,35 @@ describe("vault-pages contracts", () => {
     assert.match(problems, /changes\[1\]\.sources\[0\]: a source needs an http\(s\) url/);
   });
 
+  it("a digest is a brief with kind, window and retired, and the brief fixture isn't one", () => {
+    const d = fixture("brief", "digest.json");
+    assert.deepEqual(pages.checkData("digest", d), []);
+    assert.deepEqual(pages.checkData("brief", d), [], "a digest still meets the brief contract");
+    const asDigest = pages.checkData("digest", fixture("brief", "brief.json")).join("\n");
+    assert.match(asDigest, /kind must be "digest"/);
+    assert.match(asDigest, /window\.from and window\.to/);
+    d.window = { from: "2026-11-08", to: "2026-11-01" };
+    d.retired = [{ title: "no name" }];
+    d.kind = "weekly";
+    const problems = pages.checkData("digest", d).join("\n");
+    assert.match(problems, /window\.from must not be after window\.to/);
+    assert.match(problems, /retired\[0\]: finding/);
+    assert.match(problems, /kind must be "brief" or "digest"/);
+  });
+
+  it("prepare digest copies the Brief template under a Digest title", (t) => {
+    const out = path.join(tmp(t), "digest");
+    pages.prepare("digest", {
+      title: "Example Vault Digest",
+      out,
+      data: path.join(TEMPLATES, "brief", "fixtures", "digest.json"),
+    });
+    const html = read(path.join(out, "index.html"));
+    assert.match(html, /^<title>Example Vault Digest<\/title>/);
+    assert.ok(html.includes('d.kind === "digest"'), "the Brief template, which knows digests");
+    assert.ok(fs.existsSync(path.join(out, "brief.json")));
+  });
+
   it("rejects a timeline whose rows point past their lists", () => {
     const tl = fixture("timelapse", "timeline.json");
     tl.nodes[0][2] = tl.types.length;
@@ -2173,6 +2205,27 @@ describe("pages in a headless browser", () => {
     assert.ok(body.includes("Old week"), "the past brief's headline is still shown as text");
   });
 
+  it("the Brief page shows a digest as a digest", async (t) => {
+    if (!chrome()) {
+      t.skip("no Chrome or Chromium (set CHROME)");
+      return;
+    }
+    const dom = dumpDom(t, await preview(t, "digest"));
+    const body = text(dom);
+    for (const want of [
+      "Acme Coder ships 2.0, and its seat price no longer holds",
+      "New in the vault",
+      "Retired",
+      "Replaced by:",
+      "Conflicts settled",
+      "Earlier digests",
+      "1 Nov 2026 – 7 Nov 2026",
+    ]) {
+      assert.ok(body.includes(want), `${want}: ${body.slice(0, 400)}`);
+    }
+    assert.ok(!body.includes("Earlier briefs"), "brief wording on a digest");
+  });
+
   it("the Graph page loads its fixture", async (t) => {
     if (!chrome()) {
       t.skip("no Chrome or Chromium (set CHROME)");
@@ -2296,7 +2349,7 @@ describe("pages in a headless browser", () => {
 
 // ── reader skills ───────────────────────────────────────────────────────────────
 
-const READERS = ["vault-ask", "vault-list"];
+const READERS = ["vault-ask", "vault-list", "vault-follow"];
 const ACCESS = path.join(SKILLS, "vault-curate", "references", "vault-access.md");
 
 describe("reader skills", () => {
@@ -2348,6 +2401,40 @@ describe("reader skills", () => {
     ]) {
       assert.ok(text.includes(phrase), `vault-access.md lost the refusal: ${phrase}`);
     }
+  });
+
+  it("vault-follow scopes every read to the vault and creates only on the reader's yes", () => {
+    const text = read(path.join(SKILLS, "vault-follow", "SKILL.md"));
+    const hint = text.match(/^argument-hint:\s*(["'])(.*)\1\s*$/m);
+    assert.ok(hint && hint[2].startsWith("<slug>"), "argument-hint must start with <slug>");
+    assert.ok(text.includes("No default vault"), "say there is no default vault");
+    for (const call of text.matchAll(/`(search_memory_(?:nodes|facts))\(([^`]*)\)`/g)) {
+      assert.ok(
+        call[2].includes('group_ids=["vault_<name>"]'),
+        `${call[1]} without the vault's group_ids`
+      );
+    }
+    assert.ok(text.includes('get_episodes(group_id="vault_<name>"'), "list the vault's episodes");
+    assert.match(text, /Show the plan and wait for a yes/);
+    assert.ok(text.includes("prepare digest"), "the page goes through vault-pages prepare");
+    assert.ok(text.includes("Never pass `force`"));
+  });
+
+  it("the digest routine carries only the gutt connector and a read-only prompt", () => {
+    const ref = read(path.join(SKILLS, "vault-follow", "references", "digest-routine.md"));
+    const body = JSON.parse(ref.match(/```json\n([\s\S]*?)\n```/)[1]);
+    assert.equal(body.name, "vault-{SLUG}-digest");
+    assert.equal(body.mcp_connections.length, 1, "exactly one connector");
+    assert.equal(body.mcp_connections[0].name, "{CONNECTOR}");
+    const tools = body.job_config.ccr.session_context.allowed_tools;
+    assert.ok(
+      tools.includes("Artifact") && tools.includes("Skill") && tools.includes("ToolSearch")
+    );
+    assert.ok(!tools.includes("ArtifactData") && !tools.includes("Edit"), tools.join(", "));
+    const prompt = ref.match(/## Prompt\n\n```\n([\s\S]*?)\n```/)[1];
+    assert.ok(prompt.includes('args "{SLUG} --digest {DIGEST_URL}"'));
+    assert.match(prompt, /Read-only on memory/);
+    assert.match(prompt, /never ask/);
   });
 
   it("vault-steer creates the vault only on the owner's yes", () => {
