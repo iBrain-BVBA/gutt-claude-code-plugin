@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [gutt-vaults 0.3.1] - 2026-11-24
+
+Plugin versions: gutt-vaults 0.3.1. gutt-pro stays 3.2.0; no other plugin changed.
+
 ### Fixed
 
 - **vault-ask cites only approved Findings.** A curate run's pending row makes a Finding node
