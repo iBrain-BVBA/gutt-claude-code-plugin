@@ -2293,3 +2293,66 @@ describe("pages in a headless browser", () => {
     });
   }
 });
+
+// ── reader skills ───────────────────────────────────────────────────────────────
+
+const READERS = ["vault-ask", "vault-list"];
+const ACCESS = path.join(SKILLS, "vault-curate", "references", "vault-access.md");
+
+describe("reader skills", () => {
+  for (const skill of READERS) {
+    const file = path.join(SKILLS, skill, "SKILL.md");
+
+    it(`${skill} names no write tool and says it is read-only`, () => {
+      const text = read(file);
+      const writes = WRITE_MARKERS.filter((w) => text.includes(`\`${w}`) || text.includes(`${w}(`));
+      assert.deepEqual(writes, [], "a reader skill must not name a write tool");
+      assert.match(text, /\*\*Read-only\.\*\*/);
+    });
+
+    it(`${skill} finds its server and access through vault-access.md`, () => {
+      const text = read(file);
+      assert.ok(
+        text.includes("vault-access.md"),
+        "point at vault-curate/references/vault-access.md"
+      );
+      assert.ok(text.includes("list_vaults"), "access comes from list_vaults");
+    });
+  }
+
+  it("vault-ask requires a slug, scopes every search to the vault and cites every claim", () => {
+    const text = read(path.join(SKILLS, "vault-ask", "SKILL.md"));
+    const hint = text.match(/^argument-hint:\s*(["'])(.*)\1\s*$/m);
+    assert.ok(hint && hint[2].startsWith("<slug>"), "argument-hint must start with <slug>");
+    assert.ok(text.includes("No default vault"), "say there is no default vault");
+    for (const call of text.matchAll(/`(search_memory_(?:nodes|facts))\(([^`]*)\)`/g)) {
+      assert.ok(
+        call[2].includes('group_ids=["vault_<name>"]'),
+        `${call[1]} without the vault's group_ids`
+      );
+    }
+    assert.ok(text.includes("The vault doesn't cover this."));
+    assert.ok(/`rejected` Finding is never used/.test(text), "rejected Findings are excluded");
+  });
+
+  it("vault-access.md's refusal table covers every refusal the reader and steer skills rely on", () => {
+    const text = read(ACCESS);
+    for (const phrase of [
+      "Only the owner can add to",
+      "Group ID access denied",
+      "this tool can't be used on a vault",
+      "Vaults aren't available on this server",
+      "Invalid vault name",
+      "is already taken here",
+      "already holds memories",
+    ]) {
+      assert.ok(text.includes(phrase), `vault-access.md lost the refusal: ${phrase}`);
+    }
+  });
+
+  it("vault-steer creates the vault only on the owner's yes", () => {
+    const text = read(path.join(SKILLS, "vault-steer", "SKILL.md"));
+    assert.ok(text.includes('create_vault(name="<name>")'));
+    assert.match(text, /wait for a yes\. It makes\s+this login the vault's only writer/);
+  });
+});

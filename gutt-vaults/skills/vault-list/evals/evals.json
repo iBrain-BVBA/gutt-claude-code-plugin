@@ -1,0 +1,41 @@
+{
+  "skill_name": "vault-list",
+  "note": "These evals run on the shared gutt stage. No eval may write.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "personal-login-lists-public-vaults",
+      "prompt": "/gutt-vaults:vault-list",
+      "expected_output": "Calls list_vaults and shows a table of the readable vaults with their group and whether each is the reader's own. Closes with a vault-ask line naming a real slug.",
+      "files": [],
+      "assertions": [
+        "list_vaults is called and its vaults are all in the table",
+        "No vault absent from list_vaults is shown",
+        "The last line is an example /gutt-vaults:vault-ask command with a slug from the table",
+        "No write call is made"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "team-login-told-why",
+      "prompt": "/gutt-vaults:vault-list — the connected login is a team login: list_vaults returns vault_team_notes only. I expected to see the public next-agent-to-hire vault.",
+      "expected_output": "Lists vault_team_notes and explains that public vaults are read from a personal gutt login and how to log in again with one.",
+      "files": [],
+      "assertions": [
+        "vault_next_agent_to_hire isn't shown as readable",
+        "The output says public vaults are read from a personal login and how to log in again with one"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "list-fails",
+      "prompt": "/gutt-vaults:vault-list — list_vaults returns the error 'Listing vaults failed. Try again in a few minutes.'",
+      "expected_output": "Says listing failed and to try again in a few minutes. Doesn't say the login has no vaults.",
+      "files": [],
+      "assertions": [
+        "The output says to try again in a few minutes",
+        "The output doesn't say the login can read no vaults"
+      ]
+    }
+  ]
+}
