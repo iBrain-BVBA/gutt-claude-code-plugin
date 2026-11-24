@@ -12,12 +12,15 @@
   server's vault rules and name rules, and turns each refusal into what to do. For example, a
   team login reading a public vault is told to sign in with a personal login, instead of
   getting an empty answer.
-
 - **gutt-vaults: follow a vault.** `/gutt-vaults:vault-follow <slug>` builds a digest of the
   Findings that entered the vault in the last week and the ones a Verdict retired, each with
   its sources, and publishes it as a page for the reader. On the reader's yes it also creates a
   weekly routine, `vault-<slug>-digest`, that updates the same page from where the last digest
-  stopped. The routine carries only the gutt connector and never writes to memory. `--digest`
+  stopped. A Finding counts only when an approved Verdict `DECIDES` it, since a pending row
+  already makes a `current` Finding node. The digest finds the week's Verdicts with one
+  `DECIDES` search and reads each Finding and its sources node by node; it never lists
+  episodes, whose bodies are too large to read a week of. The routine carries only the gutt
+  connector and never writes to memory. `--digest`
   builds one now and `--stop` pauses the routine. The digest page is the Brief template, shown
   as a digest when `brief.json` says `"kind": "digest"`; `vault-pages.cjs prepare digest` and
   `check digest` check its `window` and `retired` fields.

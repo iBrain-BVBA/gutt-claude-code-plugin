@@ -554,13 +554,10 @@ describe("reading the charter", () => {
   });
 
   it("keeps every other episode list small", () => {
-    // vault-pages exports the whole vault through its own script, and vault-follow pages
-    // through one week's episodes to build a digest; those are the two exceptions.
+    // vault-pages exports the whole vault through its own script, so it is the one exception.
     const files = fs
       .readdirSync(SKILLS, { recursive: true })
-      .filter(
-        (f) => f.endsWith(".md") && !f.startsWith("vault-pages") && !f.startsWith("vault-follow")
-      );
+      .filter((f) => f.endsWith(".md") && !f.startsWith("vault-pages"));
     for (const f of files) {
       const text = read(path.join(SKILLS, f));
       for (const m of text.matchAll(/`get_episodes\(([^`]*)\)`/g)) {
@@ -2414,7 +2411,8 @@ describe("reader skills", () => {
         `${call[1]} without the vault's group_ids`
       );
     }
-    assert.ok(text.includes('get_episodes(group_id="vault_<name>"'), "list the vault's episodes");
+    assert.ok(text.includes('edge_type="DECIDES"'), "find the window's decisions through Verdicts");
+    assert.ok(!text.includes("`get_episodes"), "never list episodes: their bodies are too large");
     assert.match(text, /Show the plan and wait for a yes/);
     assert.ok(text.includes("prepare digest"), "the page goes through vault-pages prepare");
     assert.ok(text.includes("Never pass `force`"));
