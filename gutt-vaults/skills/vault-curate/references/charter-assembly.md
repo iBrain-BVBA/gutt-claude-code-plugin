@@ -17,8 +17,9 @@ Group-wide in `vault_<slug>`, no `agent_id`:
    written since that assembly are among the newest episodes, so the union is complete.
    Completeness can't be shown when there is no earlier assembly, or one of its ids no longer
    resolves: stop the run before any research or write, with "charter incomplete: <reason>".
-   A reader without the Console (vault-reviewer) escalates every row with that reason
-   instead.
+   vault-reviewer doesn't run this step: it has no shell to slice the list, so vault-curate
+   sends it the ids on a `charter:` line and it reads each with `get_episode`
+   (`../../vault-review/SKILL.md` Step 1.2), then applies §Assemble below.
 3. For each, parse the header lines the templates in
    `../../vault-steer/references/charter-template.md` define: `applies_to`, `supersedes`,
    `date`, `target_agent` (steering aimed at one agent).

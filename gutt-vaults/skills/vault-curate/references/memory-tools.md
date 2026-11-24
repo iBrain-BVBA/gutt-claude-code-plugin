@@ -118,8 +118,11 @@ Run it at the start of the workflow, before the first memory read.
 The reviewer has a fixed, **read-only** allowlist in the plugin's `agents/vault-reviewer.md`. It has
 no memory write tools and doesn't register itself: vault-curate registers `vault-reviewer`, and
 the reviewer's working-memory episodes come back under `unwritten`, each with its `agent_id`,
-for vault-curate to write (`vault-reviewer`, or the target's name for Feedback). The allowlist
-covers the prefixes below.
+for vault-curate to write (`vault-reviewer`, or the target's name for Feedback). Its read set
+leaves out `get_episodes` on purpose: a whole-group list is too large for an agent without a
+shell to read, so the reviewer reads episodes by id and Verdicts through `get_node_edges`
+(`../../vault-review/references/precedent-matching.md`). The allowlist covers the prefixes
+below.
 
 <!-- known-prefixes:begin -->
 

@@ -71,6 +71,11 @@ Calibration for autonomy: vault-curate always sends both lines
    `unwritten`, each with the identity it belongs to: `vault-reviewer` for your own working
    memory, the target (`vault-librarian` or `vault-scout`) for Feedback. vault-curate writes
    them with `last_n_episodes=0`.
+7. **Read by id, never the whole group.** No `get_episodes` (you don't have it): a list of the
+   vault group comes back as one 80k to 500k character file, and with no shell you can't slice
+   it. Charter and Steering come by id from the `charter:` line (`get_episode`); Verdict
+   episodes by their own edges (`references/precedent-matching.md`). Every search passes
+   `group_ids=["vault_<slug>"]`: without it the server searches the caller's personal scope.
 
 ## Workflow
 
@@ -95,11 +100,17 @@ Calibration for autonomy: vault-curate always sends both lines
    (`references/autonomy-ladder.md` §Agreement).
 
 1. Identity check (above). No registration: vault-curate has registered you.
-2. **Effective charter**, group-wide: follow `../vault-curate/references/charter-assembly.md`.
-   Take the review-policy charter's always-escalate classes. Numbers come from `config:`.
-   "charter incomplete: <reason>" (that file's step 2): escalate every row with that reason,
-   still with its prediction and precedents (memory works, only the policy is uncertain, so
-   the predictions count toward Calibration), and say so in `notes`.
+2. **Effective charter**, from the `charter:` line: one `get_episode` per id (vault-curate
+   assembled the charter and sends the review-policy, `agent:vault-reviewer` and Steering
+   episode ids). Keep an episode only when its `group_id` is `vault_<slug>` and its name
+   starts `Charter:` or `Steering:`; then apply §Assemble of
+   `../vault-curate/references/charter-assembly.md` to what you read. Take the review-policy
+   charter's always-escalate classes and the Steering dates (hard rule 2). Numbers come from
+   `config:`. **Charter incomplete** when there is no `charter:` line, it lists no
+   review-policy Charter, or an id doesn't resolve to such an episode: escalate every row with
+   "charter incomplete: <reason>", still with its prediction and precedents (memory works,
+   only the policy is uncertain, so the predictions count toward Calibration), and say so in
+   `notes`. Never fall back to listing the group.
 3. **Own scope** (`agent_id="vault-reviewer"`): every `Verdict: override …` episode within
    `review.override_cooloff_days`, the newest `Procedure:` of each step, unacknowledged
    `Feedback: … → vault-reviewer` episodes.
@@ -207,8 +218,8 @@ the target's name for `Feedback: vault-reviewer → <to> — …`.
 
 `previous_episodes`: only on a `Procedure:` or `Insight:` that refines one of your earlier
 episodes (`../vault-curate/references/run-end-memory.md` step 3). The body carries only the
-change, so list the uuid of each episode it refines, as `get_episodes` or
-`get_episodes_for_entity` returned it under `vault_<slug>` and `vault-reviewer`, and open the
+change, so list the uuid of each episode it refines, as `get_episodes_for_entity` or a fact's
+`episodes` array returned it under `vault_<slug>` and `vault-reviewer`, and open the
 body with `Refines '<predecessor name>'`. vault-curate checks each id with `get_episode` and
 drops a delta whose predecessor isn't in `vault_<slug>`, isn't the same type, has a
 `source_description` that doesn't start with `vault-reviewer` (a librarian's or scout's

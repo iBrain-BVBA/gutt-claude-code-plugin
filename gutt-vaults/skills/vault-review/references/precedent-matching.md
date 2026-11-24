@@ -7,16 +7,15 @@
 2. **Group-wide**, no `agent_id`: the owner's Verdicts (tagged `vault-librarian`).
 3. The effective charter and `Insight:` episodes with `insight_type: verdict_pattern`.
 
-Use `search_memory_nodes(entity="Verdict", group_ids=["vault_<slug>"], query=<claim + beat>)`
-for candidates, then `get_episodes_for_entity` on each to read the Verdict **episodes**.
-History reads set `include_invalidated=true` on `search_memory_facts`.
+Find candidates with `search_memory_nodes(entity="Verdict", group_ids=["vault_<slug>"], …)`,
+then read each one's own Verdict episode through its `DECIDES` edge (§Finding the Verdict
+episodes). History reads set `include_invalidated=true` on `search_memory_facts`.
 
 ## Recording a precedent
 
-Record each precedent by its Verdict **episode uuid**. `search_memory_facts` returns the
-Verdict's `DECIDES` fact with an `episodes` array of two uuids, the Finding's episode and the
-Verdict's; keep the one whose `get_episode` name starts with `Verdict:`. Never record a node
-id or a semantic id (`vault_<slug>:Verdict:Verdict-human:13`): similar names collide and
+Record each precedent by its Verdict **episode uuid**: one of the uuids in the `episodes`
+array of the Verdict node's own `DECIDES` fact, the one whose `get_episode` name starts with
+`Verdict:`. Never record a node id or a semantic id (`vault_<slug>:Verdict:Verdict-human:13`): similar names collide and
 renumber, so the precedent stops resolving and the Console row has to be re-keyed by hand.
 
 ## What counts
@@ -45,27 +44,41 @@ no future row can resemble them.
 
 ## Finding the Verdict episodes
 
+Two exact reads per candidate, both by id. Each returns one small result, so nothing needs
+slicing.
+
 1. `search_memory_nodes(entity="Verdict", group_ids=["vault_<slug>"], query="<beat>
 <claim_type> <role or subject>", max_nodes=20)`; page with `offset` while `has_more` and
-   the results are still on topic.
-2. For each candidate, `get_episodes_for_entity` and keep episodes whose name starts
-   `Verdict:` and whose body says `Decided by: human` and the row's proposal type.
-3. Read `Claim type`, `Source domain`, `Source class`, `Beat`, `Significance`, `Card
-section` and the decision from the episode body; those lines are what the features above
-   are matched on. An older Verdict may have no `Source class` line: take it from the
-   Finding's source document node (`source_class` attribute), or infer it from the domain (a
-   vendor's own site → vendor, a regulator or an official journal → primary, a university,
-   arXiv or NBER → independent, a news site → press). An older card-diff Verdict may name the
-   section only in its title (`RoleCard: <role> — <section> <date>`).
-4. Record the episode's **uuid**, the 36-character `xxxxxxxx-xxxx-…` value. `get_episode` and
-   `get_episodes_for_entity` return only a semantic `id` (`vault_<slug>:Episodic:Verdict-…`),
-   which is not a uuid and must not be recorded. Get the uuid from
-   `search_memory_facts(center_node_id=<Verdict node id>, include_invalidated=true)`: each
-   fact's `episodes` array holds uuids; keep the one whose `get_episode` name starts
-   `Verdict:`. Never record a node id or a semantic id.
+   the results are still on topic. Each node carries `attributes` with `decision`,
+   `decided_by` and `proposal_type`: drop a candidate whose `decided_by` isn't `human` or
+   whose `proposal_type` differs from the row's before reading anything more. A node without
+   those attributes stays a candidate; its episode settles it.
+2. For each candidate, `get_node_edges(node_id=<Verdict node id>, edge_type="DECIDES")`. This
+   returns only that Verdict's own `DECIDES` facts; each fact's `episodes` array holds the
+   uuids (36-character `xxxxxxxx-xxxx-…`) of the episodes that wrote it.
+3. `get_episode(<uuid>)` on each uuid until one's name starts `Verdict:`. Its body says
+   `Decided by: human` and the proposal type, and carries `Claim type`, `Source domain`,
+   `Source class`, `Beat`, `Significance`, `Card section` and the decision: the features
+   above are matched on those lines. Record **that uuid** (the argument you passed, not the
+   semantic `id` the episode comes back with). A Verdict node none of whose `DECIDES` episodes
+   is a `Verdict:` episode (only an Insight mentions it) is not a precedent.
+4. An older Verdict may have no `Source class` line: take it from the Finding's source
+   document node (`source_class` attribute), or infer it from the domain (a vendor's own site
+   → vendor, a regulator or an official journal → primary, a university, arXiv or NBER →
+   independent, a news site → press). An older card-diff Verdict may name the section only in
+   its title (`RoleCard: <role> — <section> <date>`).
 
-Budget about 15 memory calls per batch: one search per distinct (beat, claim type) pair in the
-batch, then reads for the top candidates.
+Never look a Verdict's uuid up with `search_memory_facts(center_node_id=<Verdict node id>)`:
+the centre only biases a search ranked by the query over the whole group, so it returns other
+Verdicts' facts and often not the centre's own (on 24 Nov 2026 a search centred on one Verdict
+returned five other Verdicts' `DECIDES` facts and none of its own, and the run's precedents all
+came back empty). `get_episodes_for_entity` isn't a substitute either: it lists every episode
+that mentions the Verdict, Insights included, without uuids.
+
+Budget: one search per distinct (beat, claim type) pair in the batch, then two reads per
+candidate (step 2 and step 3). Read a pair's candidates in the search's order and stop once
+you hold `review.precedents_min` similar human precedents that all agree, or after 10
+candidates.
 
 ## Agreement with time decay
 

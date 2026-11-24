@@ -184,12 +184,20 @@ run: <run id>
 memory_server: <prefix from references/memory-tools.md>
 config: <review and ladder sections, with config_version, per references/vault-config.md>
 stage_by_class: <from the promotion re-check>
+charter: <JSON array of episode ids from Step 1's effective charter>
 ```
 
 Always send `config:` and `stage_by_class:`, even when every value is a default
 (`config_version: 0`) or no class has a stage yet (`{}`); `config:` carries
 `ladder.class_ceilings` from `meta/config.class_ceilings` (`{}` when absent). Without them the
 reviewer holds every class at stage 0.
+
+Always send `charter:` too: the ids, as `episode_ids` recorded them, of every Charter episode
+with `applies_to: review` or `agent:vault-reviewer` and of every Steering episode in the
+effective charter (Steering can zero precedents, and recent Steering escalates rows). Send
+ids, never the episodes' text: the reviewer reads each with `get_episode`. It has no shell to
+slice a whole-group `get_episodes` list (80k to 500k characters), so without this line it
+can't assemble its charter and escalates every row with "charter incomplete".
 
 The reviewer refuses a group that isn't `vault_<slug>`: it returns `error` and no decisions.
 Treat that like a failed reviewer (below) and log its `error` in the run row.

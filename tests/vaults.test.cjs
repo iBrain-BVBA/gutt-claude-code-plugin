@@ -324,8 +324,13 @@ const READ_TOOLS = new Set([
   "get_episode",
   "get_episodes",
   "get_entity_node",
+  "get_node_edges",
   "list_writable_groups",
 ]);
+// The reviewer reads by id only: a get_episodes list of the vault group runs to 80k-500k
+// characters, saved to a file it has no shell to slice (12 and 24 Nov 2026: no charter, no
+// precedent ids).
+const REVIEWER_WITHOUT = new Set(["get_episodes"]);
 const WRITE_MARKERS = [
   "add_memory",
   "confirm_memory",
@@ -359,9 +364,48 @@ describe("the reviewer's allowlist", () => {
     const prefixes = knownPrefixes();
     assert.equal(prefixes[0], "mcp__plugin_gutt-pro_gutt-mcp-remote__");
     const missing = prefixes
-      .flatMap((p) => [...READ_TOOLS].map((t) => p + t))
+      .flatMap((p) => [...READ_TOOLS].filter((t) => !REVIEWER_WITHOUT.has(t)).map((t) => p + t))
       .filter((t) => !tools.has(t));
     assert.deepEqual(missing, []);
+  });
+
+  it("has no whole-group episode list, and the rules never send it to one", () => {
+    const listed = reviewerTools().filter((t) =>
+      [...REVIEWER_WITHOUT].some((w) => t.endsWith("__" + w))
+    );
+    assert.deepEqual(listed, []);
+    const skill = read(path.join(SKILLS, "vault-review", "SKILL.md"));
+    const precedents = read(
+      path.join(SKILLS, "vault-review", "references", "precedent-matching.md")
+    );
+    for (const [name, text] of [
+      ["vault-review/SKILL.md", skill],
+      ["precedent-matching.md", precedents],
+    ]) {
+      // Each mention of get_episodes( must be a rule against it, never a step that calls it.
+      for (const m of text.matchAll(/[^\n]*`get_episodes(?:\([^`]*)?`[^\n]*/g)) {
+        assert.match(
+          m[0],
+          /\bNo\b|never|n't/i,
+          `${name} sends the reviewer to get_episodes: ${m[0]}`
+        );
+      }
+    }
+    assert.match(skill, /one `get_episode` per id/);
+    assert.match(skill, /no `charter:` line/);
+  });
+
+  it("finds a Verdict's episode uuid through its own DECIDES edge, not a centred search", () => {
+    const text = read(path.join(SKILLS, "vault-review", "references", "precedent-matching.md"));
+    const steps = text.match(/## Finding the Verdict episodes([\s\S]*?)\n## /);
+    assert.ok(steps, "precedent-matching.md lost §Finding the Verdict episodes");
+    assert.match(steps[1], /get_node_edges\(node_id=<Verdict node id>, edge_type="DECIDES"\)/);
+    assert.match(steps[1], /`get_episode\(<uuid>\)`/);
+    // A centred search appears only as the thing not to do.
+    for (const m of text.matchAll(/[^\n]*center_node_id[^\n]*/g)) {
+      assert.match(m[0], /Never/, `a centred search is back as a step: ${m[0]}`);
+    }
+    assert.match(text, /group_ids=\["vault_<slug>"\]/);
   });
 
   it("holds only known read tools, under known prefixes, with no wildcard", () => {
@@ -449,6 +493,8 @@ describe("the reviewer's allowlist", () => {
     );
     assert.ok(curate.includes("`review.prediction: null`"));
     assert.ok(curate.includes("Always send `config:` and `stage_by_class:`"));
+    assert.ok(curate.includes("Always send `charter:` too"));
+    assert.match(curate, /\ncharter: <JSON array of episode ids/);
     for (const reason of [
       "no memory_server passed by vault-curate",
       "memory server not in reviewer allowlist: <prefix>",
@@ -1203,6 +1249,11 @@ describe("skill evals", () => {
         .map((l) => l.split(":")[0]);
       assert.deepEqual(head, ["vault", "group", "run"], `eval ${e.id}`);
     }
+    // Every eval but the one about a missing line sends the charter ids vault-curate sends.
+    const without = data.evals
+      .filter((e) => !/^charter: \[/m.test(e.prompt))
+      .map((e) => e.eval_name);
+    assert.deepEqual(without, ["no-charter-line-escalates-without-listing-the-group"]);
   });
 });
 
