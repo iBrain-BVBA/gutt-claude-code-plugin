@@ -53,8 +53,8 @@ from 0 to 3. A class in it may not go above its own number or above `ladder.ceil
 the reviewer's `config:` line as `ladder.class_ceilings` (`{}` when the field is absent).
 
 Every key takes effect at the **next curate run**, the brief keys at the next brief run. A
-lower `ladder.ceiling` or class ceiling drops a class at once; a changed promotion threshold
-moves a class at the next curate run, not at the weekly Calibration (§Promotion re-check).
+lower `ladder.ceiling` or class ceiling, like a changed promotion threshold, moves a class at
+the next curate run, not at the weekly Calibration (§Promotion re-check).
 
 ## `meta/config` document
 

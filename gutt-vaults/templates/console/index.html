@@ -126,8 +126,9 @@ details.charter pre { margin: 0; padding: 0 14px 14px; font: 13px/1.55 var(--f-m
 .md.view ul, .md.view ol { padding-left: 20px; }
 .md.view code { font: 12.5px var(--f-mono); }
 .md.view a { color: var(--blue); }
-.count { font: 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 6px; }
-.count.over { color: var(--bad); font-weight: 600; }
+/* Not .count: that is the tab and filter badge, and a second .count rule restyled every badge. */
+.charcount { font: 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.charcount.over { color: var(--bad); font-weight: 600; }
 table.runs { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.runs th, table.runs td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.runs th { font: 600 11px var(--f-label); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
@@ -322,7 +323,7 @@ b.short { color: var(--bad); font-weight: 600; }
   {
    "id": "ladder",
    "title": "Autonomy",
-   "note": "Checked at every research run: a changed threshold can move a class the next morning, and a lower ceiling drops it at once.",
+   "note": "Checked at every research run: a changed threshold or a lower ceiling moves a class at the next research run, without waiting for the weekly Calibration.",
    "fields": [
     {
      "key": "ladder.ceiling",
@@ -502,12 +503,16 @@ b.short { color: var(--bad); font-weight: 600; }
     vault: null, charter: null, reviewer: null, drafts: {}, busy: {},
     ui: {}, done: {}, acts: {}, order: [], cursor: null, undo: null, focusNext: null,
     config: null, configChanges: [], cfgDraft: {}, ceilDraft: {}, cfgReset: null,
-    canAdmin: null, me: null, idKnown: false, userNs: null, names: {}, warned: {}
+    canAdmin: null, me: null, idKnown: false, idError: false, userNs: null, names: {}, warned: {},
+    fieldsError: false
   };
   var LABELS = (function () {
-    try { return JSON.parse(document.getElementById("console-labels").textContent) || {}; } catch (e) { return {}; }
+    try { return JSON.parse(document.getElementById("console-labels").textContent) || {}; }
+    catch (e) { console.error("Console labels block failed to parse; rejections are off until the Console is republished.", e); return { broken: true }; }
   })();
-  var REASONS = LABELS.reject_reasons || [];
+  var REASONS = Array.isArray(LABELS.reject_reasons) ? LABELS.reject_reasons : [];
+  // Without the reason list a rejection would record a reason the owner never picked, so rejecting stops.
+  var LABELS_BROKEN = !!LABELS.broken || !REASONS.length;
   var STAGES = LABELS.stages || ["Shadow", "Auto-reject", "Auto-approve", "Steady"];
 
   // ---------- tiny DOM helper (text only, never innerHTML) ----------
@@ -586,7 +591,7 @@ b.short { color: var(--bad); font-weight: 600; }
   }
   function linkedinCount(text) {
     var post = postSection(text), n = charCount(post == null ? text : post), over = n > LINKEDIN_MAX;
-    return h("p", { class: over ? "count over" : "count" },
+    return h("p", { class: over ? "charcount over" : "charcount" },
       n.toLocaleString("en-US") + " of " + LINKEDIN_MAX.toLocaleString("en-US") + (post == null ? " characters (the whole draft: it has no Post heading)" : " characters in the post") +
       (over ? " · " + (n - LINKEDIN_MAX).toLocaleString("en-US") + " over LinkedIn's limit" : ""));
   }
@@ -678,9 +683,9 @@ b.short { color: var(--bad); font-weight: 600; }
   // ---------- next commit (U6) ----------
   // Commit times are the routine's, in the owner's zone (meta/vault.commit_times, .timezone).
   // A malformed entry is left out; a list with none left means the time is unknown, not a guess.
+  function commitTimesSet() { return !!(S.vault && Array.isArray(S.vault.commit_times) && S.vault.commit_times.length); }
   function commitTimes() {
-    var set = S.vault && Array.isArray(S.vault.commit_times) && S.vault.commit_times.length;
-    var t = set ? S.vault.commit_times : ["12:10", "19:10"];
+    var t = commitTimesSet() ? S.vault.commit_times : ["12:10", "19:10"];
     var ok = t.filter(function (x) { return /^\d{1,2}:\d{2}$/.test(String(x)); });
     if (ok.length !== t.length && !S.warned.times) { S.warned.times = true; console.warn("meta/vault.commit_times has entries that aren't HH:MM", t); }
     return ok;
@@ -844,6 +849,8 @@ b.short { color: var(--bad); font-weight: 600; }
         else if (code === "settings_orphan") toast("Your change was logged but not applied, and the log entry couldn't be removed. Save again: the next save replaces it.");
         else if (code === "settings_no_lease") toast("This Console can't lock its settings for a save. Republish it from the current template, then save again.");
         else if (code === "lease_lapsed") toast("This save took too long to finish under its lock and was stopped. Check Settings and the change log, then save again if your change is missing.");
+        else if (code === "resource_exhausted") toast("The Console is getting too many writes right now. Wait a minute, then save again.");
+        else if (code === "capability_removed") { S.readOnly = true; toast("This Console can no longer save changes. Republish it with the db capability."); }
         else if ((code === "invalid_argument" || code === "permission_denied") && ctx === "settings") { S.canAdmin = false; toast("Only the vault's owner and Editors can change settings."); }
         else if (code === "invalid_argument") { S.readOnly = true; toast("You can view this Console but not change it."); }
         else if (code === "quota_exceeded") toast("The Console's storage is full. Archive old rows before adding more.");
@@ -885,13 +892,13 @@ b.short { color: var(--bad); font-weight: 600; }
   // Undo and Reopen re-read the row first and refuse once the commit routine has recorded it.
   // The db has no transactions, so a commit landing between the read and the write can still
   // win; vault-commit skips rows that aren't decided, and a committed row is never edited here.
+  function recorded(x) { return !!x && (x.status === "committed" || x.status === "published" || !!x.committed_episode); }
   function unlessCommitted(path, change) {
     var ref = S.db.doc(path);
     return ref.get().then(function (snap) {
       // A row that is gone has nothing to undo; an update would fail or recreate a partial row.
       if (!snap.exists) fail("missing");
-      var cur = snap.data();
-      if (cur.status === "committed" || cur.status === "published" || cur.committed_episode) fail("committed");
+      if (recorded(snap.data())) fail("committed");
       return ref.update(change);
     });
   }
@@ -1042,9 +1049,9 @@ b.short { color: var(--bad); font-weight: 600; }
   function needs(attrs, draftId, dis) { attrs["data-need"] = draftId; attrs["data-dis"] = dis ? "1" : "0"; attrs.disabled = dis || !draft(draftId); return attrs; }
   function reasonChips(r, onPick, label) {
     var acts = S.acts[r.id] || {};
-    // The reason list comes from the console-labels block; if it is missing, reject without one.
-    var list = REASONS.length ? REASONS : [{ key: "other", label: "Reject" }];
-    var chips = list.map(function (x, i) {
+    // The reason list comes from the console-labels block; without it, rejecting is off.
+    if (LABELS_BROKEN) return h("div", { class: "banner", role: "alert", text: "This Console's label block is broken, so rejections are off until it is republished from the current template." });
+    var chips = REASONS.map(function (x, i) {
       var k = String(i + 1); acts[k] = function () { onPick(x.key); };
       return btn(x.label, k, { class: "reason", id: "why-" + r.id + "-" + x.key, disabled: !canAct() || !!S.busy[r.id] }, acts[k]);
     });
@@ -1168,7 +1175,9 @@ b.short { color: var(--bad); font-weight: 600; }
   }
   function doneCard(it) {
     var d = S.done[it.id] || {}, r = it.row, title = r ? r.title : it.brief ? "Brief for week " + it.brief.week : it.steer ? it.steer.text : "";
-    var committed = r && r.status === "committed", undoing = it.view === "undoing";
+    // Any row the commit has recorded (a finding, a published brief, committed steering) loses Undo here;
+    // the toast's Undo is refused by unlessCommitted's re-read.
+    var committed = recorded(r || it.brief || it.steer), undoing = it.view === "undoing";
     var acts = S.acts[it.id] = {};
     if (!committed && !undoing) acts.u = function () { undoDone(it.id); };
     var card = h("article", { class: "card done", id: "row-" + it.id, tabindex: "-1" }, h("div", { class: "card-body" },
@@ -1234,7 +1243,8 @@ b.short { color: var(--bad); font-weight: 600; }
       return h("a", { href: "#inbox" + (x[0] === "all" ? "" : "/" + x[0]), "aria-current": f === x[0] ? "page" : null }, x[1], counts[x[0]] ? h("span", { class: "count" + (x[0] === "all" ? " hot" : ""), text: counts[x[0]] }) : null);
     })), "filters", [f, counts]));
     m.appendChild(keyed(h("p", { class: "lede" }, "Most urgent first: conflicts and significance-5 rows, then your calls, audit samples, the brief and proposed steering. ",
-      h("span", { class: "keys" }, "Keys: j and k move, a approves, r rejects then 1 to 7 picks the reason, n adds a note, u undoes.")), "lede", "1"));
+      h("span", { class: "keys" }, "Keys: j and k move, a approves, " + (LABELS_BROKEN ? "" : "r rejects then 1 to " + REASONS.length + " picks the reason, ") +
+        "n adds a note, u undoes, Esc closes. Each button shows its own key.")), "lede", "1"));
     var list = items.filter(function (it) { return inFilter(it, f); });
     S.order = list.map(function (it) { return it.id; });
     if (S.cursor && S.order.indexOf(S.cursor) < 0) S.cursor = null;
@@ -1505,14 +1515,14 @@ b.short { color: var(--bad); font-weight: 600; }
       h("div", { class: "c-wide", role: "cell" }, "Conflicts always come to you. The reviewer predicts, and its agreement is shown, but the class never advances." +
         (cfn ? " Agreement " + pct((cfr.k + cfj.k) / cfn) + " over " + plural(cfn, "call") + "." : ""))));
     m.appendChild(grid);
-    m.appendChild(h("p", { class: "note", text: "Numbers per class are from the last calibration; \"since calibration\" counts your calls live. Auto-reject and auto-approve are earned separately; a class can hold either." }));
+    m.appendChild(h("p", { class: "note", text: "Counts per class are from the last calibration; stage and permissions from the latest research run; \"since calibration\" counts your calls live. Auto-reject and auto-approve are earned separately; a class can hold either." }));
 
     var dis = disagreements();
     m.appendChild(h("h2", { text: "Recent disagreements" }));
     if (!dis.length) m.appendChild(h("p", { class: "lede", text: "None yet. When your call differs from the reviewer's, it shows here." }));
     else m.appendChild(h("ul", { class: "list dis" }, dis.map(function (r) {
       var hu = r.human, p = predicted(r), auto = r.review && /^auto_/.test(r.review.decision || "");
-      var head = auto ? "You overrode an " + (r.review.decision === "auto_approve" ? "auto-approval" : "auto-rejection") + " · the class loses that until the next calibration"
+      var head = auto ? "You overrode an " + (r.review.decision === "auto_approve" ? "auto-approval" : "auto-rejection") + " · the class loses it at the next research run and must re-earn it"
         : "You " + (hu.decision === "edited" ? "approved with an edit" : hu.decision) + (hu.reason ? " (" + reasonLabel(hu.reason).toLowerCase() + ")" : "") + " · reviewer predicted " + p + (r.review.confidence != null ? " at " + pct(r.review.confidence) : "");
       var why = r.review.reason ? "reason it gave: “" + r.review.reason + "”" : hu.note ? "“" + hu.note + "”" : "";
       return h("li", null, h("span", { class: "chip bad", text: "differs" }),
@@ -1523,19 +1533,24 @@ b.short { color: var(--bad); font-weight: 600; }
 
   // ---------- Steer ----------
   var APPLIES = [["scope", "Scope"], ["sources", "Sources"], ["review", "Review policy"], ["brief", "Brief"], ["roles", "Role taxonomy"]];
+  function addSteering() {
+    var t = draft("steer-text"); if (!t) return;
+    var doc = { vault: (S.vault && S.vault.slug) || "", text: t, applies_to: S.drafts["steer-applies"] || "scope",
+      target_agent: S.drafts["steer-agent"] || null, supersedes: null, source: "typed", status: "new", at: now() };
+    // The typed text is cleared only once the add has landed, so a failed add leaves it to retry.
+    write("steer", function () {
+      return S.db.collection("steering").add(doc).then(function (res) {
+        if (draft("steer-text") === t) { delete S.drafts["steer-text"]; var ta = document.getElementById("steer-text"); if (ta) ta.value = ""; }
+        return res;
+      });
+    }, ["Saved. It becomes steering at the next commit.", commitWhen()].filter(Boolean).join(" "));
+  }
   function viewSteer(m) {
     var beats = (S.vault && S.vault.beats) || [];
     var opts = APPLIES.concat(beats.map(function (b) { return ["beat:" + b, "Beat: " + b]; }));
     var dis = !canAct() || !!S.busy.steer, text = S.drafts["steer-text"] || "";
     m.appendChild(h("h2", { text: "Give the vault an instruction" }));
-    var addIt = function () {
-      var t = draft("steer-text"); if (!t) return;
-      var doc = { vault: (S.vault && S.vault.slug) || "", text: t, applies_to: S.drafts["steer-applies"] || "scope",
-        target_agent: S.drafts["steer-agent"] || null, supersedes: null, source: "typed", status: "new", at: now() };
-      write("steer", function () { return S.db.collection("steering").add(doc); }, ["Saved. It becomes steering at the next commit.", commitWhen()].filter(Boolean).join(" "));
-      delete S.drafts["steer-text"];
-      var ta = document.getElementById("steer-text"); if (ta) ta.value = "";
-    };
+    var addIt = addSteering;
     m.appendChild(keyed(h("section", { class: "panel" },
       h("label", { class: "small", for: "steer-text" }, "Instruction",
         h("textarea", { id: "steer-text", placeholder: "For example: never use vendor webinars as a source", oninput: function (e) { S.drafts["steer-text"] = e.target.value; syncNeeds(e.target); } }, text)),
@@ -1622,7 +1637,7 @@ b.short { color: var(--bad); font-weight: 600; }
   // The page's checks are a convenience; every skill checks the values again.
   var FIELDS = (function () {
     try { return JSON.parse(document.getElementById("config-fields").textContent).sections || []; }
-    catch (e) { return []; }
+    catch (e) { console.error("Settings definitions (config-fields) failed to parse:", e); S.fieldsError = true; return []; }
   })();
   var FIELD = {};
   FIELDS.forEach(function (s) { s.fields.forEach(function (f) { f.section = s.id; FIELD[f.key] = f; }); });
@@ -1644,9 +1659,14 @@ b.short { color: var(--bad); font-weight: 600; }
       .map(function (x) { return x.text || ""; }).join("\n");
     var m = rule[1].exec(text); return m ? Number((Number(m[1]) * rule[2]).toFixed(4)) : null;
   }
-  function cfgInherited(key) { var c = charterNumber(key); return c == null ? FIELD[key]["default"] : c; }
+  // A key missing from FIELD (the config-fields block didn't parse) has no default. It reads as 0
+  // (a ceiling of 0 holds every class in shadow), never as a throw that takes the Reviewer tab down.
+  function cfgInherited(key) { var c = charterNumber(key); return c == null ? (FIELD[key] ? FIELD[key]["default"] : null) : c; }
   function cfgValue(key) { var v = cfgSaved(key); return v == null ? cfgInherited(key) : v; }
-  function cfgNum(key) { var v = Number(cfgValue(key)); return isNaN(v) ? Number(FIELD[key]["default"]) : v; }
+  function cfgNum(key) {
+    var v = Number(cfgValue(key));
+    return !isNaN(v) ? v : FIELD[key] ? Number(FIELD[key]["default"]) : NaN;
+  }
   function unit(f) { return f.kind === "pct" ? "%" : f.kind === "days" ? " days" : f.kind === "weeks" ? " weeks" : ""; }
   function shown(f, v) {
     if (f.kind === "text") return v ? String(v) : (f.key === "brief.linkedin_series" ? "the vault's name" : "none");
@@ -1678,7 +1698,10 @@ b.short { color: var(--bad); font-weight: 600; }
     if (d === null) return saved == null ? null : { key: key, value: null };
     var p = parseField(f, d);
     if (!p.ok) return { key: key, invalid: true };
-    return sameValue(p.value, saved == null ? cfgInherited(key) : saved) ? null : { key: key, value: p.value };
+    // A key that isn't saved yet becomes an edit as soon as the viewer types a valid value, even
+    // the inherited one: that is how an older review charter's number is pinned here.
+    if (saved == null) return f.kind === "text" && p.value === "" ? null : { key: key, value: p.value, pin: sameValue(p.value, cfgInherited(key)) };
+    return sameValue(p.value, saved) ? null : { key: key, value: p.value };
   }
   function cfgEdits() {
     var edits = [], invalid = 0;
@@ -1787,7 +1810,14 @@ b.short { color: var(--bad); font-weight: 600; }
           if (err && !err.step) err.step = step;
           return release().then(function () { throw err; });
         });
-    }, "Saved as version " + v + ". It applies at the next research run.", null, null, "settings");
+    }, "Saved as version " + v + ". It applies at " + whenApplies(e) + ".", null, null, "settings");
+  }
+  // The Brief keys are read by the weekly brief, every other key by the research run.
+  function whenApplies(e) {
+    var sections = e.edits.map(function (x) { return FIELD[x.key] ? FIELD[x.key].section : ""; });
+    if (e.ceil.length || S.cfgReset === "ladder") sections.push("ladder");
+    var brief = sections.indexOf("brief") >= 0, other = sections.some(function (s) { return s !== "brief"; });
+    return brief && other ? "the next research run (the Brief settings at the next brief)" : brief ? "the next brief" : "the next research run";
   }
   function changeText(c) {
     var f = FIELD[c.key];
@@ -1810,6 +1840,7 @@ b.short { color: var(--bad); font-weight: 600; }
       h("p", { class: "lede", text: "Every number the vault's routines use, grouped by who reads it, with its default and allowed range. Changes apply at the next research run (the Brief section at the next brief)." }),
       h("span", { class: "mono", text: "meta/config · " + (cfgVersion() ? "version " + cfgVersion() : "defaults, never saved") })));
     if (ro) m.appendChild(h("div", { class: "banner info", text: "You can see these settings but not change them. The vault's owner and Editors can." }));
+    if (S.fieldsError) m.appendChild(h("div", { class: "banner", role: "alert", text: "Settings definitions failed to load. Republish the Console from the current template." }));
     FIELDS.forEach(function (sec) {
       var panel = keyed(h("section", { class: "panel settings", "aria-labelledby": "sec-" + sec.id },
         h("div", { class: "sec-top" }, h("h3", { id: "sec-" + sec.id, text: sec.title }),
@@ -1838,8 +1869,9 @@ b.short { color: var(--bad); font-weight: 600; }
           h("label", { for: id, text: f.label }),
           h("div", { class: "inrow" }, input, f.kind === "text" ? null : h("span", { class: "unit", text: unit(f).trim() })),
           h("small", { id: id + "-d" }, p.ok ? null : h("b", { text: p.msg + " " }),
-            "default " + shown(f, f["default"]) + " · " + range + source + (changed ? (unsetting ? " · reset, not saved" : " · changed, not saved") : "") + (f.help ? " · " + f.help : ""))),
-          "f-" + f.key, [hasDraft && !unsetting ? "draft" : raw, p.ok, p.msg || "", changed, unsetting, ro, busy, source]));
+            "default " + shown(f, f["default"]) + " · " + range + source +
+              (changed ? (unsetting ? " · reset, not saved" : edit.pin ? " · keeps this value here once saved" : " · changed, not saved") : "") + (f.help ? " · " + f.help : ""))),
+          "f-" + f.key, [hasDraft && !unsetting ? "draft" : raw, p.ok, p.msg || "", changed, unsetting, !!(edit && edit.pin), ro, busy, source]));
       });
       panel.appendChild(grid);
       if (sec.id === "ladder") {
@@ -1862,15 +1894,19 @@ b.short { color: var(--bad); font-weight: 600; }
       m.appendChild(panel);
     });
     var slug = (S.vault && S.vault.slug) || "<slug>";
-    var nc = nextCommit();
+    var nc = nextCommit(), times = commitTimes();
+    var tlist = times.length ? times.join(" and ") : "unknown (meta/vault.commit_times has no HH:MM entry)";
     m.appendChild(h("section", { class: "panel settings" }, h("h3", { text: "Schedule · read only" }),
       h("p", { class: "note", text: (S.vault && S.vault.schedule) ? String(S.vault.schedule)
-        : "Default times: research run daily 02:40 · commit " + commitTimes().join(" and ") + " · brief Fri 13:20 · freshness check Sun 03:10." }),
-      nc ? h("p", { class: "note", text: "Next commit: " + clock(nc) + " your time." }) : null,
+        // Times set on the vault are its own, not defaults; only the other routines' times are.
+        : commitTimesSet() ? "Commit times: " + tlist + " · other routines at their default times: research run daily 02:40 · brief Fri 13:20 · freshness check Sun 03:10."
+        : "Default times: research run daily 02:40 · commit " + tlist + " · brief Fri 13:20 · freshness check Sun 03:10." }),
+      badTimezone() ? h("p", { class: "note", text: commitWhen() }) : nc ? h("p", { class: "note", text: "Next commit: " + clock(nc) + " your time." }) : null,
       h("p", { class: "note", text: "Times are set on the vault's routines (vault-" + slug + "-curate and the others), not on this page." })));
     var n = e.edits.length + e.ceil.length;
     // The change log records who saved; wait for the viewer's id rather than save an anonymous change.
-    var who = S.me ? "" : S.idKnown ? "This Console can't tell who you are, so it can't record a change. Republish it with the user capability (console-data.md)."
+    var who = S.me ? "" : S.idError ? "Couldn't confirm who you are. Reload the page to try again."
+      : S.idKnown ? "This Console can't tell who you are, so it can't record a change. Republish it with the user capability (console-data.md)."
       : "Checking who you are…";
     var barText = e.invalid ? e.invalid + " field" + (e.invalid > 1 ? "s need" : " needs") + " fixing before you can save."
         : n && who ? who : n ? n + " change" + (n > 1 ? "s" : "") + " not saved." : "No changes.";
@@ -2000,7 +2036,10 @@ b.short { color: var(--bad); font-weight: 600; }
     S: S, FIELD: FIELD, cfgEdits: cfgEdits, saveSettings: saveSettings, canSettings: canSettings,
     lastOverride: lastOverride, countedThrough: countedThrough, liveSince: liveSince, dirStats: dirStats,
     decide: decide, undoDone: undoDone, inboxItems: inboxItems, classStatus: classStatus, leaveOpen: leaveOpen,
-    rowClass: rowClass, reviewerClasses: reviewerClasses
+    rowClass: rowClass, reviewerClasses: reviewerClasses, cfgEdit: cfgEdit, cfgNum: cfgNum,
+    charterNumber: charterNumber, parseField: parseField, whenApplies: whenApplies, commitTimes: commitTimes,
+    commitTimesSet: commitTimesSet, nextCommit: nextCommit, commitWhen: commitWhen,
+    reasonChips: reasonChips, doneCard: doneCard, addSteering: addSteering, LABELS_BROKEN: LABELS_BROKEN
   });
 
   render();
@@ -2016,7 +2055,10 @@ b.short { color: var(--bad); font-weight: 600; }
       // A check that fails counts as "no": Settings stay closed rather than fail on save.
       // Settings open only once canEdit() resolves true; until then canAdmin is null (closed).
       if (typeof u.canEdit === "function") u.canEdit().then(function (ok) { S.canAdmin = ok === true; render(); }, function (e) { console.warn("canEdit failed; Settings stay read-only", e); S.canAdmin = false; render(); });
-      if (typeof u.id === "function") u.id().then(function (id) { S.me = id || null; S.idKnown = true; render(); }, function () { S.idKnown = true; render(); });
+      // A failed id() is not "no user capability": the save bar says to reload, not to republish.
+      if (typeof u.id === "function") u.id().then(function (id) { S.me = id || null; S.idKnown = true; render(); }, function (e) {
+        console.error("user.id failed:", e); S.idError = true; S.idKnown = true; render();
+      });
       else S.idKnown = true;
       return u.can("data.write").then(function (ok) { if (ok === false) { S.readOnly = true; render(); } }, function (e) { console.warn("can(data.write) failed; writes stay enabled and errors will say why", e); });
     }, function () { S.idKnown = true; render(); });
