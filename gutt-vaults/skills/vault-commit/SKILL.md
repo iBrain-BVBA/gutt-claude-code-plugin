@@ -40,7 +40,11 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
 1. **Only decided rows.** Statuses `approved`, `rejected`, `auto_approved`, `auto_rejected`,
    and steering rows `accepted`. Never `pending` or `escalated`.
 2. **Provenance check before writing a Finding:** at least one source with a URL and a
-   retrieved date. Missing either: don't commit, leave the row decided-but-uncommitted, and
+   retrieved date. Write every URL with its scheme: one stored without a scheme
+   (`legal.example.com/page`) is written as `https://legal.example.com/page`, because readers
+   cite only `https` URLs and leave the rest out. A source whose URL has another scheme is
+   written as found and listed under warnings in the output. Missing a URL or a retrieved
+   date: don't commit, leave the row decided-but-uncommitted, and
    list it under skipped in the Run and the output with the reason. Never write the reason
    into the row: `human{}` is the owner's, and its note is the evidence a Verdict cites.
 3. **One episode per fact, self-contained.** Episode text is the only thing extraction sees:
@@ -159,7 +163,7 @@ publish, and change nothing.
 vault <slug> commit <start time from step 1>: <f> findings · <c> conflicts · <r> re-checks · <k> card diffs
 verdicts: <h> human · <a> reviewer · <o> overrides · steering: <s> · config: <versions|none>
 brief: <week published to <url> | none approved | not republished (<reason>)>
-skipped: <n> (<reasons>) · errors: <list|none>
+skipped: <n> (<reasons>) · warnings: <list|none> · errors: <list|none>
 ```
 
 ## Degradation

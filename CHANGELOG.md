@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **vault-ask cites only approved Findings.** A curate run's pending row makes a Finding node
+  marked `current` before anyone decides it, so a `status` filter alone let vault-ask cite
+  claims the owner never approved. It now keeps a Finding only when a Verdict that approved or
+  edited it `DECIDES` it, and its counts line says how many it left out as not yet approved.
+- **A source without an `https` URL is reported, not dropped silently.** vault-ask and
+  vault-follow cite only `https` URLs; both now count the sources they leave out, and
+  vault-follow names them in its output. vault-commit writes a URL stored without a scheme as
+  `https://…` and lists any other scheme under a new `warnings` field.
+
 ## [gutt-vaults 0.3.0] - 2026-11-24
 
 Plugin versions: gutt-vaults 0.3.0. gutt-pro stays 3.2.0; no other plugin changed.

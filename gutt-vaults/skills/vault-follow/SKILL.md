@@ -86,8 +86,9 @@ you one, else a new temporary folder), never in a repository.
    (the node name), `title` (the headline), `claim`, `claimant`, `published_date`, `beat`
    and the significance from its Verdict, `evidence_grade`, and `sources` (`url`, `title` as
    the SourceDocument's name, `publisher` as the URL's host, `retrieved`, `source_class`).
-   Leave out a change with no `https` URL. At most 25 changes, most significant first, then
-   newest; when there are more, say how many in `intro`.
+   Leave out each source whose URL doesn't start `https://`, and a change left with none; list
+   both in the output contract, never silently. At most 25 changes, most significant first,
+   then newest; when there are more, say how many in `intro`.
 7. **Write `<work>/digest/brief.json`** to `../vault-pages/references/page-data.md`
    §brief.json as a digest: `kind: "digest"`, `window`, `week` (the ISO week of `window.to`),
    `published_at` (today), `vault` (`name`, `slug`; `question` only if the vault's charter
@@ -171,6 +172,7 @@ What the routine runs, and what a reader can run by hand.
 ```
 vault <slug> follow: <followed | digest published | digest not published: <why> | stopped>
 window: <from> – <to>: <n> new, <n> retired, <n> conflicts settled
+left out: <n> sources without an https URL (<Finding names>), <n> findings with no https source | none
 page: <url or none>
 routine: vault-<slug>-digest, <local weekday HH:MM> (<UTC cron>) | unchanged | paused
 ```

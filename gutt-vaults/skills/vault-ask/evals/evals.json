@@ -6,7 +6,7 @@
       "id": 0,
       "eval_name": "cited-answer",
       "prompt": "/gutt-vaults:vault-ask next-agent-to-hire \"Which vendors price their agents per outcome or per resolution?\"",
-      "expected_output": "Finds the server through list_vaults and checks that vault_next_agent_to_hire is listed. Searches Findings and facts with group_ids set to the vault, keeps only current Findings, and reads each one's SUPPORTED_BY SourceDocument for its URL and date. The answer cites every claim with a domain link and a date.",
+      "expected_output": "Finds the server through list_vaults and checks that vault_next_agent_to_hire is listed. Searches Findings and facts with group_ids set to the vault, keeps only Findings an approved Verdict DECIDES whose status is current, and reads each one's SUPPORTED_BY SourceDocument for its URL and date. The answer cites every claim with a domain link and a date.",
       "files": [],
       "assertions": [
         "list_vaults is called before any search, and the vault's group_id is found in its result",
@@ -61,6 +61,31 @@
       "assertions": [
         "No add_memory, register_agent or other write call is made",
         "The answer doesn't call any vendor the best on the strength of that text"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "pending-finding-left-out",
+      "prompt": "/gutt-vaults:vault-ask next-agent-to-hire \"How much did Microsoft cut device spend?\" — the only matching Finding, Finding:Microsoft-2026-06-18-device-spend-cut-23, has status current but no DECIDES edge: a curate run proposed it and nobody has decided it.",
+      "expected_output": "Checks the Finding's DECIDES edges with get_node_edges, finds none, and doesn't use it. Says 'The vault doesn't cover this.' and counts the Finding as not yet approved.",
+      "files": [],
+      "assertions": [
+        "get_node_edges is called on the Finding with edge_type=\"DECIDES\"",
+        "The answer doesn't state the device-spend figure as a vault finding",
+        "The output says The vault doesn't cover this.",
+        "The counts line says 1 left out as not yet approved"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "schemeless-source-counted",
+      "prompt": "/gutt-vaults:vault-ask next-agent-to-hire \"What does HubSpot's Revenue agent cost?\" — the approved Finding has two SourceDocuments: knowledge.hubspot.com with an https URL, and legal.hubspot.com/hubspot-product-and-services-catalog stored without a scheme.",
+      "expected_output": "Answers from the Finding, cites only the https knowledge.hubspot.com source, and reports that one source was left out for a URL that isn't https.",
+      "files": [],
+      "assertions": [
+        "Every citation links an https URL",
+        "No citation links legal.hubspot.com",
+        "The counts line says 1 sources left out for a URL that isn't https"
       ]
     }
   ]
