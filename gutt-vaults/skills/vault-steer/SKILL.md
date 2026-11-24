@@ -101,6 +101,25 @@ Before a vault's first write, find its server with
   and the fix: with `memory_connector` unset, set it (or have the group created, above); with
   it set, name the connector that isn't connected, or the two prefixes found for it.
 
+**Create the vault where the server has vaults.** If that server also exposes `create_vault`
+(the shared gutt stage does), writes to `vault_<slug>` are refused until the vault exists and
+this login owns it. Before the first write of `--charter`, check
+`../vault-curate/references/vault-access.md`:
+
+1. Check the name (the slug with hyphens as underscores) against §Names. If it breaks a rule,
+   stop before any call, name the rule, and suggest a slug that keeps to it.
+2. `list_vaults(query="<name>", limit=100)` and look for `vault_<slug>`:
+   - **Listed, `owned: true`:** the vault exists and is this login's. Go on.
+   - **Listed, `owned: false`:** someone else owns that name. Stop and ask for another slug.
+     Never write to it.
+   - **Not listed:** show the owner what `create_vault` does, then wait for a yes. It makes
+     this login the vault's only writer. From a personal login, every personal login can read
+     the vault. From a team login, only that team can read it. On a yes, call
+     `create_vault(name="<name>")` and check that the returned `group_id` is `vault_<slug>`.
+     A refusal is explained with §Refusals, and nothing is written.
+3. A write still refused with `Only the owner can add to` means the vault belongs to another
+   login. Stop and tell the owner that only the login that created the vault can write to it.
+
 ## Output contract
 
 ```

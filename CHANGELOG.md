@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- **gutt-vaults: read a vault.** `/gutt-vaults:vault-list` lists the vaults the login can read,
+  marks its own, and adds each vault's question and page links from the public catalog
+  (`catalog.json` in the `gutt-vault-starter` repository). A catalog vault the login can't read
+  is listed with the reason. `/gutt-vaults:vault-ask <slug> "<question>"` answers only from
+  the vault's current Findings and cites every claim with its source URL and date. When the
+  vault has no answer it says "The vault doesn't cover this." Both are read-only.
+- **gutt-vaults: refusals explained.** A new reference, `vault-access.md`, sets out the
+  server's vault rules and name rules, and turns each refusal into what to do. For example, a
+  team login reading a public vault is told to sign in with a personal login, instead of
+  getting an empty answer.
+
+### Changed
+
+- **gutt-vaults: `vault-steer --charter` creates the vault** on a server that has vaults. It
+  checks the name rules and `list_vaults`, then calls `create_vault` on the owner's yes, so the
+  charter's first write isn't refused as "Only the owner can add".
+
 ## [gutt-vaults 0.2.1] - 2026-11-24
 
 Plugin versions: gutt-vaults 0.2.1. gutt-pro stays 3.2.0; no other plugin changed.

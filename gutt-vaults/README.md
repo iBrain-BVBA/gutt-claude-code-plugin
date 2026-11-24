@@ -16,18 +16,30 @@ its own group, `vault_<slug>`, on the gutt server `gutt-pro` connects to.
 
 ## Try it
 
+- "Which vaults can I read?" / "Ask the coding-agents vault which vendors price per outcome."
 - "Start a vault on open-source coding agents: steer it to releases, pricing and outcomes."
 - "Run the daily research for the coding-agents vault."
 - "Commit my approvals on the coding-agents vault." / "Write its brief for this week."
 - "Preview the vault's Brief page before it goes out."
 
-Every skill that runs a vault takes the vault's slug first; there is no default vault.
+Every skill that runs or reads a vault takes the vault's slug first; there is no default vault.
+
+## Reading a vault
+
+Anyone signed in with a personal gutt login can read a public vault. Install the plugin, then
+authorise the gutt connector: in Claude Code, `/mcp` → `gutt-mcp-remote` → Authorise; in the
+Claude app, the gutt-pro plugin's page → Connectors → add `gutt-mcp-remote`. Authorising signs
+a new user up. `/gutt-vaults:vault-list` shows the vaults you can read, and
+`/gutt-vaults:vault-ask <slug> "<question>"` answers from a vault's committed findings, with a
+source and date for every claim. A team login reads only its team's vaults.
 
 ## Skills
 
 | Skill            | What it does                                                                                                                                                                         |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `vault-steer`    | Creates a vault's charter (scope, beats, source rules, review policy) and its Console, and turns your instructions into steering                                                     |
+| `vault-list`     | Lists the vaults your login can read, marks your own, and adds what each covers and its pages from the public catalog; says why a catalog vault isn't readable                       |
+| `vault-ask`      | Answers a question from one vault's committed findings only, every claim cited with its source URL and date; says when the vault doesn't cover it                                    |
+| `vault-steer`    | Creates a vault (on a server with vaults), its charter (scope, beats, source rules, review policy) and its Console, and turns your instructions into steering                        |
 | `vault-curate`   | The daily run: assembles the charter, sends one scout per beat, verifies every source, writes rows to the Console, runs the reviewer                                                 |
 | `vault-review`   | The reviewer's policy: precedent matching against your past verdicts, and the autonomy ladder it climbs per class                                                                    |
 | `vault-commit`   | The only writer of vault knowledge: your decided rows become Finding, Conflict, RoleCard, Verdict, Steering, Config and Brief episodes; an approved brief republishes the Brief page |

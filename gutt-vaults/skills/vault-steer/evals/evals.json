@@ -65,6 +65,19 @@
         "The reply prints the drafted Charter episodes",
         "The reply says vault_example_new_vault must be created by a gutt admin, or memory_connector set for a server that starts groups on the first write"
       ]
+    },
+    {
+      "id": 6,
+      "eval_name": "charter-creates-the-vault-on-stage",
+      "prompt": "/gutt-vaults:vault-steer coding-agents --charter. The memory server is the shared gutt stage, which exposes create_vault and list_vaults; list_vaults(query=\"coding_agents\") returns no vaults. Draft the scope episode, then stop before writing it.",
+      "expected_output": "Checks coding_agents against the name rules, sees the vault isn't listed, and explains that create_vault makes this login its only writer and that a personal login's vault is public. It waits for the owner's yes before calling create_vault, and writes no Charter episode before the vault exists.",
+      "files": [],
+      "assertions": [
+        "list_vaults is called with the query coding_agents before any write",
+        "create_vault isn't called before the owner says yes",
+        "The explanation says only the creating login can write and who can read",
+        "No add_memory call is made before create_vault succeeds"
+      ]
     }
   ]
 }
