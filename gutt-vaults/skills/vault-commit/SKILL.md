@@ -23,10 +23,9 @@ This skill has **no identity of its own**: it tags each episode with its produce
 | --------------------------------------------------------------------------------------- | ----------------- |
 | Finding, Conflict, RoleCard; Verdict on a row a human decided                           | `vault-librarian` |
 | Verdict on a row the reviewer decided (`auto_*`, not overridden); `Verdict: override …` | `vault-reviewer`  |
-| Steering (from Console rows)                                                            | `vault-charter`   |
+| Steering (from Console rows), whichever agent it targets                                | `vault-charter`   |
 | `Config: <vault name> v<n>` (a Settings save)                                           | `vault-charter`   |
 | `Brief: <YYYY-Www>` (owner-approved brief)                                              | `vault-brief`     |
-| Human steering aimed at one agent                                                       | that agent's name |
 | `Run: vault-commit <date>`                                                              | `vault-librarian` |
 
 All writes go to `vault_<slug>` only, through the group's write tool, found at run time by
@@ -123,8 +122,9 @@ unknown-agent error re-register once; then stop: an untagged vault write can't b
      "Effect: none"): no `RoleCard:` episode and no change to the card. Then mark the row, so
      the rejection stays a precedent for the reviewer.
 4. **For each steering row**, write `Steering:` per
-   `../vault-steer/references/charter-template.md`, tagged `vault-charter` (or the target
-   agent).
+   `../vault-steer/references/charter-template.md`, tagged `vault-charter` even when it targets
+   one agent (its `target_agent` line names that agent; readers find the charter through
+   the `vault-charter` node, `../vault-curate/references/charter-assembly.md` §Read).
    **For each `config_changes` row**, oldest version first, write `Config: <vault name> v<n>`
    per `references/episode-kinds.md`, tagged `vault-charter`. Read `meta/config` first: a row
    whose version is above `meta/config.config_version` is a save that never landed (the page

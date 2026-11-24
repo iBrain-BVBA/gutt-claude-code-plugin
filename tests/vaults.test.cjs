@@ -324,8 +324,13 @@ const READ_TOOLS = new Set([
   "get_episode",
   "get_episodes",
   "get_entity_node",
+  "get_node_edges",
   "list_writable_groups",
 ]);
+// The reviewer reads by id only: a get_episodes list of the vault group runs to 80k-500k
+// characters, saved to a file it has no shell to slice (12 and 24 Nov 2026: no charter, no
+// precedent ids).
+const REVIEWER_WITHOUT = new Set(["get_episodes"]);
 const WRITE_MARKERS = [
   "add_memory",
   "confirm_memory",
@@ -359,9 +364,48 @@ describe("the reviewer's allowlist", () => {
     const prefixes = knownPrefixes();
     assert.equal(prefixes[0], "mcp__plugin_gutt-pro_gutt-mcp-remote__");
     const missing = prefixes
-      .flatMap((p) => [...READ_TOOLS].map((t) => p + t))
+      .flatMap((p) => [...READ_TOOLS].filter((t) => !REVIEWER_WITHOUT.has(t)).map((t) => p + t))
       .filter((t) => !tools.has(t));
     assert.deepEqual(missing, []);
+  });
+
+  it("has no whole-group episode list, and the rules never send it to one", () => {
+    const listed = reviewerTools().filter((t) =>
+      [...REVIEWER_WITHOUT].some((w) => t.endsWith("__" + w))
+    );
+    assert.deepEqual(listed, []);
+    const skill = read(path.join(SKILLS, "vault-review", "SKILL.md"));
+    const precedents = read(
+      path.join(SKILLS, "vault-review", "references", "precedent-matching.md")
+    );
+    for (const [name, text] of [
+      ["vault-review/SKILL.md", skill],
+      ["precedent-matching.md", precedents],
+    ]) {
+      // Each mention of get_episodes( must be a rule against it, never a step that calls it.
+      for (const m of text.matchAll(/[^\n]*`get_episodes(?:\([^`]*)?`[^\n]*/g)) {
+        assert.match(
+          m[0],
+          /\bNo\b|never|n't/i,
+          `${name} sends the reviewer to get_episodes: ${m[0]}`
+        );
+      }
+    }
+    assert.match(skill, /one `get_episode` per id/);
+    assert.match(skill, /no `charter:` line/);
+  });
+
+  it("finds a Verdict's episode uuid through its own DECIDES edge, not a centred search", () => {
+    const text = read(path.join(SKILLS, "vault-review", "references", "precedent-matching.md"));
+    const steps = text.match(/## Finding the Verdict episodes([\s\S]*?)\n## /);
+    assert.ok(steps, "precedent-matching.md lost §Finding the Verdict episodes");
+    assert.match(steps[1], /get_node_edges\(node_id=<Verdict node id>, edge_type="DECIDES"\)/);
+    assert.match(steps[1], /`get_episode\(<uuid>\)`/);
+    // A centred search appears only as the thing not to do.
+    for (const m of text.matchAll(/[^\n]*center_node_id[^\n]*/g)) {
+      assert.match(m[0], /Never/, `a centred search is back as a step: ${m[0]}`);
+    }
+    assert.match(text, /group_ids=\["vault_<slug>"\]/);
   });
 
   it("holds only known read tools, under known prefixes, with no wildcard", () => {
@@ -449,6 +493,8 @@ describe("the reviewer's allowlist", () => {
     );
     assert.ok(curate.includes("`review.prediction: null`"));
     assert.ok(curate.includes("Always send `config:` and `stage_by_class:`"));
+    assert.ok(curate.includes("Always send `charter:` too"));
+    assert.match(curate, /\ncharter: <JSON array of episode ids/);
     for (const reason of [
       "no memory_server passed by vault-curate",
       "memory server not in reviewer allowlist: <prefix>",
@@ -474,6 +520,60 @@ describe("the reviewer's allowlist", () => {
     ]) {
       assert.ok(curate.includes(check), `vault-curate Step 5 lost: ${check}`);
     }
+  });
+});
+
+describe("reading the charter", () => {
+  const ASSEMBLY = path.join(SKILLS, "vault-curate", "references", "charter-assembly.md");
+
+  it("reads through the vault-charter node and the Console's index, never the whole group", () => {
+    const text = read(ASSEMBLY);
+    const steps = text.match(/## Read([\s\S]*?)\n## Assemble/);
+    assert.ok(steps, "charter-assembly.md lost §Read");
+    assert.match(
+      steps[1],
+      /get_episodes_for_entity\(entity_id="vault_<slug>:Agent:vault-charter", last_n=20\)/
+    );
+    assert.match(steps[1], /page\s+with `offset`/);
+    assert.match(steps[1], /`meta\/charter\.episode_ids`/);
+    assert.match(steps[1], /`committed_episode` of every\s+`steering` row/);
+    // get_episodes appears only as the thing not to do.
+    const sentences = steps[1].replace(/\s+/g, " ").split(/(?<=\.) /);
+    for (const s of sentences.filter((x) => /`get_episodes(?:\([^`]*)?`/.test(x))) {
+      assert.match(s, /Never|unlike/, `charter-assembly reads the whole group: ${s}`);
+    }
+  });
+
+  it("stops on a missing section or an unreadable steering row, and drops a stale index id", () => {
+    const text = read(ASSEMBLY);
+    assert.match(text, /charter incomplete: no <applies_to> Charter/);
+    assert.match(text, /charter incomplete: steering row <id>/);
+    assert.match(text, /charter incomplete: Console\s+unreadable/);
+    assert.match(text, /charter index id <id> not found/);
+    assert.match(text, /never\s+one built from an episode's name/);
+  });
+
+  it("keeps every other episode list small", () => {
+    // vault-pages exports the whole vault through its own script, so it is the one exception.
+    const files = fs
+      .readdirSync(SKILLS, { recursive: true })
+      .filter((f) => f.endsWith(".md") && !f.startsWith("vault-pages"));
+    for (const f of files) {
+      const text = read(path.join(SKILLS, f));
+      for (const m of text.matchAll(/`get_episodes\(([^`]*)\)`/g)) {
+        const n = m[1].match(/last_n=(\d+)/);
+        assert.ok(n && Number(n[1]) <= 5, `${f} lists more than 5 episodes: ${m[0]}`);
+      }
+    }
+  });
+
+  it("tags every Charter and Steering episode vault-charter, whichever agent it targets", () => {
+    const commit = read(path.join(SKILLS, "vault-commit", "SKILL.md"));
+    const steer = read(path.join(SKILLS, "vault-steer", "SKILL.md"));
+    assert.doesNotMatch(commit, /that agent's name/);
+    assert.match(commit, /Steering \(from Console rows\), whichever agent it targets/);
+    assert.match(commit, /tagged `vault-charter` even when it targets\s+one agent/);
+    assert.match(steer, /Every Charter and Steering episode is tagged\s+`vault-charter`/);
   });
 });
 
@@ -1456,6 +1556,11 @@ describe("skill evals", () => {
         .map((l) => l.split(":")[0]);
       assert.deepEqual(head, ["vault", "group", "run"], `eval ${e.id}`);
     }
+    // Every eval but the one about a missing line sends the charter ids vault-curate sends.
+    const without = data.evals
+      .filter((e) => !/^charter: \[/m.test(e.prompt))
+      .map((e) => e.eval_name);
+    assert.deepEqual(without, ["no-charter-line-escalates-without-listing-the-group"]);
   });
 });
 

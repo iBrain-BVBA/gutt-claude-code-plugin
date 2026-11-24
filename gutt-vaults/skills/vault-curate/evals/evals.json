@@ -161,6 +161,20 @@
         "No pending row is written to the Console findings collection",
         "The output contains 'vault_next_agent_to_hire not writable on any memory server'"
       ]
+    },
+    {
+      "id": 12,
+      "eval_name": "charter-read-without-whole-group-list",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire --dry-run. get_episodes_for_entity(entity_id=\"vault_next_agent_to_hire:Agent:vault-charter\") returns 15 Charter and Steering episodes over two pages (has_more true on the first). The Console's meta/charter.episode_ids also lists Steering-2026-11-16-no-customer-support-or-chatbot-rows, Steering-2026-11-16-no-more-Outbound-prospect-researcher-rows (both tagged vault-librarian, so not on the vault-charter node) and Steering-2026-11-23-Launches-window-widened-to-60-days, which get_episode reports as not found. The steering rows' committed_episode ids all resolve.",
+      "expected_output": "Assembles the charter without a whole-group episode list: pages the vault-charter node's episodes with offset, reads the two vault-librarian-tagged Steering episodes by id with get_episode, leaves out the unresolved index id and notes 'charter index id … not found' in the run's errors, then continues the dry run with every episode that resolved.",
+      "files": [],
+      "assertions": [
+        "No get_episodes call with last_n above 5",
+        "get_episodes_for_entity is called on the vault-charter node with an offset for the second page",
+        "get_episode is called for the two Steering episodes tagged vault-librarian",
+        "The output contains 'charter index id' and 'not found' for the Launches steering id",
+        "The run does not stop with 'charter incomplete'"
+      ]
     }
   ]
 }

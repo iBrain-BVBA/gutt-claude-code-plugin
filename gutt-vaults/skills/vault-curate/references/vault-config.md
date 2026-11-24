@@ -117,6 +117,9 @@ config: {"config_version": 8, "review": {"precedents_min": 5, …}, "ladder": {"
 stage_by_class: {"finding/pricing": {"stage": 1, "auto_reject": true, "auto_approve": false}, …}
 ```
 
+A third line, `charter:`, carries the charter and steering episode ids the reviewer reads by
+id (`../SKILL.md` Step 5); it holds no numbers.
+
 Always send both lines, even when every value is a default (`config_version: 0`) or no class
 has a stage yet (`stage_by_class: {}`). Without them the reviewer holds every class at stage 0
 for the run; it never falls back to a Calibration or the defaults. The reviewer checks the

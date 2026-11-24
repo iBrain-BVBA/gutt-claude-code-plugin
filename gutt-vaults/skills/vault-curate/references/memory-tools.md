@@ -105,7 +105,8 @@ Run it at the start of the workflow, before the first memory read.
 6. **Check the first write.** A successful write call acknowledges that the episode was
    queued, not that it was stored (`gutt-pro:memory-capture`), so an episode missing right
    after the call is **pending**, not lost. After the first episode of the batch, read
-   `vault_<slug>` with `get_episodes` (newest first). Not there yet: read again after about
+   `vault_<slug>` with `get_episodes(group_id="vault_<slug>", last_n=5)` (newest first; never
+   a larger list). Not there yet: read again after about
    15, 30 and 60 seconds (at most 4 reads, about 2 minutes). Found on any read → continue the
    batch. Still missing after the last read → stop writing the rest of the batch and report
    the write tool, the episode name and that it was acknowledged but not seen. **Never resend
@@ -118,8 +119,11 @@ Run it at the start of the workflow, before the first memory read.
 The reviewer has a fixed, **read-only** allowlist in the plugin's `agents/vault-reviewer.md`. It has
 no memory write tools and doesn't register itself: vault-curate registers `vault-reviewer`, and
 the reviewer's working-memory episodes come back under `unwritten`, each with its `agent_id`,
-for vault-curate to write (`vault-reviewer`, or the target's name for Feedback). The allowlist
-covers the prefixes below.
+for vault-curate to write (`vault-reviewer`, or the target's name for Feedback). Its read set
+leaves out `get_episodes` on purpose: a whole-group list is too large for an agent without a
+shell to read, so the reviewer reads episodes by id and Verdicts through `get_node_edges`
+(`../../vault-review/references/precedent-matching.md`). The allowlist covers the prefixes
+below.
 
 <!-- known-prefixes:begin -->
 

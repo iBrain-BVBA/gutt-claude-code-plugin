@@ -4,24 +4,49 @@ Shared by vault-curate, vault-review, vault-brief, vault-steer and vault-commit.
 
 ## Read
 
-Group-wide in `vault_<slug>`, no `agent_id`:
+Never list the whole group: `get_episodes` on `vault_<slug>` returns every Finding, Verdict and
+Run as well (80k to 500k characters), its offset is ignored, and a reader without a shell
+can't slice it. Read the charter through what points at it instead. Every read passes
+`vault_<slug>`, never another group; a search with no `group_ids` searches your personal scope.
 
-1. **One** `get_episodes(group_id="vault_<slug>", last_n=1000)` call, keeping episodes whose
-   name starts `Charter:` or `Steering:`. Never page: the server ignores an offset, so a
-   second call repeats the newest episodes instead of reaching older ones (and a loop that
-   waits for `has_more` to clear never ends). Search alone can miss old items, so it is not a
-   substitute.
-2. **`has_more` set** (the group holds more episodes than were listed): the oldest charter
-   items may be missing. Add every id in the Console's `meta/charter.episode_ids` (the last
-   assembly) that the list didn't return, each with `get_episode`. Charter and Steering
-   written since that assembly are among the newest episodes, so the union is complete.
-   Completeness can't be shown when there is no earlier assembly, or one of its ids no longer
-   resolves: stop the run before any research or write, with "charter incomplete: <reason>".
-   A reader without the Console (vault-reviewer) escalates every row with that reason
-   instead.
-3. For each, parse the header lines the templates in
+1. **The charter's own episodes.** Charter and Steering are written as `vault-charter`, so
+   they hang off that agent's node. Call
+   `get_episodes_for_entity(entity_id="vault_<slug>:Agent:vault-charter", last_n=20)` and page
+   with `offset` (+20) while `has_more` is set (this tool's offset works, unlike
+   `get_episodes`'s). Keep the episodes whose name starts `Charter:` or `Steering:`; skip
+   `Config:` and anything else. The id doesn't resolve: find the node with
+   `search_memory_nodes(query="vault-charter", entity="Agent", group_ids=["vault_<slug>"])`,
+   taking the node named exactly `vault-charter`; none → step 1 contributes nothing.
+2. **The Console's index.** Steering written before every Charter and Steering episode was
+   tagged `vault-charter` may hang off the agent it targets instead, so step 1 can't see it.
+   Add every id in the Console's `meta/charter.episode_ids` (the last assembly) and the
+   `committed_episode` of every `steering` row with `status: committed`. Read each id step 1
+   didn't return with `get_episode` (it takes a uuid or a semantic id).
+3. **Ids that don't resolve.**
+   - A committed `steering` row's episode: the owner's instruction can't be read. Stop the run
+     before any research or write, with "charter incomplete: steering row <id> → <episode id>
+     not found".
+   - An id only `meta/charter.episode_ids` holds: the index recorded something that isn't in
+     the vault. Leave it out, put "charter index id <id> not found" in the Run's `errors[]`,
+     and the next `meta/charter` write drops it.
+4. **Every Charter section is there.** `scope`, `sources`, `review` and one `beat:<name>` for
+   each beat in `meta/vault.beats` need a Charter episode, and so does `roles` when the last
+   assembly had one (a `roles` section in `meta/charter.sections`). One missing: stop before
+   any research or write, with "charter incomplete: no <applies_to> Charter".
+5. For each episode, parse the header lines the templates in
    `../../vault-steer/references/charter-template.md` define: `applies_to`, `supersedes`,
    `date`, `target_agent` (steering aimed at one agent).
+
+No Console (vault-steer `--charter` on a new vault): there is no charter to read yet. Any other
+run that can't read `meta/charter` or `steering` stops with "charter incomplete: Console
+unreadable", since step 1 alone can miss older Steering.
+
+The budget: one page per 20 charter episodes, plus one `get_episode` per indexed id step 1
+didn't return. Both grow with the charter, never with the vault.
+
+vault-reviewer doesn't run these steps: vault-curate sends it the ids on a `charter:` line and
+it reads each with `get_episode` (`../../vault-review/SKILL.md` Step 1.2), then applies
+§Assemble below.
 
 ## Assemble
 
@@ -45,12 +70,14 @@ effective_charter:
   brief: <text>
   roles: [<role names>]    # role taxonomy, for vaults that track roles
   agent_steering: {<agent>: [<text>]}
-  episode_ids: [<every Charter/Steering episode used>]
+  episode_ids: [<every Charter/Steering episode used, as get_episode returned its id>]
   clashes: [<pair>]
 ```
 
 Every run records `episode_ids` in its Run, so each finding traces to the charter that
-produced it.
+produced it. Record each id as `get_episode` or `get_episodes_for_entity` returned it, never
+one built from an episode's name: a hand-built id that resolves to nothing poisons the index
+for the next run (step 3).
 
 ## Recent steering
 
