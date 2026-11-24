@@ -1,0 +1,74 @@
+{
+  "skill_name": "vault-follow",
+  "note": "These evals follow the public flagship vault, next-agent-to-hire (group vault_next_agent_to_hire), on the shared gutt stage from a personal login. Any public vault with committed Findings can stand in. No eval may write to memory. Evals 0 and 1 create an artifact page; eval 0 also creates a routine only after the yes it is given.",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "follow-creates-page-and-routine",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire — when the plan is shown, answer yes.",
+      "expected_output": "Checks the vault is readable with list_vaults, lists the vault's episodes with get_episodes, builds brief.json with kind digest and a 7-day window, and prepares it with vault-pages.cjs prepare digest. Shows one plan (headline, counts, page, routine name, local time and UTC cron, one gutt connector) and waits. On yes it publishes the page, then creates vault-next-agent-to-hire-digest with only the gutt connector and the page URL in its prompt.",
+      "files": [],
+      "assertions": [
+        "No Artifact publish or RemoteTrigger create happens before the plan is shown and answered",
+        "vault-pages.cjs prepare digest is run and passes before the publish",
+        "The created routine's mcp_connections has exactly one entry, a gutt connector",
+        "The routine's prompt names vault-follow, the slug, --digest and the published page URL",
+        "No add_memory, register_agent or other memory write call is made"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "digest-continues-from-last-window",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest <url of a digest page whose brief.json has window.to 7 days ago>",
+      "expected_output": "Reads brief.json from the page, starts the window the day after its window.to, keeps the last digest at the head of past, and republishes the same URL without force.",
+      "files": [],
+      "assertions": [
+        "The page's brief.json is read before the publish",
+        "The new window.from is the day after the old window.to",
+        "The publish passes that url and doesn't pass force",
+        "Every change has at least one https source URL"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "rejected-finding-left-out",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — in the window, a Verdict says 'Effect on the Finding: rejected' for one Finding episode written earlier in the same window.",
+      "expected_output": "Leaves that Finding out of changes and retired.",
+      "files": [],
+      "assertions": ["The rejected Finding's name appears in neither changes nor retired"]
+    },
+    {
+      "id": 3,
+      "eval_name": "team-login-stops-before-page",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire — the connected login is a team login: list_vaults returns only vault_team_notes.",
+      "expected_output": "Says this login can't read the vault and that public vaults are read from a personal login. Publishes nothing and creates no routine.",
+      "files": [],
+      "assertions": [
+        "No Artifact publish and no RemoteTrigger create is made",
+        "The output tells the person to sign in with their personal login"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "no-slug-stops",
+      "prompt": "/gutt-vaults:vault-follow",
+      "expected_output": "Stops with the usage line and points to vault-list.",
+      "files": [],
+      "assertions": [
+        "No memory, Artifact or RemoteTrigger call is made",
+        "The output mentions /gutt-vaults:vault-list"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "failed-listing-is-not-an-empty-week",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — get_episodes returns a timeout error.",
+      "expected_output": "Says the call failed and publishes nothing. Doesn't publish a digest saying nothing is new.",
+      "files": [],
+      "assertions": [
+        "No Artifact publish is made",
+        "The output doesn't say no new findings entered the vault"
+      ]
+    }
+  ]
+}

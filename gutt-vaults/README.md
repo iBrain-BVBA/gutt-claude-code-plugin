@@ -17,6 +17,7 @@ its own group, `vault_<slug>`, on the gutt server `gutt-pro` connects to.
 ## Try it
 
 - "Which vaults can I read?" / "Ask the coding-agents vault which vendors price per outcome."
+- "Follow the coding-agents vault: send me a digest every Monday."
 - "Start a vault on open-source coding agents: steer it to releases, pricing and outcomes."
 - "Run the daily research for the coding-agents vault."
 - "Commit my approvals on the coding-agents vault." / "Write its brief for this week."
@@ -31,7 +32,9 @@ authorise the gutt connector: in Claude Code, `/mcp` → `gutt-mcp-remote` → A
 Claude app, the gutt-pro plugin's page → Connectors → add `gutt-mcp-remote`. Authorising signs
 a new user up. `/gutt-vaults:vault-list` shows the vaults you can read, and
 `/gutt-vaults:vault-ask <slug> "<question>"` answers from a vault's committed findings, with a
-source and date for every claim. A team login reads only its team's vaults.
+source and date for every claim. `/gutt-vaults:vault-follow <slug>` publishes a digest page of
+what entered the vault and sets up a weekly routine (in Claude Code) that updates it. A team
+login reads only its team's vaults.
 
 ## Skills
 
@@ -39,6 +42,7 @@ source and date for every claim. A team login reads only its team's vaults.
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `vault-list`     | Lists the vaults your login can read and marks your own; says why an expected vault is missing                                                                                       |
 | `vault-ask`      | Answers a question from one vault's committed findings only, every claim cited with its source URL and date; says when the vault doesn't cover it                                    |
+| `vault-follow`   | Follows a vault: a weekly digest page of the findings that entered or left it, each cited, kept current by a routine on your account; `--stop` pauses it                             |
 | `vault-steer`    | Creates a vault (on a server with vaults), its charter (scope, beats, source rules, review policy) and its Console, and turns your instructions into steering                        |
 | `vault-curate`   | The daily run: assembles the charter, sends one scout per beat, verifies every source, writes rows to the Console, runs the reviewer                                                 |
 | `vault-review`   | The reviewer's policy: precedent matching against your past verdicts, and the autonomy ladder it climbs per class                                                                    |

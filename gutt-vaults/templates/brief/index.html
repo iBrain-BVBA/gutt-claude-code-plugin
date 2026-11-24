@@ -6,7 +6,8 @@
 <style>
 /* Layout: a weekly newsletter page. One reading column: the week's headline, what changed (each
    finding with its sources), open conflicts, then every source. Committed findings only.
-   Data: brief.json next to this page (see the vault-pages skill's page-data reference). */
+   Data: brief.json next to this page (see the vault-pages skill's page-data reference).
+   The same page shows a reader's weekly digest when brief.json says "kind": "digest". */
 :root {
   --bg: #f6f5f1; --paper: #fffefb; --ink: #16181d; --ink-2: #464c59; --muted: #737a88; --line: #e2e0d8; --chip: #efede6;
   --accent: #F46C00; --accent-ink: #9a4400; --link: #3a5490; --focus: #4C6CB2;
@@ -129,17 +130,32 @@ footer p { margin: 0 0 6px; }
   function render(d) {
     page.textContent = "";
     var v = d.vault || {}, changes = Array.isArray(d.changes) ? d.changes : [], conflicts = Array.isArray(d.conflicts) ? d.conflicts : [];
-    var sources = Array.isArray(d.sources) ? d.sources : [];
-    if (v.name) document.title = v.name + " Brief";
+    var sources = Array.isArray(d.sources) ? d.sources : [], retired = Array.isArray(d.retired) ? d.retired : [];
+    var digest = d.kind === "digest", w = d.window || {};
+    var L = digest ? {
+      noun: " Digest", eyebrow: w.from && w.to ? fmtDate(w.from) + " – " + fmtDate(w.to) : "",
+      changed: "New in the vault", none: "No new findings entered the vault in this window.",
+      conflicts: "Conflicts settled", conflict: ["conflict", "conflicts"], noConflicts: "No conflicts were settled in this window.",
+      every: "Every source in this digest", past: "Earlier digests",
+      footer: "This digest was built for one reader from the findings the vault's owner committed in this window. Every claim links its public source; follow them for the full text."
+    } : {
+      noun: " Brief", eyebrow: d.week ? "Week " + d.week.replace(/^\d{4}-W/, "") + ", " + d.week.slice(0, 4) : "",
+      changed: "What changed this week", none: "No new findings entered the vault this week.",
+      conflicts: "Open conflicts", conflict: ["open conflict", "open conflicts"], noConflicts: "No open conflicts this week.",
+      every: "Every source this week", past: "Earlier briefs",
+      footer: "Every finding here was checked against its sources and approved before it entered the vault: by the vault's owner, or by a reviewer trained on the owner's past decisions. Sources are public; follow them for the full text."
+    };
+    if (v.name) document.title = v.name + L.noun;
 
     var head = h("header", null,
-      h("div", { class: "eyebrow", text: [v.name, d.week ? "Week " + d.week.replace(/^\d{4}-W/, "") + ", " + d.week.slice(0, 4) : ""].filter(Boolean).join(" · ") }),
+      h("div", { class: "eyebrow", text: [v.name, L.eyebrow].filter(Boolean).join(" · ") }),
       h("h1", { text: d.headline || "This week in the vault" }),
       d.intro ? h("p", { class: "intro", text: d.intro }) : null,
       h("div", { class: "meta" },
         d.published_at ? h("span", { text: "Published " + fmtDate(d.published_at) }) : null,
         h("span", { text: plural(changes.length, "finding", "findings") }),
-        conflicts.length ? h("span", { text: plural(conflicts.length, "open conflict", "open conflicts") }) : null,
+        conflicts.length ? h("span", { text: plural(conflicts.length, L.conflict[0], L.conflict[1]) }) : null,
+        retired.length ? h("span", { text: plural(retired.length, "retired", "retired") }) : null,
         h("span", { text: plural(sources.length, "source", "sources") })));
     var links = h("div", { class: "links" });
     if (safeUrl(v.graph_url)) links.appendChild(link(v.graph_url, "Explore the vault's graph"));
@@ -149,8 +165,8 @@ footer p { margin: 0 0 6px; }
 
     if (v.question) page.appendChild(h("section", null, h("h2", { text: "The question this vault answers" }), h("p", { class: "intro", text: v.question })));
 
-    var sec = h("section", null, h("h2", { text: "What changed this week" }));
-    if (!changes.length) sec.appendChild(h("p", { class: "empty", text: "No new findings entered the vault this week." }));
+    var sec = h("section", null, h("h2", { text: L.changed }));
+    if (!changes.length) sec.appendChild(h("p", { class: "empty", text: L.none }));
     changes.forEach(function (c) {
       var chips = h("div", { class: "chips" },
         c.beat ? h("span", { class: "chip", text: c.beat }) : null,
@@ -181,8 +197,18 @@ footer p { margin: 0 0 6px; }
           }))))));
     }
 
-    var cs = h("section", null, h("h2", { text: "Open conflicts" }));
-    if (!conflicts.length) cs.appendChild(h("p", { class: "empty", text: "No open conflicts this week." }));
+    if (retired.length) {
+      page.appendChild(h("section", null, h("h2", { text: "Retired" }),
+        retired.map(function (r) {
+          return h("article", { class: "card" }, h("h3", { text: r.title || r.finding }),
+            r.replaced_by ? h("p", { class: "why" }, h("b", { text: "Replaced by: " }), r.replaced_by) : null,
+            r.note ? h("p", { class: "claim", text: r.note }) : null,
+            Array.isArray(r.sources) && r.sources.length ? h("ul", { class: "srcs", "aria-label": "Sources" }, r.sources.map(sourceItem)) : null);
+        })));
+    }
+
+    var cs = h("section", null, h("h2", { text: L.conflicts }));
+    if (!conflicts.length) cs.appendChild(h("p", { class: "empty", text: L.noConflicts }));
     conflicts.forEach(function (c) {
       function side(x, cls, lbl) {
         x = x || {};
@@ -196,7 +222,7 @@ footer p { margin: 0 0 6px; }
     page.appendChild(cs);
 
     if (sources.length) {
-      page.appendChild(h("section", null, h("h2", { text: "Every source this week" }),
+      page.appendChild(h("section", null, h("h2", { text: L.every }),
         h("ol", { class: "all" }, sources.map(function (s) {
           var by = [s.publisher || host(s.url), s.source_class, s.retrieved ? "retrieved " + fmtDate(s.retrieved) : ""].filter(Boolean).join(" · ");
           return h("li", null, link(s.url, s.title || s.url), by ? h("span", { class: "by", text: " · " + by }) : null);
@@ -204,14 +230,14 @@ footer p { margin: 0 0 6px; }
     }
 
     if (Array.isArray(d.past) && d.past.length) {
-      page.appendChild(h("section", null, h("h2", { text: "Earlier briefs" }),
+      page.appendChild(h("section", null, h("h2", { text: L.past }),
         h("ul", { class: "past" }, d.past.map(function (p) {
           return h("li", null, h("span", { class: "wk", text: p.week || "" }), safeUrl(p.url) ? link(p.url, p.headline || p.week) : h("span", { text: p.headline || "" }));
         }))));
     }
 
     page.appendChild(h("footer", null,
-      h("p", { text: "Every finding here was checked against its sources and approved before it entered the vault: by the vault's owner, or by a reviewer trained on the owner's past decisions. Sources are public; follow them for the full text." }),
+      h("p", { text: L.footer }),
       h("p", { text: "Built with gutt memory." })));
   }
 
@@ -226,7 +252,7 @@ footer p { margin: 0 0 6px; }
       render(d);
     } catch (e) {
       console.error("brief.json could not be shown", e);
-      status("This page's data is malformed (" + e.message + "). The vault's owner needs to publish it again.");
+      status("This page's data is malformed (" + e.message + "). " + (d && d.kind === "digest" ? "Whoever follows this vault needs to build the digest again." : "The vault's owner needs to publish it again."));
     }
   }).catch(function (e) {
     console.error("brief.json did not load", e);

@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "kind": "digest",
+  "vault": {
+    "name": "Example Vault",
+    "slug": "example-vault",
+    "question": "Which open-source coding agents are ready for a team to adopt, and what do they cost?"
+  },
+  "week": "2026-W45",
+  "window": { "from": "2026-11-01", "to": "2026-11-07" },
+  "published_at": "2026-11-07",
+  "headline": "Acme Coder ships 2.0, and its seat price no longer holds",
+  "intro": "One finding entered the vault this week and one was retired.",
+  "changes": [
+    {
+      "finding": "Acme Coder 2.0 is generally available",
+      "title": "Acme Coder 2.0 is generally available",
+      "claim": "Acme Labs announced general availability of Acme Coder 2.0 for teams.",
+      "beat": "releases",
+      "claimant": "Acme Labs",
+      "evidence_grade": "primary_source",
+      "published_date": "2026-11-02",
+      "sources": [
+        {
+          "url": "https://example.com/0",
+          "title": "Acme Coder 2.0 release notes",
+          "publisher": "example.com",
+          "retrieved": "2026-11-03",
+          "source_class": "primary"
+        }
+      ]
+    }
+  ],
+  "retired": [
+    {
+      "finding": "Acme Coder costs $19 per seat",
+      "title": "Acme Coder costs $19 per seat",
+      "replaced_by": "Acme Coder costs $25 per seat",
+      "note": "Acme's pricing page changed on 5 November.",
+      "sources": [
+        {
+          "url": "https://example.com/1",
+          "title": "Acme pricing",
+          "publisher": "example.com",
+          "retrieved": "2026-11-05",
+          "source_class": "primary"
+        }
+      ]
+    }
+  ],
+  "conflicts": [],
+  "sources": [
+    {
+      "url": "https://example.com/0",
+      "title": "Acme Coder 2.0 release notes",
+      "publisher": "example.com",
+      "retrieved": "2026-11-03",
+      "source_class": "primary"
+    },
+    {
+      "url": "https://example.com/1",
+      "title": "Acme pricing",
+      "publisher": "example.com",
+      "retrieved": "2026-11-05",
+      "source_class": "primary"
+    }
+  ],
+  "past": [{ "week": "2026-W44", "url": "https://example.com/digest-w44", "headline": "First digest" }]
+}

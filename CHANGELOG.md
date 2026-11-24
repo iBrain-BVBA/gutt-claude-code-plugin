@@ -13,6 +13,15 @@
   team login reading a public vault is told to sign in with a personal login, instead of
   getting an empty answer.
 
+- **gutt-vaults: follow a vault.** `/gutt-vaults:vault-follow <slug>` builds a digest of the
+  Findings that entered the vault in the last week and the ones a Verdict retired, each with
+  its sources, and publishes it as a page for the reader. On the reader's yes it also creates a
+  weekly routine, `vault-<slug>-digest`, that updates the same page from where the last digest
+  stopped. The routine carries only the gutt connector and never writes to memory. `--digest`
+  builds one now and `--stop` pauses the routine. The digest page is the Brief template, shown
+  as a digest when `brief.json` says `"kind": "digest"`; `vault-pages.cjs prepare digest` and
+  `check digest` check its `window` and `retired` fields.
+
 ### Changed
 
 - **gutt-vaults: `vault-steer --charter` creates the vault** on a server that has vaults. It
