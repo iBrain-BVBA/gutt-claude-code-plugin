@@ -15,7 +15,8 @@ findings   id, vault, type (finding|conflict|reverify|card_update), title, claim
            card{role, section, diff, maturity_change, first_independent_evidence}  # card_update
            status (pending|auto_approved|auto_rejected|escalated|approved|rejected|committed),
            review{decision, prediction, confidence, precedents[] (Verdict episode uuids),
-                  reason, stage, class, run_id},
+                  reason, stage, class (the row's stage class: type, or finding/<beat>),
+                  class_legacy (a pre-22 Nov 2026 feature key it replaced), run_id},
            human{decision (approved|rejected|edited), note, edited_claim,
                  reason (rejections: a reason key below), resolution (a|b|both, conflicts),
                  confirm (bool, audit), blind (bool), at},

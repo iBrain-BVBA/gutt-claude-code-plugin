@@ -723,10 +723,19 @@ b.short { color: var(--bad); font-weight: 600; }
 
   // ---------- rows, classes and the reviewer's calls ----------
   function byCreatedDesc(a, b) { return String(b.created || "").localeCompare(String(a.created || "")); }
+  // The stage class comes from the row itself: finding/<beat>, or the row's type
+  // (vault-review's autonomy-ladder.md §Stage class). review.class only records it. Rows reviewed
+  // before 22 Nov 2026 carry keys with precedent features appended
+  // (finding|pricing|pricing|zendesk.com|3), and reading those as classes made a class per row.
+  var STAGE_CLASS = /^(finding\/[^\/|+\s]+|card_update|reverify|conflict)$/;
   function rowClass(r) {
+    var t = r.type || "finding";
+    if (t !== "finding") return t;
+    if (r.beat) return "finding/" + r.beat;
     var c = r.review && r.review["class"];
-    if (c) return c;
-    return r.type === "finding" || !r.type ? "finding/" + (r.beat || "unclassified") : r.type;
+    if (c && STAGE_CLASS.test(c)) return c;
+    var m = /^finding[\/|+]([^\/|+\s]+)/.exec(c || "");
+    return "finding/" + (m ? m[1] : "unclassified");
   }
   function classStage(cls) { return Number(classRecord(cls).stage) || 0; }
   // A class's numbers come from the last Calibration; its stage and permissions from the newest
@@ -1375,7 +1384,7 @@ b.short { color: var(--bad); font-weight: 600; }
     knownClasses().forEach(function (k) { set[k] = 1; });
     S.findings.forEach(function (r) { if (r.review && predicted(r)) set[rowClass(r)] = 1; });
     delete set.conflict;
-    return Object.keys(set).sort(function (a, b) { return (/^finding\//.test(b) - /^finding\//.test(a)) || classLabel(a).localeCompare(classLabel(b)); });
+    return Object.keys(set).filter(function (k) { return STAGE_CLASS.test(k); }).sort(function (a, b) { return (/^finding\//.test(b) - /^finding\//.test(a)) || classLabel(a).localeCompare(classLabel(b)); });
   }
   function meter(title, have, need, line, earned) {
     var frac = earned ? 1 : need ? Math.min(1, have / need) : 0;
@@ -1404,32 +1413,48 @@ b.short { color: var(--bad); font-weight: 600; }
     // A direction the ceiling still allows is listed with what it needs; the cap is named when it
     // holds back a direction or the steady stage.
     var capped = (!rec.auto_reject && cap < 1) || (!rec.auto_approve && cap < 2) || (rec.auto_approve && st < 3 && cap < 3);
-    if (!rec.auto_reject && cap >= 1) {
-      if (rej.bad) malformed();
-      else if (rej.n < n1) wait.push(plural(n1 - rej.n, "more reject prediction"));
-      else if (rej.share < a1) wait.push("Reject accuracy; see disagreements");
-      else wait.push("Auto-reject at the next research run");
-    }
-    if (!rec.auto_approve && cap >= 2) {
-      if (apr.bad) malformed();
-      else if (apr.n < n2) wait.push(plural(n2 - apr.n, "more approve prediction"));
-      else if (apr.share < a2) wait.push("Approve accuracy; see disagreements");
-      else if (cooling) wait.push("No overrides until " + shortDay(coolUntil.toISOString()));
-      else if (!rn || rn < cfgNum("ladder.replay_size") || rk / rn < cfgNum("ladder.replay_pass")) wait.push("A passing eval replay");
-      else wait.push("Auto-approve at the next research run");
+    // A Calibration written before the per-direction split has only a class total: its reject and
+    // approve counts are unknown, not zero, so the class waits for the next Calibration instead of
+    // showing "10 more reject predictions".
+    var nosplit = rec.reject == null && rec.approve == null && rec.predictions != null;
+    if (nosplit) {
+      if ((!rec.auto_reject && cap >= 1) || (!rec.auto_approve && cap >= 2)) wait.push("The next calibration's reject and approve counts");
+    } else {
+      if (!rec.auto_reject && cap >= 1) {
+        if (rej.bad) malformed();
+        else if (rej.n < n1) wait.push(plural(n1 - rej.n, "more reject prediction"));
+        else if (rej.share < a1) wait.push("Reject accuracy; see disagreements");
+        else wait.push("Auto-reject at the next research run");
+      }
+      if (!rec.auto_approve && cap >= 2) {
+        if (apr.bad) malformed();
+        else if (apr.n < n2) wait.push(plural(n2 - apr.n, "more approve prediction"));
+        else if (apr.share < a2) wait.push("Approve accuracy; see disagreements");
+        else if (cooling) wait.push("No overrides until " + shortDay(coolUntil.toISOString()));
+        else if (!rn || rn < cfgNum("ladder.replay_size") || rk / rn < cfgNum("ladder.replay_pass")) wait.push("A passing eval replay");
+        else wait.push("Auto-approve at the next research run");
+      }
     }
     if (rec.auto_approve && st < 3 && cap >= 3) wait.push(rolling != null && rolling >= a3 ? "Steady at the next research run" : "30-day agreement of " + pct(a3));
     if (capped) wait.push(cap === 0 ? "Held in shadow in Settings" : "Capped at stage " + cap + " in Settings");
     if (!wait.length) wait.push(st >= 3 ? "Nothing: steady" : "Nothing");
-    return { rec: rec, st: st, cap: cap, rej: rej, apr: apr, rolling: rolling, a1: a1, a2: a2, a3: a3, n1: n1, n2: n2, rk: rk, rn: rn, wait: wait };
+    return { rec: rec, st: st, cap: cap, rej: rej, apr: apr, rolling: rolling, a1: a1, a2: a2, a3: a3, n1: n1, n2: n2, rk: rk, rn: rn, wait: wait, nosplit: nosplit };
   }
   function classRow(cls, trend) {
     var c = classStatus(cls), rec = c.rec, st = c.st, cap = c.cap, rej = c.rej, apr = c.apr, rolling = c.rolling;
     var n1 = c.n1, a1 = c.a1, n2 = c.n2, a2 = c.a2, a3 = c.a3, rk = c.rk, rn = c.rn, wait = c.wait, live = liveSince(cls);
     var needsEl = h("div", { class: "needs" });
     if (rej.bad || apr.bad) needsEl.appendChild(h("b", { class: "short", text: "Calibration data malformed (agree must be a count)" }));
-    needsEl.appendChild(meter("Auto-reject: reject predictions", rej.n, n1, rightLine(rej, a1), !!rec.auto_reject));
-    needsEl.appendChild(meter("Auto-approve: approve predictions", apr.n, n2, [rightLine(apr, a2), " · replay " + (rn ? rk + "/" + rn : "not run")], !!rec.auto_approve));
+    if (c.nosplit) {
+      needsEl.appendChild(h("p", { class: "note", text: plural(Number(rec.predictions) || 0, "prediction") +
+        (rec.agreement != null ? ", " + pct(Number(rec.agreement)) + " agree overall" : "") +
+        (rec.auto_reject ? ". Auto-reject is on" : "") + (rec.auto_approve ? ". Auto-approve is on" : "") +
+        ". This calibration has no reject and approve split; the next one counts each against its target (" +
+        n1 + " reject at " + pct(a1) + ", " + n2 + " approve at " + pct(a2) + ")." }));
+    } else {
+      needsEl.appendChild(meter("Auto-reject: reject predictions", rej.n, n1, rightLine(rej, a1), !!rec.auto_reject));
+      needsEl.appendChild(meter("Auto-approve: approve predictions", apr.n, n2, [rightLine(apr, a2), " · replay " + (rn ? rk + "/" + rn : "not run")], !!rec.auto_approve));
+    }
     if (rec.auto_approve) needsEl.appendChild(meter("Steady: 30-day agreement", Math.round((rolling || 0) * 100), Math.round(a3 * 100), "needs " + pct(a3), st >= 3));
     var pts = trend.map(function (c) { var v = ((c.by_class || {})[cls] || {}); return v.agreement != null ? Number(v.agreement) : null; }).filter(function (v) { return v != null && !isNaN(v); });
     var row = h("div", { class: "crow", role: "row" },
@@ -1974,7 +1999,8 @@ b.short { color: var(--bad); font-weight: 600; }
   if (typeof window.__vaultConsoleTest === "function") window.__vaultConsoleTest({
     S: S, FIELD: FIELD, cfgEdits: cfgEdits, saveSettings: saveSettings, canSettings: canSettings,
     lastOverride: lastOverride, countedThrough: countedThrough, liveSince: liveSince, dirStats: dirStats,
-    decide: decide, undoDone: undoDone, inboxItems: inboxItems, classStatus: classStatus, leaveOpen: leaveOpen
+    decide: decide, undoDone: undoDone, inboxItems: inboxItems, classStatus: classStatus, leaveOpen: leaveOpen,
+    rowClass: rowClass, reviewerClasses: reviewerClasses
   });
 
   render();

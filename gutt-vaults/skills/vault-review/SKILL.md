@@ -117,10 +117,14 @@ No `config:` or no `stage_by_class:` line means **stage 0 (shadow) for every cla
 Each row gets two keys (`references/autonomy-ladder.md` §Stage class):
 
 - **Stage class** (`class` in the output), the key Calibration stages: `finding/<beat>`,
-  `card_update`, `reverify`, `conflict`. Read the stage for this key from `stage_by_class`; a
-  key missing from it is stage 0.
+  `card_update`, `reverify`, `conflict`. Read it off the row: the row's `type`, and for a
+  finding `finding/` plus the row's `beat` (`finding/pricing`). Nothing else goes in it, not
+  even for a card diff on a beat (`card_update`, never `card_update/pricing`). Read the stage
+  for this key from `stage_by_class`; a key missing from it is stage 0.
 - **Precedent features**, for similarity only: `beat`, `claim_type`, `source_class`,
-  `source_domain`, significance band (1–2, 3, 4, 5).
+  `source_domain`, significance band (1–2, 3, 4, 5). They never go into `class`:
+  `finding|pricing|pricing|zendesk.com|3` or `finding/failures/failure/legal500.com/sig1-2` is
+  a class of one row that can never be promoted, and vault-curate replaces it.
 
 Then apply hard rule 2. An always-escalate row still goes through Step 3: it is escalated
 whatever its precedents, but its prediction is measured like any other.
@@ -174,7 +178,7 @@ Final message: only this JSON.
       "prediction": "approve|reject|edit|null",
       "confidence": 0.0,
       "precedents": ["<Verdict episode uuid>"],
-      "class": "<class key>",
+      "class": "finding/<beat>|card_update|reverify|conflict",
       "stage": 0,
       "reason": "<one line; for escalate: why it couldn't be auto-decided>"
     }

@@ -162,6 +162,20 @@
         "notes contain 'class_ceilings absent: every class held at stage 0'",
         "No auto_approve or auto_reject anywhere in the output"
       ]
+    },
+    {
+      "id": 12,
+      "eval_name": "class-is-the-rows-stage-class",
+      "prompt": "vault: next-agent-to-hire\ngroup: vault_next_agent_to_hire\nrun: eval-12\nmemory_server: {memory_server}\nconfig: {\"config_version\": 0, \"review\": {\"precedents_min\": 5, \"precedent_agreement\": 0.9, \"precedent_half_life_days\": 60, \"override_cooloff_days\": 30, \"recent_steering_days\": 7, \"audit_rate\": 0.1, \"audit_min\": 2}, \"ladder\": {\"ceiling\": 3, \"class_ceilings\": {}, \"replay_size\": 20, \"replay_pass\": 0.85}}\nstage_by_class: {}\nReview these pending rows. No Calibration episode exists, so no class has a stage yet. Rows: see fixtures/pending-rows.json.",
+      "expected_output": "Each decision's class is read off its row: finding/<beat> for a finding and the row's type otherwise, with no claim type, source, domain or significance appended.",
+      "files": ["evals/fixtures/pending-rows.json"],
+      "assertions": [
+        "row-pricing has class finding/pricing",
+        "row-sig5 has class finding/failures",
+        "row-conflict has class conflict",
+        "row-new-domain has class finding/launches",
+        "No class contains '|', '+', a second '/', a domain name or a significance band"
+      ]
     }
   ]
 }

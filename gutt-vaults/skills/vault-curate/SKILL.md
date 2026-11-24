@@ -196,7 +196,14 @@ Treat that like a failed reviewer (below) and log its `error` in the run row.
 
 Apply its decisions with one batch: `auto_approve` → `auto_approved`, `auto_reject` →
 `auto_rejected`, `escalate` → `escalated`; copy `review{}` (fail-closed rows carry
-`prediction: null`; keep it null); set `audit: true` on its `audit_sample` rows. A reason of
+`prediction: null`; keep it null); set `audit: true` on its `audit_sample` rows.
+The `class` in a row's `review{}` is always the row's stage class, read off the row (`type`,
+and `finding/<beat>` for a finding; `../vault-review/references/autonomy-ladder.md` §Stage
+class), never the reviewer's string as sent. When the reviewer's `class` differs, write the row's class, and
+count the rows and quote the first difference in the run row's notes, as in
+`class corrected: 3 rows, finding|pricing|pricing|zendesk.com|3 → finding/pricing`. The
+reviewer read its stage for a key that isn't the row's, so an `auto_approve` or `auto_reject`
+on such a row is applied as `escalated`, reason `reviewer class mismatch`. A reason of
 `no memory_server passed by vault-curate` or `memory unavailable: <prefix>` goes into the run
 row's errors as it is, not as an allowlist fix.
 
