@@ -669,7 +669,7 @@ describe("the Console", () => {
 
 const CONSOLE_HARNESS = String.raw`
 const fs = require("fs");
-const [scriptPath, fieldsPath, labelsPath, scenarioPath] = process.argv.slice(2);
+const [scriptPath, fieldsPath, labelsPath, scenarioPath, preludePath] = process.argv.slice(2);
 const _st = setTimeout;
 global.setTimeout = (f, ms) => { const t = _st(f, Math.min(ms || 0, 5)); if (t.unref) t.unref(); return t; };
 global.setInterval = () => 0;
@@ -698,6 +698,8 @@ global.document = {
 global.location = { hash: "" };
 let api = null;
 global.window = { addEventListener() {}, scrollTo() {}, __vaultConsoleTest(x) { api = x; } };
+// A prelude sets up what the page finds when it loads (window.claude, say) before the script runs.
+if (preludePath) new Function("fake", fs.readFileSync(preludePath, "utf8"))(fake);
 const realError = console.error;
 console.error = () => {};
 console.warn = () => {};
@@ -711,8 +713,12 @@ Promise.resolve(scenario(api)).then(
 
 let consoleDir = null;
 let scenarioCount = 0;
-/** Runs `scenario` (a module exporting `(api) => result`) against the Console's script in a fresh node. */
-function runConsole(scenario) {
+/**
+ * Runs `scenario` (a module exporting `(api) => result`) against the Console's script in a fresh
+ * node. `opts.labels` and `opts.fields` replace the page's JSON blocks with this text (to break
+ * one); `opts.prelude` runs before the script, with `fake` (a stub that accepts any call) in scope.
+ */
+function runConsole(scenario, opts = {}) {
   if (!consoleDir) {
     consoleDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-console-"));
     const html = read(CONSOLE);
@@ -723,13 +729,29 @@ function runConsole(scenario) {
     fs.writeFileSync(path.join(consoleDir, "console.js"), consoleScript());
     fs.writeFileSync(path.join(consoleDir, "harness.js"), CONSOLE_HARNESS);
   }
-  const file = path.join(consoleDir, `scenario${scenarioCount++}.js`);
+  const n = scenarioCount++;
+  const file = path.join(consoleDir, `scenario${n}.js`);
   fs.writeFileSync(file, scenario);
+  const own = (name, text, fallback) => {
+    if (text === undefined) {
+      return fallback;
+    }
+    fs.writeFileSync(path.join(consoleDir, `${name}${n}`), text);
+    return `${name}${n}`;
+  };
+  const args = [
+    "harness.js",
+    "console.js",
+    own("fields.json.", opts.fields, "fields.json"),
+    own("labels.json.", opts.labels, "labels.json"),
+    file,
+  ];
+  if (opts.prelude) {
+    args.push(own("prelude.js.", opts.prelude));
+  }
   const out = spawnSync(
     process.execPath,
-    ["harness.js", "console.js", "fields.json", "labels.json", file].map((f) =>
-      path.resolve(consoleDir, f)
-    ),
+    args.map((f) => path.resolve(consoleDir, f)),
     { encoding: "utf8", timeout: 30000 }
   );
   assert.equal(out.status, 0, out.stderr);
@@ -1157,6 +1179,237 @@ function rowsDb(docs, failCode) {
     };`
     );
     assert.equal(out, 1, "no update after the row is gone");
+  });
+});
+
+// Fixes that first landed on a live Console and were carried back into this template.
+describe("the Console's fixes from the flagship", () => {
+  it("turns rejecting off when the labels block is broken or has no reasons", () => {
+    const scenario = `module.exports = (api) => {
+      api.S.db = {}; api.S.readOnly = false; api.S.busy = {}; api.S.acts.x = {};
+      api.reasonChips({ id: "x" }, () => {}, "Why reject?");
+      return { broken: api.LABELS_BROKEN, keys: Object.keys(api.S.acts.x).sort() };
+    };`;
+    const good = runConsole(scenario);
+    assert.equal(good.broken, false);
+    assert.deepEqual(good.keys, ["1", "2", "3", "4", "5", "6", "7"]);
+    for (const labels of ["{ not json", JSON.stringify({ stages: [] })]) {
+      const out = runConsole(scenario, { labels });
+      assert.equal(out.broken, true, labels);
+      assert.deepEqual(out.keys, [], `no reason key may record a rejection: ${labels}`);
+    }
+  });
+
+  it("flags a broken config-fields block and still reads numbers without throwing", () => {
+    const out = runConsole(
+      `module.exports = (api) => {
+        api.S.cfgDraft = { "ladder.ceiling": "2" };
+        return { error: api.S.fieldsError, fields: Object.keys(api.FIELD).length,
+          ceiling: String(api.cfgNum("ladder.ceiling")), edits: api.cfgEdits().edits };
+      };`,
+      { fields: "{ not json" }
+    );
+    assert.deepEqual(out, { error: true, fields: 0, ceiling: "0", edits: [] });
+    const ok = runConsole(`module.exports = (api) => api.S.fieldsError;`);
+    assert.equal(ok, false);
+  });
+
+  it("pins an older review charter's number when it is typed unchanged, and resets cleanly", () => {
+    const out = runConsole(`module.exports = (api) => {
+      api.S.charter = { sections: [{ applies_to: "review", text: "Stage ceiling: 2" }] };
+      const at = (draft) => { api.S.cfgDraft = draft; return api.cfgEdits().edits; };
+      const pin = at({ "ladder.ceiling": "2" });
+      const blankText = at({ "brief.linkedin_cta": "" });
+      const resetUnsaved = at({ "ladder.ceiling": null });
+      api.S.config = { config_version: 1, values: { "ladder.ceiling": 2 } };
+      const resetSaved = at({ "ladder.ceiling": null });
+      const same = at({ "ladder.ceiling": "2" });
+      const moved = at({ "ladder.ceiling": "1" });
+      return { pin, blankText, resetUnsaved, resetSaved, same, moved };
+    };`);
+    assert.deepEqual(out.pin, [{ key: "ladder.ceiling", value: 2, pin: true }]);
+    assert.deepEqual(out.blankText, [], "an empty text field is not a value to pin");
+    assert.deepEqual(out.resetUnsaved, []);
+    assert.deepEqual(out.resetSaved, [{ key: "ladder.ceiling", value: null }]);
+    assert.deepEqual(out.same, []);
+    assert.deepEqual(out.moved, [{ key: "ladder.ceiling", value: 1 }]);
+  });
+
+  it("reads the four numbers an older review charter may state", () => {
+    const out = runConsole(`module.exports = (api) => {
+      const keys = ["ladder.ceiling", "review.precedents_min", "review.precedent_agreement", "review.override_cooloff_days"];
+      const read = (text) => { api.S.charter = { sections: [{ applies_to: "review", text }] };
+        return Object.fromEntries(keys.map((k) => [k, api.charterNumber(k)])); };
+      return {
+        stated: read("Stage ceiling: 2\\nPrecedents needed (N): 5\\nAgreement threshold: 90 %\\n" +
+          "No auto calls after an override of the reviewer in the class within 30 days."),
+        none: read("Escalate anything about pricing."),
+      };
+    };`);
+    assert.deepEqual(out.stated, {
+      "ladder.ceiling": 2,
+      "review.precedents_min": 5,
+      "review.precedent_agreement": 0.9,
+      "review.override_cooloff_days": 30,
+    });
+    assert.ok(
+      Object.values(out.none).every((v) => v === null),
+      JSON.stringify(out.none)
+    );
+  });
+
+  it("says when a save applies: the Brief keys at the next brief, the rest at the next research run", () => {
+    const out = runConsole(`module.exports = (api) => {
+      const at = (keys, ceil, reset) => { api.S.cfgReset = reset || null;
+        return api.whenApplies({ edits: keys.map((key) => ({ key, value: 1 })), ceil: ceil || [] }); };
+      return [
+        at(["brief.min_findings"]),
+        at(["run.pending_cap"]),
+        at(["brief.min_findings", "review.audit_min"]),
+        at(["brief.min_findings"], [{ cls: "finding/x", old: null, now: 1 }]),
+        at([], [], "ladder"),
+      ];
+    };`);
+    assert.deepEqual(out, [
+      "the next brief",
+      "the next research run",
+      "the next research run (the Brief settings at the next brief)",
+      "the next research run (the Brief settings at the next brief)",
+      "the next research run",
+    ]);
+  });
+
+  it("reads commit times in the vault's zone, and says when the times or the zone can't be read", () => {
+    const out = runConsole(`module.exports = (api) => {
+      api.S.vault = { timezone: "Asia/Tokyo", commit_times: ["12:10", "19:10"] };
+      const now = Date.now(), at = api.nextCommit().toISOString(), set = api.commitTimesSet();
+      api.S.vault = { commit_times: ["12:10 CET", 1210] };
+      const malformed = { times: api.commitTimes(), next: api.nextCommit(), set: api.commitTimesSet() };
+      api.S.vault = {};
+      const unset = { times: api.commitTimes(), set: api.commitTimesSet() };
+      api.S.vault = { timezone: "Mars/Olympus" };
+      const badZone = { next: api.nextCommit(), says: api.commitWhen() };
+      return { now, at, set, malformed, unset, badZone };
+    };`);
+    // Tokyo keeps no daylight saving time, so its offset is always +9.
+    const tokyo = (ms) => new Date(ms + 9 * 3600e3);
+    const now = tokyo(out.now);
+    const candidates = [0, 1].flatMap((d) =>
+      [
+        [12, 10],
+        [19, 10],
+      ].map(
+        ([hh, mm]) =>
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + d, hh, mm) -
+          9 * 3600e3
+      )
+    );
+    const expected = Math.min(...candidates.filter((c) => c > out.now));
+    assert.equal(out.at, new Date(expected).toISOString());
+    assert.equal(out.set, true);
+    assert.deepEqual(out.malformed, { times: [], next: null, set: true }, "no guessed time");
+    assert.deepEqual(out.unset, { times: ["12:10", "19:10"], set: false });
+    assert.equal(out.badZone.next, null);
+    assert.match(out.badZone.says, /^Next commit time unknown: .*Mars\/Olympus/);
+  });
+
+  it("offers no Undo on a done card for anything the commit has recorded", () => {
+    const out = runConsole(`module.exports = (api) => {
+      api.S.db = {}; api.S.readOnly = false; api.S.busy = {};
+      const undo = (it) => { it.view = "done"; api.doneCard(it); return "u" in api.S.acts[it.id]; };
+      return {
+        decided: undo({ id: "f1", row: { id: "f1", status: "approved" } }),
+        committed: undo({ id: "f2", row: { id: "f2", status: "committed" } }),
+        episode: undo({ id: "f3", row: { id: "f3", status: "approved", committed_episode: "ep" } }),
+        draftBrief: undo({ id: "b1", brief: { id: "b1", status: "approved", week: "2026-W47" } }),
+        publishedBrief: undo({ id: "b2", brief: { id: "b2", status: "published", week: "2026-W47" } }),
+        committedSteer: undo({ id: "s1", steer: { id: "s1", status: "committed", text: "t" } }),
+      };
+    };`);
+    assert.deepEqual(out, {
+      decided: true,
+      committed: false,
+      episode: false,
+      draftBrief: true,
+      publishedBrief: false,
+      committedSteer: false,
+    });
+  });
+
+  it("keeps a typed instruction when adding it fails, and clears it once the add lands", () => {
+    const run = (fail) =>
+      runConsole(`${TICKS}
+      module.exports = async (api) => {
+        const added = [];
+        api.S.db = { collection: () => ({ add: (doc) => { added.push(doc.text);
+          if (${fail}) { const e = new Error("nope"); e.code = "internal"; return Promise.reject(e); }
+          return Promise.resolve({ id: "s1" }); } }) };
+        api.S.readOnly = false; api.S.busy = {}; api.S.drafts["steer-text"] = "Never cite vendor webinars";
+        api.addSteering();
+        await ticks(20);
+        return { added, left: api.S.drafts["steer-text"] || null };
+      };`);
+    assert.deepEqual(run(true), {
+      added: ["Never cite vendor webinars"],
+      left: "Never cite vendor webinars",
+    });
+    assert.deepEqual(run(false), { added: ["Never cite vendor webinars"], left: null });
+  });
+
+  it("makes the page read-only when the db capability is removed, but not on a busy db", () => {
+    const run = (code) =>
+      runConsole(`${TICKS}
+      module.exports = async (api) => {
+        const row = { id: "w1", type: "finding", status: "escalated", review: { "class": "finding/x", decision: "escalate" } };
+        api.S.db = { doc: () => ({ update: () => { const e = new Error(${JSON.stringify(code)}); e.code = ${JSON.stringify(code)}; return Promise.reject(e); } }) };
+        api.S.readOnly = false; api.S.busy = {};
+        api.decide(row, "approved");
+        await ticks(20);
+        return api.S.readOnly;
+      };`);
+    assert.equal(run("capability_removed"), true);
+    assert.equal(run("resource_exhausted"), false);
+  });
+
+  it("tells a failed identity check apart from a Console without the user capability", () => {
+    const prelude = (
+      id
+    ) => `window.claude = { use: (name) => Promise.resolve(name === "db" ? fake() : {
+      can: () => Promise.resolve(true), canEdit: () => Promise.resolve(true), id: ${id} }) };`;
+    const scenario = `${TICKS} module.exports = async (api) => { await ticks(20);
+      return { me: api.S.me, known: api.S.idKnown, error: api.S.idError }; };`;
+    const failed = runConsole(scenario, {
+      prelude: prelude(`() => Promise.reject(new Error("offline"))`),
+    });
+    assert.deepEqual(failed, { me: null, known: true, error: true });
+    const fine = runConsole(scenario, { prelude: prelude(`() => Promise.resolve("viewer-1")`) });
+    assert.deepEqual(fine, { me: "viewer-1", known: true, error: false });
+  });
+
+  it("parses percentages as whole numbers inside the field's range", () => {
+    const out = runConsole(`module.exports = (api) => {
+      const f = api.FIELD["review.precedent_agreement"];
+      return ["79", "101", "90", "9.5"].map((s) => { const p = api.parseField(f, s); return p.ok ? p.value : false; });
+    };`);
+    assert.deepEqual(out, [false, false, 0.9, false]);
+  });
+
+  it("words overrides and ceilings the way the autonomy ladder applies them", () => {
+    const ladder = read(path.join(SKILLS, "vault-review", "references", "autonomy-ladder.md"));
+    assert.match(ladder, /override removes that class's permission[\s\S]*?in the same run/);
+    assert.match(ladder, /A lower ceiling\s+drops a class at the next curate run/);
+    const html = read(CONSOLE);
+    assert.match(html, /the class loses it at the next research run and must re-earn it/);
+    assert.doesNotMatch(html, /until the next calibration"/);
+    const note = JSON.parse(
+      html.match(/<script type="application\/json" id="config-fields">([\s\S]*?)<\/script>/)[1]
+    ).sections.find((s) => s.id === "ladder").note;
+    assert.match(note, /lower ceiling moves a class at the next research run/);
+  });
+
+  it("styles the tab and filter badge with one .count rule", () => {
+    const css = read(CONSOLE).match(/<style>([\s\S]*?)<\/style>/)[1];
+    assert.equal(css.match(/^\.count \{/gm).length, 1);
   });
 });
 
@@ -1878,7 +2131,7 @@ describe("pages in a headless browser", () => {
         assert.ok(!body.includes(word), `#${tab} shows the internal name ${word}`);
       }
       if (query.includes("linkedin=long")) {
-        assert.match(main[1], /class="count over"/);
+        assert.match(main[1], /class="charcount over"/);
       }
       if (tab === "inbox" && query === "seed=full") {
         assert.ok(!/<img[^>]*onerror/i.test(main[1]), "Markdown in a brief must stay text");
