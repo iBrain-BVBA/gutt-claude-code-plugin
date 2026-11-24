@@ -81,6 +81,18 @@
         "Microsoft (2026-06-18): device-spend cut 23% isn't in changes",
         "Every change's Finding is the target of a DECIDES fact from an approved Verdict dated in the window"
       ]
+    },
+    {
+      "id": 7,
+      "eval_name": "schemeless-source-reported",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — in the window, the approved HubSpot Revenue agent Finding has one https source and one SourceDocument whose url is legal.hubspot.com/hubspot-product-and-services-catalog, with no scheme.",
+      "expected_output": "Keeps the change with its https source only, and the output contract's left out line names the dropped source and its Finding.",
+      "files": [],
+      "assertions": [
+        "No source in brief.json has a url that doesn't start https://",
+        "The HubSpot change is in changes with the knowledge.hubspot.com source",
+        "The output has a line starting left out: 1 sources without an https URL that names the HubSpot Finding"
+      ]
     }
   ]
 }

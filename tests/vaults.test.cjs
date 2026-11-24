@@ -2383,6 +2383,16 @@ describe("reader skills", () => {
     }
     assert.ok(text.includes("The vault doesn't cover this."));
     assert.ok(/`rejected` Finding is never used/.test(text), "rejected Findings are excluded");
+    assert.ok(
+      text.includes('get_node_edges(node_id=<finding id>, edge_type="DECIDES")'),
+      "a Finding counts only when an approved Verdict decides it, not by its status"
+    );
+    assert.match(text, /left out as not yet approved/);
+    assert.match(
+      text,
+      /sources left out for a URL that isn't https/,
+      "dropped sources are counted"
+    );
   });
 
   it("vault-access.md's refusal table covers every refusal the reader and steer skills rely on", () => {
@@ -2413,6 +2423,11 @@ describe("reader skills", () => {
     }
     assert.ok(text.includes('edge_type="DECIDES"'), "find the window's decisions through Verdicts");
     assert.ok(!text.includes("`get_episodes"), "never list episodes: their bodies are too large");
+    assert.match(
+      text,
+      /^left out: <n> sources without an https URL/m,
+      "dropped sources are reported"
+    );
     assert.match(text, /Show the plan and wait for a yes/);
     assert.ok(text.includes("prepare digest"), "the page goes through vault-pages prepare");
     assert.ok(text.includes("Never pass `force`"));
@@ -2433,6 +2448,12 @@ describe("reader skills", () => {
     assert.ok(prompt.includes('args "{SLUG} --digest {DIGEST_URL}"'));
     assert.match(prompt, /Read-only on memory/);
     assert.match(prompt, /never ask/);
+  });
+
+  it("vault-commit writes source URLs with a scheme, so readers can cite them", () => {
+    const text = read(path.join(SKILLS, "vault-commit", "SKILL.md"));
+    assert.ok(text.includes("is written as `https://legal.example.com/page`"));
+    assert.match(text, /^skipped: .* · warnings: <list\|none> · errors: /m);
   });
 
   it("vault-steer creates the vault only on the owner's yes", () => {
