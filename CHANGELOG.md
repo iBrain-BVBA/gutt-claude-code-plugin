@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+## [gutt-vaults 0.2.1] - 2026-11-24
+
+Plugin versions: gutt-vaults 0.2.1. gutt-pro stays 3.2.0; no other plugin changed.
+
+### Fixed
+
+- **The Reviewer tab shows one row per stage class.** The stage class is read off the row: its
+  `type`, or `finding/<beat>` for a Finding. Before 22 Nov the reviewer appended precedent
+  features to the class key (`finding|pricing|pricing|zendesk.com|3` and two other formats),
+  and the Console gave every distinct key a row of its own, about 100 on the flagship vault.
+  vault-review now writes the stage class only, vault-curate corrects and logs a mismatched
+  class and escalates an auto decision that carries one, and a Calibration without the
+  reject/approve split shows the class total instead of empty bars.
+- **The reviewer reads the charter and its precedents by id.** It has no shell, so a whole-group
+  `get_episodes` list (over 100k characters) came back as a file it could not read: no charter,
+  and every row escalated with empty precedents. vault-curate now passes a `charter:` line of
+  episode ids, which the reviewer reads with `get_episode`, escalating with "charter
+  incomplete" when the line is missing. Precedent episodes come from the Verdict's own
+  `DECIDES` edge. Every search names its `group_ids`.
+- **Charter assembly no longer lists the whole vault group.** It pages the `vault-charter`
+  node's episodes, adds the Console's index read by id, and checks every Charter section is
+  present. Every Charter and Steering episode is tagged `vault-charter`.
+- **The Console template carries every fix the live flagship had.** A broken labels or
+  config-fields block degrades safely, a failed identity read asks for a reload, quota and
+  capability errors get their own messages, done cards drop Undo for anything already
+  committed, and the save toast says when a change applies. The LinkedIn counter's class is
+  now `.charcount`, so it no longer restyles every tab and filter badge.
+
 ## [3.2.0] - 2026-11-24
 
 Plugin versions: gutt-pro 3.2.0, gutt-vaults 0.2.0. gutt-developer, gutt-product and gutt-mentor
