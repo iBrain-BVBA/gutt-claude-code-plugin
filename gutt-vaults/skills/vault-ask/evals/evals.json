@@ -31,7 +31,7 @@
     {
       "id": 2,
       "eval_name": "team-login-told-to-use-personal",
-      "prompt": "/gutt-vaults:vault-ask next-agent-to-hire \"What does an IT helpdesk agent cost?\" — the connected login is a team login: list_vaults returns only vault_team_notes, and the catalog lists next-agent-to-hire with visibility public.",
+      "prompt": "/gutt-vaults:vault-ask next-agent-to-hire \"What does an IT helpdesk agent cost?\" — the connected login is a team login: list_vaults returns only vault_team_notes.",
       "expected_output": "Sees the vault is missing from list_vaults, makes no search on it, and says public vaults are read from a personal gutt login and how to log in again with one. Doesn't say the vault is empty or doesn't cover the question.",
       "files": [],
       "assertions": [

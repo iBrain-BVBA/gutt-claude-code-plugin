@@ -37,7 +37,7 @@ source and date for every claim. A team login reads only its team's vaults.
 
 | Skill            | What it does                                                                                                                                                                         |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `vault-list`     | Lists the vaults your login can read, marks your own, and adds what each covers and its pages from the public catalog; says why a catalog vault isn't readable                       |
+| `vault-list`     | Lists the vaults your login can read and marks your own; says why an expected vault is missing                                                                                       |
 | `vault-ask`      | Answers a question from one vault's committed findings only, every claim cited with its source URL and date; says when the vault doesn't cover it                                    |
 | `vault-steer`    | Creates a vault (on a server with vaults), its charter (scope, beats, source rules, review policy) and its Console, and turns your instructions into steering                        |
 | `vault-curate`   | The daily run: assembles the charter, sends one scout per beat, verifies every source, writes rows to the Console, runs the reviewer                                                 |

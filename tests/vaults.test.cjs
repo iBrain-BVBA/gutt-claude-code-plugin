@@ -2350,16 +2350,6 @@ describe("reader skills", () => {
     }
   });
 
-  it("the catalog contract links only https pages and is never an access grant", () => {
-    const text = read(ACCESS);
-    assert.ok(
-      text.includes("https://raw.githubusercontent.com/"),
-      "the catalog has one fixed location"
-    );
-    assert.match(text, /Link only to `pages` URLs that start with `https:\/\/`/);
-    assert.match(text, /a catalog entry gives\s+no access/);
-  });
-
   it("vault-steer creates the vault only on the owner's yes", () => {
     const text = read(path.join(SKILLS, "vault-steer", "SKILL.md"));
     assert.ok(text.includes('create_vault(name="<name>")'));
