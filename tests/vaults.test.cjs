@@ -947,6 +947,56 @@ describe("the Console's Reviewer numbers", () => {
     // A malformed count is never read as an accuracy shortfall, and is named once.
     assert.deepEqual(out.bad, ["Calibration data malformed"]);
   });
+
+  it("reads each row's class off its type and beat, so old feature keys add no classes", () => {
+    const out = runConsole(`module.exports = (api) => {
+      const row = (id, type, beat, cls) => ({ id, type, beat, review: { "class": cls, decision: "escalate", prediction: "approve" } });
+      api.S.findings = [
+        row("a", "finding", "pricing", "finding|pricing|pricing|zendesk.com|3"),
+        row("b", "finding", "pricing", "finding+pricing+pricing+lindy.ai+sig3"),
+        row("c", "finding", "failures", "finding/failures/failure/legal500.com/sig1-2"),
+        row("d", "card_update", "outcomes", "card_update|outcomes|card_update|arxiv.org|5"),
+        row("e", "card_update", "pricing", "card_update/pricing"),
+        row("f", "reverify", "outcomes", "reverify+outcomes+outcome+arxiv.org+sig4"),
+        row("g", undefined, undefined, "finding/x"),
+        row("h", undefined, undefined, "finding|launches|launch|convoso.com|3"),
+      ];
+      api.S.reviewer = { at: "2026-11-22T00:00:00Z", stage_by_class: { "finding/pricing": { stage: 0 } } };
+      return { each: api.S.findings.map(api.rowClass), classes: api.reviewerClasses() };
+    };`);
+    assert.deepEqual(out.each, [
+      "finding/pricing",
+      "finding/pricing",
+      "finding/failures",
+      "card_update",
+      "card_update",
+      "reverify",
+      "finding/x",
+      "finding/launches",
+    ]);
+    for (const k of out.classes) {
+      assert.match(k, /^(finding\/[^/|+\s]+|card_update|reverify)$/, k);
+    }
+    assert.ok(out.classes.includes("finding/failures") && out.classes.includes("card_update"));
+  });
+
+  it("waits for the next Calibration when the last one has no reject and approve split", () => {
+    const out = runConsole(`module.exports = (api) => {
+      api.S.config = { values: { "ladder.ceiling": 3, "ladder.stage1_calls": 10, "ladder.stage2_approve_calls": 20 }, class_ceilings: {} };
+      api.S.reviewer = { at: "2026-11-22T00:00:00Z", stage_by_class: {
+        "finding/prerequisites": { stage: 0, predictions: 27, agreement: 0.63 },
+        "finding/pricing": { stage: 0, predictions: 14, agreement: 0.86, reject: { n: 4, agree: 4 } },
+      } };
+      const s = (c) => { const x = api.classStatus(c); return { wait: x.wait, nosplit: x.nosplit }; };
+      return { total: s("finding/prerequisites"), split: s("finding/pricing") };
+    };`);
+    assert.deepEqual(out.total, {
+      wait: ["The next calibration's reject and approve counts"],
+      nosplit: true,
+    });
+    assert.equal(out.split.nosplit, false);
+    assert.equal(out.split.wait[0], "6 more reject predictions");
+  });
 });
 
 describe("the Console's Inbox writes", () => {

@@ -34,11 +34,23 @@ table, the Console's Settings (class ceilings) and this ladder:
 | reverify      | `reverify`                                                |
 | conflict      | `conflict` (always escalates; tracked for agreement only) |
 
-The fine features (claim type, source class, domain, significance) serve precedent similarity
-only (`precedent-matching.md`). Hard rule 2's always-escalate list still applies inside a
-promoted class (significance 5, unseen domains, maturity diffs, the charter's classes).
-Auto-approve stays capped at significance 1–3 below stage 3, and the audit sample
-(`review.audit_rate`, at least `review.audit_min` per run) keeps the owner producing labels.
+**The stage class is read off the row, never composed.** It is the row's `type`, and for a
+finding `finding/` plus the row's `beat`, exactly as written: one slash, nothing appended.
+These are the only valid keys, so a vault has one class per beat plus `card_update`,
+`reverify` and `conflict`. The fine features (claim type, source class, domain, significance)
+never go into the key: each new combination would be a class of its own with one row, which
+the ladder can never promote and the Console's Reviewer tab shows as one more row. Rows
+reviewed before 22 Nov 2026 carry such keys as the `class` in `review{}`:
+`finding|pricing|pricing|zendesk.com|3`, `card_update+outcomes+outcome+arxiv.org+sig4`,
+`finding/failures/failure/legal500.com/sig1-2`. Every reader (vault-curate, the Calibration,
+the Console) therefore derives the class from `type` and `beat` and treats the
+reviewer's `class` only as the record.
+
+The fine features serve precedent similarity only (`precedent-matching.md`). Hard rule 2's
+always-escalate list still applies inside a promoted class (significance 5, unseen domains,
+maturity diffs, the charter's classes). Auto-approve stays capped at significance 1–3 below
+stage 3, and the audit sample (`review.audit_rate`, at least `review.audit_min` per run) keeps
+the owner producing labels.
 
 ## Who moves the stage
 
