@@ -523,6 +523,60 @@ describe("the reviewer's allowlist", () => {
   });
 });
 
+describe("reading the charter", () => {
+  const ASSEMBLY = path.join(SKILLS, "vault-curate", "references", "charter-assembly.md");
+
+  it("reads through the vault-charter node and the Console's index, never the whole group", () => {
+    const text = read(ASSEMBLY);
+    const steps = text.match(/## Read([\s\S]*?)\n## Assemble/);
+    assert.ok(steps, "charter-assembly.md lost §Read");
+    assert.match(
+      steps[1],
+      /get_episodes_for_entity\(entity_id="vault_<slug>:Agent:vault-charter", last_n=20\)/
+    );
+    assert.match(steps[1], /page\s+with `offset`/);
+    assert.match(steps[1], /`meta\/charter\.episode_ids`/);
+    assert.match(steps[1], /`committed_episode` of every\s+`steering` row/);
+    // get_episodes appears only as the thing not to do.
+    const sentences = steps[1].replace(/\s+/g, " ").split(/(?<=\.) /);
+    for (const s of sentences.filter((x) => /`get_episodes(?:\([^`]*)?`/.test(x))) {
+      assert.match(s, /Never|unlike/, `charter-assembly reads the whole group: ${s}`);
+    }
+  });
+
+  it("stops on a missing section or an unreadable steering row, and drops a stale index id", () => {
+    const text = read(ASSEMBLY);
+    assert.match(text, /charter incomplete: no <applies_to> Charter/);
+    assert.match(text, /charter incomplete: steering row <id>/);
+    assert.match(text, /charter incomplete: Console\s+unreadable/);
+    assert.match(text, /charter index id <id> not found/);
+    assert.match(text, /never\s+one built from an episode's name/);
+  });
+
+  it("keeps every other episode list small", () => {
+    // vault-pages exports the whole vault through its own script, so it is the one exception.
+    const files = fs
+      .readdirSync(SKILLS, { recursive: true })
+      .filter((f) => f.endsWith(".md") && !f.startsWith("vault-pages"));
+    for (const f of files) {
+      const text = read(path.join(SKILLS, f));
+      for (const m of text.matchAll(/`get_episodes\(([^`]*)\)`/g)) {
+        const n = m[1].match(/last_n=(\d+)/);
+        assert.ok(n && Number(n[1]) <= 5, `${f} lists more than 5 episodes: ${m[0]}`);
+      }
+    }
+  });
+
+  it("tags every Charter and Steering episode vault-charter, whichever agent it targets", () => {
+    const commit = read(path.join(SKILLS, "vault-commit", "SKILL.md"));
+    const steer = read(path.join(SKILLS, "vault-steer", "SKILL.md"));
+    assert.doesNotMatch(commit, /that agent's name/);
+    assert.match(commit, /Steering \(from Console rows\), whichever agent it targets/);
+    assert.match(commit, /tagged `vault-charter` even when it targets\s+one agent/);
+    assert.match(steer, /Every Charter and Steering episode is tagged\s+`vault-charter`/);
+  });
+});
+
 describe("finding the vault's memory server", () => {
   const flat = (t) => t.replace(/\s+/g, " ");
 

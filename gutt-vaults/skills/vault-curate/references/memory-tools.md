@@ -105,7 +105,8 @@ Run it at the start of the workflow, before the first memory read.
 6. **Check the first write.** A successful write call acknowledges that the episode was
    queued, not that it was stored (`gutt-pro:memory-capture`), so an episode missing right
    after the call is **pending**, not lost. After the first episode of the batch, read
-   `vault_<slug>` with `get_episodes` (newest first). Not there yet: read again after about
+   `vault_<slug>` with `get_episodes(group_id="vault_<slug>", last_n=5)` (newest first; never
+   a larger list). Not there yet: read again after about
    15, 30 and 60 seconds (at most 4 reads, about 2 minutes). Found on any read → continue the
    batch. Still missing after the last read → stop writing the rest of the batch and report
    the write tool, the episode name and that it was acknowledged but not seen. **Never resend

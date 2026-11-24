@@ -19,8 +19,10 @@ charter format.
 
 This workflow writes as **`vault-charter`** in the vault's own group `vault_<slug>`, through the
 group's write tool (found at run time by `../vault-curate/references/memory-tools.md`; never by
-a name you expect), with `last_n_episodes=0`. Steering aimed at a single agent is tagged with
-that agent instead. The name is short, with no `--<scope>` suffix, on purpose: the dedicated
+a name you expect), with `last_n_episodes=0`. Every Charter and Steering episode is tagged
+`vault-charter`, Steering aimed at a single agent included (its `target_agent` header line
+names that agent): readers find the charter through this node
+(`../vault-curate/references/charter-assembly.md` §Read). The name is short, with no `--<scope>` suffix, on purpose: the dedicated
 vault group is the scope. Before the first registration in a group, run the first-registration
 check described in `vault-curate`'s Memory identity section, then:
 
@@ -30,8 +32,8 @@ register_agent(name="vault-charter", group_id="vault_<slug>",
 ```
 
 Recall runs in two passes, own scope (`agent_id="vault-charter"`) then group-wide without
-`agent_id`; the group-wide pass is never skipped, since Steering from the Console can be tagged
-with the agent it targets. On an unknown-agent error re-register once; then write nothing and
+`agent_id`; the group-wide pass is never skipped, since older Steering can be tagged with the
+agent it targets. On an unknown-agent error re-register once; then write nothing and
 show the owner the episode text instead.
 
 ## Hard rules
