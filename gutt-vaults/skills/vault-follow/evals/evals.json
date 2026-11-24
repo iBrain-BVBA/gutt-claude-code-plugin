@@ -6,10 +6,11 @@
       "id": 0,
       "eval_name": "follow-creates-page-and-routine",
       "prompt": "/gutt-vaults:vault-follow next-agent-to-hire — when the plan is shown, answer yes.",
-      "expected_output": "Checks the vault is readable with list_vaults, lists the vault's episodes with get_episodes, builds brief.json with kind digest and a 7-day window, and prepares it with vault-pages.cjs prepare digest. Shows one plan (headline, counts, page, routine name, local time and UTC cron, one gutt connector) and waits. On yes it publishes the page, then creates vault-next-agent-to-hire-digest with only the gutt connector and the page URL in its prompt.",
+      "expected_output": "Checks the vault is readable with list_vaults, finds the window's approved Findings through DECIDES facts with created_after, drills into each Finding and its SUPPORTED_BY SourceDocuments, builds brief.json with kind digest and a 7-day window, and prepares it with vault-pages.cjs prepare digest. Shows one plan (headline, counts, page, routine name, local time and UTC cron, one gutt connector) and waits. On yes it publishes the page, then creates vault-next-agent-to-hire-digest with only the gutt connector and the page URL in its prompt.",
       "files": [],
       "assertions": [
         "No Artifact publish or RemoteTrigger create happens before the plan is shown and answered",
+        "No get_episodes call is made",
         "vault-pages.cjs prepare digest is run and passes before the publish",
         "The created routine's mcp_connections has exactly one entry, a gutt connector",
         "The routine's prompt names vault-follow, the slug, --digest and the published page URL",
@@ -32,8 +33,8 @@
     {
       "id": 2,
       "eval_name": "rejected-finding-left-out",
-      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — in the window, a Verdict says 'Effect on the Finding: rejected' for one Finding episode written earlier in the same window.",
-      "expected_output": "Leaves that Finding out of changes and retired.",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — in the window, a human-rejected Verdict DECIDES one Finding.",
+      "expected_output": "Reads the Verdict, sees decision rejected, and leaves that Finding out of changes and retired.",
       "files": [],
       "assertions": ["The rejected Finding's name appears in neither changes nor retired"]
     },
@@ -62,12 +63,23 @@
     {
       "id": 5,
       "eval_name": "failed-listing-is-not-an-empty-week",
-      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — get_episodes returns a timeout error.",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — search_memory_facts returns a timeout error.",
       "expected_output": "Says the call failed and publishes nothing. Doesn't publish a digest saying nothing is new.",
       "files": [],
       "assertions": [
         "No Artifact publish is made",
         "The output doesn't say no new findings entered the vault"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "pending-finding-node-left-out",
+      "prompt": "/gutt-vaults:vault-follow next-agent-to-hire --digest — a SUPPORTED_BY search in the window also returns Microsoft (2026-06-18): device-spend cut 23%, a Finding node with status current that a curate run proposed and no Verdict decides.",
+      "expected_output": "Uses only Findings an approved Verdict DECIDES in the window, so the pending Finding isn't in the digest even though its status says current.",
+      "files": [],
+      "assertions": [
+        "Microsoft (2026-06-18): device-spend cut 23% isn't in changes",
+        "Every change's Finding is the target of a DECIDES fact from an approved Verdict dated in the window"
       ]
     }
   ]
