@@ -40,25 +40,28 @@ leaves it unset rather than contradicting it.
 
 #### Claude Code
 
-The plugin ships the `gutt-mcp-remote` server itself (`gutt-core/.mcp.json`). Its URL is the
-plugin option `mcp_url`, which defaults to the gutt shared stage server,
-`https://mcp.stage.gutt.pro/mcp`. So the server is normally present; the question is which
-endpoint it points at. Read it, do not assume it:
+The plugin ships two servers itself (`gutt-core/.mcp.json`): `gutt-closed-beta`, fixed at the
+gutt shared stage server `https://mcp.stage.gutt.pro/mcp`, and `gutt-enterprise`, whose URL is
+the plugin option `mcp_url`, which has no default. So `gutt-closed-beta` is always present;
+the question is whether `gutt-enterprise` points anywhere, and where. Read it, do not assume
+it:
 
 1. Run `claude plugin configure gutt-pro@gutt-plugins --json`. If it lists a value for
-   `mcp_url`, that is the plugin's endpoint; if it lists `mcp_url` as unset, the plugin uses
-   the stage default above.
-2. Run `claude mcp list` and look for every server whose name contains `gutt` (other than the
-   plugin's own, which the list attributes to the gutt-pro plugin). For each, `claude mcp get <name>` shows
-   its URL and scope. These are leftovers from an earlier setup and run alongside the plugin's
-   server.
+   `mcp_url`, that is `gutt-enterprise`'s endpoint; if it lists `mcp_url` as unset,
+   `gutt-enterprise` has no URL and only `gutt-closed-beta` (the stage server) is in use.
+2. Run `claude mcp list` and look for every server whose name contains `gutt`, other than the
+   plugins' own servers: the list shows those as `plugin:<plugin>:<server>`, for example
+   `plugin:gutt-pro:gutt-enterprise` or `plugin:gutt-vaults:gutt-closed-beta`, and they are
+   never removed here. For each other one, `claude mcp get <name>` shows its URL and scope.
+   These are leftovers from an earlier setup and run alongside the plugins' servers.
 
-If neither command gives an endpoint, say the endpoint could not be determined; do not show
-the stage default as the configured one.
+If neither command gives an endpoint, say no organization endpoint is configured; do not
+show the stage server as the organization's.
 
 #### Cursor
 
-Read `~/.cursor/mcp.json` and look for a `gutt-mcp-remote` entry.
+Read `~/.cursor/mcp.json` and look for a `gutt-enterprise` entry, or a `gutt-mcp-remote` one
+that an earlier setup wrote.
 
 If an endpoint is found, show it and ask: "Reconfigure?" / "Test connection?" / "Exit"
 
@@ -75,14 +78,23 @@ Validate:
 
 - Must start with `https://`
 - Must end with `/mcp`
+- **Claude Code only:** must not be the gutt shared stage server,
+  `https://mcp.stage.gutt.pro/mcp` (ignoring host case and a trailing slash).
+  `gutt-closed-beta` already connects there, and Claude Code skips a plugin server whose URL
+  another plugin server already has, so `gutt-enterprise` would never run. If the user gives
+  it, do not set `mcp_url`: tell them the stage server is already set up, have them
+  authorise `gutt-closed-beta` (`/mcp` → `gutt-closed-beta` → Authenticate), and stop. Cursor
+  loads no plugin servers, so there the stage URL is a valid answer.
 
 ### Step 3: Set the Endpoint (IDE-specific)
 
 #### Claude Code
 
-Set the plugin's `mcp_url` option. Do not add a second server with `claude mcp add`: a
-user-scope server at a different URL runs alongside the plugin's one, and memory tools from
-two endpoints are then both live.
+Set the plugin's `mcp_url` option, which is `gutt-enterprise`'s URL. Do not add another server
+with `claude mcp add`: a user-scope server at a different URL runs alongside the plugin's, and
+memory tools from yet another endpoint are then live. `gutt-closed-beta` stays on the shared
+stage server beside `gutt-enterprise`; if the user wants only their organization's memory, tell
+them to disable `gutt-closed-beta` in `/mcp`.
 
 Tell the user to run `/plugin`, open **gutt-pro**, choose **Configure**, and enter the URL. From
 a shell, set it on the installed plugin:
@@ -120,12 +132,13 @@ to the plugin's server.
 Cursor has **no `mcp add` CLI command**. Register the MCP server by editing the Cursor MCP config file directly:
 
 1. Read `~/.cursor/mcp.json` (create with `{"mcpServers":{}}` if it doesn't exist)
-2. Add or update the `gutt-mcp-remote` entry:
+2. Add or update the `gutt-enterprise` entry. If an earlier setup left a `gutt-mcp-remote`
+   entry, replace it with `gutt-enterprise` rather than keeping both:
 
 ```json
 {
   "mcpServers": {
-    "gutt-mcp-remote": {
+    "gutt-enterprise": {
       "url": "[USER_PROVIDED_URL]"
     }
   }
@@ -133,7 +146,8 @@ Cursor has **no `mcp add` CLI command**. Register the MCP server by editing the 
 ```
 
 3. Write the updated JSON back to `~/.cursor/mcp.json`
-4. Preserve any existing MCP server entries — only add/update `gutt-mcp-remote`
+4. Preserve any other MCP server entries — only add/update `gutt-enterprise` (and remove a
+   `gutt-mcp-remote` entry it replaces)
 
 Use `$HOME/.cursor/mcp.json` on Unix or `%USERPROFILE%\.cursor\mcp.json` on Windows.
 
@@ -151,7 +165,7 @@ Endpoint: [url]
 NEXT STEPS:
 1. Restart Claude Code (Ctrl+C, then run `claude` again)
 2. After restart, run `/mcp`
-3. Select `gutt-mcp-remote`
+3. Select `gutt-enterprise`
 4. Choose "Authenticate" to complete OAuth login
 
 After authentication, memory features will be active.
@@ -169,7 +183,7 @@ Endpoint: [url]
 NEXT STEPS:
 1. Restart Cursor
 2. Go to Settings → Tools & MCP Servers
-3. Find `gutt-mcp-remote` and click "Connect"
+3. Find `gutt-enterprise` and click "Connect"
 4. Complete OAuth login in the browser
 
 After authentication, memory features will be active.

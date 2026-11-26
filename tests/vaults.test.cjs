@@ -359,10 +359,16 @@ function knownPrefixes() {
 }
 
 describe("the reviewer's allowlist", () => {
-  it("covers every known prefix with the full read set, the gutt-pro plugin's server first", () => {
+  it("covers every known prefix with the full read set, the plugins' own servers first", () => {
     const tools = new Set(reviewerTools());
     const prefixes = knownPrefixes();
-    assert.equal(prefixes[0], "mcp__plugin_gutt-pro_gutt-mcp-remote__");
+    // Claude Code runs one plugin server per endpoint and picks which, so every plugin
+    // server that can hold the shared stage endpoint must be on the list.
+    assert.deepEqual(prefixes.slice(0, 3), [
+      "mcp__plugin_gutt-pro_gutt-closed-beta__",
+      "mcp__plugin_gutt-pro_gutt-enterprise__",
+      "mcp__plugin_gutt-vaults_gutt-closed-beta__",
+    ]);
     const missing = prefixes
       .flatMap((p) => [...READ_TOOLS].filter((t) => !REVIEWER_WITHOUT.has(t)).map((t) => p + t))
       .filter((t) => !tools.has(t));
@@ -476,6 +482,7 @@ describe("the reviewer's allowlist", () => {
         `mcp__claude_ai_${connector}__`,
         `mcp__${connector}__`,
         `mcp__plugin_gutt-pro_${connector}__`,
+        `mcp__plugin_gutt-vaults_${connector}__`,
       ];
       assert.ok(
         forms.some((f) => prefixes.has(f)),
@@ -600,6 +607,7 @@ describe("finding the vault's memory server", () => {
       "`mcp__claude_ai_<connector>__`",
       "`mcp__<connector>__`",
       "`mcp__plugin_gutt-pro_<connector>__`",
+      "`mcp__plugin_gutt-vaults_<connector>__`",
     ]) {
       assert.ok(tools.includes(form), `memory-tools.md step 2 lost ${form}`);
     }

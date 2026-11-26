@@ -105,14 +105,14 @@
     {
       "id": 8,
       "eval_name": "two-servers-stop-before-write",
-      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire. Two memory servers are connected, mcp__claude_ai_gutt-pro-memory__ and mcp__plugin_gutt-pro_gutt-mcp-remote__, and list_writable_groups on both lists vault_next_agent_to_hire.",
+      "prompt": "/gutt-vaults:vault-curate next-agent-to-hire. Two memory servers are connected, mcp__claude_ai_gutt-pro-memory__ and mcp__plugin_gutt-pro_gutt-enterprise__, and list_writable_groups on both lists vault_next_agent_to_hire.",
       "expected_output": "Finds both prefixes (searching twice), sees both expose the vault, and stops before any write: no memory write, no scout or reviewer spawn, no pending rows. The run row and the output name both prefixes.",
       "files": [],
       "assertions": [
         "No add_memory* or register_agent call",
         "No Agent call (no vault-scout, no vault-reviewer)",
         "No pending row is written to the Console findings collection",
-        "The output names both mcp__claude_ai_gutt-pro-memory__ and mcp__plugin_gutt-pro_gutt-mcp-remote__"
+        "The output names both mcp__claude_ai_gutt-pro-memory__ and mcp__plugin_gutt-pro_gutt-enterprise__"
       ]
     },
     {

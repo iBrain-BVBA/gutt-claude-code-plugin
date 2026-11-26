@@ -570,7 +570,7 @@ describe("the identity gate, for a vault's own group", () => {
   });
 
   it("lets an agent's tools allowlist name prefixed tools, but not its prompt", (t) => {
-    const tool = "mcp__plugin_gutt-pro_gutt-mcp-remote__search_memory_facts";
+    const tool = "mcp__plugin_gutt-pro_gutt-enterprise__search_memory_facts";
     const listed = withMutation((target) =>
       patch(agentFile(target), "model: sonnet\n", `model: sonnet\ntools: Read, ${tool}\n`)
     );

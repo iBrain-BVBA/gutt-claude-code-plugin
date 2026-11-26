@@ -28,8 +28,8 @@ Every skill that runs or reads a vault takes the vault's slug first; there is no
 ## Reading a vault
 
 Anyone signed in with a personal gutt login can read a public vault. Install the plugin, then
-authorise the gutt connector: in Claude Code, `/mcp` → `gutt-mcp-remote` → Authorise; in the
-Claude app, the gutt-pro plugin's page → Connectors → add `gutt-mcp-remote`. Authorising signs
+authorise the gutt connector: in Claude Code, `/mcp` → `gutt-closed-beta` → Authorise; in the
+Claude app, the gutt-vaults plugin's page → Connectors → add `gutt-closed-beta`. Authorising signs
 a new user up. `/gutt-vaults:vault-list` shows the vaults you can read, and
 `/gutt-vaults:vault-ask <slug> "<question>"` answers from a vault's committed findings, with a
 source and date for every claim. `/gutt-vaults:vault-follow <slug>` publishes a digest page of

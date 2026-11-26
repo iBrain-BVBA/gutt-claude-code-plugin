@@ -42,11 +42,12 @@ The role plugins depend on `gutt-pro` and install it with them.
    ```
 
 3. **Sign in and take the tour.** Restart Claude Code, or run `/reload-plugins`. Open the
-   connector list and click **Authorise** on the gutt connector, `gutt-mcp-remote`. In the
-   terminal the list is `/mcp`: pick `gutt-mcp-remote` and choose Authenticate. Then run
+   connector list and click **Authorise** on the gutt connector, `gutt-closed-beta`. In the
+   terminal the list is `/mcp`: pick `gutt-closed-beta` and choose Authenticate. Then run
    `/gutt-pro:onboard`.
 
-The connector points at the gutt shared stage server. The first time you authorise it, the gutt
+`gutt-closed-beta` points at the gutt shared stage server. The plugin's other server,
+`gutt-enterprise`, is for your organization's own gutt: `/gutt-pro:setup` points it there. The first time you authorise it, the gutt
 login page opens: click **Sign up** there to create your login.
 
 Then add the role plugins that fit your work:
@@ -67,8 +68,9 @@ including a stale catalogue and the admin-managed rollout for teams.
   **+ Add** → **Add marketplace**, pick `iBrain-BVBA/gutt-claude-code-plugin` and click
   **Sync**, then add `gutt-pro`. Installing the plugin does not add its connector: open
   gutt-pro under **Plugins** → **Yours**, go to its **Connectors** tab, and add
-  `gutt-mcp-remote` there. That opens the gutt login page.
-- **Desktop Code tab:** same as the terminal; authorise `gutt-mcp-remote` from `/mcp`.
+  `gutt-closed-beta` there (or `gutt-enterprise` for your organization's gutt). That opens the
+  gutt login page.
+- **Desktop Code tab:** same as the terminal; authorise `gutt-closed-beta` from `/mcp`.
 - **Cloud routines** load only the plugins installed on the routine owner's claude.ai account,
   under **Customize** → **Plugins**. They ignore the repository's `.claude/settings.json`, so
   `extraKnownMarketplaces` and `enabledPlugins` there don't reach a routine. Install `gutt-pro`
@@ -174,11 +176,11 @@ More on each in the [gutt-pro README](gutt-core/README.md#commands).
 
 Install with `/add-plugin` and the repository URL
 `https://github.com/iBrain-BVBA/gutt-claude-code-plugin`, then run `/gutt-pro:setup` with your
-memory endpoint, restart, and connect `gutt-mcp-remote` under Settings → Tools & MCP Servers.
+memory endpoint, restart, and connect `gutt-enterprise` under Settings → Tools & MCP Servers.
 
 | Works in Cursor                                          | Does not, or not verified                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Memory tools, once `gutt-mcp-remote` is connected        | The stage default: Cursor needs `/gutt-pro:setup` and an endpoint           |
+| Memory tools, once `gutt-enterprise` is connected        | The plugin's own servers: Cursor needs `/gutt-pro:setup` and an endpoint    |
 | The skills, including the role plugins'                  | The status bar and `/gutt-pro:statusline`                                   |
 | The `gutt-memory.mdc` rule (search first, capture after) | The `mcp_url` plugin option                                                 |
 | `/gutt-pro:setup`, which writes `~/.cursor/mcp.json`     | The hooks, so the `/gutt-pro:` settings and the capture judge: not verified |
@@ -199,7 +201,7 @@ memory endpoint, restart, and connect `gutt-mcp-remote` under Settings → Tools
   it again as in step 1.
 - **Commands missing right after installing:** run `/reload-plugins`, or restart.
 - **Memory tools missing, or the status bar shows `auth needed`:** open `/mcp`, pick
-  `gutt-mcp-remote` and authorise again.
+  `gutt-closed-beta` (or `gutt-enterprise`) and authorise again.
 - **Nothing is recalled or captured:** `/gutt-pro:config` shows the state; `/gutt-pro:on` clears
   an off, a snooze and a disable. If captures never trigger, look for `judge` lines in
   `hook-errors.log`: a judge that cannot sign in (no `claude` login on this machine, as in

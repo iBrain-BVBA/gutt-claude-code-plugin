@@ -10,19 +10,24 @@ expect.
 The same gutt memory server shows up under different tool names depending on how it is
 connected:
 
-| How it's connected                                                                                    | Tool name form                          | Example                                                     |
-| ----------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------- |
-| The gutt-pro plugin's own server, `gutt-mcp-remote` (the usual case: gutt-vaults depends on gutt-pro) | `mcp__plugin_<plugin>_<server>__<tool>` | `mcp__plugin_gutt-pro_gutt-mcp-remote__search_memory_facts` |
-| claude.ai connector in Claude Code (terminal)                                                         | `mcp__claude_ai_<server>__<tool>`       | `mcp__claude_ai_gutt-pro-memory__search_memory_facts`       |
-| Connector in a cloud routine                                                                          | `mcp__<server>__<tool>`                 | `mcp__gutt-pro-memory__search_memory_facts`                 |
-| Connector in the Claude desktop app                                                                   | `mcp__<connector-uuid>__<tool>`         | `mcp__<connector-uuid>__search_memory_facts`                |
+| How it's connected                                                                                                             | Tool name form                          | Example                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------ |
+| A plugin's own server: gutt-pro's `gutt-closed-beta` or `gutt-enterprise`, or gutt-vaults' `gutt-closed-beta` (the usual case) | `mcp__plugin_<plugin>_<server>__<tool>` | `mcp__plugin_gutt-pro_gutt-closed-beta__search_memory_facts` |
+| claude.ai connector in Claude Code (terminal)                                                                                  | `mcp__claude_ai_<server>__<tool>`       | `mcp__claude_ai_gutt-pro-memory__search_memory_facts`        |
+| Connector in a cloud routine                                                                                                   | `mcp__<server>__<tool>`                 | `mcp__gutt-pro-memory__search_memory_facts`                  |
+| Connector in the Claude desktop app                                                                                            | `mcp__<connector-uuid>__<tool>`         | `mcp__<connector-uuid>__search_memory_facts`                 |
 
 Claude Code also deduplicates servers by endpoint (local > project > user > plugin > claude.ai
-connector). Installing or updating the gutt-pro plugin can therefore replace a connector, and
-its tools change prefix without any error. Two gutt servers at **different** endpoints (say a
-user-scope dev server and the plugin's stage server) are both live at once, and each may hold a
-different copy of the vault. A vault file's optional `memory_connector` names the one that
-holds the vault (step 2).
+connector), and among plugin servers the first one loaded keeps an endpoint. gutt-pro's and
+gutt-vaults' `gutt-closed-beta` share one endpoint (as does gutt-pro's `gutt-enterprise` if its
+`mcp_url` option is set to the same URL), so only one of them runs, and which one can change
+between sessions. Installing or updating a plugin can therefore replace a connector or another
+plugin's server, and its tools change prefix without any error. Two gutt servers at
+**different** endpoints (say a user-scope dev server and the plugin's stage server, or
+`gutt-enterprise` pointed at an organization's endpoint beside `gutt-closed-beta`) are both live
+at once, and each may hold a different copy of the vault. A vault file's optional
+`memory_connector` names the one that holds the vault (step 2). `gutt-enterprise` has no URL
+until `mcp_url` is set; unset, it connects to nothing and exposes no tools.
 
 ## Procedure
 
@@ -41,8 +46,9 @@ Run it at the start of the workflow, before the first memory read.
      different surfaces see it (the terminal may see the gutt-pro plugin's server where a
      routine sees a claude.ai connector). The vault's server is the prefix for a name on it:
      `mcp__claude_ai_<connector>__` (a claude.ai connector in the terminal),
-     `mcp__<connector>__` (a routine's connector) or `mcp__plugin_gutt-pro_<connector>__` (the
-     gutt-pro plugin's own server, whose server name is `gutt-mcp-remote`). A connector-UUID
+     `mcp__<connector>__` (a routine's connector), or `mcp__plugin_gutt-pro_<connector>__` or
+     `mcp__plugin_gutt-vaults_<connector>__` (a plugin's own server, whose server name is
+     `gutt-closed-beta` or `gutt-enterprise`). A connector-UUID
      prefix (`mcp__<connector-uuid>__`, the desktop app) counts only when the session's
      connector list (`session_connectors_status`, where it exists) gives that id a name on it.
      **Don't require `vault_<slug>` in its `list_writable_groups`:** a server that starts a
@@ -59,10 +65,10 @@ Run it at the start of the workflow, before the first memory read.
      that returns an episode in the run row as `also exposes vault_<slug>, ignored: <prefix>`.
      An error or timeout on an ignored prefix is logged with that prefix, never a stop, and no
      ignored prefix is called again after this step. No prefix for any name on it: **None**
-     below; if the gutt-pro plugin's server (`mcp__plugin_gutt-pro_gutt-mcp-remote__`) is
-     connected, add to the report that Claude Code may have merged the named connector into it
-     (same endpoint), and that adding `gutt-mcp-remote` to `memory_connector` is the fix when
-     both point at the vault's deployment. Two prefixes for it: **more than one** below.
+     below; if a plugin's own server (`mcp__plugin_<plugin>_<server>__`) is connected, add to
+     the report that Claude Code may have merged the named connector into it (same
+     endpoint), and that adding that server's name (`gutt-closed-beta` or `gutt-enterprise`)
+     to `memory_connector` is the fix when both point at the vault's deployment. Two prefixes for it: **more than one** below.
    - **Not set:** for each prefix, load its `list_writable_groups` and call it (or, if it isn't
      exposed, read the `group://vault_<slug>/instructions` resource). The vault's server is the
      one where `vault_<slug>` is listed.
@@ -127,11 +133,16 @@ below.
 
 <!-- known-prefixes:begin -->
 
-- `mcp__plugin_gutt-pro_gutt-mcp-remote__`
+- `mcp__plugin_gutt-pro_gutt-closed-beta__`
+- `mcp__plugin_gutt-pro_gutt-enterprise__`
+- `mcp__plugin_gutt-vaults_gutt-closed-beta__`
+- `mcp__claude_ai_gutt-closed-beta__`
+- `mcp__gutt-closed-beta__`
 - `mcp__claude_ai_gutt-pro-memory__`
 - `mcp__gutt-pro-memory__`
 - `mcp__claude_ai_gutt-pro-memory-stage__`
 - `mcp__gutt-pro-memory-stage__`
+- `mcp__plugin_gutt-pro_gutt-mcp-remote__`
 
 <!-- known-prefixes:end -->
 
@@ -143,16 +154,24 @@ prefix logged in the run row as the fix to make. The fix is to add the prefix's 
 the reviewer's `tools:` and to the list above; a test in the plugin's repository checks the two
 stay in step and that every tool on the list only reads.
 
-Besides the gutt-pro plugin's server, the list covers the two usual connector names:
-`gutt-pro-memory`, and `gutt-pro-memory-stage` for a connector to the shared stage. A claude.ai
-connector is named by whoever adds it, so one added under another name is not on the list
-until its prefix is added here and to the reviewer's `tools:`.
+Besides the plugins' own servers (every one that can hold the shared endpoint, since Claude
+Code picks which of them runs), the list covers the usual connector names, in both their
+terminal (`mcp__claude_ai_<name>__`) and routine (`mcp__<name>__`) forms: `gutt-closed-beta`,
+the plugin server's own name, for a connector to the shared stage added under it;
+`gutt-pro-memory`; and `gutt-pro-memory-stage`. A claude.ai connector is named by whoever adds
+it, so one added under another name is not on the list until its prefix is added here and to
+the reviewer's `tools:`.
+
+`mcp__plugin_gutt-pro_gutt-mcp-remote__` is gutt-pro's server as it was named before
+gutt-pro 3.3.0. It stays on the list for an install that has updated gutt-vaults but not yet
+gutt-pro: there the two plugins' stage servers share one endpoint, and the old name can be the
+one Claude Code keeps.
 
 A vault file's `memory_connector` (step 2) must give a prefix on this list, or every curate
 run of that vault escalates everything. The plugin ships no vault files, so no test can check
 an owner's connector name: when you set `memory_connector`, check that
-`mcp__claude_ai_<connector>__`, `mcp__<connector>__` or `mcp__plugin_gutt-pro_<connector>__`
-(whichever form your routines see) is listed above, for each name you give.
+`mcp__claude_ai_<connector>__`, `mcp__<connector>__`, `mcp__plugin_gutt-pro_<connector>__` or
+`mcp__plugin_gutt-vaults_<connector>__` (whichever form your routines see) is listed above, for each name you give.
 
 The reviewer checks again at boot (vault-review Step 1.0) and fails closed with a reason that
 names the cause: no prefix passed, a prefix not on this list, or a known prefix whose tools

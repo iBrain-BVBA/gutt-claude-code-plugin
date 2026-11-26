@@ -1,7 +1,7 @@
 # Plugin platform reference (upstream)
 
 **Source:** <https://code.claude.com/docs/en/plugins-reference.md>
-**Read:** 2026-08-02 (§1 re-read, unchanged) · 2026-07-29 (§1–§8) ·
+**Read:** 2026-11-26 (§2 `userConfig` re-read; §2a measured) · 2026-08-02 (§1 re-read, unchanged) · 2026-07-29 (§1–§8) ·
 **Method:** `WebFetch`, then the fetched page read directly
 **Companion:** [`hook-platform-capabilities.md`](./hook-platform-capabilities.md) — same
 provenance, hook events and their output contracts.
@@ -80,6 +80,31 @@ enable time instead, and supports `sensitive: true`. This is the single largest 
 unused capability found in this pass. It does **not** obviously subsume the machine-global
 `config.json` (that holds runtime state, not user input), so what it replaces is a design
 question, not a mechanical swap.
+
+### 2a. How an unset option resolves — **Measured** 2026-11-26
+
+The upstream page documents `default` on a `userConfig` field as the value "used when the user
+provides nothing" (re-read 2026-11-26), but is silent on what an MCP `url` built from an unset
+option with no default becomes. Measured on Claude Code 2.1.323, gutt-pro installed from a
+`"source": "directory"` marketplace (so the working tree is what loads), `mcp_url` never saved:
+no `pluginConfigs` entry in user settings, and `claude plugin configure gutt-pro@gutt-plugins
+--json` lists it under `unconfigured`. `gutt-enterprise`'s `url` is `${user_config.mcp_url}`;
+`gutt-closed-beta` beside it has a fixed stage URL. Each variant was a `plugin.json` edit
+followed by `claude mcp list`, then reverted:
+
+| `mcp_url` in `plugin.json`                      | `claude mcp list` for `gutt-enterprise`                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `default` = the stage URL                       | absent; consistent with the binary's rule that skips a plugin server whose URL an earlier one has                              |
+| `default` = `https://probe-default.invalid/mcp` | listed at `https://probe-default.invalid/mcp`, `ENOTFOUND` — the default is what fills the URL                                 |
+| no `default`                                    | listed with an empty URL: "✘ Failed to connect — URL is unset or invalid — open /plugin manage and configure gutt-pro options" |
+| no `default`, `required: true`                  | absent: dropped without a line in the list                                                                                     |
+
+The probe URL is a reserved `.invalid` name, so the second row could only have come from the
+manifest, not from a saved value or another server. `gutt-closed-beta` stayed listed at the
+stage URL in every row. `claude plugin validate gutt-core` passes with no default.
+
+`mcp_url` ships with no default and not `required`: `required` would also make the enable
+dialog refuse an empty value, which closed-beta users have no reason to enter.
 
 Related: **`defaultEnabled`** (boolean, default `true`) ships a plugin installed-but-off,
 for plugins that "add cost or scope a user should opt into". Precedence: the user's

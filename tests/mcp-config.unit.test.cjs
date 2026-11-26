@@ -28,6 +28,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 
 const CORE_ROOT = path.resolve(__dirname, "..", "gutt-core");
+const ORG_DEFAULT = "https://org-default.example/mcp";
 
 // ---------------------------------------------------------------------------
 // Test runner (minimal hand-rolled harness, no framework)
@@ -273,12 +274,24 @@ test("${user_config.mcp_url} prefers CLAUDE_PLUGIN_OPTION_MCP_URL", () => {
   delete process.env.CLAUDE_PLUGIN_OPTION_MCP_URL;
 });
 
-test("${user_config.mcp_url} falls back to the manifest default (stage)", () => {
+test("${user_config.mcp_url} is empty when unset: gutt-enterprise has no default", () => {
   delete process.env.CLAUDE_PLUGIN_OPTION_MCP_URL;
-  assert.strictEqual(
-    resolveEnvVars("${user_config.mcp_url}", CORE_ROOT),
-    "https://mcp.stage.gutt.pro/mcp"
-  );
+  assert.strictEqual(resolveEnvVars("${user_config.mcp_url}", CORE_ROOT), "");
+});
+
+test("an unset option falls back to its manifest default, when one is declared", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gutt-user-config-"));
+  try {
+    fs.mkdirSync(path.join(root, ".claude-plugin"));
+    fs.writeFileSync(
+      path.join(root, ".claude-plugin", "plugin.json"),
+      JSON.stringify({ userConfig: { mcp_url: { type: "string", default: ORG_DEFAULT } } })
+    );
+    delete process.env.CLAUDE_PLUGIN_OPTION_MCP_URL;
+    assert.strictEqual(resolveUserConfig("mcp_url", root), ORG_DEFAULT);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("${user_config.*} with no plugin root and no env resolves to empty", () => {
@@ -290,13 +303,32 @@ test("unknown userConfig key resolves to empty", () => {
   assert.strictEqual(resolveUserConfig("no_such_key", CORE_ROOT), "");
 });
 
-test("shipped .mcp.json declares an http gutt server bound to userConfig.mcp_url", () => {
+test("shipped .mcp.json declares gutt-closed-beta (stage) and gutt-enterprise (mcp_url)", () => {
   const mcp = JSON.parse(fs.readFileSync(path.join(CORE_ROOT, ".mcp.json"), "utf8"));
-  const found = findGuttServerConfig(mcp.mcpServers);
-  assert.ok(found, "no gutt server in gutt-core/.mcp.json");
+  assert.deepStrictEqual(Object.keys(mcp.mcpServers), ["gutt-closed-beta", "gutt-enterprise"]);
   // Claude Code skips a remote entry that has a url but no type
-  assert.strictEqual(found.config.type, "http");
-  assert.strictEqual(found.config.url, "${user_config.mcp_url}");
+  assert.deepStrictEqual(mcp.mcpServers["gutt-closed-beta"], {
+    type: "http",
+    url: "https://mcp.stage.gutt.pro/mcp",
+  });
+  assert.deepStrictEqual(mcp.mcpServers["gutt-enterprise"], {
+    type: "http",
+    url: "${user_config.mcp_url}",
+  });
+  assert.deepStrictEqual(
+    findGuttServerConfigs(mcp.mcpServers).map((f) => f.name),
+    ["gutt-closed-beta", "gutt-enterprise"]
+  );
+});
+
+test("gutt-vaults ships the same gutt-closed-beta server as gutt-pro", () => {
+  const vaults = JSON.parse(
+    fs.readFileSync(path.join(CORE_ROOT, "..", "gutt-vaults", ".mcp.json"), "utf8")
+  );
+  const core = JSON.parse(fs.readFileSync(path.join(CORE_ROOT, ".mcp.json"), "utf8"));
+  assert.deepStrictEqual(vaults.mcpServers, {
+    "gutt-closed-beta": core.mcpServers["gutt-closed-beta"],
+  });
 });
 
 test("every ${user_config.KEY} in .mcp.json is declared in plugin.json", () => {
@@ -308,8 +340,19 @@ test("every ${user_config.KEY} in .mcp.json is declared in plugin.json", () => {
   assert.ok(keys.length > 0);
   for (const key of keys) {
     assert.ok(manifest.userConfig && manifest.userConfig[key], `userConfig.${key} missing`);
-    assert.ok(manifest.userConfig[key].default, `userConfig.${key} has no default`);
   }
+});
+
+test("mcp_url has no default and is not required, so gutt-enterprise is opt-in", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(CORE_ROOT, ".claude-plugin", "plugin.json"), "utf8")
+  );
+  const option = manifest.userConfig.mcp_url;
+  // A default is substituted when the option is unset: a stage default would point
+  // gutt-enterprise at gutt-closed-beta's endpoint. `required` would drop the server
+  // and make the enable dialog refuse an empty value, which closed-beta users have.
+  assert.ok(!("default" in option), "mcp_url must not ship a default");
+  assert.ok(!option.required, "mcp_url must stay optional");
 });
 
 test("no legacy gutt-core/mcp.json (Claude Code only loads the dotted name)", () => {
@@ -395,9 +438,10 @@ function diagnoseIn(claudeJson, opts = {}) {
   }
 }
 
-test("with no other registration the plugin's stage default is used, no warning", () => {
+test("with no other registration and no mcp_url, gutt-closed-beta's URL is used", () => {
   const diag = diagnoseIn(null);
   assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.source, "plugin-fixed");
   assert.strictEqual(diag.warning, null);
 });
 
@@ -408,6 +452,7 @@ test("a user-scope registration (claude mcp add --scope user) wins over the plug
   assert.strictEqual(diag.url, ORG);
   assert.match(diag.warning, /claude mcp remove gutt-mcp-remote --scope user/);
   assert.ok(diag.warning.includes(STAGE), "the warning should name the plugin's endpoint");
+  assert.match(diag.warning, /plugin's gutt-closed-beta server/);
 });
 
 test("a local-scope registration for this project wins over user scope", () => {
@@ -434,10 +479,10 @@ test("a user-scope registration at the plugin's own URL raises no warning", () =
   assert.strictEqual(diag.warning, null);
 });
 
-test("without CLAUDE_PLUGIN_ROOT (health's Bash context) the plugin default is still found", () => {
+test("without CLAUDE_PLUGIN_ROOT (health's Bash context) the plugin's server is still found", () => {
   const diag = diagnoseIn(null, { pluginRoot: null });
   assert.strictEqual(diag.url, STAGE);
-  assert.strictEqual(diag.source, "plugin-default");
+  assert.strictEqual(diag.source, "plugin-fixed");
   assert.strictEqual(diag.error, null);
 });
 
@@ -500,7 +545,7 @@ test("a local stdio entry overrides a same-named user HTTP entry (plugin URL is 
     },
   }));
   assert.strictEqual(diag.url, STAGE);
-  assert.strictEqual(diag.source, "plugin-default");
+  assert.strictEqual(diag.source, "plugin-fixed");
   assert.strictEqual(diag.warning, null, "the overridden user entry does not run");
 });
 
@@ -511,19 +556,32 @@ test("every gutt server in one scope is checked, not only the first", () => {
       "gutt-pro-memory": { type: "http", url: ORG },
     },
   }));
-  assert.strictEqual(diag.url, STAGE);
+  // The stage entry only duplicates gutt-closed-beta, so the first new endpoint is reported.
+  assert.strictEqual(diag.url, ORG);
   assert.match(diag.warning, /claude mcp remove gutt-pro-memory --scope user/);
   assert.ok(!/remove gutt-mcp-remote/.test(diag.warning));
 });
 
-test("with the saved option passed in, a registration at the stage default is flagged", () => {
+test("with the option set, a leftover stage registration neither warns nor hides the option", () => {
   const diag = diagnoseIn(
     () => ({ mcpServers: { "gutt-mcp-remote": { type: "http", url: STAGE } } }),
     { pluginRoot: null, option: ORG }
   );
-  assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.url, ORG, "the option-bound URL is reported, not the duplicate");
+  assert.strictEqual(diag.source, "plugin-option");
+  assert.strictEqual(diag.warning, null, "gutt-closed-beta already runs at that URL");
+});
+
+test("with the saved option passed in, a registration at a third URL is flagged", () => {
+  const diag = diagnoseIn(
+    () => ({
+      mcpServers: { "gutt-mcp-remote": { type: "http", url: "https://third.example/mcp" } },
+    }),
+    { pluginRoot: null, option: ORG }
+  );
   assert.match(diag.warning, /--scope user/);
   assert.ok(diag.warning.includes(ORG), "the comparison uses the saved option, not the default");
+  assert.match(diag.warning, /plugin's gutt-enterprise server/);
 });
 
 test("findGuttServerConfigs returns every gutt entry, known names first", () => {

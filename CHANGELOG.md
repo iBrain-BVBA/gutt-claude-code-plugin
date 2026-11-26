@@ -2,6 +2,52 @@
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-26
+
+Plugin versions: gutt-pro 3.3.0, gutt-vaults 0.4.0. gutt-developer, gutt-product and gutt-mentor
+keep their versions.
+
+### Added
+
+- **`gutt-closed-beta` MCP server.** gutt-pro ships a second server, fixed at the gutt shared
+  stage server (`https://mcp.stage.gutt.pro/mcp`), for closed-beta users. gutt-vaults ships the
+  same server, so a vault install brings its connector with it. Claude Code runs one plugin
+  server per endpoint, so with both plugins installed only one `gutt-closed-beta` runs.
+
+### Changed
+
+- **`gutt-mcp-remote` is renamed `gutt-enterprise`.** It is still the server the `mcp_url`
+  option points at, for an organization's own gutt. Its tools are now
+  `mcp__plugin_gutt-pro_gutt-enterprise__*`; the stage server's are
+  `mcp__plugin_gutt-pro_gutt-closed-beta__*` (or `mcp__plugin_gutt-vaults_gutt-closed-beta__*`).
+- **`mcp_url` has no default any more.** It used to default to the stage server, which now has
+  its own server, so `gutt-enterprise` connects only once you set your organization's endpoint.
+  Unset, `/mcp` lists it as failed with "URL is unset or invalid". `/gutt-pro:health` reports
+  the stage URL with `source: plugin-fixed` in that case.
+- **vault-reviewer's allowlist covers every plugin server** that can hold the shared endpoint:
+  both gutt-pro servers and gutt-vaults' `gutt-closed-beta`, plus a `gutt-closed-beta`
+  connector in its terminal and routine forms. The old `mcp__plugin_gutt-pro_gutt-mcp-remote__`
+  prefix stays, read-only, for gutt-vaults 0.4.0 running beside a gutt-pro older than 3.3.0.
+- **`/gutt-pro:setup` refuses the stage URL as `mcp_url`** in Claude Code: `gutt-closed-beta`
+  already serves it, and `gutt-enterprise` at the same URL would be skipped as a duplicate. It
+  sends the user to authorise `gutt-closed-beta` instead, and never offers to remove a
+  `plugin:*` server as a leftover registration.
+- **`/gutt-pro:health` and the SessionStart check know both servers.** A registration outside
+  the plugin at either server's URL no longer warns, and no longer decides the reported URL,
+  since it adds no endpoint; the reported URL is `gutt-enterprise`'s when `mcp_url` is set,
+  else `gutt-closed-beta`'s. Registrations named `gutt-mcp-remote` from an earlier
+  `/gutt-pro:setup` are still recognized, and `/gutt-pro:setup` in Cursor now writes a
+  `gutt-enterprise` entry in place of one.
+
+### Upgrade
+
+- If you never set `mcp_url`, you were on the stage server: authorise `gutt-closed-beta` once.
+  If you set it, authorise `gutt-enterprise` once. Either is `/mcp` → server → Authenticate. In the Claude app, add it under the plugin's
+  **Connectors** tab.
+- Rename `mcp__plugin_gutt-pro_gutt-mcp-remote__*` in your permission allowlists.
+- A vault file whose `memory_connector` names `gutt-mcp-remote` must name `gutt-closed-beta`
+  (or `gutt-enterprise` for a vault on your organization's gutt), or vault runs find no server.
+
 ## [gutt-vaults 0.3.1] - 2026-11-24
 
 Plugin versions: gutt-vaults 0.3.1. gutt-pro stays 3.2.0; no other plugin changed.

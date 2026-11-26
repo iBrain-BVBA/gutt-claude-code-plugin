@@ -41,7 +41,8 @@ from the table (the name with underscores written as hyphens).
 If the list is empty, or the person expected a vault that isn't in it, add: "Public vaults
 are read from a personal gutt login. If you're signed in with a team login, you see only your
 team's vaults: log in again with your personal account (in Claude Code: `/mcp` →
-`gutt-mcp-remote` → re-authorise, and don't pick a team)."
+the server you read vaults through, usually `gutt-closed-beta` → re-authorise, and don't pick
+a team)." When the prefix this run used names another server, say that server instead.
 
 ## Example invocation
 

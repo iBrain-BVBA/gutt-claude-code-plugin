@@ -1,7 +1,7 @@
 {
   "name": "gutt-pro",
   "displayName": "gutt-pro",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "defaultEnabled": true,
   "author": {
     "name": "iBRAIN BV",
@@ -16,8 +16,7 @@
     "mcp_url": {
       "type": "string",
       "title": "gutt MCP server URL",
-      "description": "Your organization's gutt MCP endpoint (https://…/mcp). Keep the default to use the gutt shared stage server.",
-      "default": "https://mcp.stage.gutt.pro/mcp"
+      "description": "Your organization's gutt MCP endpoint (https://…/mcp), for the gutt-enterprise server. Leave it empty for the closed beta: gutt-closed-beta already connects to the gutt shared stage server."
     }
   }
 }

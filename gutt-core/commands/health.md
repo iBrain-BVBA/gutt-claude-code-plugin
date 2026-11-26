@@ -39,9 +39,10 @@ Report:
 
 - **configured**: whether gutt MCP server is found in settings
 - **url**: the resolved HTTP URL (or "N/A — stdio transport")
-- **source**: where the URL came from: a config file path, `plugin-option`, or
-  `plugin-default`. `plugin-default` means no `mcp_url` value was saved, so the URL is
-  the manifest default.
+- **source**: where the URL came from: a config file path, `plugin-option`
+  (`gutt-enterprise`, from the saved `mcp_url`), `plugin-fixed` (`gutt-closed-beta`'s stage
+  URL; no `mcp_url` is saved, so `gutt-enterprise` has no URL), or `plugin-default` (the
+  manifest default of `mcp_url`, which today ships none).
 - **error**: any configuration error message
 - **warning**: set when a gutt server registered outside the plugin (for example by an
   older `claude mcp add --scope user`) points at a different URL than the plugin's own
