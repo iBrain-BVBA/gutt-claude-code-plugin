@@ -70,9 +70,10 @@ or immediately after `/reload-plugins`.
 
 ## Step 3 — Connect to memory
 
-The plugin brings its own MCP server, `gutt-mcp-remote`. Its URL is the plugin option
-`mcp_url`, which defaults to the gutt shared stage server (`https://mcp.stage.gutt.pro/mcp`).
-To use your organization's endpoint instead, run `/gutt-pro:setup`, or use `/plugin` →
+The plugin brings two MCP servers of its own: `gutt-closed-beta`, fixed at the gutt shared
+stage server (`https://mcp.stage.gutt.pro/mcp`), and `gutt-enterprise`, whose URL is the plugin
+option `mcp_url` and defaults to that same stage server. To point `gutt-enterprise` at your
+organization's endpoint, run `/gutt-pro:setup`, or use `/plugin` →
 gutt-pro → Configure, or set it on the installed plugin from a shell:
 
 ```
@@ -82,7 +83,8 @@ echo '{"mcp_url":"https://your-org.example/mcp"}' | claude plugin configure gutt
 If you have not installed gutt-pro yet, you can instead pass the URL in Step 2 with
 `claude plugin install gutt-pro@gutt-plugins --config mcp_url=https://your-org.example/mcp`.
 
-Then restart and authenticate: `/mcp` → `gutt-mcp-remote` → Authenticate.
+Then restart and authenticate: `/mcp` → `gutt-enterprise` (or `gutt-closed-beta` on the stage
+server) → Authenticate.
 
 ## Step 4 — Turn the status bar on
 
@@ -122,7 +124,7 @@ each person runs `/gutt-pro:statusline` themselves.
 
 1. Run `/add-plugin` and enter `https://github.com/iBrain-BVBA/gutt-claude-code-plugin`
 2. Run `/gutt-pro:setup` and give it your memory endpoint URL
-3. Restart → Settings → Tools & MCP Servers → connect `gutt-mcp-remote`
+3. Restart → Settings → Tools & MCP Servers → connect `gutt-enterprise`
 4. Complete the OAuth login
 
 Cursor has no `claude mcp add` CLI; the setup wizard registers the server by writing

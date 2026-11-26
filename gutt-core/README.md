@@ -12,21 +12,28 @@ claude plugin install gutt-pro@gutt-plugins
 
 ## Sign in
 
-The plugin brings its own MCP server, `gutt-mcp-remote`, pointed at the gutt shared stage
-server by default. After installing, open the connector list and click **Authorise** on
-`gutt-mcp-remote`:
+The plugin brings two MCP servers of its own:
 
-- In the terminal and the desktop app's Code tab: type `/mcp`, pick `gutt-mcp-remote`, choose
+- `gutt-closed-beta` — the gutt shared stage server (`https://mcp.stage.gutt.pro/mcp`), for
+  closed-beta users.
+- `gutt-enterprise` — your organization's gutt, set with the plugin option `mcp_url`. Until you
+  set it, it points at the same stage server, and Claude Code runs only one server per
+  endpoint, so you see just `gutt-closed-beta`.
+
+After installing, open the connector list and click **Authorise** on `gutt-closed-beta` (or
+`gutt-enterprise` once it points at your organization):
+
+- In the terminal and the desktop app's Code tab: type `/mcp`, pick the server, choose
   Authenticate.
 - In the Claude app (claude.ai, the desktop app's chat and Cowork): open **Customize** →
-  **Plugins** → **Yours** → gutt-pro, go to its **Connectors** tab and add `gutt-mcp-remote`.
+  **Plugins** → **Yours** → gutt-pro, go to its **Connectors** tab and add the server.
   Installing the plugin there doesn't add the connector by itself.
 
 The first time, the gutt login page opens: click **Sign up** to create your personal login on
 the stage server.
 
-To use your organization's own gutt instead, run `/gutt-pro:setup` and give it your endpoint,
-or set it at install time:
+To use your organization's own gutt, run `/gutt-pro:setup` and give it your endpoint, or set
+it at install time; `gutt-enterprise` then points there:
 
 ```
 claude plugin install gutt-pro@gutt-plugins --config mcp_url=https://your-org.example/mcp

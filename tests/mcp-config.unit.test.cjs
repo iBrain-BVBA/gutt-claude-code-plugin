@@ -290,13 +290,32 @@ test("unknown userConfig key resolves to empty", () => {
   assert.strictEqual(resolveUserConfig("no_such_key", CORE_ROOT), "");
 });
 
-test("shipped .mcp.json declares an http gutt server bound to userConfig.mcp_url", () => {
+test("shipped .mcp.json declares gutt-closed-beta (stage) and gutt-enterprise (mcp_url)", () => {
   const mcp = JSON.parse(fs.readFileSync(path.join(CORE_ROOT, ".mcp.json"), "utf8"));
-  const found = findGuttServerConfig(mcp.mcpServers);
-  assert.ok(found, "no gutt server in gutt-core/.mcp.json");
+  assert.deepStrictEqual(Object.keys(mcp.mcpServers), ["gutt-closed-beta", "gutt-enterprise"]);
   // Claude Code skips a remote entry that has a url but no type
-  assert.strictEqual(found.config.type, "http");
-  assert.strictEqual(found.config.url, "${user_config.mcp_url}");
+  assert.deepStrictEqual(mcp.mcpServers["gutt-closed-beta"], {
+    type: "http",
+    url: "https://mcp.stage.gutt.pro/mcp",
+  });
+  assert.deepStrictEqual(mcp.mcpServers["gutt-enterprise"], {
+    type: "http",
+    url: "${user_config.mcp_url}",
+  });
+  assert.deepStrictEqual(
+    findGuttServerConfigs(mcp.mcpServers).map((f) => f.name),
+    ["gutt-closed-beta", "gutt-enterprise"]
+  );
+});
+
+test("gutt-vaults ships the same gutt-closed-beta server as gutt-pro", () => {
+  const vaults = JSON.parse(
+    fs.readFileSync(path.join(CORE_ROOT, "..", "gutt-vaults", ".mcp.json"), "utf8")
+  );
+  const core = JSON.parse(fs.readFileSync(path.join(CORE_ROOT, ".mcp.json"), "utf8"));
+  assert.deepStrictEqual(vaults.mcpServers, {
+    "gutt-closed-beta": core.mcpServers["gutt-closed-beta"],
+  });
 });
 
 test("every ${user_config.KEY} in .mcp.json is declared in plugin.json", () => {
@@ -516,12 +535,22 @@ test("every gutt server in one scope is checked, not only the first", () => {
   assert.ok(!/remove gutt-mcp-remote/.test(diag.warning));
 });
 
-test("with the saved option passed in, a registration at the stage default is flagged", () => {
+test("with the option set, a registration at the gutt-closed-beta URL raises no warning", () => {
   const diag = diagnoseIn(
     () => ({ mcpServers: { "gutt-mcp-remote": { type: "http", url: STAGE } } }),
     { pluginRoot: null, option: ORG }
   );
   assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.warning, null, "gutt-closed-beta already runs at that URL");
+});
+
+test("with the saved option passed in, a registration at a third URL is flagged", () => {
+  const diag = diagnoseIn(
+    () => ({
+      mcpServers: { "gutt-mcp-remote": { type: "http", url: "https://third.example/mcp" } },
+    }),
+    { pluginRoot: null, option: ORG }
+  );
   assert.match(diag.warning, /--scope user/);
   assert.ok(diag.warning.includes(ORG), "the comparison uses the saved option, not the default");
 });

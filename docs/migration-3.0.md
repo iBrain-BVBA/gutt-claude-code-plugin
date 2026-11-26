@@ -180,7 +180,7 @@ Then connect to your organization's memory endpoint:
 /gutt-pro:setup
 ```
 
-Restart, and authenticate through `/mcp` → `gutt-mcp-remote` → Authenticate. `/gutt-pro:health`
+Restart, and authenticate through `/mcp` → `gutt-enterprise` → Authenticate. `/gutt-pro:health`
 confirms the connection and lists what registered.
 
 ## Step 5 — Turn the status bar on

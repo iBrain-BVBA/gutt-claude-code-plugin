@@ -41,7 +41,7 @@ from the table (the name with underscores written as hyphens).
 If the list is empty, or the person expected a vault that isn't in it, add: "Public vaults
 are read from a personal gutt login. If you're signed in with a team login, you see only your
 team's vaults: log in again with your personal account (in Claude Code: `/mcp` →
-`gutt-mcp-remote` → re-authorise, and don't pick a team)."
+`gutt-closed-beta` → re-authorise, and don't pick a team)."
 
 ## Example invocation
 

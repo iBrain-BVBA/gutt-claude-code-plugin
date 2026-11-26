@@ -192,7 +192,7 @@ reach the Console:
 
 `memory_connector` is optional. When set, it names the gutt connector that holds the vault,
 or a list of names for that one deployment as different surfaces see it (for a vault on the
-shared gutt stage, `gutt-mcp-remote` where the gutt-pro plugin's default server is used, and
+shared gutt stage, `gutt-closed-beta` where a plugin's own stage server is used, and
 the stage connector's name where a routine connects through claude.ai). `memory-tools.md`
 step 2 uses that server, ignores any other that also exposes the group, doesn't require the
 vault in its `list_writable_groups`, and stops when it holds no episode of the vault (except

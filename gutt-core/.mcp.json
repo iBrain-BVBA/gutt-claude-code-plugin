@@ -1,6 +1,10 @@
 {
   "mcpServers": {
-    "gutt-mcp-remote": {
+    "gutt-closed-beta": {
+      "type": "http",
+      "url": "https://mcp.stage.gutt.pro/mcp"
+    },
+    "gutt-enterprise": {
       "type": "http",
       "url": "${user_config.mcp_url}"
     }
