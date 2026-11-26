@@ -18,15 +18,16 @@ connected:
 | Connector in the Claude desktop app                                                                                            | `mcp__<connector-uuid>__<tool>`         | `mcp__<connector-uuid>__search_memory_facts`                 |
 
 Claude Code also deduplicates servers by endpoint (local > project > user > plugin > claude.ai
-connector), and among plugin servers the first one loaded keeps an endpoint. gutt-pro's
-`gutt-closed-beta`, gutt-vaults' `gutt-closed-beta` and gutt-pro's `gutt-enterprise` (while its
-`mcp_url` option is the default) share one endpoint, so only one of them runs, and which one can
-change between sessions. Installing or updating a plugin can therefore replace a connector or
-another plugin's server, and its tools change prefix without any error. Two gutt servers at
+connector), and among plugin servers the first one loaded keeps an endpoint. gutt-pro's and
+gutt-vaults' `gutt-closed-beta` share one endpoint (as does gutt-pro's `gutt-enterprise` if its
+`mcp_url` option is set to the same URL), so only one of them runs, and which one can change
+between sessions. Installing or updating a plugin can therefore replace a connector or another
+plugin's server, and its tools change prefix without any error. Two gutt servers at
 **different** endpoints (say a user-scope dev server and the plugin's stage server, or
 `gutt-enterprise` pointed at an organization's endpoint beside `gutt-closed-beta`) are both live
-at once, and each may hold a different copy of the vault. A vault file's optional `memory_connector` names the one that
-holds the vault (step 2).
+at once, and each may hold a different copy of the vault. A vault file's optional
+`memory_connector` names the one that holds the vault (step 2). `gutt-enterprise` has no URL
+until `mcp_url` is set; unset, it connects to nothing and exposes no tools.
 
 ## Procedure
 

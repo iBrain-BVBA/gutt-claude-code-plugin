@@ -72,7 +72,8 @@ or immediately after `/reload-plugins`.
 
 The plugin brings two MCP servers of its own: `gutt-closed-beta`, fixed at the gutt shared
 stage server (`https://mcp.stage.gutt.pro/mcp`), and `gutt-enterprise`, whose URL is the plugin
-option `mcp_url` and defaults to that same stage server. To point `gutt-enterprise` at your
+option `mcp_url` and has no default, so it stays unconnected until you set it. To point
+`gutt-enterprise` at your
 organization's endpoint, run `/gutt-pro:setup`, or use `/plugin` →
 gutt-pro → Configure, or set it on the installed plugin from a shell:
 
@@ -113,8 +114,9 @@ person to run the steps above:
 - `extraKnownMarketplaces` — register the gutt marketplace as a `github` source entry, so
   relative plugin paths resolve the same way the `owner/repo` form makes them resolve
 - `enabledPlugins` — auto-install `gutt-pro`, plus whichever role plugins that team needs
-- the memory endpoint is the `gutt-pro` plugin option `mcp_url` (default: the gutt shared stage
-  server); once `enabledPlugins` has installed it, set it per machine with
+- the organization's memory endpoint is the `gutt-pro` plugin option `mcp_url` (no default;
+  `gutt-closed-beta` covers the gutt shared stage server); once `enabledPlugins` has installed
+  it, set it per machine with
   `echo '{"mcp_url":"…"}' | claude plugin configure gutt-pro@gutt-plugins --values-stdin`
 
 The status bar cannot be pre-configured this way: it writes to each person's own settings, so

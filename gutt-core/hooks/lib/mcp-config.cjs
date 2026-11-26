@@ -65,9 +65,11 @@ const ROOT = PLUGIN_ROOT || (IDE === "claude" ? path.resolve(__dirname, "..", ".
  * `CLAUDE_PLUGIN_OPTION_<KEY>` (key uppercased). When that variable is absent, either
  * because the user never set the option or because this process is not a hook (the
  * Bash tool does not get it), fall back to the manifest's `default` in
- * `<pluginRoot>/.claude-plugin/plugin.json`. This assumes Claude Code substitutes the
- * same default when the option is unset (unverified; see the PR #103 test plan).
- * `diagnoseGuttMcp()` reports `source: "plugin-default"` when this fallback was used.
+ * `<pluginRoot>/.claude-plugin/plugin.json`, as Claude Code does when it fills the
+ * option in. An option with no default resolves to empty, and so does Claude Code's
+ * substitution: it lists that server as having no URL. `mcp_url` ships without a
+ * default, so `gutt-enterprise` has a URL only once the user sets one.
+ * `diagnoseGuttMcp()` reports `source: "plugin-default"` when a default was used.
  * @param {string} key - option key as written in `${user_config.<key>}`
  * @param {string|null} [pluginRoot] - plugin root; defaults to the plugin holding this file
  * @returns {string}
@@ -312,8 +314,8 @@ function pluginServers() {
 
 /**
  * The plugin server a user points somewhere with the mcp_url option (`gutt-enterprise`),
- * else the first of pluginServers(). With the option at its default both servers share one
- * URL, and Claude Code runs only one of them.
+ * else the first of pluginServers(): `gutt-closed-beta`, since `gutt-enterprise` has no URL
+ * until the option is set.
  * @returns {{ name: string, url: string, fromOption: boolean, fromDefault: boolean }|null}
  */
 function pluginServer() {
@@ -383,9 +385,10 @@ function isGuttMcpConfigured(problems = null) {
  * memory tools of two endpoints are live at once.
  * @param {{ url: string, name: string|null, source: string, scope: string|null }|null} located
  * @param {string|null} pluginUrl
+ * @param {string|null} [pluginName] - the plugin server at pluginUrl, named in the warning
  * @returns {string|null}
  */
-function shadowWarning(located, pluginUrl) {
+function shadowWarning(located, pluginUrl, pluginName = null) {
   if (
     !located ||
     !pluginUrl ||
@@ -400,7 +403,8 @@ function shadowWarning(located, pluginUrl) {
       : `run \`claude mcp remove ${located.name} --scope ${located.scope}\``;
   return (
     `A gutt MCP server at ${located.url} is registered outside the plugin, so it runs ` +
-    `alongside the plugin's gutt-enterprise server at ${pluginUrl}. To use only the ` +
+    `alongside the plugin's ${pluginName ? `${pluginName} server` : "own server"} at ` +
+    `${pluginUrl}. To use only the ` +
     `plugin's servers, ${remove} and set the gutt-pro option mcp_url instead.`
   );
 }
@@ -410,19 +414,21 @@ function shadowWarning(located, pluginUrl) {
  * servers at a URL none of them uses: each active registration (see
  * activeRegistrations()), so several gutt servers in one scope are each checked and an
  * overridden one is not.
- * @param {string|null} pluginUrl - the URL the warning names (the mcp_url server's)
+ * @param {{ name: string, url: string }|null} plugin - the server the warning names
+ *   (see pluginServer())
  * @param {string[]} [pluginUrls] - every plugin server URL; a registration at any of them
  *   adds no endpoint, since Claude Code runs only one server per URL
  * @returns {string[]}
  */
-function shadowWarnings(pluginUrl, pluginUrls = [pluginUrl]) {
+function shadowWarnings(plugin, pluginUrls = plugin ? [plugin.url] : []) {
+  const pluginUrl = plugin && plugin.url;
   if (!pluginUrl || IDE !== "claude") {
     return [];
   }
   const own = new Set(pluginUrls.filter(Boolean).map(normalizeUrl));
   return activeRegistrations()
     .filter((reg) => reg.scope && reg.url && !own.has(normalizeUrl(reg.url)))
-    .map((reg) => shadowWarning(reg, pluginUrl))
+    .map((reg) => shadowWarning(reg, pluginUrl, plugin.name))
     .filter(Boolean);
 }
 
@@ -430,8 +436,10 @@ function shadowWarnings(pluginUrl, pluginUrls = [pluginUrl]) {
  * Diagnose gutt MCP configuration status.
  * Note: Cannot test reachability from a hook (no async HTTP).
  *
- * `source` is the config file the URL came from, or `plugin-option` / `plugin-default`
- * for the plugin's own server. `plugin-default` means no `mcp_url` option value was
+ * `source` is the config file the URL came from, or for the plugin's own servers
+ * `plugin-option` / `plugin-default` (`gutt-enterprise`, from the `mcp_url` option or its
+ * manifest default) or `plugin-fixed` (`gutt-closed-beta`, whose URL is written into
+ * `.mcp.json`; `mcp_url` is unset). `plugin-default` means no `mcp_url` option value was
  * visible to this process (the Bash tool never gets one), so the URL is the manifest
  * default and the user's configured value, if any, has to be read another way.
  * @returns {{ configured: boolean, url: string|null, source: string|null, error: string|null, warning: string|null }}
@@ -468,12 +476,16 @@ function diagnoseGuttMcp() {
   const plugin = pluginServer();
   let source = located.source;
   if (located.scope === "plugin") {
-    source = plugin && plugin.fromDefault ? "plugin-default" : "plugin-option";
+    if (!plugin || !plugin.fromOption) {
+      source = "plugin-fixed";
+    } else {
+      source = plugin.fromDefault ? "plugin-default" : "plugin-option";
+    }
   }
   const warnings = [
     ...unreadable,
     ...shadowWarnings(
-      plugin && plugin.url,
+      plugin,
       pluginServers().map((server) => server.url)
     ),
   ];

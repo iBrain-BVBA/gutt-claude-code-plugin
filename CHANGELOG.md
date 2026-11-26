@@ -20,21 +20,23 @@ keep their versions.
   option points at, for an organization's own gutt. Its tools are now
   `mcp__plugin_gutt-pro_gutt-enterprise__*`; the stage server's are
   `mcp__plugin_gutt-pro_gutt-closed-beta__*` (or `mcp__plugin_gutt-vaults_gutt-closed-beta__*`).
-  While `mcp_url` is left at its default it shares the stage endpoint with `gutt-closed-beta`,
-  and Claude Code runs only `gutt-closed-beta`.
+- **`mcp_url` has no default any more.** It used to default to the stage server, which now has
+  its own server, so `gutt-enterprise` connects only once you set your organization's endpoint.
+  Unset, `/mcp` lists it as failed with "URL is unset or invalid". `/gutt-pro:health` reports
+  the stage URL with `source: plugin-fixed` in that case.
 - **vault-reviewer's allowlist covers every plugin server** that can hold the shared endpoint:
   both gutt-pro servers and gutt-vaults' `gutt-closed-beta`. The old
   `mcp__plugin_gutt-pro_gutt-mcp-remote__` prefix is gone from it and from `memory-tools.md`.
 - **`/gutt-pro:health` and the SessionStart check know both servers.** A registration outside
   the plugin at either server's URL no longer warns, since it adds no endpoint; the reported
-  URL is `gutt-enterprise`'s. Registrations named `gutt-mcp-remote` from an earlier
+  URL is `gutt-enterprise`'s when `mcp_url` is set, else `gutt-closed-beta`'s. Registrations named `gutt-mcp-remote` from an earlier
   `/gutt-pro:setup` are still recognized, and `/gutt-pro:setup` in Cursor now writes a
   `gutt-enterprise` entry in place of one.
 
 ### Upgrade
 
-- Authorise the renamed server once: `/mcp` → `gutt-closed-beta` (stage) or `gutt-enterprise`
-  (your organization) → Authenticate. In the Claude app, add it under the plugin's
+- If you never set `mcp_url`, you were on the stage server: authorise `gutt-closed-beta` once.
+  If you set it, authorise `gutt-enterprise` once. Either is `/mcp` → server → Authenticate. In the Claude app, add it under the plugin's
   **Connectors** tab.
 - Rename `mcp__plugin_gutt-pro_gutt-mcp-remote__*` in your permission allowlists.
 - A vault file whose `memory_connector` names `gutt-mcp-remote` must name `gutt-closed-beta`

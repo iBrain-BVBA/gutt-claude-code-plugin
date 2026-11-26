@@ -16,9 +16,9 @@ The plugin brings two MCP servers of its own:
 
 - `gutt-closed-beta` — the gutt shared stage server (`https://mcp.stage.gutt.pro/mcp`), for
   closed-beta users.
-- `gutt-enterprise` — your organization's gutt, set with the plugin option `mcp_url`. Until you
-  set it, it points at the same stage server, and Claude Code runs only one server per
-  endpoint, so you see just `gutt-closed-beta`.
+- `gutt-enterprise` — your organization's gutt, set with the plugin option `mcp_url`. It has no
+  default: until you set it, `/mcp` lists it as failed with "URL is unset or invalid", which
+  closed-beta users can ignore.
 
 After installing, open the connector list and click **Authorise** on `gutt-closed-beta` (or
 `gutt-enterprise` once it points at your organization):

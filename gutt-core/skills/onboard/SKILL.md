@@ -15,11 +15,11 @@ Walk the user through first-use setup and verification of the gutt memory integr
 
 In Claude Code the gutt-pro plugin ships two servers itself: `gutt-closed-beta`, fixed at the
 gutt shared stage server (`https://mcp.stage.gutt.pro/mcp`), and `gutt-enterprise`, whose URL
-is the plugin option `mcp_url` and defaults to that same stage server. There is nothing to add
-to a settings file.
+is the plugin option `mcp_url` and has no default, so it stays unconnected until the user sets
+it. There is nothing to add to a settings file.
 
 - **Claude Code:** Announce "gutt MCP server ships with the gutt-pro plugin." If the user wants
-  their organization's endpoint instead of the stage default, send them to `/gutt-pro:setup`,
+  their organization's endpoint as well as the stage server, send them to `/gutt-pro:setup`,
   which sets `mcp_url`. Do not write `.claude/settings.json` or `.mcp.json`, and do not run
   `claude mcp add`: a second registration runs alongside the plugin's server. Proceed to
   Step 2.

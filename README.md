@@ -180,7 +180,7 @@ memory endpoint, restart, and connect `gutt-enterprise` under Settings → Tools
 
 | Works in Cursor                                          | Does not, or not verified                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Memory tools, once `gutt-enterprise` is connected        | The stage default: Cursor needs `/gutt-pro:setup` and an endpoint           |
+| Memory tools, once `gutt-enterprise` is connected        | The plugin's own servers: Cursor needs `/gutt-pro:setup` and an endpoint    |
 | The skills, including the role plugins'                  | The status bar and `/gutt-pro:statusline`                                   |
 | The `gutt-memory.mdc` rule (search first, capture after) | The `mcp_url` plugin option                                                 |
 | `/gutt-pro:setup`, which writes `~/.cursor/mcp.json`     | The hooks, so the `/gutt-pro:` settings and the capture judge: not verified |

@@ -42,20 +42,20 @@ leaves it unset rather than contradicting it.
 
 The plugin ships two servers itself (`gutt-core/.mcp.json`): `gutt-closed-beta`, fixed at the
 gutt shared stage server `https://mcp.stage.gutt.pro/mcp`, and `gutt-enterprise`, whose URL is
-the plugin option `mcp_url`, which defaults to that same stage server. So the servers are
-normally present; the question is which endpoint `gutt-enterprise` points at. Read it, do not
-assume it:
+the plugin option `mcp_url`, which has no default. So `gutt-closed-beta` is always present;
+the question is whether `gutt-enterprise` points anywhere, and where. Read it, do not assume
+it:
 
 1. Run `claude plugin configure gutt-pro@gutt-plugins --json`. If it lists a value for
-   `mcp_url`, that is the plugin's endpoint; if it lists `mcp_url` as unset, the plugin uses
-   the stage default above.
+   `mcp_url`, that is `gutt-enterprise`'s endpoint; if it lists `mcp_url` as unset,
+   `gutt-enterprise` has no URL and only `gutt-closed-beta` (the stage server) is in use.
 2. Run `claude mcp list` and look for every server whose name contains `gutt` (other than the
    plugin's own, which the list attributes to the gutt-pro plugin). For each, `claude mcp get <name>` shows
    its URL and scope. These are leftovers from an earlier setup and run alongside the plugin's
    server.
 
-If neither command gives an endpoint, say the endpoint could not be determined; do not show
-the stage default as the configured one.
+If neither command gives an endpoint, say no organization endpoint is configured; do not
+show the stage server as the organization's.
 
 #### Cursor
 
