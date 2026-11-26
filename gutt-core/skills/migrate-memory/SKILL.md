@@ -117,8 +117,11 @@ If `settled` is true, stop and say so — this project has already been answered
    - _Migrate these N notes into gutt?_ — migrate / not now / never
    - _Scope?_ — org group (default) / personal / decide batch by batch
 
-   Show the count and name a few examples so the choice is informed. On "never"
-   → `record declined` and stop. On "not now" → `record later` and stop.
+   Show the count and name a few examples so the choice is informed. Where
+   memory review is on (`confirm_memory` is in your tool list), also say how many
+   — the Lessons and Decisions — will come back for the user's approval one by
+   one, so they know what the yes commits them to. On "never" → `record declined`
+   and stop. On "not now" → `record later` and stop.
 
 4. **Check the write tool.** Read your tool list for `add_personal_memory` /
    `add_memory_to_<group>` / `add_memory` (`memory-capture` rule 4 — never hardcode
@@ -146,6 +149,13 @@ If `settled` is true, stop and say so — this project has already been answered
 
    Write the rest with `last_n_episodes=0` on every org write (rule 3), one episode
    per fact, a typed `name` prefix per the mapping below.
+
+   With memory review on, the gated facts come back **held**, not written
+   (`memory-capture` rule 8). Take each batch's held drafts through review —
+   `memory-capture`'s `references/review.md`, which on a text host means a question
+   per draft, four to a call — before moving to step 7. A draft the user discards
+   or leaves unanswered records no episode id, so step 9 keeps its file, exactly as
+   it keeps one whose write never landed.
 
 7. **Verify.** After each batch, **one** search for the episodes just written.
    Extraction is asynchronous, so an immediate miss may only mean not-yet-processed —
@@ -211,6 +221,13 @@ It is not unprompted. The user is shown the count, the examples and the scope, a
 asked to approve **this specific batch** before any write — which is a stronger
 signal than the "capture that lesson" the rule was written for. So their yes at
 step 3 _is_ the explicit signal for every gated item in the batch.
+
+What that signal licenses depends on the server. With memory review off, it
+licenses the write. With review on, the server holds every gated fact as a draft
+regardless, and the step-3 yes licenses _drafting_ them: a yes to migrating thirty
+notes is not a yes to the wording of each Lesson, and `confirm_memory` is only for
+text the user has seen and agreed to. So review the held drafts as step 6 says, and
+never confirm one on the strength of step 3 alone.
 
 That reading is bounded, and the bounds are the point:
 

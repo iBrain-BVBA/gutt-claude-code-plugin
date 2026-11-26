@@ -56,6 +56,9 @@ const RAW_TOOL_OWNERS = new Map([
   ["search_memory_nodes", ["memory-search"]],
   ["search_memory_facts", ["memory-search", "graph-traversal"]],
   ["add_memory", ["memory-capture"]],
+  ["draft_memories_ui", ["memory-capture"]],
+  ["confirm_memory", ["memory-capture"]],
+  ["discard_draft", ["memory-capture"]],
   ["fetch_lessons_learned", ["memory-search"]],
   ["register_agent", ["agent-memory-protocol"]],
 ]);

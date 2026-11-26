@@ -1218,6 +1218,32 @@ describe("hook architecture guards", () => {
     );
   });
 
+  // A held draft is settled through tools the skill names in two places: the procedure
+  // in references/review.md and the contracts in references/tools.md. A tool renamed or
+  // added in one and not the other leaves the agent following steps whose tool it cannot
+  // look up — or looking up a tool no step uses. Tool names are matched by shape (the
+  // two settle tools, and anything ending `_ui`) rather than listed here, so a new card
+  // tool is covered without editing this test.
+  it("names only review tools that memory-capture's tool reference documents", () => {
+    const dir = path.join(ROOT, "gutt-core", "skills", "memory-capture");
+    const skill = fs.readFileSync(path.join(dir, "SKILL.md"), "utf8");
+    assert.ok(
+      skill.includes("references/review.md"),
+      "memory-capture no longer points at the review procedure"
+    );
+    const review = fs.readFileSync(path.join(dir, "references", "review.md"), "utf8");
+    const tools = fs.readFileSync(path.join(dir, "references", "tools.md"), "utf8");
+
+    const named = new Set(
+      [...review.matchAll(/`([a-z_]+_ui|confirm_memory|discard_draft)\b/g)].map((m) => m[1])
+    );
+    // The text path cannot be followed without both settle tools; their absence would
+    // also make the documented-set comparison below pass on nothing.
+    assert.ok(named.has("confirm_memory") && named.has("discard_draft"), "no settle tools named");
+    const undocumented = [...named].filter((t) => !tools.includes(`\`${t}`));
+    assert.deepEqual(undocumented, [], `review.md names undocumented tools: ${undocumented}`);
+  });
+
   // Every command handler must name a file that exists. hooks.json is data, so a
   // renamed script fails at session start with no build-time warning.
   it("points every command handler at a script that exists", () => {
