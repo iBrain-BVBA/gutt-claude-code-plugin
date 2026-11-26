@@ -556,17 +556,19 @@ test("every gutt server in one scope is checked, not only the first", () => {
       "gutt-pro-memory": { type: "http", url: ORG },
     },
   }));
-  assert.strictEqual(diag.url, STAGE);
+  // The stage entry only duplicates gutt-closed-beta, so the first new endpoint is reported.
+  assert.strictEqual(diag.url, ORG);
   assert.match(diag.warning, /claude mcp remove gutt-pro-memory --scope user/);
   assert.ok(!/remove gutt-mcp-remote/.test(diag.warning));
 });
 
-test("with the option set, a registration at the gutt-closed-beta URL raises no warning", () => {
+test("with the option set, a leftover stage registration neither warns nor hides the option", () => {
   const diag = diagnoseIn(
     () => ({ mcpServers: { "gutt-mcp-remote": { type: "http", url: STAGE } } }),
     { pluginRoot: null, option: ORG }
   );
-  assert.strictEqual(diag.url, STAGE);
+  assert.strictEqual(diag.url, ORG, "the option-bound URL is reported, not the duplicate");
+  assert.strictEqual(diag.source, "plugin-option");
   assert.strictEqual(diag.warning, null, "gutt-closed-beta already runs at that URL");
 });
 

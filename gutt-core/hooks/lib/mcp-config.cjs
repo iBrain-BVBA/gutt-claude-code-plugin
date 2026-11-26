@@ -324,13 +324,18 @@ function pluginServer() {
 }
 
 /**
- * The first active registration (see activeRegistrations()) with an HTTP URL, else the
- * plugin's own server.
+ * The first active registration (see activeRegistrations()) with an HTTP URL that none of
+ * the plugin's servers already uses, else the plugin's own server (see pluginServer()). A
+ * registration at a plugin server's URL adds no endpoint, so it must not hide the
+ * `mcp_url` server's URL behind, say, a leftover stage registration.
  * @param {string[]|null} [problems] - collects config files that could not be read
  * @returns {{ url: string, name: string|null, source: string, scope: string|null }|null}
  */
 function locateGuttMcp(problems = null) {
-  const registered = activeRegistrations(problems).find((reg) => reg.url);
+  const own = new Set(pluginServers().map((server) => normalizeUrl(server.url)));
+  const registered = activeRegistrations(problems).find(
+    (reg) => reg.url && !own.has(normalizeUrl(reg.url))
+  );
   if (registered) {
     return registered;
   }

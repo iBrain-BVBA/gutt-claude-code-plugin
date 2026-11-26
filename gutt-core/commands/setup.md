@@ -49,10 +49,11 @@ it:
 1. Run `claude plugin configure gutt-pro@gutt-plugins --json`. If it lists a value for
    `mcp_url`, that is `gutt-enterprise`'s endpoint; if it lists `mcp_url` as unset,
    `gutt-enterprise` has no URL and only `gutt-closed-beta` (the stage server) is in use.
-2. Run `claude mcp list` and look for every server whose name contains `gutt` (other than the
-   plugin's own, which the list attributes to the gutt-pro plugin). For each, `claude mcp get <name>` shows
-   its URL and scope. These are leftovers from an earlier setup and run alongside the plugin's
-   server.
+2. Run `claude mcp list` and look for every server whose name contains `gutt`, other than the
+   plugins' own servers: the list shows those as `plugin:<plugin>:<server>`, for example
+   `plugin:gutt-pro:gutt-enterprise` or `plugin:gutt-vaults:gutt-closed-beta`, and they are
+   never removed here. For each other one, `claude mcp get <name>` shows its URL and scope.
+   These are leftovers from an earlier setup and run alongside the plugins' servers.
 
 If neither command gives an endpoint, say no organization endpoint is configured; do not
 show the stage server as the organization's.
@@ -77,6 +78,13 @@ Validate:
 
 - Must start with `https://`
 - Must end with `/mcp`
+- **Claude Code only:** must not be the gutt shared stage server,
+  `https://mcp.stage.gutt.pro/mcp` (ignoring host case and a trailing slash).
+  `gutt-closed-beta` already connects there, and Claude Code skips a plugin server whose URL
+  another plugin server already has, so `gutt-enterprise` would never run. If the user gives
+  it, do not set `mcp_url`: tell them the stage server is already set up, have them
+  authorise `gutt-closed-beta` (`/mcp` → `gutt-closed-beta` → Authenticate), and stop. Cursor
+  loads no plugin servers, so there the stage URL is a valid answer.
 
 ### Step 3: Set the Endpoint (IDE-specific)
 

@@ -136,10 +136,13 @@ below.
 - `mcp__plugin_gutt-pro_gutt-closed-beta__`
 - `mcp__plugin_gutt-pro_gutt-enterprise__`
 - `mcp__plugin_gutt-vaults_gutt-closed-beta__`
+- `mcp__claude_ai_gutt-closed-beta__`
+- `mcp__gutt-closed-beta__`
 - `mcp__claude_ai_gutt-pro-memory__`
 - `mcp__gutt-pro-memory__`
 - `mcp__claude_ai_gutt-pro-memory-stage__`
 - `mcp__gutt-pro-memory-stage__`
+- `mcp__plugin_gutt-pro_gutt-mcp-remote__`
 
 <!-- known-prefixes:end -->
 
@@ -152,10 +155,17 @@ the reviewer's `tools:` and to the list above; a test in the plugin's repository
 stay in step and that every tool on the list only reads.
 
 Besides the plugins' own servers (every one that can hold the shared endpoint, since Claude
-Code picks which of them runs), the list covers the two usual connector names:
-`gutt-pro-memory`, and `gutt-pro-memory-stage` for a connector to the shared stage. A claude.ai
-connector is named by whoever adds it, so one added under another name is not on the list
-until its prefix is added here and to the reviewer's `tools:`.
+Code picks which of them runs), the list covers the usual connector names, in both their
+terminal (`mcp__claude_ai_<name>__`) and routine (`mcp__<name>__`) forms: `gutt-closed-beta`,
+the plugin server's own name, for a connector to the shared stage added under it;
+`gutt-pro-memory`; and `gutt-pro-memory-stage`. A claude.ai connector is named by whoever adds
+it, so one added under another name is not on the list until its prefix is added here and to
+the reviewer's `tools:`.
+
+`mcp__plugin_gutt-pro_gutt-mcp-remote__` is gutt-pro's server as it was named before
+gutt-pro 3.3.0. It stays on the list for an install that has updated gutt-vaults but not yet
+gutt-pro: there the two plugins' stage servers share one endpoint, and the old name can be the
+one Claude Code keeps.
 
 A vault file's `memory_connector` (step 2) must give a prefix on this list, or every curate
 run of that vault escalates everything. The plugin ships no vault files, so no test can check

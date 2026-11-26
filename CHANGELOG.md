@@ -25,11 +25,17 @@ keep their versions.
   Unset, `/mcp` lists it as failed with "URL is unset or invalid". `/gutt-pro:health` reports
   the stage URL with `source: plugin-fixed` in that case.
 - **vault-reviewer's allowlist covers every plugin server** that can hold the shared endpoint:
-  both gutt-pro servers and gutt-vaults' `gutt-closed-beta`. The old
-  `mcp__plugin_gutt-pro_gutt-mcp-remote__` prefix is gone from it and from `memory-tools.md`.
+  both gutt-pro servers and gutt-vaults' `gutt-closed-beta`, plus a `gutt-closed-beta`
+  connector in its terminal and routine forms. The old `mcp__plugin_gutt-pro_gutt-mcp-remote__`
+  prefix stays, read-only, for gutt-vaults 0.4.0 running beside a gutt-pro older than 3.3.0.
+- **`/gutt-pro:setup` refuses the stage URL as `mcp_url`** in Claude Code: `gutt-closed-beta`
+  already serves it, and `gutt-enterprise` at the same URL would be skipped as a duplicate. It
+  sends the user to authorise `gutt-closed-beta` instead, and never offers to remove a
+  `plugin:*` server as a leftover registration.
 - **`/gutt-pro:health` and the SessionStart check know both servers.** A registration outside
-  the plugin at either server's URL no longer warns, since it adds no endpoint; the reported
-  URL is `gutt-enterprise`'s when `mcp_url` is set, else `gutt-closed-beta`'s. Registrations named `gutt-mcp-remote` from an earlier
+  the plugin at either server's URL no longer warns, and no longer decides the reported URL,
+  since it adds no endpoint; the reported URL is `gutt-enterprise`'s when `mcp_url` is set,
+  else `gutt-closed-beta`'s. Registrations named `gutt-mcp-remote` from an earlier
   `/gutt-pro:setup` are still recognized, and `/gutt-pro:setup` in Cursor now writes a
   `gutt-enterprise` entry in place of one.
 

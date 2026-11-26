@@ -56,8 +56,10 @@ owner the rule a name breaks rather than letting the call fail.
        login owns the vault isn't known.
      - A refusal: explain it with §Refusals.
      - No nodes anywhere: say "This gutt server doesn't list vaults. Reconnect it to refresh its
-       tools (in Claude Code: `/mcp` → `gutt-closed-beta` → Reconnect). Vaults run on the
-       shared gutt stage, the plugins' `gutt-closed-beta` server."
+       tools (in Claude Code: `/mcp` → the gutt server you read vaults through, usually
+       `gutt-closed-beta` → Reconnect). Vaults run on the shared gutt stage, the plugins'
+       `gutt-closed-beta` server." Name the server whose prefix this run used when it is
+       not `gutt-closed-beta`.
      - Without a slug (`vault-list`), give the same reconnect advice and stop.
    - **Not found:** say how to connect. In Claude Code, install `gutt-pro` and `gutt-vaults`,
      then `/mcp` → `gutt-closed-beta` → Authorise. In the Claude app, open the gutt-vaults plugin's
@@ -74,7 +76,8 @@ the exact `group_id`. If the query matched more vaults than the limit, page with
 - **Not listed:** don't search it. A search would be refused, and an empty answer would read
   as "the vault knows nothing". Say: "This login can't read `vault_<name>`. Public vaults are
   read from a personal gutt login: if you're signed in with a team login, log in again with
-  your personal account (in Claude Code: `/mcp` → `gutt-closed-beta` → re-authorise, and don't
+  your personal account (in Claude Code: `/mcp` → the server this run read from, usually
+  `gutt-closed-beta` → re-authorise, and don't
   pick a team). Otherwise the vault belongs to a team you're not signed in to, or no vault has
   that name. Names are exact: `/gutt-vaults:vault-list` shows the vaults you can read."
 
@@ -94,7 +97,7 @@ Keep the vault's group id in the message.
 | `already holds memories`                                      | The group has data, even if no vault is listed    | Pick another name. Data left in an old group can't be claimed.                                                            |
 | `may have been reserved anyway` or `may stay taken`           | `create_vault` failed partway                     | Try again in a few minutes. If the same name is refused, pick another.                                                    |
 | `failed before anything was created`, `Listing vaults failed` | A temporary failure                               | Try again in a few minutes.                                                                                               |
-| `Your login doesn't say who you are`                          | The login has expired or is incomplete            | Log in again: re-authorise `gutt-closed-beta`.                                                                            |
+| `Your login doesn't say who you are`                          | The login has expired or is incomplete            | Log in again: re-authorise the server this run used (named in its tool prefix).                                           |
 
 Any other error or a timeout means the outcome is **unknown**. Say the call failed and name the
 tool. Never report it as an empty vault or as "the vault doesn't cover this".
